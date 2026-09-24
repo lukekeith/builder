@@ -4,13 +4,19 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.0.2
+
+Corrects the 2.0.1 note, which named the wrong cause. A marketplace install **does** materialise the
+plugin on disk immediately. What was wrong is that the fallback hardcoded `~/.claude`, and the
+config directory moves — `CLAUDE_CONFIG_DIR` pointed at `~/.claude-home` on the machine this was
+found on, where the files were sitting the whole time. The fallback now reads
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}`.
+
 ## 2.0.1
 
-Script resolution now prefers **`$CLAUDE_PLUGIN_ROOT`**, the documented way for a plugin to
-reference its own files. The previous heuristic searched `~/.claude/plugins` — which finds nothing
-for a freshly installed plugin, because the CLI records the install and Claude Code materialises the
-files when a session loads it. The old paths remain as fallbacks for contexts where the variable is
-not set.
+Script resolution now prefers **`$CLAUDE_PLUGIN_ROOT`**, the documented, portable way for a plugin
+to reference its own files, with the previous paths kept as fallbacks. (The cause given for the bug
+in this release was wrong — see 2.0.2.)
 
 ## 2.0.0
 
