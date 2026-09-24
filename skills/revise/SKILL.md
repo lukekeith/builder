@@ -23,8 +23,11 @@ AskUserQuestion** over the in-flight features. Never ask "which feature?" as an 
   noise.
 - A question, a conflict, or more than one defensible answer → run `/builder:brainstorm`'s
   conversation first, come back with the ruling.
-- The user is reporting a **problem, not a solution** → investigate in code before proposing
-  anything; report what you found, then ask.
+- The user is reporting a **problem, not a solution** → this is a debugging job, and
+  [`systematic-debugging`](../systematic-debugging/SKILL.md) is how it is done: find the root cause
+  before proposing any fix. Report what you found, then ask. 🔴 A revision that changes code to make
+  a symptom go away, without an explanation of why the symptom happened, is the thing that skill
+  exists to prevent — and it lands in a spec'd feature, where it is expensive.
 - **Verify the premise in code before propagating it.** If the change asserts something about the
   codebase that turns out false, say so and stop — a revision built on a wrong premise costs more than
   the original spec. 🔴 **Check the premise in every app it names**: "the endpoint already returns

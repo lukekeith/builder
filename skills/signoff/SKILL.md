@@ -43,7 +43,10 @@ record nothing.
    unapproved, and that is expected**, but it means the tree is dirty and the walk covered a build
    that is not committed: say so); anything new or least-exercised the walk may not have hit. **None
    of them block the recording** — the human tested the running app — but the record carries the
-   caveat.
+   caveat. 🔴 This step is
+   [`verification-before-completion`](../verification-before-completion/SKILL.md) pointed at the
+   pipeline itself: the sign-off is the strongest completion claim the whole process makes, so the
+   conditions it was made under are stated as evidence, not summarised into a feeling.
 
 3. **Capture the verdict** — their words verbatim, or ONE AskUserQuestion: *"You ran the
    walk-through — what's the verdict?"* → **PASS** / **PASS + HOLD the PR** / **PROBLEMS** /

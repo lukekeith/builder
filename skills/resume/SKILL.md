@@ -153,7 +153,16 @@ touches neither the SPEC header nor the PR lock.
 INCOMPLETE, a review or a declined re-walk left behind. Each is worked like a build task — its recipe
 skill read first, its test shipping with it, one commit each — in the main context: the build step
 runs only at `state: planned` or `building`. **Each fix names its app**, and a fix crossing an app
-boundary is not a fix: it is a contract change and goes through `/builder:revise` first. 🔴 A fix in
+boundary is not a fix: it is a contract change and goes through `/builder:revise` first.
+
+🔴 **The craft skills bind here too, and this is where they are most often skipped** — the work is in
+the main context, with no implementer brief to carry them. A row that came from a review is read
+through [`receiving-code-review`](../receiving-code-review/SKILL.md) before it is acted on; a row
+describing a symptom is a [`systematic-debugging`](../systematic-debugging/SKILL.md) job before it is
+a code change; each fix ships its failing test first
+([`test-driven-development`](../test-driven-development/SKILL.md)); and a row is ticked only on
+evidence run in that message
+([`verification-before-completion`](../verification-before-completion/SKILL.md)). 🔴 A fix in
 an app the config marks `commit: manual` is staged and left for the human, like any other commit
 there.
 

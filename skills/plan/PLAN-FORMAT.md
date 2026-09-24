@@ -40,6 +40,13 @@ be gated.
 
 ## Bite-sized steps
 
+🔴 **The cycle these steps follow is
+[`test-driven-development`](../test-driven-development/SKILL.md)** — read it before writing a task's
+steps. The order below is not a house style; it is that skill's red-green loop, and the "run it and
+watch it fail" step is the one that makes the test worth having. A task whose steps write code
+before a failing test is a plan defect, and the implementer is told to report it rather than follow
+it.
+
 Each step is ONE action, two to five minutes:
 
 - "Write the failing test" — step
