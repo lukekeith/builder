@@ -27,10 +27,11 @@ outranks recording it — git history is the full record.
 
 🔴 **The plugin knows nothing about your project.** Every project fact — the apps, the gate commands,
 the house rules, the environment landmines, the recipe skills, the design source — lives in
-**`.claude/builder.md`**. That is the whole installation:
+**`.claude/builder.md`**. Writing it is the whole per-repo setup:
 
 ```
-cp <builder>/PROJECT.template.md .claude/builder.md    # then fill it in
+/builder:init             # reads the repo, asks what it can't tell, writes .claude/builder.md
+/builder:init --update    # fill the gaps in an existing one
 ```
 
 Nothing else is needed. The plugin ships its own scripts and its own execution engine; there is no
@@ -40,6 +41,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 
 | You are… | Run |
 |---|---|
+| **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |
 | **Any time — "where are things / what's next?"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |
 | **Wanting something built, unsure how big it is** | `/builder:brainstorm <what you want>` — it recons, announces a size with its evidence, and takes the matching path. The normal way in |
 | Sure it's a small change inside one app | `/builder:brainstorm --size sm <what you want>` — recon, ≤3 questions, a design you approve in chat, then built. No docs |

@@ -4,6 +4,13 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.1.0
+
+**`/builder:init`** — per-repo setup in one command. It reads the repo (workspaces, gate commands, CI,
+`git log`), asks only what it cannot tell, writes `.claude/builder.md` and proves it parses.
+`--update` fills gaps in an existing config without touching what a human wrote. The missing-config
+message in every script and skill now points at it. No change to the config format.
+
 ## 2.0.3
 
 Public release. Correct authorship and homepage, a contribution guide and a PR template. No change
