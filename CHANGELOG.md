@@ -4,6 +4,11 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.0.3
+
+Public release. Correct authorship and homepage, a contribution guide and a PR template. No change
+to the pipeline.
+
 ## 2.0.2
 
 Corrects the 2.0.1 note, which named the wrong cause. A marketplace install **does** materialise the
