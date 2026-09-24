@@ -40,24 +40,33 @@ The plugin ships its own; nothing needs installing. Resolve the directory **once
 paste the absolute path thereafter — 🔴 a shell variable does not survive between Bash calls:
 
 ```bash
-{ ls -d "$(git rev-parse --show-toplevel 2>/dev/null)/plugins/builder/scripts" 2>/dev/null
-  find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' 2>/dev/null | sort -V | tail -1
-} | head -1
+# The supported way: Claude Code sets this to the plugin's own directory, whatever
+# the install shape. Use it whenever it is set.
+[ -n "$CLAUDE_PLUGIN_ROOT" ] && echo "$CLAUDE_PLUGIN_ROOT/scripts" || {
+  # Fallbacks, in order, for contexts where it is not set:
+  { ls -d "$(git rev-parse --show-toplevel 2>/dev/null)/plugins/builder/scripts" 2>/dev/null
+    find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' 2>/dev/null | sort -V | tail -1
+  } | head -1
+}
 ```
 
-The first line finds a copy vendored into the repo; the second, a marketplace install at
-`~/.claude/plugins/cache/<marketplace>/builder/<version>/`. Three details, each paid for:
+🔴 **Prefer `$CLAUDE_PLUGIN_ROOT`.** It is the documented, portable way for a plugin to reference its
+own files, and it is correct for every install shape — marketplace, vendored, or a local skills
+directory. The fallbacks exist only because it is not set in every context, and each has a flaw the
+variable does not:
 
-- 🔴 **No bare `~/.claude/plugins/*/…` glob.** Under `zsh` an unmatched glob aborts the whole
-  command — and one of the two locations is always unmatched.
-- 🔴 **`sort -V | tail -1`, not `head -1`, on the cache.** A marketplace keeps every version it has
-  fetched side by side, so an unsorted `find` returns a **stale** one: with 2.0.0, 6.3.0 and 10.0.0
-  present it picked 6.3.0. Version sort takes the newest, and `-V` is what makes 10.0.0 beat 6.3.0.
-- **The repo copy wins.** It is listed first and the outer `head -1` takes it, so a vendored plugin
-  is the one that runs even when a marketplace copy is also installed — the checked-out branch is
-  then the pipeline you run.
+- the repo-vendored path only finds a copy checked into the consuming repo;
+- the `find` only finds a copy the marketplace has already materialised on disk — **a freshly
+  installed plugin may not be there yet**, because the CLI records the install and Claude Code
+  fetches the files when a session loads it.
 
-Printing nothing means the plugin is at neither location; say so rather than guessing a path.
+Two details in the fallbacks, both paid for: **no bare `~/.claude/plugins/*/…` glob** (under `zsh` an
+unmatched glob aborts the whole command), and **`sort -V | tail -1`** on the `find` (a marketplace
+keeps every version it has fetched side by side, so an unsorted `find` returns a stale one — with
+2.0.0, 6.3.0 and 10.0.0 present it picked 6.3.0).
+
+Resolving to nothing means the plugin is not reachable from this context; say so rather than guessing
+a path.
 
 Below, `<builder>/scripts/x` means that resolved path.
 

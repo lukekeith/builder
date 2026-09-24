@@ -4,6 +4,14 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.0.1
+
+Script resolution now prefers **`$CLAUDE_PLUGIN_ROOT`**, the documented way for a plugin to
+reference its own files. The previous heuristic searched `~/.claude/plugins` — which finds nothing
+for a freshly installed plugin, because the CLI records the install and Claude Code materialises the
+files when a session loads it. The old paths remain as fallbacks for contexts where the variable is
+not set.
+
 ## 2.0.0
 
 **Dependency-free and project-agnostic.** The plugin no longer requires any other plugin, and no
