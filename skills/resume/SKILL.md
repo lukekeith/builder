@@ -15,7 +15,7 @@ picker, nothing written.
 
 **Read `.claude/builder.md` before anything else.** It is the only place this pipeline learns what
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
-`cp <builder>/PROJECT.template.md .claude/builder.md`, and stop.
+`/builder:init`, and stop.
 
 **This command never sizes or designs anything.** New work — free text, a `--size`, a design ref with
 no folder behind it — is `/builder:brainstorm`'s: hand it there verbatim, flags included, and stop.

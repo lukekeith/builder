@@ -117,7 +117,7 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
       path,
       reason:
         `No ${CONFIG_PATH}. /builder:* reads every project fact from that one file.\n` +
-        `Create it from the template: cp plugins/builder/PROJECT.template.md ${CONFIG_PATH}`,
+        `Run /builder:init to write it from this repo, or copy PROJECT.template.md from the plugin by hand.`,
     }
 
   const text = readFileSync(path, 'utf8')

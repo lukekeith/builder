@@ -10,8 +10,8 @@ house rules, the landmines, the recipe skills, the design source — lives in ON
 and cite it rather than repeating it** — a fact duplicated here would go stale in exactly the way
 this pipeline exists to prevent.
 
-No config → no pipeline. Say so in one line and name the fix:
-`cp <builder>/PROJECT.template.md .claude/builder.md`.
+No config → no pipeline. Say so in one line and name the fix: **`/builder:init`**, which writes it
+from the repo (or `cp <builder>/PROJECT.template.md .claude/builder.md` and fill it in by hand).
 
 ## The first principle
 
