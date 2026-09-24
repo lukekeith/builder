@@ -1,4 +1,6 @@
-# builder — a dependency-free build pipeline (Claude Code plugin)
+# builder — a dependency-free build pipeline for Claude Code
+
+`claude plugin marketplace add lukekeith/builder` → `claude plugin install builder@claude-builder`
 
 Invoked as `/builder:<skill>`. Start with **`/builder:brainstorm <what you want>`**; `/builder:help`
 is the card.
@@ -9,69 +11,59 @@ one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the pipeline; **x
 of children. A spec is audited against the codebase **once** before any code, built **one app per
 phase**, then 🔒 **walked by a human** before the one deep verify pass and a single PR.
 
-## Installing it in another repo
+## Installing it
 
-Zero dependencies: no other plugin, no `npm install`, no network. Two ways in, both tested.
-
-### A. Vendor it (what this repo does)
-
-Copy the plugin folder in, declare a marketplace, enable it, write the config:
+Zero dependencies: no other plugin, no `npm install`. Two steps, then one file you write yourself.
 
 ```bash
-# 1. the plugin itself
-mkdir -p plugins && cp -R /path/to/builder plugins/
+# 1. add the marketplace and install the plugin
+claude plugin marketplace add lukekeith/builder
+claude plugin install builder@claude-builder --scope project
 
-# 2. declare a marketplace that points at it
-mkdir -p .claude-plugin && cat > .claude-plugin/marketplace.json <<'JSON'
-{
-  "name": "<your-org>",
-  "description": "<your-org>'s own Claude Code plugins, loaded from this repo.",
-  "owner": { "name": "<Your Org>" },
-  "plugins": [
-    { "name": "builder", "source": "./plugins/builder", "description": "Build pipeline" }
-  ]
-}
-JSON
-
-# 3. enable it for the project — this is what a fresh clone reads
-mkdir -p .claude && cat > .claude/settings.json <<'JSON'
-{
-  "enabledPlugins": { "builder@<your-org>": true },
-  "extraKnownMarketplaces": {
-    "<your-org>": { "source": { "source": "directory", "path": "." } }
-  }
-}
-JSON
-
-# 4. THE ONLY THING YOU WRITE YOURSELF
-cp plugins/builder/PROJECT.template.md .claude/builder.md   # then fill it in
-
-# 5. register + install (once per machine; step 3 is what makes it work for everyone else)
-claude plugin marketplace add ./
-claude plugin install builder@<your-org> --scope project
-claude plugin validate .            # sanity-check the manifest
+# 2. THE ONLY THING YOU WRITE YOURSELF
+#    copy the template out of the installed plugin, then fill it in
+cp "$(find "$HOME/.claude/plugins" -name PROJECT.template.md -path '*builder*' | sort -V | tail -1)" \
+   .claude/builder.md
 ```
 
-The plugin is now vendored with the repo, so the branch you have checked out **is** the pipeline you
-run — and a teammate cloning it gets the same one.
+To make it work for everyone who clones your repo, declare it in the project's
+`.claude/settings.json` rather than relying on the machine-local install:
 
-### B. Install it from its own repository
+```json
+{
+  "enabledPlugins": { "builder@claude-builder": true },
+  "extraKnownMarketplaces": {
+    "claude-builder": { "source": { "source": "github", "repo": "lukekeith/builder" } }
+  }
+}
+```
 
-Put `plugins/builder/` in a repo of its own with a root `.claude-plugin/marketplace.json`, then in
-each consuming project add that marketplace and enable `builder@<marketplace>`. Every project tracks
-one upstream instead of carrying a copy — at the cost of the pipeline no longer moving with the
-branch. Same step 4 either way: **`.claude/builder.md` is the only file you write.**
+### Updating
+
+```bash
+claude plugin marketplace update claude-builder   # re-read the marketplace from GitHub
+claude plugin update builder                      # take the new version (restart to apply)
+```
 
 ### Verifying an install
 
 ```bash
-claude plugin list | grep builder                        # enabled?
-node plugins/builder/scripts/list-features.mjs           # reads YOUR config; "Nothing under …" is a clean pass on an empty registry
-./plugins/builder/scripts/workspace --self-test          # scratch dir + gitignore work
+claude plugin list | grep builder
+B=$(find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' | sort -V | tail -1)
+node "$B/list-features.mjs"        # reads YOUR config; "Nothing under …" is a clean pass on an empty registry
+"$B/workspace" --self-test         # scratch dir + gitignore work
 ```
 
-If a script says it cannot find `.claude/builder.md`, that is step 4 — it is the one thing the
-plugin does not ship.
+If a script says it cannot find `.claude/builder.md`, that is step 2 — the one thing the plugin
+deliberately does not ship.
+
+### Vendoring it instead
+
+Copy this repo's contents to `plugins/builder/` in your project, declare a directory marketplace
+(`{"source": {"source": "directory", "path": "."}}`) and enable `builder@<your-marketplace>`. The
+pipeline then moves with your branch — the checked-out code **is** the pipeline you run — at the cost
+of updating by hand. The script resolution prefers a vendored copy over an installed one, so a repo
+that vendors it ignores any marketplace copy on the same machine.
 
 ## The four craft skills
 
