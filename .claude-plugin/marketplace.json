@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "testmkt",
+  "name": "claude-builder",
   "description": "The /builder:* build pipeline — a dependency-free, project-agnostic Claude Code plugin.",
-  "owner": { "name": "Test Owner" },
+  "owner": { "name": "Luke Keith" },
   "plugins": [
     {
       "name": "builder",
