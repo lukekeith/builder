@@ -9,32 +9,69 @@ one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the pipeline; **x
 of children. A spec is audited against the codebase **once** before any code, built **one app per
 phase**, then 🔒 **walked by a human** before the one deep verify pass and a single PR.
 
-## Installing it in a repo
+## Installing it in another repo
 
-Two steps, and there is no third.
+Zero dependencies: no other plugin, no `npm install`, no network. Two ways in, both tested.
 
-1. **Make the plugin available.** Either vendor it (`plugins/builder/` plus a repo-root
-   `.claude-plugin/marketplace.json` listing it), or install it from a marketplace. Enable it in
-   `.claude/settings.json`:
+### A. Vendor it (what this repo does)
 
-   ```json
-   { "enabledPlugins": { "builder@<marketplace>": true } }
-   ```
+Copy the plugin folder in, declare a marketplace, enable it, write the config:
 
-2. **Write the project config** — the only thing the plugin does not ship:
+```bash
+# 1. the plugin itself
+mkdir -p plugins && cp -R /path/to/builder plugins/
 
-   ```
-   cp <plugin>/PROJECT.template.md .claude/builder.md
-   ```
+# 2. declare a marketplace that points at it
+mkdir -p .claude-plugin && cat > .claude-plugin/marketplace.json <<'JSON'
+{
+  "name": "<your-org>",
+  "description": "<your-org>'s own Claude Code plugins, loaded from this repo.",
+  "owner": { "name": "<Your Org>" },
+  "plugins": [
+    { "name": "builder", "source": "./plugins/builder", "description": "Build pipeline" }
+  ]
+}
+JSON
 
-   Then fill it in. That file carries **every** fact about your repo: the apps and their roles, the
-   literal gate commands, the global constraints pasted into every implementer brief, the house rules
-   the audit enforces, the environment landmines, the recipe skills, and (optionally) a design source
-   the pipeline can read as requirements.
+# 3. enable it for the project — this is what a fresh clone reads
+mkdir -p .claude && cat > .claude/settings.json <<'JSON'
+{
+  "enabledPlugins": { "builder@<your-org>": true },
+  "extraKnownMarketplaces": {
+    "<your-org>": { "source": { "source": "directory", "path": "." } }
+  }
+}
+JSON
 
-🔴 **Nothing else is installed.** No other plugin, no `npm install`. The execution engine, the plan
-format and the four craft skills are vendored (`LICENSE-THIRD-PARTY.md`), and the scripts ship in
-`scripts/`.
+# 4. THE ONLY THING YOU WRITE YOURSELF
+cp plugins/builder/PROJECT.template.md .claude/builder.md   # then fill it in
+
+# 5. register + install (once per machine; step 3 is what makes it work for everyone else)
+claude plugin marketplace add ./
+claude plugin install builder@<your-org> --scope project
+claude plugin validate .            # sanity-check the manifest
+```
+
+The plugin is now vendored with the repo, so the branch you have checked out **is** the pipeline you
+run — and a teammate cloning it gets the same one.
+
+### B. Install it from its own repository
+
+Put `plugins/builder/` in a repo of its own with a root `.claude-plugin/marketplace.json`, then in
+each consuming project add that marketplace and enable `builder@<marketplace>`. Every project tracks
+one upstream instead of carrying a copy — at the cost of the pipeline no longer moving with the
+branch. Same step 4 either way: **`.claude/builder.md` is the only file you write.**
+
+### Verifying an install
+
+```bash
+claude plugin list | grep builder                        # enabled?
+node plugins/builder/scripts/list-features.mjs           # reads YOUR config; "Nothing under …" is a clean pass on an empty registry
+./plugins/builder/scripts/workspace --self-test          # scratch dir + gitignore work
+```
+
+If a script says it cannot find `.claude/builder.md`, that is step 4 — it is the one thing the
+plugin does not ship.
 
 ## The four craft skills
 
