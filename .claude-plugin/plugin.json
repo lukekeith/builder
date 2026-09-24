@@ -1,8 +1,10 @@
 {
   "name": "builder",
   "description": "A dependency-free build pipeline for any repo. Sizes the work first (xs/sm in chat, md/lg as a SPEC + manifest through its own subagent task loop, xl as a program), then drives brainstorm \u2192 align \u2192 audit \u2192 plan \u2192 build \u2192 the human walk \u2192 signoff \u2192 verify \u2192 ship, resumable after any /clear from a ~12-line MANIFEST.md. Multi-app aware: every app gets a \u00a7Apps row, the contract freezes when the producer's phase verifies, and phases run one app at a time. Reads every project fact from one host file, .claude/builder.md. Entry: /builder:brainstorm. Resume: /builder:resume. Help: /builder:help.",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "author": {
-    "name": "MakeReady"
-  }
+    "name": "Luke Keith",
+    "url": "https://github.com/lukekeith"
+  },
+  "homepage": "https://github.com/lukekeith/builder"
 }
