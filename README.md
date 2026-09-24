@@ -53,7 +53,7 @@ claude plugin update builder                      # take the new version (restar
 
 ```bash
 claude plugin list | grep builder                 # enabled?
-claude plugin details builder@claude-builder      # 18 skills, and the token cost
+claude plugin details builder@claude-builder      # 19 skills, and the token cost
 
 # and from inside a Claude session, where $CLAUDE_PLUGIN_ROOT is set:
 node "$CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs"   # reads YOUR config
@@ -73,7 +73,7 @@ that vendors it ignores any marketplace copy on the same machine.
 
 ## The four craft skills
 
-Beside the 13 pipeline skills and `init`, the plugin carries four that bind *how* work is done rather than what
+Beside the 13 pipeline skills, `init` and `status`, the plugin carries four that bind *how* work is done rather than what
 the pipeline does next — `test-driven-development`, `systematic-debugging`, `receiving-code-review`
 and `verification-before-completion`. They are invocable on their own (`/builder:<name>`), handed to
 every implementer **by path**, and cited at the points where they bite: the plan's steps are written
@@ -89,13 +89,14 @@ plugins/builder/
   LICENSE-THIRD-PARTY.md     what is vendored, from where, and what the adaptation changed
   scripts/
     config.mjs               parses .claude/builder.md — the one thing that knows your project
-    list-features.mjs        every feature and its next command; the picker's data source
+    list-features.mjs        every feature and its next command; the picker's data source and /builder:status
     check-obligations.mjs    the cross-section gate on a SPEC.md
     workspace                the git-ignored per-feature scratch directory
     task-brief               extracts one task's text for its implementer
     review-package           the diff a reviewer reads in one call
   skills/
     init/SKILL.md            writes .claude/builder.md for a repo
+    status/SKILL.md          the table of in-progress work, with a paste-able command per row
     <13 pipeline skills>/SKILL.md
     test-driven-development/ · systematic-debugging/ · receiving-code-review/
     verification-before-completion/        the four craft skills — how work is DONE

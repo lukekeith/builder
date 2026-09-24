@@ -42,6 +42,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | You are… | Run |
 |---|---|
 | **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |
+| **Wanting a view of everything in progress** | `/builder:status` — one table: what each feature is, the step last done, the step next, and the command to paste to pick it up |
 | **Any time — "where are things / what's next?"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |
 | **Wanting something built, unsure how big it is** | `/builder:brainstorm <what you want>` — it recons, announces a size with its evidence, and takes the matching path. The normal way in |
 | Sure it's a small change inside one app | `/builder:brainstorm --size sm <what you want>` — recon, ≤3 questions, a design you approve in chat, then built. No docs |
@@ -146,7 +147,7 @@ with that line:
 ```
 
 After any `/clear`: `/builder:resume --path <registry>/<feature>`. Status of everything:
-`node <builder>/scripts/list-features.mjs`. Process scratch — briefs, the ledger, the walk script —
+`/builder:status`. Process scratch — briefs, the ledger, the walk script —
 lives in a git-ignored workspace; it is never something you have to read.
 
 ## FAQ

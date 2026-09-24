@@ -21,9 +21,11 @@
  *   node <plugin>/scripts/list-features.mjs --json        # machine-readable
  *   node <plugin>/scripts/list-features.mjs --check       # resume-safety + size warnings
  *   node <plugin>/scripts/list-features.mjs --all         # include DONE features
+ *   node <plugin>/scripts/list-features.mjs --status      # /builder:status — markdown table, most recent first
  */
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 
 const CFG = requireConfig()
@@ -44,6 +46,7 @@ const PHASE_DOC_LINE_BUDGET = 200
 const args = process.argv.slice(2)
 const asJson = args.includes('--json')
 const doCheck = args.includes('--check')
+const asStatus = args.includes('--status')
 const includeDone = args.includes('--all') || asJson || doCheck
 
 const read = (p) => {
@@ -305,9 +308,126 @@ for (const { root, requireManifest } of REGISTRY) {
     rows.push(inspect(root, name))
   }
 }
+/** A git query that answers null instead of throwing — outside a repo, or on a path git never saw. */
+const git = (...a) => {
+  try {
+    return execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** What the feature IS, in one line: the Overview's first sentence, else the SPEC/PROGRAM title. */
+const describe = (r) => {
+  const dir = join(ROOT, r.path)
+  const text = read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? read(join(dir, 'README.md'))
+  if (!text) return null
+  const overview = /^##\s+Overview\s*\n+([\s\S]*?)(?=\n##\s|$)/m.exec(text)
+  const para = overview?.[1]
+    .split('\n')
+    .filter((l) => l.trim() && !/^\s*(<!--|>|\||```)/.test(l))
+    .join(' ')
+  const sentence = para?.match(/^(.+?[.!?])(\s|$)/)?.[1] ?? para
+  if (sentence) return sentence.replace(/[*`_]/g, '').replace(/\s+/g, ' ').trim()
+  const title = grab(text, /^#\s+(.+)$/m)
+  return title ? title.replace(/\s+—\s+(spec|program)\s*$/i, '').trim() : null
+}
+
+/**
+ * The status view of one row: the step last completed, the step to do next, and the command that
+ * picks it up. Read from the manifest's `state:` — the pipeline writes it at every transition — so
+ * this never has to open the SPEC to say where a feature stands.
+ */
+const statusOf = (r) => {
+  const resume = `/builder:resume --path ${r.path}`
+  const mf = r.manifest ?? {}
+  if (r.layout === 'program') {
+    const kids = r.children ?? []
+    const shipped = kids.filter((k) => k.state === 'shipped').length
+    const open = kids.find((k) => k.state !== 'shipped')
+    return {
+      lastDone: `${shipped}/${kids.length} children shipped`,
+      nextStep: open ? `Continue child ${open.name} (${open.state || 'not started'})` : 'Ship the program',
+      command: resume,
+    }
+  }
+  if (r.convert) return { lastDone: 'Folder from an earlier pipeline', nextStep: 'Convert to SPEC.md + MANIFEST.md', command: resume }
+  if (r.layout === 'analysis' || r.layout === 'note')
+    return { lastDone: 'Notes only — no design yet', nextStep: 'Brainstorm the design', command: `/builder:brainstorm --path ${r.path} <what you want built>` }
+  if (r.source === 'SPEC.md (no MANIFEST.md)')
+    return { lastDone: 'Spec written, manifest missing', nextStep: 'Write the missing MANIFEST.md', command: resume }
+  if (r.done) return { lastDone: 'Shipped', nextStep: '—', command: '—' }
+
+  const state = r.layout === 'condensed' ? 'signed-off' : mf.state
+  const verify = mf.verify ?? 'none'
+  const noGoAhead = !mf['go-ahead'] || mf['go-ahead'] === 'none'
+  const table = {
+    spec: ['Spec written', CFG.design?.flag && mf[CFG.design.flag] && mf[CFG.design.flag] !== 'none' ? 'Align the design' : 'Audit the spec against the code'],
+    aligned: ['Design aligned', 'Audit the spec against the code'],
+    audited: ['Audit done', 'Settle open decisions, then plan'],
+    planned: ['Plan written', noGoAhead ? 'Approve the plan, then build' : 'Build'],
+    building: ['Build in progress', 'Continue the build'],
+    built: ['Build finished', '🔒 Walk it yourself, then /builder:signoff'],
+    'signed-off': ['Signed off', 'Deep verify'],
+    verified: [`Verified — ${verify.split(' ')[0]}`, /^INCOMPLETE/.test(verify) ? 'Work the ## Fixes list' : 'Open the PR, then ship'],
+    shipped: ['Shipped', '—'],
+  }
+  const [lastDone, nextStep] = table[state] ?? [state ?? 'unknown', 'Resume to see']
+  const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
+  return {
+    lastDone: lastDone + (r.pr ? ` (PR ${r.pr})` : ''),
+    nextStep: held ? `🛑 PR held — ${held}` : nextStep,
+    command: resume,
+  }
+}
+
+for (const r of rows) {
+  r.description = describe(r)
+  // The last commit touching the folder is when the pipeline last moved it; mtime is the fallback
+  // for a folder that has never been committed.
+  const iso = git('log', '-1', '--format=%cI', '--', r.path)
+  r.updatedAt = iso ?? statSync(join(ROOT, r.path)).mtime.toISOString()
+  r.updated = iso ? git('log', '-1', '--format=%cr', '--', r.path) : 'uncommitted'
+  r.branch = r.manifest?.branch ?? null
+  Object.assign(r, statusOf(r))
+}
+
 if (!rows.length) {
   console.error(`Nothing under ${CFG.registry} — start one with ${PLAN_CMD} --size md <what you want>.`)
-  process.exit(asJson ? 0 : 1)
+  process.exit(asJson || asStatus ? 0 : 1)
+}
+
+if (asStatus) {
+  const open = rows.filter((r) => !r.done).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const doneCount = rows.length - open.length
+  if (!open.length) {
+    console.log(`Nothing in progress in ${CFG.project}${doneCount ? ` — ${doneCount} shipped` : ''}. Start one with ${PLAN_CMD} <what you want>.`)
+    process.exit(0)
+  }
+  // A pipe inside a cell would split it into two columns.
+  const cell = (s, n) => clip(String(s ?? '—'), n).replace(/\|/g, '\\|')
+  console.log(`**${CFG.project}** — ${open.length} in progress, most recent first\n`)
+  console.log('| # | Feature | What it is | Last done | Next step | Updated | Pick it up |')
+  console.log('|---|---|---|---|---|---|---|')
+  open.forEach((r, i) =>
+    console.log(
+      `| ${i + 1} | **${cell(r.feature, 40)}** | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
+    )
+  )
+  // The pipeline commits on the feature's branch, so resuming from another one is the usual trap.
+  const here = git('branch', '--show-current')
+  const elsewhere = open.filter((r) => r.branch && here && r.branch !== here)
+  if (elsewhere.length) {
+    console.log(`\nOn \`${here}\` now. Check out the feature's branch before resuming:`)
+    for (const r of elsewhere) console.log(`- **${r.feature}** → \`git switch ${r.branch}\``)
+  }
+  const flagged = open.filter((r) => r.problems.length)
+  if (flagged.length) {
+    console.log('\nNeeds attention:')
+    for (const r of flagged) console.log(`- **${r.feature}**: ${r.problems.join('; ')}`)
+  }
+  if (doneCount) console.log(`\n🔒 ${doneCount} shipped, not shown.`)
+  process.exit(0)
 }
 
 if (asJson) {
