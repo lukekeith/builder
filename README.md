@@ -22,8 +22,8 @@ claude plugin install builder@claude-builder --scope project
 
 # 2. THE ONLY THING YOU WRITE YOURSELF
 #    copy the template out of the installed plugin, then fill it in
-cp "$(find "$HOME/.claude/plugins" -name PROJECT.template.md -path '*builder*' | sort -V | tail -1)" \
-   .claude/builder.md
+mkdir -p .claude
+cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder.md
 ```
 
 To make it work for everyone who clones your repo, declare it in the project's
@@ -48,10 +48,12 @@ claude plugin update builder                      # take the new version (restar
 ### Verifying an install
 
 ```bash
-claude plugin list | grep builder
-B=$(find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' | sort -V | tail -1)
-node "$B/list-features.mjs"        # reads YOUR config; "Nothing under …" is a clean pass on an empty registry
-"$B/workspace" --self-test         # scratch dir + gitignore work
+claude plugin list | grep builder                 # enabled?
+claude plugin details builder@claude-builder      # 17 skills, and the token cost
+
+# and from inside a Claude session, where $CLAUDE_PLUGIN_ROOT is set:
+node "$CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs"   # reads YOUR config
+"$CLAUDE_PLUGIN_ROOT/scripts/workspace" --self-test
 ```
 
 If a script says it cannot find `.claude/builder.md`, that is step 2 — the one thing the plugin
