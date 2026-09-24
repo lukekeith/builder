@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "testmkt",
+  "description": "The /builder:* build pipeline — a dependency-free, project-agnostic Claude Code plugin.",
+  "owner": { "name": "Test Owner" },
+  "plugins": [
+    {
+      "name": "builder",
+      "source": ".",
+      "description": "Sizes the work, specs it, audits it once, builds it one app per phase through its own subagent task loop, stops for a human walk, then verifies and ships. Reads every project fact from one host file, .claude/builder.md. No dependencies.",
+      "category": "workflow"
+    }
+  ]
+}
