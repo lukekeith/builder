@@ -1,0 +1,6 @@
+{
+  "name": "builder",
+  "description": "MakeReady's build pipeline — size the work first (xs/sm in chat, md/lg as SPEC + manifest through subagent-driven-development, xl as a program), take a specced UI 2.0 component set as the requirements with --ui2, and drive brainstorm → align → audit → plan → build → the walk → signoff → verify → ship across the four-app monorepo (server · client · iphone · capture). Entry: /builder:brainstorm. Resume: /builder:resume. Help: /builder:help. Depends on the superpowers plugin (subagent-driven-development, brainstorming) — see README.md.",
+  "version": "1.0.0",
+  "author": { "name": "MakeReady" }
+}
