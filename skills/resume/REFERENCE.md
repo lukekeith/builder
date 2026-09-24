@@ -76,7 +76,7 @@ Below, `<builder>/scripts/x` means that resolved path.
 
 | Script | What it does |
 |---|---|
-| `list-features.mjs` | every feature in the registry with its state and next command — the picker's data source. `--json` · `--check` · `--all` |
+| `list-features.mjs` | every feature in the registry with its state and next command — the picker's data source. `--json` · `--check` · `--all` · `--status` (the `/builder:status` table) |
 | `check-obligations.mjs` | the cross-section gate on a `SPEC.md` (§SPEC.md). Exit 1 = a dangling obligation, and it names its own rows |
 | `workspace <feature>` | prints and ensures the git-ignored workspace for one feature |
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |

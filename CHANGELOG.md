@@ -4,6 +4,14 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.2.0
+
+**`/builder:status`** — every in-progress feature and program in one table, most recently touched
+first: what it is (the SPEC's first Overview sentence), the step last completed, the step next, when
+it last moved, and the `/builder:resume` command to paste to pick it up. Flags a feature whose branch
+isn't the one checked out, and one that can't be resumed as it stands. Backed by
+`list-features.mjs --status`, so it reads manifests only and writes nothing.
+
 ## 2.1.0
 
 **`/builder:init`** — per-repo setup in one command. It reads the repo (workspaces, gate commands, CI,
