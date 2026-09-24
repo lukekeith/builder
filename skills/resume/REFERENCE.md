@@ -40,15 +40,24 @@ The plugin ships its own; nothing needs installing. Resolve the directory **once
 paste the absolute path thereafter — 🔴 a shell variable does not survive between Bash calls:
 
 ```bash
-{ ls -d "$(git rev-parse --show-toplevel)/plugins/builder/scripts" 2>/dev/null
-  find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' 2>/dev/null
+{ ls -d "$(git rev-parse --show-toplevel 2>/dev/null)/plugins/builder/scripts" 2>/dev/null
+  find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' 2>/dev/null | sort -V | tail -1
 } | head -1
 ```
 
-The first line finds a copy vendored into the repo, the second a marketplace install. 🔴 **Written
-this way on purpose:** a bare `~/.claude/plugins/*/…` glob aborts the whole command under `zsh` when
-it matches nothing — which is the normal case for whichever of the two locations you are not using.
-Printing nothing means the plugin is not where either line looks; say so rather than guessing a path.
+The first line finds a copy vendored into the repo; the second, a marketplace install at
+`~/.claude/plugins/cache/<marketplace>/builder/<version>/`. Three details, each paid for:
+
+- 🔴 **No bare `~/.claude/plugins/*/…` glob.** Under `zsh` an unmatched glob aborts the whole
+  command — and one of the two locations is always unmatched.
+- 🔴 **`sort -V | tail -1`, not `head -1`, on the cache.** A marketplace keeps every version it has
+  fetched side by side, so an unsorted `find` returns a **stale** one: with 2.0.0, 6.3.0 and 10.0.0
+  present it picked 6.3.0. Version sort takes the newest, and `-V` is what makes 10.0.0 beat 6.3.0.
+- **The repo copy wins.** It is listed first and the outer `head -1` takes it, so a vendored plugin
+  is the one that runs even when a marketplace copy is also installed — the checked-out branch is
+  then the pipeline you run.
+
+Printing nothing means the plugin is at neither location; say so rather than guessing a path.
 
 Below, `<builder>/scripts/x` means that resolved path.
 
