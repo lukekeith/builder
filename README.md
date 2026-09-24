@@ -1,56 +1,87 @@
-# builder — MakeReady's build pipeline (Claude Code plugin)
+# builder — a dependency-free build pipeline (Claude Code plugin)
 
-Invoked as `/builder:<skill>`. Start with **`/builder:brainstorm <what you want>`**; `/builder:help` is
-the card.
+Invoked as `/builder:<skill>`. Start with **`/builder:brainstorm <what you want>`**; `/builder:help`
+is the card.
 
-Ported from FinPro's `builder` plugin (2026-09-24) and adapted to this four-app monorepo. It **replaces**
-the `/build-spec*` family: the four-app knowledge that pipeline carried — the per-app impact table, the
-cross-app contract and its freeze, the per-app quality gates, the environment landmines — lives in
-`skills/resume/REFERENCE.md`; the ceremony it carried (15+ numbered docs per feature, kept in sync by
-hand) is gone.
+**One command builds anything, and most of it never reaches a doc.** `/builder:brainstorm` sizes the
+request first: **xs/sm** are designed and built in chat writing nothing under `docs/`; **md/lg** earn
+one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the pipeline; **xl** becomes a program
+of children. A spec is audited against the codebase **once** before any code, built **one app per
+phase**, then 🔒 **walked by a human** before the one deep verify pass and a single PR.
 
-## What a fresh clone needs
+## Installing it in a repo
 
-- **Nothing for this plugin.** `.claude-plugin/marketplace.json` at the repo root lists it from
-  `./plugins/builder`, and `.claude/settings.json` enables `builder@makeready` — Claude Code loads the
-  checked-out version live, so the branch you have checked out is the pipeline you run.
-- **`superpowers` (external, installed once per machine).** `/builder:build` executes plans through
-  `superpowers:subagent-driven-development` and `/builder:plan` composes them with
-  `superpowers:writing-plans`. The project enables `superpowers@claude-plugins-official`, but an
-  externally sourced plugin is not auto-installed:
+Two steps, and there is no third.
 
-  ```
-  claude plugin install superpowers@claude-plugins-official --scope project
-  ```
+1. **Make the plugin available.** Either vendor it (`plugins/builder/` plus a repo-root
+   `.claude-plugin/marketplace.json` listing it), or install it from a marketplace. Enable it in
+   `.claude/settings.json`:
 
-  Tested against superpowers 6.3.0 (`skills/build/CONSTRAINTS.md`).
+   ```json
+   { "enabledPlugins": { "builder@<marketplace>": true } }
+   ```
 
-## Layout
+2. **Write the project config** — the only thing the plugin does not ship:
 
-`skills/<name>/SKILL.md` — one per command. `skills/resume/REFERENCE.md` is the family's single fact
-sheet; `SCOPE-SELECTION.md` and `SURFACE-CHECK.md` beside it are the prototype-mode procedures.
-`skills/build/CONSTRAINTS.md` is the MakeReady constraints block pasted into every implementer and
-reviewer brief.
+   ```
+   cp <plugin>/PROJECT.template.md .claude/builder.md
+   ```
 
-## The four scripts it shells out to
+   Then fill it in. That file carries **every** fact about your repo: the apps and their roles, the
+   literal gate commands, the global constraints pasted into every implementer brief, the house rules
+   the audit enforces, the environment landmines, the recipe skills, and (optionally) a design source
+   the pipeline can read as requirements.
 
-They live in `.claude/scripts/` (outside the plugin, because they are repo facts):
+🔴 **Nothing else is installed.** No other plugin, no `npm install`. The execution engine and the plan
+format are vendored (`LICENSE-THIRD-PARTY.md`), and the scripts ship in `scripts/`.
 
-| Script | What it does |
-|---|---|
-| `list-feature-specs.mjs` | enumerates `docs/features/` with each feature's state and next command — the picker's data source. Recognises the pre-builder numbered suite and flags it for conversion |
-| `list-ui2-refs.mjs` | resolves a `--ui2 <ref>` (a `C-###`, a registry name, a screen id, or a comma list) against `docs/ui2/design-system/registry.md` and `docs/ui2/screens/`, reporting each row's contract, fixture, preview and whether it is built |
-| `check-flow-obligations.mjs` | the cross-section gate on a `SPEC.md`: every `N#` disposed, every DDL-implying `T#` carrying its `SC#`, every `SC#` REMOVE with a named decider, **every app present in §Apps with a section when in scope, and every §Contract row naming a consumer** |
-| `build-spec-workspace.sh` | prints and ensures the git-ignored SDD workspace for one feature |
+## What lives where
 
-## What this pipeline does NOT own
+```
+plugins/builder/
+  PROJECT.template.md        the blank config a host repo fills in
+  LICENSE-THIRD-PARTY.md     what is vendored, from where, and what the adaptation changed
+  scripts/
+    config.mjs               parses .claude/builder.md — the one thing that knows your project
+    list-features.mjs        every feature and its next command; the picker's data source
+    check-obligations.mjs    the cross-section gate on a SPEC.md
+    workspace                the git-ignored per-feature scratch directory
+    task-brief               extracts one task's text for its implementer
+    review-package           the diff a reviewer reads in one call
+  skills/
+    <13 skills>/SKILL.md
+    resume/REFERENCE.md      the family's fact sheet — what the pipeline DOES
+    resume/SCOPE-SELECTION.md · SURFACE-CHECK.md    prototype-mode procedures
+    build/EXECUTION.md       the task loop
+    build/prompts/*.md       implementer · task-reviewer · re-review · final-reviewer
+    plan/PLAN-FORMAT.md      the shape of PLAN.md
+```
 
-- **The UI 2.0 design system.** `docs/ui2/`, `capture/fixtures/ui2/` and
-  `iphone/MakeReady/UI2Preview/` belong to `/ui2-*` and `/d2m-*`. This family **reads** a contract as
-  requirements (`--ui2 <ref>`) and **routes** any gap to the command that owns it. It never writes a
-  contract, a registry row, a token or a note.
-- **monday.com.** `--ticket <id>` records the key and reads the dossier at
-  `docs/monday/tickets/<id>.md` as design input. Reporting a fix back is `/monday-resolve`, explicitly.
-- **Deploys.** `/deploy` is always the user's own command.
-- **iPhone commits, simulator launches and archives.** Explicit user calls at every size, under every
-  flag — an iPhone build that reaches TestFlight cannot be hot-fixed.
+**The split that makes it portable:** `REFERENCE.md` says what the pipeline does; `.claude/builder.md`
+says what it does it *to*. No skill names an app, a language, a framework or a command.
+
+## Multi-app, and single-app
+
+The config's `apps:` gives each unit a **role**:
+
+- **`producer`** owns the contract. Its phases run first, and 🔴 **the contract FREEZES when its phase
+  verifies** — consumers then code against a shape that cannot move under them.
+- **`consumer`** codes against the frozen contract. Consumers parallelize when they don't import each
+  other.
+- **`tool`** is internal; it runs after whatever it reads.
+- **`app`** is the only unit — a single-app repo. The freeze machinery stays quiet and everything else
+  works identically, including the day the repo grows a second unit.
+
+Two further flags earn their keep: `commit: manual` means **an agent never commits in that app** (it
+stages and stops), and `released_artifact: true` means a shipped build cannot be hot-fixed, so any
+contract change it reads is breaking until §Apps states the transition.
+
+## What it never does
+
+- **Open a PR before a human has walked the feature.** The PR lock is spent by `/builder:signoff`,
+  which is `disable-model-invocation` — an agent cannot type it, and a sign-off written any other way
+  is void.
+- **Write your design system.** Prototype mode *reads* a design as requirements and routes every gap
+  to the command your config says owns it.
+- **Write to your ticket system, or deploy.** Both are explicit commands of yours.
+- **Create a branch, a worktree or a ticket**, or commit on the base branch.

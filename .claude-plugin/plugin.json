@@ -1,6 +1,6 @@
 {
   "name": "builder",
-  "description": "MakeReady's build pipeline — size the work first (xs/sm in chat, md/lg as SPEC + manifest through subagent-driven-development, xl as a program), take a specced UI 2.0 component set as the requirements with --ui2, and drive brainstorm → align → audit → plan → build → the walk → signoff → verify → ship across the four-app monorepo (server · client · iphone · capture). Entry: /builder:brainstorm. Resume: /builder:resume. Help: /builder:help. Depends on the superpowers plugin (subagent-driven-development, brainstorming) — see README.md.",
-  "version": "1.0.0",
+  "description": "A dependency-free build pipeline for any repo. Sizes the work first (xs/sm in chat, md/lg as a SPEC + manifest through its own subagent task loop, xl as a program), then drives brainstorm → align → audit → plan → build → the human walk → signoff → verify → ship, resumable after any /clear from a ~12-line MANIFEST.md. Multi-app aware: every app gets a §Apps row, the contract freezes when the producer's phase verifies, and phases run one app at a time. Reads every project fact from one host file, .claude/builder.md. Entry: /builder:brainstorm. Resume: /builder:resume. Help: /builder:help.",
+  "version": "2.0.0",
   "author": { "name": "MakeReady" }
 }
