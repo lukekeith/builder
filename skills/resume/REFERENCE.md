@@ -404,6 +404,30 @@ rendered it. Say which items are unbuilt, because it changes the plan's risk: th
 been seen. 🔴 Never report an unbuilt item as built, and never build one to make a check pass — that
 is the design pipeline's work, offered as an option.
 
+## The craft skills
+
+Four skills ship inside this plugin and bind the *way* work is done, whatever the project is. They
+are invocable (`/builder:<name>`) and they are handed to subagents **by path**, because a subagent
+gets only what its brief contains.
+
+| Skill | When it binds | Who reads it |
+|---|---|---|
+| [`test-driven-development`](../test-driven-development/SKILL.md) | implementing any feature or bugfix, before writing implementation code | every implementer · the plan's steps are written in its cycle |
+| [`systematic-debugging`](../systematic-debugging/SKILL.md) | any bug, test failure or unexpected behaviour, **before proposing a fix** | an implementer whose test fails for a reason it cannot name · a fix round that is not converging · `/builder:revise` on a reported problem · `## Fixes` work |
+| [`receiving-code-review`](../receiving-code-review/SKILL.md) | receiving review feedback, before implementing any of it | every implementer in the fix loop · the main context working a `## Fixes` list |
+| [`verification-before-completion`](../verification-before-completion/SKILL.md) | about to claim anything is complete, fixed or passing | every gate claim, every phase close, `/builder:verify`'s whole verdict, and every hand-off that says a thing works |
+
+🔴 **`verification-before-completion` is the rule this pipeline's gates exist to enforce**, stated
+once: *no completion claim without fresh verification evidence.* A phase close that reports gates
+green without having run them in that message, a verdict quoting a run from an earlier tree without
+saying so, or a hand-off that calls something done because an agent said so — each is the same
+violation, and each is what the gate table, the `quote it and say which` rule and the PR lock are
+built to prevent.
+
+🔴 **`test-driven-development` outranks a plan step that contradicts it.** The plan's steps are
+written in its cycle — failing test, watch it fail, minimal code, watch it pass, commit — and a task
+block that omits the failing test is a plan defect, reported rather than quietly followed.
+
 ## The project's own rules
 
 These live in `.claude/builder.md` and are **read there, every time**:

@@ -32,8 +32,19 @@ Two steps, and there is no third.
    the audit enforces, the environment landmines, the recipe skills, and (optionally) a design source
    the pipeline can read as requirements.
 
-🔴 **Nothing else is installed.** No other plugin, no `npm install`. The execution engine and the plan
-format are vendored (`LICENSE-THIRD-PARTY.md`), and the scripts ship in `scripts/`.
+🔴 **Nothing else is installed.** No other plugin, no `npm install`. The execution engine, the plan
+format and the four craft skills are vendored (`LICENSE-THIRD-PARTY.md`), and the scripts ship in
+`scripts/`.
+
+## The four craft skills
+
+Beside the 13 pipeline skills, the plugin carries four that bind *how* work is done rather than what
+the pipeline does next — `test-driven-development`, `systematic-debugging`, `receiving-code-review`
+and `verification-before-completion`. They are invocable on their own (`/builder:<name>`), handed to
+every implementer **by path**, and cited at the points where they bite: the plan's steps are written
+in the TDD cycle, a fix round that stops converging gets the debugging skill, a review finding is
+read through the review skill, and every gate claim answers to the verification skill's iron law —
+*no completion claim without fresh verification evidence.*
 
 ## What lives where
 
@@ -49,7 +60,9 @@ plugins/builder/
     task-brief               extracts one task's text for its implementer
     review-package           the diff a reviewer reads in one call
   skills/
-    <13 skills>/SKILL.md
+    <13 pipeline skills>/SKILL.md
+    test-driven-development/ · systematic-debugging/ · receiving-code-review/
+    verification-before-completion/        the four craft skills — how work is DONE
     resume/REFERENCE.md      the family's fact sheet — what the pipeline DOES
     resume/SCOPE-SELECTION.md · SURFACE-CHECK.md    prototype-mode procedures
     build/EXECUTION.md       the task loop

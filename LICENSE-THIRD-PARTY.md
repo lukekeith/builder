@@ -19,6 +19,16 @@ version **6.3.0**.
 | `skills/plan/PLAN-FORMAT.md` | `writing-plans/SKILL.md` |
 | `scripts/task-brief` | `subagent-driven-development/scripts/task-brief` |
 | `scripts/review-package` | `subagent-driven-development/scripts/review-package` |
+| `skills/test-driven-development/` | `test-driven-development/` (SKILL.md + writing-good-tests.md) |
+| `skills/systematic-debugging/` | `systematic-debugging/` (SKILL.md + root-cause-tracing.md + defense-in-depth.md + condition-based-waiting.md + its example + find-polluter.sh) |
+| `skills/receiving-code-review/` | `receiving-code-review/SKILL.md` |
+| `skills/verification-before-completion/` | `verification-before-completion/SKILL.md` |
+
+The four craft skills are vendored **essentially verbatim** — their rules are upstream's and are not
+this plugin's to improve. Three edits only: an attribution line under each title, cross-references
+repointed from `superpowers:<name>` to the vendored sibling, and — for `systematic-debugging` — four
+files left behind (`test-pressure-1..3.md`, `test-academic.md`, `CREATION-LOG.md`) because they are
+artifacts of how that skill was authored and validated, not things a debugging session reads.
 
 **What the adaptation changed**, so a reader of the original is not surprised:
 
@@ -50,12 +60,25 @@ documents is carried here — verified line by line against superpowers 6.3.0. W
 | `code-reviewer` §Example Output | an illustrative sample report |
 | `writing-plans/plan-document-reviewer-prompt.md` | an orphan upstream: no skill in superpowers 6.3.0 references it, and `writing-plans` §Self-Review explicitly says the plan check is a checklist you run yourself, not a subagent dispatch |
 
-The other superpowers skills — `executing-plans`, `using-git-worktrees`,
-`finishing-a-development-branch`, `test-driven-development`, `systematic-debugging` and the rest —
-were never `/builder:*` dependencies. Two of them were *reachable* from the vendored text and are
-deliberately replaced rather than dropped: `using-git-worktrees` by this family's "the developer owns
-the branch" rule, and `finishing-a-development-branch` by the human walk, the sign-off and the PR
-lock.
+## The superpowers skills deliberately NOT vendored
+
+Not an oversight in any case — each either duplicates something this pipeline already does or
+contradicts one of its rules:
+
+| Skill | Why not |
+|---|---|
+| `requesting-code-review` | its reachable part, `code-reviewer.md`, **is** vendored as `prompts/final-reviewer.md`. Its SKILL.md decides *when* to request a review; here the pipeline's structure decides that |
+| `executing-plans` | an alternative execution engine. Here the engine is always `/builder:build`, so offering a second one would mean two answers to a settled question |
+| `using-git-worktrees` | 🔴 **contradicts a rule.** This family never creates a branch or a worktree — those belong to the developer |
+| `finishing-a-development-branch` | 🔴 **contradicts a rule.** Replaced by the human walk, the sign-off and the PR lock, which are stricter: nothing moves toward a PR until a human has exercised the feature and said so |
+| `dispatching-parallel-agents` | 🔴 **contradicts a rule.** It encourages parallel dispatch of independent tasks; this engine forbids parallel *implementers* (conflicts) and parallelizes only read-only sweeps, under REFERENCE §Agent model tiering |
+| `brainstorming` | `/builder:brainstorm` is this pipeline's design conversation, with sizing, per-app recon and the §Apps/§Contract grill. A second brainstorming skill would compete with it for the same trigger |
+| `writing-skills` | about authoring skills. Not this pipeline's domain |
+| `using-superpowers` | a meta-skill about discovering skills inside superpowers; meaningless once the needed parts are vendored here |
+
+A repo that wants any of these can install superpowers alongside — nothing in `/builder:*` conflicts
+with having it, and the two `contradicts a rule` entries are about what this pipeline *tells an agent
+to do*, not about what else may be installed.
 
 ```
 MIT License

@@ -196,6 +196,14 @@ it immediately:
 Everything else enters. A round is one fix dispatch plus one scoped re-review. **Five rounds maximum
 per task.**
 
+- **The implementer reads [`receiving-code-review`](../receiving-code-review/SKILL.md) before fixing
+  anything** — its path goes in the fix message. Findings are evaluated, not obeyed: a finding that
+  is wrong gets a reasoned push-back, which you then adjudicate, rather than a change that makes the
+  reviewer happy and the code worse.
+- **A round that is not converging is a debugging problem, not a fix problem.** By round 3, if the
+  same finding keeps coming back, the implementer is treating a symptom. Put
+  [`systematic-debugging`](../systematic-debugging/SKILL.md) in the next dispatch and say which
+  symptom has survived which attempts.
 - **Rounds 1–3 — resume the original implementer.** Send the open findings verbatim; its context is
   intact. If your harness cannot message a live subagent, dispatch a fresh one carrying the brief
   path, the report path and the findings — the report file is the persistent memory either way.

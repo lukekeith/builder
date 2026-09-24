@@ -85,6 +85,25 @@ Subagent (general-purpose):
     **How:** report BLOCKED or NEEDS_CONTEXT, saying specifically what you're
     stuck on, what you tried, and what help you need.
 
+    ## How this work is done
+
+    Read these before you start. They are not background reading — they bind
+    how you write this task, and the reviewer judges your diff against them.
+
+    - **[TDD_PATH]** — the test comes first, you watch it fail, then you write
+      the minimal code. If you didn't watch it fail, you don't know it tests
+      the right thing. A step in your brief that skips the failing test is a
+      defect in the plan: report it, don't quietly follow it.
+    - **[DEBUGGING_PATH]** — read this the moment a test fails for a reason you
+      cannot name, or something behaves unexpectedly. Find the root cause
+      before proposing a fix; a fix aimed at a symptom you haven't explained
+      is how a second bug gets built on the first.
+    - **[REVIEW_PATH]** — read this when review findings come back to you,
+      BEFORE you start fixing them.
+    - **[VERIFICATION_PATH]** — no completion claim without fresh evidence. If
+      you did not run the command in this message, you cannot report that it
+      passes.
+
     ## Global constraints
 
     [GLOBAL_CONSTRAINTS — pasted verbatim from the project config]
@@ -147,4 +166,9 @@ Subagent (general-purpose):
   it and propose the commit message in your report. Do NOT run `git commit`:
   a commit in this app is the human's to approve."*
 - `[GLOBAL_CONSTRAINTS]` — the config's §Global constraints, verbatim
+- `[TDD_PATH]` · `[DEBUGGING_PATH]` · `[REVIEW_PATH]` · `[VERIFICATION_PATH]` —
+  the four craft skills, as absolute paths to
+  `<builder>/skills/{test-driven-development,systematic-debugging,receiving-code-review,verification-before-completion}/SKILL.md`.
+  🔴 Paths, not pasted text: a subagent reads them, and pasting four documents
+  into every brief would dwarf the task itself
 - `[REPORT_FILE]` — REQUIRED: where the implementer writes its detailed report

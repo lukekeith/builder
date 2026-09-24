@@ -56,6 +56,23 @@ second plugin to install. If a step says it cannot find the config, that file is
 Flags come first and the free text after them is the work; quote a ref containing spaces. The whole
 family parses the same set — REFERENCE §Flags — plus `--hold`, which only sign-off takes.
 
+## The four craft skills
+
+Four more skills ship inside the plugin. They are not pipeline steps — they bind the *way* work is
+done, and they apply whether or not you are running a feature through the pipeline at all:
+
+| Skill | Read it when |
+|---|---|
+| `/builder:test-driven-development` | implementing any feature or bugfix, before writing implementation code |
+| `/builder:systematic-debugging` | any bug, test failure or unexpected behaviour — **before proposing a fix** |
+| `/builder:receiving-code-review` | review feedback has come back, before you implement any of it |
+| `/builder:verification-before-completion` | about to claim anything is complete, fixed or passing |
+
+The pipeline hands all four to every implementer by path, and cites them where they bite: the plan's
+steps are written in the TDD cycle, a fix round that stops converging gets the debugging skill, a
+`## Fixes` row from a review is read through the review skill, and every gate claim is governed by
+the verification skill's iron law — *no completion claim without fresh verification evidence.*
+
 **No command here creates a branch, a worktree or a ticket**, and none writes to your ticket system
 — those are yours.
 
@@ -141,9 +158,9 @@ lives in a git-ignored workspace; it is never something you have to read.
   the index. Both go at sign-off; `git log` keeps them.
 - **Where's the cross-app E2E walk?** Once, in `/builder:verify`, after your sign-off. Never per
   phase: it needs every app up at once, and the phases under it are already covered in seconds.
-- **Does it need other plugins?** No. The execution engine and the plan format are vendored
-  (see `LICENSE-THIRD-PARTY.md`), the scripts ship with the plugin, and the only thing you supply is
-  `.claude/builder.md`.
+- **Does it need other plugins?** No. The execution engine, the plan format and the four craft
+  skills are vendored (see `LICENSE-THIRD-PARTY.md`), the scripts ship with the plugin, and the only
+  thing you supply is `.claude/builder.md`.
 - **The audit found problems.** Normal — they become §Findings rows and in-place spec fixes. It is
   capped at **one pass** (a scoped second only when pass 1 changed a contract); anything still
   uncertain rides into the build as a named `build-time risk`. Re-reading prose was measured to find

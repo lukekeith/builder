@@ -78,6 +78,9 @@ Two things it leaves to this skill:
    - **What the block's `Recipe:` line names, read first** — the path, not the text. In prototype
      mode, a task implementing a design item also takes that item's contract path and its frozen
      snapshot: the contract is the item's spec, and an undesigned state is not invented here.
+   - **The four craft skills, by path** — `test-driven-development`,
+     `systematic-debugging`, `receiving-code-review` and `verification-before-completion`
+     (REFERENCE §The craft skills). Paths, never pasted text.
    - **The config's §Global constraints, verbatim**, with `<TICKET>` replaced. Paste it **even though
      `PLAN.md`'s header carries the same block**: the implementer sees only its own block plus this
      brief. A later session must not "de-duplicate" it away.
@@ -109,7 +112,10 @@ line. **The table's `Tasks` cell is the membership source; a block's `Phase:` li
 echo** — when they disagree, the table decides and the mismatch is said out loud. Then:
 
 1. **That app's fast set, fresh** — from the config's §Quality gates, run from there, never from
-   memory. Report a delta where the config asks for one, and record a gate the config marks
+   memory. 🔴 *Fresh* is literal, and it is
+   [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law: if you
+   have not run the command in this message, you cannot report that it passes. A phase does not close
+   on a run from before the last three commits, and "should still be green" is not a gate result. Report a delta where the config asks for one, and record a gate the config marks
    KNOWN-RED as BLOCKED with evidence rather than failing on it.
    ⛔ **No cross-app walk, no deep set here** — that runs once, in `/builder:verify`.
 2. 🔴 **A phase whose gates are red does not close.** Each failure becomes a fix dispatch against the

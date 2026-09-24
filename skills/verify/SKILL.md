@@ -23,6 +23,12 @@ It reads four things, and **trusts nothing remembered from the build** — every
 🔴 **Re-resolve that path inline in every command that uses it** — a shell variable does not survive
 between Bash calls. **The deep set runs here and nowhere else.**
 
+🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)
+applied to a feature.** Its iron law governs every line of the verdict: *no completion claim without
+fresh verification evidence.* Every item below is a claim that needs a command behind it, run in this
+pass; anything quoted from an earlier run is marked as quoted, with which run and on which tree. A
+READY verdict assembled from remembered green gates is the failure this step exists to catch.
+
 ## Precondition — read `<folder>/MANIFEST.md` first
 
 Without `--path`, run `node <builder>/scripts/list-features.mjs --json` and offer only the folders
