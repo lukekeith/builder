@@ -45,7 +45,8 @@ paste the absolute path thereafter — 🔴 a shell variable does not survive be
 [ -n "$CLAUDE_PLUGIN_ROOT" ] && echo "$CLAUDE_PLUGIN_ROOT/scripts" || {
   # Fallbacks, in order, for contexts where it is not set:
   { ls -d "$(git rev-parse --show-toplevel 2>/dev/null)/plugins/builder/scripts" 2>/dev/null
-    find "$HOME/.claude/plugins" -type d -name scripts -path '*builder*' 2>/dev/null | sort -V | tail -1
+    find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins" -type d -name scripts -path '*builder*' \
+      2>/dev/null | sort -V | tail -1
   } | head -1
 }
 ```
@@ -56,14 +57,17 @@ directory. The fallbacks exist only because it is not set in every context, and 
 variable does not:
 
 - the repo-vendored path only finds a copy checked into the consuming repo;
-- the `find` only finds a copy the marketplace has already materialised on disk — **a freshly
-  installed plugin may not be there yet**, because the CLI records the install and Claude Code
-  fetches the files when a session loads it.
+- the `find` only searches the config directory, and depends on guessing where it is.
 
-Two details in the fallbacks, both paid for: **no bare `~/.claude/plugins/*/…` glob** (under `zsh` an
-unmatched glob aborts the whole command), and **`sort -V | tail -1`** on the `find` (a marketplace
-keeps every version it has fetched side by side, so an unsorted `find` returns a stale one — with
-2.0.0, 6.3.0 and 10.0.0 present it picked 6.3.0).
+Three details in the fallbacks, each paid for by a real failure:
+
+- 🔴 **`${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, never a hardcoded `~/.claude`.** The config directory
+  moves — on the machine this was written, it is `~/.claude-home` — and a hardcoded path finds
+  nothing there while looking convincingly correct.
+- 🔴 **No bare `…/plugins/*/…` glob.** Under `zsh` an unmatched glob aborts the whole command.
+- 🔴 **`sort -V | tail -1`**, not `head -1`: a marketplace keeps every version it has fetched side by
+  side, so an unsorted `find` returns a stale one — with 2.0.0, 6.3.0 and 10.0.0 present it picked
+  6.3.0, and `-V` is what makes 10.0.0 beat 6.3.0.
 
 Resolving to nothing means the plugin is not reachable from this context; say so rather than guessing
 a path.
