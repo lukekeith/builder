@@ -38,6 +38,25 @@ version **6.3.0**.
 - **`brainstorming` is not vendored.** It was reachable only as a one-line handoff for feasibility
   spikes; `/builder:brainstorm` now says plainly that a spike is not a build and stops.
 
+**What was left behind, and why none of it is a rule.** Every behavioural rule in the four source
+documents is carried here — verified line by line against superpowers 6.3.0. What is not carried:
+
+| Not carried | What it was |
+|---|---|
+| SDD §When to Use | a decision tree choosing between `subagent-driven-development` and `executing-plans`. Here the engine is always `/builder:build`, so the choice does not exist |
+| SDD §The Process | a graphviz rendering of the loop this file states in prose |
+| SDD §Example Workflow | an illustrative transcript |
+| `writing-plans` §Execution Handoff | the "subagent-driven or inline?" question, already answered |
+| `code-reviewer` §Example Output | an illustrative sample report |
+| `writing-plans/plan-document-reviewer-prompt.md` | an orphan upstream: no skill in superpowers 6.3.0 references it, and `writing-plans` §Self-Review explicitly says the plan check is a checklist you run yourself, not a subagent dispatch |
+
+The other superpowers skills — `executing-plans`, `using-git-worktrees`,
+`finishing-a-development-branch`, `test-driven-development`, `systematic-debugging` and the rest —
+were never `/builder:*` dependencies. Two of them were *reachable* from the vendored text and are
+deliberately replaced rather than dropped: `using-git-worktrees` by this family's "the developer owns
+the branch" rule, and `finishing-a-development-branch` by the human walk, the sign-off and the PR
+lock.
+
 ```
 MIT License
 
