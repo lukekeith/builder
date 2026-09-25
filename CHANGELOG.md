@@ -4,6 +4,22 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.3.0
+
+**Walk readiness** — the pipeline no longer asks a human to walk, or sign off, a build the dev
+environment isn't running. Green gates run against a test database; the walk doesn't. Before the walk
+script is printed (and after walk fixes, and at the end of an xs/sm change) it now checks the dev
+database for pending migrations and **asks before applying them**, regenerates and restarts what went
+stale, and smokes each changed surface — endpoints, pages, their console and the server log. An
+error it finds is fixed as a build defect, not handed over as a walk item. A new manifest line,
+`ready:`, records it; `/builder:signoff` refuses a PASS while it is pending, and `/builder:status`
+shows what's left.
+
+**Config:** a new `## Walk readiness` section in `.claude/builder.md` — the migrations directory and
+the status / apply / regenerate / start / smoke commands, plus `apply_mode: ask | human | agent`.
+Optional: without it the pipeline infers the commands and says so. `/builder:init --update` adds it
+to an existing config.
+
 ## 2.2.0
 
 **`/builder:status`** — every in-progress feature and program in one table, most recently touched

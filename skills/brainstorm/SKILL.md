@@ -115,7 +115,8 @@ takes it once that reports READY.
    🔴 **In an app the config marks `commit: manual`, stage and stop** — that commit is the human's.
 6. **Fast gates — the subset for that app that the diff can turn red, said out loud** (the config's
    §Quality gates). Report a delta where the config asks for one, never a green exit.
-7. **The human's look at the running app** for anything visual. Say what has and has not been
+7. **The human's look at the running app** for anything visual — after REFERENCE §Walk readiness,
+   so what they look at is running this change (a restart-class change is the usual xs/sm trap). Say what has and has not been
    human-checked; the PR lock holds in chat form.
 8. **Resume.** An xs/sm fits one sitting by definition: the branch and `git log` carry it, and an
    interrupted one gets a three-line scratch note — what · where · next — never a doc.

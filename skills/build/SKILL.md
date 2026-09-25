@@ -166,16 +166,23 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
    [`prompts/final-reviewer.md`](prompts/final-reviewer.md) on the most capable model, pointed at the
    ledger's deferred-minor and parked lines **and at §Contract**. ONE fix dispatch, one scoped
    re-review, then adjudicate. No second fix wave.
-3. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per
+3. 🔴 **Walk readiness** — [REFERENCE](../resume/REFERENCE.md) §Walk readiness: pending
+   migrations applied to the **dev** database (asked for, not assumed), stale processes restarted,
+   the running app smoked on every surface this feature changed. A defect it finds is a fix dispatch
+   like a red gate, then it runs again. **Still `pending` → stop here**: no walk script, no
+   `state: built`; write `state: building`, `ready: pending "<what>"`,
+   `next: <what the human must do>, then /builder:resume --path <folder>` and hand off saying exactly
+   that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
+4. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per
    app**: a multi-app feature is walked in more than one place, and a script naming one of them gets
    half a sign-off. Per app: where to go, what to do, what to look for **newest-first**, and the local
    facts the human needs — taken from the config's §Environment landmines, plus which surfaces cannot
    work locally. The walk is the human's; no agent signs it.
-4. **Manifest:** `state: built`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
+5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
-5. **"Rulings I made"** goes in the hand-off — every ledger line containing `Ruling:`, in order, each
+6. **"Rulings I made"** goes in the hand-off — every ledger line containing `Ruling:`, in order, each
    with what it costs if wrong. It is the only place those decisions reach the human.
-6. ⛔ **Do not delete the workspace** — the walk, verify and the sign-off still read it.
+7. ⛔ **Do not delete the workspace** — the walk, verify and the sign-off still read it.
    `/builder:ship` removes it.
 
 ## 🔒 This skill never opens a PR
@@ -186,10 +193,12 @@ the ticket system, never deploys, and never edits the design source.
 
 ## Exit handoff
 
-What landed (phases · apps · tasks · commits), the rulings list, whether the contract froze, any
+What landed (phases · apps · tasks · commits), walk readiness (migrations applied, restarts, what
+the smoke exercised), the rulings list, whether the contract froze, any
 staged commits awaiting approval, blockers, the next command, and one footer:
 
 ```
 📍 <feature>: building — phase N/M (<app>), stopped — next: /clear, then /builder:resume --path <folder>
+📍 <feature>: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path <folder>
 📍 <feature>: built (<M> phases across <apps>, <T> tasks) — next: 🔒 your walk → /builder:signoff --path <folder>
 ```

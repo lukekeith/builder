@@ -100,7 +100,9 @@ design → (align) → audit (1 pass) → [decisions] → plan → [go-ahead] �
 ```
 
 **The walk is you, in the running app — or apps.** When the last phase lands, the pipeline runs the
-fast gates, prints a script the build wrote **per app**, and stops. Nothing moves until you have
+fast gates, makes the dev environment run this build — **asking before it applies a pending
+migration to your dev database**, restarting what went stale, and smoking every changed surface for
+errors (one it finds is fixed, not handed to you) — prints a script the build wrote **per app**, and stops. Nothing moves until you have
 tried it and typed `/builder:signoff`. The walk precedes verify because the deep pass needs every app
 up at once, so it runs once, on a build a human has already accepted.
 
