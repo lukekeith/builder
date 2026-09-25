@@ -201,6 +201,7 @@ hold: none | "<reason>"                               # 🛑 PR HELD, in the hum
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
 walk: <name YYYY-MM-DD> | none
 verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
+ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
 <design.flag>: <the resolved ref and its set> | none   # prototype mode; key named by the config
 auto: on YYYY-MM-DD | off
 ```
@@ -492,6 +493,54 @@ the phases under it are already covered in seconds by cheaper tests. So:
 **A small change does not re-earn it.** Feature complete → the walk, always. A later tweak → only if
 the diff can change what a consumer does: a contract row, an auth path, a load/save/delete path, or
 something the walk script asserts on. `builder:verify` §A re-verify is SCOPED holds the table.
+
+## Walk readiness
+
+🔴 **Green gates are not a walkable app.** Tests run against their own database and their own
+process; the human walks the *dev* environment. A migration applied to the test database but not the
+dev one, a server still running the old code, a client missing a regenerated type — every gate
+passes and the app the human opens is broken. **Nobody is asked to walk, or to sign off, a build
+the local environment isn't running.**
+
+Run it at the end of the build (before the walk script is printed), after `## Fixes` work that a
+re-walk follows, and at the end of an xs/sm change the human will look at. The commands come from the
+config's **§Walk readiness**; a config without that section → infer them from the repo exactly as
+`/builder:init` would, say that you did, and suggest `/builder:init --update` to record them.
+
+1. **Migrations.** List the migrations this branch adds
+   (`git diff --name-only --diff-filter=A <base_branch>...HEAD -- <the config's migrations path>`),
+   then run the config's **status** command against the **dev** database.
+   - None pending → say so, with the status output's one line.
+   - Pending → 🔴 **ask, don't assume and don't skip.** One AskUserQuestion naming each pending
+     migration and the database it would hit: **Apply them now** (recommended) · **I'll apply them
+     myself** · **Stop here**. The config's `apply_mode:` decides whether the first option exists:
+     `ask` (the default) offers it; `human` drops it — print the exact command instead; `agent`
+     applies without asking and says so. A config line reserving the dev database to the human
+     (*"applying it to the dev DB is the human's step"*) means `ask`: asking IS handing them the step.
+   - Applied → run **status** again and quote it. Still pending, or the apply failed → that is a
+     build failure: a fix dispatch against the migration's task, not a walk.
+   - **I'll apply them myself** → print the command and stop at `ready: pending "<n> migrations"`.
+2. **Regenerate and restart.** Anything the config's §Walk readiness or §Environment landmines says
+   goes stale on this kind of change — a generated client, a server without hot reload, a dev
+   process that caches a glob — is regenerated or restarted the same way: `ask` by default, never
+   silently. A process the human owns (their long-running dev server) is theirs to restart: say which
+   one and why, and wait.
+3. **Smoke the running app.** With the dev environment up — started by the config's **start**
+   command when the agent may start it, otherwise by asking the human to — run the config's
+   **smoke** commands, then exercise what this feature touched: hit each changed endpoint or route,
+   load each changed page (with a browser tool when one is available, reading its console), and read
+   the server's log for errors raised while you did. 🔴 **An error, a failed request or a console
+   error on a changed surface is a defect, not a walk item**: it becomes a fix dispatch against the
+   task that caused it, then this step runs again. A pre-existing error on an untouched surface is
+   named in the hand-off, not fixed.
+4. **Record it** in the manifest: `ready: yes <YYYY-MM-DD> <sha>` when all three passed, or
+   `ready: pending "<what is left, in a few words>"` — commit it with the step that ran it.
+   `ready: pending` means **the walk is not offered**: the hand-off names what is left and the one
+   command that finishes it, and `/builder:signoff` refuses a PASS.
+
+A step that genuinely cannot run here — no dev database on this machine, a device-only app — is not
+a pass: say which, put it at the **top** of the walk script as the human's first step, and write
+`ready: pending "<the step>"` so the sign-off asks them to confirm it.
 
 ## Condense
 

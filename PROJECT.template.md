@@ -83,6 +83,23 @@ once, in `/builder:verify`.**
 <command>          # what it proves
 ```
 
+## Walk readiness
+
+What makes the **dev** environment run this branch before a human is asked to walk it — REFERENCE
+§Walk readiness. Green tests run against a test database; the walk doesn't.
+
+```
+migrations: <dir holding migration files>             # e.g. packages/db/prisma/migrations
+status:     <command>   # pending migrations on the DEV db, e.g. npx prisma migrate status
+apply:      <command>   # e.g. npx prisma migrate deploy
+apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it)
+regenerate: <command>   # after a schema change, e.g. npx prisma generate — omit if none
+start:      <command>   # how the dev env comes up, and who may start it
+smoke:      <command>   # a health check / smoke subset against the running app — omit if none
+```
+
+- <what goes stale and needs a restart, and on what kind of change>
+
 ## Global constraints
 
 🔴 **This block is pasted VERBATIM into every implementer and reviewer brief.**

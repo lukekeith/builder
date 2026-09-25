@@ -49,6 +49,7 @@ shows it.
 | deep gates | e2e suites (`playwright`, `cypress`, `detox`, `e2e` scripts), full builds, and the CI workflow in `.github/workflows/` — CI is the best record of what "passing" means here |
 | known-red gates | don't run anything to find out; list the gate commands and ask in step 3 |
 | house rules | per-app `CLAUDE.md` / `AGENTS.md`, `docs/architecture*`, `CONTRIBUTING.md` — **point at them**, don't copy them |
+| walk readiness | the migrations directory and the ORM's own commands for **status**, **apply** and **regenerate** against the dev database (`prisma migrate status/deploy/generate`, `drizzle-kit`, `knex migrate:status/latest`, `rails db:migrate:status`, `alembic current/upgrade head`, `manage.py showmigrations/migrate`); the dev **start** command (`dev`, `dev:all`, `docker compose up`); a health endpoint or smoke-tagged test for **smoke**. `apply_mode` is always a step-3 question — recommend `ask` |
 | environment landmines | `docker-compose*.yml`, `.env.example`, ports in dev scripts, a README "gotchas" or "troubleshooting" section |
 | companion skills | `.claude/skills/` and any project skills the session lists. None → omit the table |
 | commit style | `git log --oneline -30` — conventional commits? ticket keys in the subject? That fills the commit line in §Global constraints |
@@ -64,6 +65,8 @@ the answer is a choice:
   order;
 - **`commit: auto` or `manual`** per app — recommend `auto`; `manual` means an agent stages but never
   commits;
+- **`apply_mode`** for dev-database migrations — recommend `ask`: the pipeline asks before applying
+  them, so a walk is never run against an old schema;
 - **known-red gates** — which of the listed gates fail on `{base_branch}` today;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 

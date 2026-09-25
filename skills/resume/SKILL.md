@@ -68,6 +68,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: audited` **and** §Findings & risks has a `blocked:` row | ⛔ name each row and the clearer it carries; the plan step refuses until they are gone. A `build-time risk` row is not a blocker |
 | `state: audited`, no OPEN row, no `blocked:` row | `/builder:plan --path <folder>` |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
+| `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — run REFERENCE §Walk readiness, then the build's walk script and `state: built`. Don't re-run the final review |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
 | `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk |
@@ -136,6 +137,10 @@ touches neither the SPEC header nor the PR lock.
 1. **Fast gates only, for the apps the build touched** (the config's §Quality gates) — ⛔ not the
    cross-app walk, not the full deep set. The build ran them at the last phase close; re-run what a
    commit since then can turn red.
+1b. 🔴 **Walk readiness** — REFERENCE §Walk readiness, whenever the manifest's `ready:` is not
+   `yes` at the current HEAD, or anything since could have left the dev environment behind (a new
+   migration, a restart-class change). Pending → hand off the one step that's left; ⛔ **never print
+   the walk script or name `/builder:signoff` over a pending readiness.**
 2. **Print the walk script.** The build wrote it to `walk.md` in the workspace
    (`<builder>/scripts/workspace <feature>` prints the directory; re-resolve it inline in every
    command). Missing → write it now: **per app**, since a multi-app feature is walked in more than
@@ -167,7 +172,7 @@ an app the config marks `commit: manual` is staged and left for the human, like 
 there.
 
 **Where it goes back to depends on which list it came from.** Tasks from a PROBLEMS or PARTIAL walk
-(`state: built`, no sign-off yet) end with the human re-walking what changed and typing
+(`state: built`, no sign-off yet) end with REFERENCE §Walk readiness again, then the human re-walking what changed and typing
 `/builder:signoff` — tick each `- [ ]` as it lands, so the row that routed you here stops firing.
 Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --path <folder>` again —
 **scoped**, per its §A re-verify is SCOPED — plus a re-walk of any signed-off surface the fix changed.

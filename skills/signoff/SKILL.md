@@ -37,6 +37,13 @@ record nothing.
    path inline in every command. **Print the script when the human has not already walked it**; then
    take the verdict in the same sitting.
 
+1b. 🔴 **Walk readiness gates a PASS.** The manifest's `ready:` is not `yes`, or it names a sha
+   older than a commit that adds a migration → run the config's migration **status** against the dev
+   database now. Pending migrations, or a `ready: pending` step still undone → **do not record a
+   PASS**: say what the dev environment is missing, give the one command that fixes it, and offer
+   **PROBLEMS** or **PARTIAL** instead. A walk of an app that wasn't running this build didn't test
+   this build. (The human confirming a device-only `pending` step they did themselves clears it.)
+
 2. **Report preconditions honestly, never silently:** manifest `head:` vs `git rev-parse HEAD` (were
    the gates fresh on what they tested?); `git status --porcelain` (uncommitted changes — 🔴 **a
    phase in an app the config marks `commit: manual` often ends with its commits staged and

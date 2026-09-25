@@ -372,7 +372,14 @@ const statusOf = (r) => {
     verified: [`Verified — ${verify.split(' ')[0]}`, /^INCOMPLETE/.test(verify) ? 'Work the ## Fixes list' : 'Open the PR, then ship'],
     shipped: ['Shipped', '—'],
   }
-  const [lastDone, nextStep] = table[state] ?? [state ?? 'unknown', 'Resume to see']
+  let [lastDone, nextStep] = table[state] ?? [state ?? 'unknown', 'Resume to see']
+  // §Walk readiness: the dev environment must be running this build before anyone walks it.
+  const ready = (mf.ready ?? '').replace(/^"|"$/g, '')
+  const pending = /^pending/.test(ready) ? ready.replace(/^pending\s*/, '').replace(/^"|"$/g, '') : null
+  if (pending) {
+    lastDone = state === 'building' ? 'Build finished — dev env not ready' : lastDone
+    nextStep = `Get the dev env ready: ${pending}`
+  } else if (state === 'built' && !/^yes/.test(ready)) nextStep = 'Check walk readiness, then 🔒 walk it'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
   return {
     lastDone: lastDone + (r.pr ? ` (PR ${r.pr})` : ''),
