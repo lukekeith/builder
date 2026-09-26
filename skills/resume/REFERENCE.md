@@ -132,7 +132,7 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
-| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). The walk is `/builder:agent-walk`; the PR opens as a draft. Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk is `/builder:agent-walk`; the PR opens as a draft. Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm --size sm move the save button into the header` |
@@ -169,7 +169,8 @@ migration). Those still ask, as they would have.
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
 is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
-runs.
+runs — except under `--agent-walk`, where resume §`--agent-walk` governs: the draft opens with no
+question.
 
 **Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
 `/builder:revise` (or brainstorm, for a feature not yet audited) exactly as if it had come with no
