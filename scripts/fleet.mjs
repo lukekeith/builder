@@ -20,6 +20,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
 import { laneOf, decide, loadFleet, saveFleet, fleetDir } from './fleet-core.mjs'
+import { waitsOn, waitsOnText } from './program.mjs'
 
 const RUN_CAP = 12
 const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 45 * 60 * 1000
@@ -126,6 +127,9 @@ function preflight(feature) {
   if (lane === 'blocked') return `${spec} is blocked: ${unquote(mf.blocked)}`
   if (lane === 'done') return `${spec} already has a PR (${mf.pr ?? 'shipped'}) — nothing left for the fleet`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
+  // A program child builds off HEAD, so the contract it consumes must already be merged there.
+  const waits = waitsOn(ROOT, CFG.registry, feature)
+  if (waits.length) return `${waitsOnText(waits)} — a chain runs one wave per fleet run, after each merge`
   const branch = branchOf(feature, mf)
   if (tryGit(['branch', '--show-current']) === branch)
     return `${branch} is checked out in this folder — switch away, or run /builder:resume --path ${spec} here`

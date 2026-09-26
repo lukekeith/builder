@@ -15,6 +15,11 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 is a **draft PR** or **parked** (resume §`--agent-walk`). It **pushes branches and opens draft PRs**.
 It never marks a PR ready, never merges, never signs off for a human.
 
+**Program children run in waves, not chains.** Every worktree branches off `HEAD`, so a child whose
+PROGRAM §Children *Depends on* entries haven't all **shipped** is refused (`✗ <child> — waits on
+<dep> (<state>)`) — it would build against a contract that isn't merged. Pick the next wave in a
+later run, after the last one's PRs merge.
+
 ## 1. `--status`
 
 `node <builder>/scripts/fleet.mjs --status` — print it verbatim and stop.
@@ -25,7 +30,8 @@ It never marks a PR ready, never merges, never signs off for a human.
 node <builder>/scripts/fleet.mjs <the same arguments> --dry-run
 ```
 
-Print it verbatim. For every `✗` line, say what fixes it in a few words. The script refusing the whole
+Print it verbatim. For every `✗` line, say what fixes it in a few words — for `waits on`, merging
+that dependency's PR. The script refusing the whole
 batch (no `agent_walk:` block, no `claude_args`) → name `/builder:init --update` and stop. `--dry-run`
 was asked for → stop here.
 
