@@ -27,6 +27,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
+import { parseManifest, isSet } from './manifest.mjs'
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -82,26 +83,6 @@ const grabStatus = (text) => {
 
 /** Keep a state cell readable — the status line is often a paragraph. */
 const clip = (s, n = 58) => (s && s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
-
-/**
- * `key: value` lines; a trailing `# comment` is dropped; `child:` repeats into `children[]`.
- *
- * A `#` starts a comment only when it is set off from the value — two or more spaces before it,
- * or a space after it. A single space plus `#<something>` is a PR reference, not a comment:
- * `pr: #1234` and `hold: "PR #1179 must land first"` both keep their `#`.
- */
-const parseManifest = (text) => {
-  const out = {}
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/\s{2,}#.*$|\s+#\s.*$/, '').trim()
-    const m = /^([a-z-]+):\s*(.*)$/.exec(line)
-    if (!m) continue
-    const [, k, v] = m
-    if (k === 'child') (out.children ??= []).push(v)
-    else out[k] = v
-  }
-  return out
-}
 
 const inspect = (root, name) => {
   const dir = join(ROOT, root, name)
