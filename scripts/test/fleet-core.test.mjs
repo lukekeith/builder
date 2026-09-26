@@ -43,6 +43,11 @@ test('a PR means done', () => {
   assert.deepEqual(decide({ ...base, lane: 'walk', manifestText: mf('state: verified\npr: #7') }), { action: 'done', pr: '#7' })
 })
 
+test('a run that timed out after writing pr: still counts as done', () => {
+  assert.deepEqual(decide({ ...base, lane: 'walk', exit: null, manifestText: mf('state: verified\npr: #5') }), { action: 'done', pr: '#5' })
+  assert.deepEqual(decide({ ...base, lane: 'walk', exit: 3, failures: 1, manifestText: mf('state: verified\npr: #5') }), { action: 'done', pr: '#5' })
+})
+
 test('the build lane hands off once the feature needs the dev env', () => {
   const d = decide({ ...base, manifestText: mf('state: building\nready: pending "dev env (fleet walk lane)"') })
   assert.deepEqual(d, { action: 'handoff' })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -174,6 +174,22 @@ test('re-running resumes and retries a cleared park', () => {
   assert.equal(second.fleet.features.a.status, 'done')
   assert.equal(second.fleet.features.a.pr, '#2')
   assert.equal(second.fleet.features.a.runs, 5, 'run count continues across fleet runs')
+  assert.equal(second.fleet.features.a.runsThisTime, 3, 'the cap counts this fleet run only')
+})
+
+test('a feature parked at the run cap gets a fresh cap on the next fleet run', () => {
+  const root = makeRepo(['a'])
+  const churn = Array.from({ length: 12 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
+  const scenario = { a: [...churn, 'building', 'READY-PENDING', 'verified', 'PR:#8'] }
+  const first = runFleet(root, ['a'], scenario)
+  assert.equal(first.fleet.features.a.status, 'parked')
+  assert.match(first.fleet.features.a.reason, /run cap \(12\) reached/)
+  const second = runFleet(root, [], scenario)
+  assert.equal(second.status, 0, second.stderr)
+  assert.equal(second.fleet.features.a.status, 'done')
+  assert.equal(second.fleet.features.a.pr, '#8')
+  assert.equal(second.fleet.features.a.runs, 16, 'lifetime runs for the table')
+  assert.equal(second.fleet.features.a.runsThisTime, 4)
 })
 
 test('a worktree on another branch is refused, the rest proceed', () => {
@@ -233,6 +249,25 @@ test('a planned feature joins the build lane where it is', () => {
   assert.equal(r.fleet.features.p.runs, 4)
 })
 
+test('a manifest branch: before planned is the spec branch, not a build branch', () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: audited\nbranch: specs/batch\nnext: x\n')
+  git(root, 'commit', '-qam', 'a audited on the spec branch')
+  const r = runFleet(root, ['a', '--dry-run'], {})
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /✓ a → builder\/a/)
+})
+
+test('two features resolving to one branch: the second is refused', () => {
+  const root = makeRepo(['p1', 'p2'])
+  for (const f of ['p1', 'p2']) writeFileSync(join(root, `docs/features/${f}/MANIFEST.md`), 'size: md\nstate: planned\nbranch: feat/shared\nnext: x\n')
+  git(root, 'commit', '-qam', 'both planned on one branch')
+  git(root, 'branch', 'feat/shared')
+  const r = runFleet(root, ['p1', 'p2', '--dry-run'], {})
+  assert.match(r.stdout, /✓ p1 → feat\/shared/)
+  assert.match(r.stdout, /✗ p2 — p1 and p2 both resolve to branch feat\/shared/)
+})
+
 test('a second fleet is refused while one holds the lock', () => {
   const root = makeRepo(['a'])
   mkdirSync(join(root, '.builder/fleet'), { recursive: true })
@@ -250,6 +285,60 @@ test('a stale lock is taken over', () => {
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stderr, /stale fleet lock/)
   assert.equal(existsSync(join(root, '.builder/fleet/lock')), false, 'lock released at the end')
+})
+
+test('a stale lock takeover kills the process groups the dead fleet left behind', async () => {
+  const root = makeRepo(['a'])
+  const orphan = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+  const gone = new Promise((r) => orphan.on('exit', (code, sig) => r(sig)))
+  try {
+    mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+    writeFileSync(join(root, '.builder/fleet/lock'), '999999')
+    const row = { status: 'building', runs: 1, branch: 'builder/a', worktree: null, pr: null, reason: null, pgid: orphan.pid }
+    writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ features: { a: row } }))
+    const r = runFleet(root, [], { a: HAPPY })
+    assert.equal(r.status, 0, r.stderr)
+    const sig = await Promise.race([gone, new Promise((r) => setTimeout(() => r('still running'), 3000))])
+    assert.equal(sig, 'SIGKILL', 'the orphaned group was killed')
+    assert.equal(r.fleet.features.a.pgid, undefined, 'no pgid left recorded once runs settle')
+  } finally {
+    try {
+      process.kill(-orphan.pid, 'SIGKILL')
+    } catch {}
+  }
+})
+
+test('SIGHUP stops the fleet: children killed, the walk stop hook run, the lock released', async () => {
+  const root = makeRepo(['h'], { stop: 'touch stop-ran' })
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ h: ['READY-PENDING', 'HANG'] }))
+  const fleet = spawn('node', [FLEET, 'h'], {
+    cwd: root,
+    stdio: 'ignore',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub') },
+  })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  const calls = join(root, '.stub/calls.log')
+  const deadline = Date.now() + 10000
+  while (!(existsSync(calls) && / h walk .* HANG /.test(readFileSync(calls, 'utf8')))) {
+    assert.ok(Date.now() < deadline, 'the walk run never started')
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  const stub = Number(/ h walk .* HANG pid=(\d+) /.exec(readFileSync(calls, 'utf8'))[1])
+  fleet.kill('SIGHUP')
+  assert.equal(await exited, 129)
+  const alive = () => {
+    try {
+      process.kill(stub, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+  for (let i = 0; i < 40 && alive(); i++) await new Promise((r) => setTimeout(r, 50))
+  assert.equal(alive(), false, 'the hung walk run was killed')
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.ok(existsSync(join(fj.features.h.worktree, 'stop-ran')), 'agent_walk.stop ran for the walking feature')
+  assert.equal(existsSync(join(root, '.builder/fleet/lock')), false, 'lock released')
 })
 
 test('--status prints the last table', () => {
