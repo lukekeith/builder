@@ -26,10 +26,25 @@ const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 45 * 60 * 100
 const CLAUDE = process.env.FLEET_CLAUDE || 'claude'
 
 const argv = process.argv.slice(2)
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status]'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--dry-run', '--status'])
+for (const a of argv) {
+  if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
+    console.error(`Unknown flag ${a}. ${USAGE}`)
+    process.exit(2)
+  }
+}
 const flag = (name) => argv.includes(name)
 const opt = (name) => {
   const i = argv.indexOf(name)
   return i >= 0 ? argv[i + 1] : undefined
+}
+if (flag('--parallel')) {
+  const v = opt('--parallel')
+  if (!/^[1-9]\d*$/.test(v ?? '')) {
+    console.error(`--parallel must be a positive integer, got '${v ?? ''}'. ${USAGE}`)
+    process.exit(2)
+  }
 }
 const positional = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--parallel')
 
@@ -182,7 +197,11 @@ const unlock = () => {
 const save = () => saveFleet(ROOT, fleet)
 const active = new Set()
 const stopAll = (code) => {
-  for (const c of active) c.kill('SIGTERM')
+  for (const c of active) {
+    try {
+      process.kill(-c.pid, 'SIGTERM')
+    } catch {}
+  }
   save()
   unlock()
   process.exit(code)
@@ -211,19 +230,43 @@ function runClaude(wt, feature, lane, n) {
       settled = true
       clearTimeout(timer)
       active.delete(child)
+      try {
+        child.stdout.destroy()
+      } catch {}
+      try {
+        child.stderr.destroy()
+      } catch {}
       out.end(() => done({ exit, log }))
     }
-    const child = spawn(CLAUDE, ['-p', prompt, ...AW.claudeArgs.split(/\s+/).filter(Boolean)], { cwd: wt, env, stdio: ['ignore', 'pipe', 'pipe'] })
+    // detached: true makes the child its own process-group leader, so a grandchild it leaves
+    // behind (a dev server, an MCP server, a test watcher) can be killed along with it — a plain
+    // `child.kill()` only reaches the direct child, and 'close' never fires while a grandchild
+    // still holds the inherited stdout/stderr pipes open.
+    const child = spawn(CLAUDE, ['-p', prompt, ...AW.claudeArgs.split(/\s+/).filter(Boolean)], {
+      cwd: wt,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    })
     active.add(child)
     child.stdout.pipe(out, { end: false })
     child.stderr.pipe(out, { end: false })
     const timer = setTimeout(() => {
       timedOut = true
-      child.kill('SIGKILL')
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {}
     }, RUN_TIMEOUT_MS)
     child.on('error', (e) => {
       out.write(`\n[fleet] could not start ${CLAUDE}: ${e.message}\n`)
       finish(127)
+    })
+    // 'close' covers the normal case (fires as soon as the child exits and its pipes are drained).
+    // 'exit' is the fallback for a child that leaves a grandchild holding those pipes open: give
+    // the pipes a short grace period to drain on their own, then settle regardless.
+    child.on('exit', (code) => {
+      const exit = timedOut ? null : (code ?? 1)
+      setTimeout(() => finish(exit), 500)
     })
     child.on('close', (code) => finish(timedOut ? null : (code ?? 1)))
   })
