@@ -27,6 +27,7 @@ reason**. No run ever waits on a question.
 | 2 | Concurrency | **Hybrid.** Build lane in parallel (one worktree per spec, test-DB gates only). Walk lane **one at a time** through a single shared dev env: readiness → agent walk → fixes → verify → draft PR. |
 | 3 | Walk driver | **Config-declared** (`agent_walk.driver`). No driver → the agent walk is API/log-level only and the PR body says so. |
 | 4 | Orchestrator shape | **`scripts/fleet.mjs`** driving headless `claude -p` runs, fronted by a thin `/builder:fleet` skill. Survives outside any chat session. |
+| 5 | Picking work in progress | **`/builder:agent`** — a multi-select picker over every unfinished feature (any step before the PR, not parked) that launches the same fleet on the picks and runs each until done: a draft PR, or parked with a reason. |
 
 ## 1. Trust model
 
@@ -94,8 +95,9 @@ Without `--agent-walk`, every question is asked as today.
 
 1. Resolve the specs (`--all` = every feature at `spec`, `aligned` or `audited` with no `blocked:`).
 2. Pre-flight, per spec — refuse that spec, not the batch, on failure: config has `agent_walk:` with
-   `claude_args`; spec has a `MANIFEST.md`; the folder is committed at `HEAD`; state is before the
-   walk; no existing worktree on a different branch.
+   `claude_args`; spec has a `MANIFEST.md`; the folder is committed at `HEAD`; no `pr:` and not
+   blocked; its branch is not checked out in the main folder; no existing worktree on a different
+   branch.
 3. Print one screen: the specs, the branch each gets, the worktree root, the permission args, and
    plainly **"pushes branches and opens draft PRs"**. Take one confirmation.
 4. Launch `node <builder>/scripts/fleet.mjs …` with `run_in_background`, and print the `nohup`
@@ -103,11 +105,30 @@ Without `--agent-walk`, every question is asked as today.
 
 `--status` prints `.builder/fleet/STATUS.md`. `--dry-run` runs pre-flight and prints the plan only.
 
+### `/builder:agent` (skill) — pick work, let it run until done
+
+`/builder:agent` — no arguments. It is the interactive front door to the same engine:
+
+1. `list-features.mjs --json`; offer every feature that is not done, not parked (`blocked:`), and has
+   no `pr:` — **at any step**, `spec` through `verified`.
+2. **One multi-select AskUserQuestion**: each option is the feature, its step, and what is left.
+   More than four candidates → the most recently touched four, plus the note that `/builder:fleet
+   <names>` takes any list.
+3. `fleet.mjs <picks> --dry-run`, printed; then the same single confirmation `/builder:fleet` takes;
+   then launch in the background. From there it is `/builder:fleet` §4–5.
+
+"Done" is the fleet's done: **a draft PR, or parked with a reason**. The human sign-off stays theirs.
+
 ### `scripts/fleet.mjs`
 
 **Worktrees and branches.** Per spec: `git worktree add <worktrees>/<feature> -b builder/<feature>
-HEAD` (`<worktrees>` defaults to `../<repo-dir>.fleet`). An existing worktree on the same branch is
-reused. The family's "no skill creates a branch or worktree" rule holds — the fleet is not a skill
+HEAD` (`<worktrees>` defaults to `../<repo-dir>.fleet`). A feature already underway whose manifest
+names a `branch:` (other than the base branch) continues **on that branch** — `git worktree add
+<path> <branch>` — so its commits carry on. A branch checked out in the main folder is refused: git
+allows a branch in one worktree only. An existing worktree on the expected branch is reused.
+
+**Accepted specs:** any feature before its PR — `spec` through `verified`, not blocked — queued in
+the lane its manifest puts it in. `--all` stays the batch shape: only `spec`, `aligned`, `audited`. The family's "no skill creates a branch or worktree" rule holds — the fleet is not a skill
 step; skills only run inside what it made.
 
 **One `claude` run:**
@@ -117,8 +138,13 @@ stdout+stderr to `.builder/fleet/logs/<feature>-<n>.log`, a per-run timeout (def
 
 **Progress** is read from the worktree's `MANIFEST.md` after each run — never from the run's output.
 
-**Build lane** — up to `parallel` (default 3) features at once. Loop runs until the manifest reads
-`state: built` with `walk: none` → hand to the walk lane; or `blocked:` → parked.
+**Build lane** — up to `parallel` (default 3) features at once, each run with `--no-dev-env` (below).
+Loop runs until the manifest reads `state: building` with `ready: pending` (every phase closed, only
+the dev env left) → hand to the walk lane; or `blocked:` → parked.
+
+**`--no-dev-env`** is a second new flag: a step that would start, migrate or touch the dev
+environment instead writes `ready: pending "dev env (fleet walk lane)"`, commits and ends the run.
+It is what keeps parallel worktrees off the one shared dev env; the walk lane runs without it.
 
 **Walk lane** — one feature at a time, in hand-off order:
 1. `agent_walk.reset` in the worktree, if set (else note in the summary that dev-DB state accumulates).
@@ -161,6 +187,7 @@ API/log-level agent walk, stated in the report and PR body.
 |---|---|
 | `skills/agent-walk/SKILL.md` | **new** — §1 |
 | `skills/fleet/SKILL.md` | **new** — §3 skill |
+| `skills/agent/SKILL.md` | **new** — §3 `/builder:agent` |
 | `scripts/fleet.mjs` | **new** — §3 script, with `--self-test`, `--dry-run`, `--status` |
 | `scripts/config.mjs` | parse `agent_walk` |
 | `scripts/list-features.mjs` | `agent-pass` / `agent-problems` walk states; `blocked:` as a needs-attention row |
