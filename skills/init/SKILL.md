@@ -76,7 +76,12 @@ the answer is a choice:
   `copy` — recommend `.env` when an untracked `.env` exists; `setup` — the repo's install command
   (`npm ci`, and so on); `env`/`start`/`smoke` — recommend an isolated second env, on other ports and
   its own database, whenever §Walk readiness says the dev servers are the human's own or must not be
-  started twice; `parallel: 1` when the test suite shares one database;
+  started twice. `env` reaches the walk lane only — its `claude -p` runs and the `reset`/`start`/
+  `smoke`/`stop` hooks, never build-lane runs or `setup` — so pick ports and a database the repo's
+  own tooling (tests, scripts, the human's dev env) doesn't also use. Check that `reset` and `stop`
+  never stop or recreate a service the human's own dev env shares: no `docker compose down`, and no
+  `compose up` from a branch whose compose file may differ — start an existing container by name, or
+  pin the compose file to the main checkout's; `parallel: 1` when the test suite shares one database;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.
