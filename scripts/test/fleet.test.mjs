@@ -579,3 +579,21 @@ test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', (
   assert.ok(walk.length > 0 && walk.every((l) => l.includes(' walk_mark=x ')), walk.join('\n'))
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /agent_walk\.env may not set CLAUDE_PROJECT_DIR.*ignored/)
 })
+
+test('a program child whose dependency has not shipped is refused; the dependency runs', () => {
+  const root = makeRepo(['api', 'ui'])
+  mkdirSync(join(root, 'docs/features/big'))
+  writeFileSync(join(root, 'docs/features/big/MANIFEST.md'), 'tier: program\nnext: x\nchild: api — spec\nchild: ui — spec\n')
+  writeFileSync(
+    join(root, 'docs/features/big/PROGRAM.md'),
+    '# big — program\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n| 1 | api | md | app | x | — |\n| 2 | ui | md | app | y | 1 |\n'
+  )
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'program')
+  const dry = runFleet(root, ['api', 'ui', '--dry-run'], {})
+  assert.match(dry.stdout, /✓ api → builder\/api/)
+  assert.match(dry.stdout, /✗ ui — waits on api \(spec\)/)
+  const r = runFleet(root, ['api', 'ui'], { api: HAPPY })
+  assert.equal(r.fleet.features.api.status, 'done')
+  assert.equal(r.fleet.features.ui, undefined)
+})

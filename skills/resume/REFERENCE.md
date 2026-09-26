@@ -431,6 +431,12 @@ xl only, ~50 lines.
 🔴 **Children are ordered by the contract**, not by convenience: a child producing a contract another
 consumes ships first — the phase rule, one level up.
 
+*Depends on* is read by the scripts (`scripts/program.mjs`): `#` row numbers or child folder names,
+comma- or space-separated; `—` or empty for none. A dependency is met when its `child:` line reads
+`— shipped` or its own folder shows it shipped; a token naming no child is unmet. Until every entry
+is met, `/builder:agent` doesn't offer the child, `/builder:status` shows `⏳ waits on …`, and the
+fleet refuses it — so an unattended chain runs **one wave per fleet run**, after each merge.
+
 ## Prototype mode
 
 Entered by the config's design flag. **The design is the requirements** — a finished, specced design

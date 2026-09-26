@@ -19,11 +19,14 @@ with a reason**; your `/builder:signoff` is what marks a draft ready. Resolve `<
 node <builder>/scripts/list-features.mjs --json
 ```
 
-A row is offered when `done` is false, it has no `pr`, its `manifest.blocked` is unset or `none`, and
-its `manifest.state` is one of `spec aligned audited planned building built signed-off verified`. No
-config `agent_walk:` block → stop here and name `/builder:init --update`. Nothing offerable → say so,
-and name `/builder:brainstorm` for writing a spec. Parked rows are listed underneath as a count with
-their reasons, so it's clear why they're missing.
+A row is offered when `done` is false, it has no `pr`, its `manifest.blocked` is unset or `none`, its
+`waitsOn` is empty, and its `manifest.state` is one of `spec aligned audited planned building built
+signed-off verified`. No config `agent_walk:` block → stop here and name `/builder:init --update`.
+Nothing offerable → say so, and name `/builder:brainstorm` for writing a spec. Parked rows are listed
+underneath as a count with their reasons, and **waiting** rows — program children whose PROGRAM
+§Children *Depends on* entries haven't shipped — with their `nextStep` (`⏳ waits on …`), so it's
+clear why they're missing. A chain runs one wave per pick: the next wave is offered once the last
+one's PRs have merged.
 
 ## 2. Pick — one multi-select
 

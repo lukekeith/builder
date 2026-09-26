@@ -28,6 +28,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
+import { waitsOn, waitsOnText } from './program.mjs'
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -371,9 +372,10 @@ const statusOf = (r) => {
   if (state === 'verified' && agentPass && r.pr) nextStep = 'Review the draft PR, then /builder:signoff'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
   const parked = isSet(mf.blocked) ? mf.blocked.replace(/^"|"$/g, '') : null
+  const waits = r.waitsOn?.length ? `⏳ ${waitsOnText(r.waitsOn)}` : null
   return {
     lastDone: lastDone + (r.pr ? ` (PR ${r.pr})` : ''),
-    nextStep: parked ? `⛔ parked — ${parked}` : held ? `🛑 PR held — ${held}` : nextStep,
+    nextStep: parked ? `⛔ parked — ${parked}` : held ? `🛑 PR held — ${held}` : waits ?? nextStep,
     command: resume,
   }
 }
@@ -386,6 +388,7 @@ for (const r of rows) {
   r.updatedAt = iso ?? statSync(join(ROOT, r.path)).mtime.toISOString()
   r.updated = iso ? git('log', '-1', '--format=%cr', '--', r.path) : 'uncommitted'
   r.branch = r.manifest?.branch ?? null
+  r.waitsOn = r.done || r.layout === 'program' ? [] : waitsOn(ROOT, CFG.registry, r.feature)
   Object.assign(r, statusOf(r))
 }
 
