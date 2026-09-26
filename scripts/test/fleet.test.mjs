@@ -536,3 +536,13 @@ test('SIGHUP mid-walk kills the start group before running stop', async () => {
   const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
   assert.equal(fj.features.h.startPgid, undefined)
 })
+
+test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', () => {
+  const root = makeRepo(['a'], { lines: ['env: CLAUDE_PROJECT_DIR=/tmp/nope WALK_MARK=x'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.equal(starts.length, 7)
+  assert.ok(starts.every((l) => l.includes(' walk_mark=x ') && l.endsWith('project_dir=-')), starts.join('\n'))
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /agent_walk\.env may not set CLAUDE_PROJECT_DIR.*ignored/)
+})
