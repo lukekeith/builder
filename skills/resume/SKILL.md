@@ -246,9 +246,12 @@ asks hangs until it times out. Every point that would ask resolves one of two wa
 | Opening the PR | §Ship's draft path, no question — starting the fleet was the permission |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
-**The flags carry through:** every step this command runs gets `--agent-walk`, and `--no-dev-env`
-when this run has it. Under `--no-dev-env`, reaching walk readiness writes `ready: pending "dev env
-(fleet walk lane)"`, commits, and ends the run.
+**The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
+`--no-dev-env` when this run has it — `--auto` too, because plan, audit and align don't read
+`--agent-walk` and would otherwise still raise their own pauses (a plan step's `ExitPlanMode` for the
+go-ahead, for one); they do already honour `--auto`, so that's what settles them. Under
+`--no-dev-env`, reaching walk readiness writes `ready: pending "dev env (fleet walk lane)"`, commits,
+and ends the run.
 
 `--agent-walk` never writes a human sign-off, never marks a PR ready, never lifts a `hold:`, and never
 merges.
