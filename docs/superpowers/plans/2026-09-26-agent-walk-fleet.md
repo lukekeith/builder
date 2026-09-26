@@ -23,7 +23,7 @@
 - **Guards:** per-run timeout 45 min (`FLEET_RUN_TIMEOUT_MS` overrides), run cap 12 per feature, retry a failed run once, 2 agent walk rounds, default `parallel: 3`, branch `builder/<feature>`, worktrees default `../<repo-dir>.fleet`.
 - **Version:** 2.5.0, minor — the config block is optional and additive.
 - **Commits:** conventional style, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Tests:** `node --test scripts/test/` must pass; `claude plugin validate .` and `scripts/workspace --self-test` stay green.
+- **Tests:** `node --test 'scripts/test/*.test.mjs'` must pass; `claude plugin validate .` and `scripts/workspace --self-test` stay green.
 
 ## Review Focus
 
@@ -100,7 +100,7 @@ test('isSet treats absent, empty and none as unset', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `node --test scripts/test/`
+Run: `node --test 'scripts/test/*.test.mjs'`
 Expected: FAIL — `Cannot find module '…/scripts/manifest.mjs'`.
 
 - [ ] **Step 3: Create `scripts/manifest.mjs`**
@@ -142,7 +142,7 @@ import { parseManifest, isSet } from './manifest.mjs'
 
 - [ ] **Step 5: Run the tests and the script**
 
-Run: `node --test scripts/test/ && node scripts/list-features.mjs --json >/dev/null; echo $?`
+Run: `node --test 'scripts/test/*.test.mjs' && node scripts/list-features.mjs --json >/dev/null; echo $?`
 Expected: tests PASS. The script exits `2` with "No .claude/builder.md" (this repo has no config) — that proves it still loads and imports cleanly.
 
 - [ ] **Step 6: Commit**
@@ -260,7 +260,7 @@ const agentWalkOf = (block) => {
 
 - [ ] **Step 4: Run the tests**
 
-Run: `node --test scripts/test/`
+Run: `node --test 'scripts/test/*.test.mjs'`
 Expected: PASS (all suites).
 
 - [ ] **Step 5: Commit**
@@ -484,7 +484,7 @@ export function renderStatus(fleet) {
 
 - [ ] **Step 4: Run the tests**
 
-Run: `node --test scripts/test/`
+Run: `node --test 'scripts/test/*.test.mjs'`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1197,7 +1197,7 @@ process.exit(Object.values(fleet.features).every((f) => f.status === 'done') ? 0
 
 - [ ] **Step 5: Run the tests**
 
-Run: `node --test scripts/test/`
+Run: `node --test 'scripts/test/*.test.mjs'`
 Expected: PASS, every suite. If `walk lane runs one feature at a time` fails, the walk lane is being entered twice — check that only `walkLane()` ever calls `walkOne`.
 
 - [ ] **Step 6: Commit**
@@ -1304,7 +1304,7 @@ In `statusOf`, replace the tail — from `const held = mf.hold && …` through t
 
 - [ ] **Step 4: Run the tests**
 
-Run: `node --test scripts/test/`
+Run: `node --test 'scripts/test/*.test.mjs'`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1916,7 +1916,7 @@ In `## What it never does`, find the line about opening a PR before a human has 
 - [ ] **Step 3: CONTRIBUTING** — in the `## Before you open a PR` code block, add a line:
 
 ```bash
-node --test scripts/test/      # the scripts' tests — no dependencies, Node's own runner
+node --test 'scripts/test/*.test.mjs'      # the scripts' tests — no dependencies, Node's own runner
 ```
 
 - [ ] **Step 4: CHANGELOG** — insert above `## 2.4.0`:
@@ -1943,14 +1943,14 @@ still requires `/builder:signoff`, which stays human-only. A human PASS supersed
 `parallel`, `reset`, `stop`). Without it nothing changes. `/builder:init --update` adds it.
 
 **Scripts:** `scripts/manifest.mjs` (shared parser), `scripts/fleet-core.mjs`, `scripts/fleet.mjs`, and
-the first test suite — `node --test scripts/test/`.
+the first test suite — `node --test 'scripts/test/*.test.mjs'`.
 ```
 
 - [ ] **Step 5: Version** — in `.claude-plugin/plugin.json` change `"version": "2.4.0"` to `"version": "2.5.0"`.
 
 - [ ] **Step 6: Verify everything**
 
-Run: `node --test scripts/test/ && scripts/workspace --self-test && claude plugin validate .`
+Run: `node --test 'scripts/test/*.test.mjs' && scripts/workspace --self-test && claude plugin validate .`
 Expected: all tests PASS, `ok: workspace self-test`, `✔ Validation passed`.
 
 - [ ] **Step 7: Commit**
