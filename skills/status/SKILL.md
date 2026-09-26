@@ -7,8 +7,9 @@ description: The dashboard of in-progress /builder:* work in this repo — one t
 
 Invocation: **`/builder:status`**. `--help` prints this line and stops.
 
-**Read-only.** It writes nothing, commits nothing, and never starts the next step — that is the
-command in the table's last column, which the user runs when they choose.
+**Read-only.** It writes nothing, commits nothing, and never starts the next step in this turn — that
+is the command in the table's last column, which the user runs when they choose: by pasting it, or by
+replying with the feature's name, which runs that row's command (REFERENCE §Continuing on "go").
 
 ## 1. Run it
 
@@ -39,4 +40,6 @@ Then, at most one line of your own, and only when it earns its place:
 - otherwise → nothing. Don't recommend what to work on unless the user asks.
 
 **Stop there.** Don't pick a row, don't run a command, don't offer a picker — the user reads the
-table and pastes the command for the one they want.
+table and either pastes the command for the one they want or replies with its name. A reply naming a
+row runs that row's command through the Skill tool, exactly as pasted; a bare "go" over more than one
+row asks which, per REFERENCE §Continuing on "go".

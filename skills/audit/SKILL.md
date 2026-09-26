@@ -204,7 +204,10 @@ design-affecting / stale-spec / nits**, with data-integrity items and anything b
 build called out separately and first; the next command — **never "another pass"** — and the footer:
 
 ```
-📍 <feature>: audited — next: /builder:resume --path <folder>
+📍 <feature>: audited — next: /builder:resume --path <folder> · or say go
 ```
 
-Append ` · BLOCKED: <n> items` when the verdict is BLOCKED.
+Append ` · BLOCKED: <n> items` when the verdict is BLOCKED, before ` · or say go`.
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

@@ -140,6 +140,47 @@ is the work. A skill **ignores any flag it does not use and never errors on one*
 survives a chained command — `--help` is the one flag every skill honours, first. Resolving a design
 ref is [`SCOPE-SELECTION.md`](SCOPE-SELECTION.md).
 
+## Continuing on "go"
+
+Every handoff ends in a 📍 footer naming the one next command. **The human does not have to paste
+it.** When their next message is a **bare affirmative** — "go", "yes", "proceed", "continue",
+"approve", "ok", "next", "do it", "keep going" and the like — and **your previous message** ended in
+a 📍 footer naming one complete command, run that command yourself through the Skill tool, in that
+turn, with the footer's `--path` and the flags the run already carries (`--ticket`, `--auto`). Don't
+re-print it and ask them to type it.
+
+**Nothing is skipped.** The command runs exactly as if typed — its own Step 1, the manifest as the
+state, every gate and stop intact. An affirmative continues **to the next step**; it never answers a
+gate that step will raise (the decisions gate, the go-ahead, a manual-commit app, applying a
+migration). Those still ask, as they would have.
+
+**An affirmative does not continue** — answer in one line with what the human does instead:
+
+| The footer names | Why | Answer with |
+|---|---|---|
+| `/builder:signoff`, or 🔒 your walk | a sign-off an agent starts is void, and "approve" is not "I walked it" | the exact command to type, with their verdict in their words after it |
+| a human's step (`<the human's step>`, apply a migration, restart a service) | only they can do it | the step, then "say go once it's done" |
+| a placeholder only the human can fill (`<what you want built>`, `<the change>`) | there is nothing to run yet | ask for the missing text |
+| `🛑 held` | the pipeline is parked on their call | the hold's words, and that lifting it is theirs |
+| more than one candidate (`/builder:status`, the picker) | "go" doesn't say which | one AskUserQuestion over the candidates; a feature name or row picks directly |
+
+**Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
+is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
+runs.
+
+**Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
+`/builder:revise` (or brainstorm, for a feature not yet audited) exactly as if it had come with no
+footer. An affirmative after the conversation moved on — the footer is not in your previous message
+— asks which feature, the way the picker does.
+
+**A `/clear` boundary is a recommendation, not a wall.** A skill cannot clear context, but all state
+is on disk, so "go" there continues in this session; the footer says the choice:
+`next: /builder:resume --path <folder> — say go to continue here, or /clear first for a fresh context`.
+
+**Footers that "go" can continue end with ` · or say go`**, so the human knows it works — e.g.
+`📍 <feature>: audited — next: /builder:resume --path <folder> · or say go`. Footers in the
+does-not-continue table above don't carry it.
+
 ## Branch and ticket
 
 No skill in the family creates a branch, a worktree or a ticket — those belong to the developer.

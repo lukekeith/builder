@@ -157,7 +157,8 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 2. Write the manifest — `state: building`, `next: /builder:resume --path <folder>`, `head`, `branch`.
 3. Commit it alone: `chore(<ticket-or-feature>): <feature> — stopped mid-phase N`. **Nothing else is
    committed by the controller mid-build.**
-4. Hand off ending `run /clear, then /builder:resume --path <folder>`.
+4. Hand off ending `say go to continue here, or run /clear first, then /builder:resume --path <folder>`
+   — all state is on disk, so continuing in this session loses nothing but room.
 
 ## When the last phase signs
 
@@ -198,7 +199,10 @@ the smoke exercised), the rulings list, whether the contract froze, any
 staged commits awaiting approval, blockers, the next command, and one footer:
 
 ```
-📍 <feature>: building — phase N/M (<app>), stopped — next: /clear, then /builder:resume --path <folder>
+📍 <feature>: building — phase N/M (<app>), stopped — next: /builder:resume --path <folder> — say go to continue here, or /clear first for a fresh context
 📍 <feature>: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path <folder>
 📍 <feature>: built (<M> phases across <apps>, <T> tasks) — next: 🔒 your walk → /builder:signoff --path <folder>
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

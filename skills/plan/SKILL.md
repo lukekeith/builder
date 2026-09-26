@@ -172,5 +172,8 @@ approval covers the whole build; no later phase re-asks.
 carries the key and warn once if not.
 
 ```
-📍 <feature>: planned, <n> phases across <apps>, <m> tasks, go-ahead <recorded|none> — next: /builder:resume --path <folder>
+📍 <feature>: planned, <n> phases across <apps>, <m> tasks, go-ahead <recorded|none> — next: /builder:resume --path <folder> · or say go
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

@@ -244,6 +244,9 @@ perfect. Then:
 Every pause ends with the one-line resume footer:
 
 ```
-📍 <feature>: spec drafting — resume with /builder:brainstorm --path <registry>/<feature>
-📍 <feature>: designed (<size>, <apps>) — next: /builder:resume --path <registry>/<feature>
+📍 <feature>: spec drafting — resume with /builder:brainstorm --path <registry>/<feature> · or say go
+📍 <feature>: designed (<size>, <apps>) — next: /builder:resume --path <registry>/<feature> · or say go
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

@@ -121,5 +121,8 @@ voided sign-off surface when real), and the next command. Keep going — the fix
 startable in the same turn.
 
 ```
-📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder>
+📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder> · or say go
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

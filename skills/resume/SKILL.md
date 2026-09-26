@@ -1,7 +1,6 @@
 ---
 name: resume
-description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature. Resumable after any /clear. Use only when explicitly invoked via /builder:resume.
-disable-model-invocation: true
+description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
 ---
 
 # `/builder:resume` — where a feature stands, and the next step
@@ -242,7 +241,9 @@ the unblocked feature closest to done. On selection, continue at Step 1 with tha
 2. **Open ONE PR for the whole feature**, base the config's `base_branch`:
    `gh pr create --base <base_branch> --title "<type>(<ticket-or-feature>): <feature>" --body "<the
    SPEC header's sign-off line + what changed per app>"`.
-   🔴 Only on a sign-off with no hold, and only on a branch that is not the base. **One PR for the
+   🔴 Only on a sign-off with no hold, and only on a branch that is not the base. **Ask once first**
+   — one AskUserQuestion, **Open the PR** / **Not yet** — even when an affirmative brought you here:
+   "go" continued the pipeline, it did not name an outward-facing action. **One PR for the
    feature, never one per phase** — a phase is one app, and the apps ship together or the contract
    is live with only half its consumers.
 3. **Write `pr: #N` to the manifest yourself and commit it** — `gh pr view --json number --jq
@@ -273,16 +274,22 @@ released artifact nobody can hot-fix.
 3. **Then KEEP GOING.** 🔴 A step ending with work still to do and no decision pending continues into
    the next in the same turn. Stop only for a real decision; the two unconditional gates and the PR
    lock; something destructive or outward-facing; a manual-commit app; or context running out — then
-   land the current phase, write the manifest, commit, and hand off with *"run `/clear`, then
-   `/builder:resume --path <folder>`"*. Prefer stopping at a clean boundary over running out
-   mid-phase. A blocked task is not a stop: start the next startable one.
+   land the current phase, write the manifest, commit, and hand off with *"say go to continue here,
+   or run `/clear` first, then `/builder:resume --path <folder>`"*. Prefer stopping at a clean
+   boundary over running out mid-phase. A blocked task is not a stop: start the next startable one.
 4. **One-line resume footer** naming the command that does the NEXT work — not always
    `/builder:resume`: after the build it is `/builder:signoff`, then `/builder:verify`, then the PR.
    On a hold there is no command, because the pipeline is parked on the human's call.
 
    ```
-   📍 <feature>: <state> — next: <command>
+   📍 <feature>: <state> — next: <command> · or say go
    ```
+
+   ` · or say go` only where an affirmative can continue it — REFERENCE §Continuing on "go".
+5. **A bare affirmative in reply continues it.** "go", "yes", "proceed" after a footer runs that
+   footer's command through the Skill tool, in that turn — never ask the human to paste it. The
+   exceptions (signoff, the walk, a human's step, a hold, opening the PR) are REFERENCE §Continuing
+   on "go".
 
 ## Context survival
 

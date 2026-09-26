@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.4.0
+
+**Say "go" instead of pasting the next command.** Every handoff still ends with its 📍 footer, but a
+bare affirmative in reply — "go", "yes", "proceed", "continue" — now runs that footer's command in the
+same turn. Nothing is skipped: the command runs as if typed, and every gate it reaches still asks.
+`/builder:resume` is no longer `disable-model-invocation`, so "continue where I left off" works in a
+fresh session too, and a mid-build context stop offers "go" to carry on in the session instead of
+requiring `/clear`. Footers that "go" can continue end with ` · or say go`; `/builder:status` accepts
+a feature's name as the reply.
+
+Unchanged by design: `/builder:signoff` is still typed by the human only, and "approve" after a walk
+is answered with the command to type, not a sign-off. A step only the human can do, a hold, and
+anything with more than one candidate still stop, and opening the PR asks once even after a "go".
+The rule lives in REFERENCE §Continuing on "go".
+
 ## 2.3.0
 
 **Walk readiness** — the pipeline no longer asks a human to walk, or sign off, a build the dev

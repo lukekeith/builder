@@ -153,6 +153,10 @@ apps' gates ran, which were quoted from an earlier run, what the contract-parity
 deep checks showed, and whether the cross-app walk ran or was quoted — then:
 
 ```
-📍 <feature>: verify READY (<apps>) — next: <the PR command>
-📍 <feature>: verify INCOMPLETE — <n> fixes owed — next: /builder:resume --path <folder>
+📍 <feature>: verify READY (<apps>) — next: /builder:resume --path <folder> (opens the PR) · or say go
+📍 <feature>: verify READY (<apps>) — 🛑 held — <the hold's words>
+📍 <feature>: verify INCOMPLETE — <n> fixes owed — next: /builder:resume --path <folder> · or say go
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
