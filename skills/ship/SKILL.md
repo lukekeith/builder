@@ -72,6 +72,9 @@ PR, or on a PR whose verify is not READY** — that line is what every skill and
 treat as DONE, and a feature marked DONE runs no step again. If the PR is later closed unmerged,
 revert the ship commit.
 
+⛔ **`walk:` reads `agent-pass …` → refuse.** The SHIPPED line names a human who signed it off, and
+nobody has: hand back in one line — the human tests it, then `/builder:signoff --path <folder>`.
+
 1. **Flip the header's first line** to, exactly:
 
    ```markdown

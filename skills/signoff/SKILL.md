@@ -85,7 +85,8 @@ What was exercised **on which app**, what was skipped and every caveat from step
 body** and in one ledger line; the header line stays one line.
 
 **Over an agent pass.** `walk:` becomes the human line (the `agent-pass` value is replaced, not kept
-beside it), and the SPEC's `> 🤖 AGENT-VERIFIED …` header line is replaced by the sign-off line. If
+beside it), `agent-walk:` becomes `off` — the rest of the way is the human's, asked, not unattended —
+and the SPEC's `> 🤖 AGENT-VERIFIED …` header line is replaced by the sign-off line. If
 `verify: READY` was recorded at the current HEAD, keep it and write `next: /builder:resume --path
 <folder>` — it marks the draft PR ready, after asking. Otherwise set `verify: none`: the code moved
 since the agent's verify, so it runs again.

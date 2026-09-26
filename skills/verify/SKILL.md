@@ -76,9 +76,9 @@ a visual diff, and a renamed element changes what the walk does.
 
 1. **The walk happened** — the SPEC header carries `> ✅ SIGNED OFF <date> — <sha> · by <name>` and
    `walk:` names who and when. `/builder:signoff` is `disable-model-invocation`, so that pair is proof
-   a human typed it; a header written by an agent is **void** — re-offer the walk. 🔴 **A multi-app
-   feature needs a walk that covered each in-scope app**: a sign-off recorded PARTIAL with an app's
-   items unexercised is not a full walk, and those items are named in the verdict.
+   a human typed it; a `✅ SIGNED OFF` header written by an agent is **void** — re-offer the walk.
+   🔴 **A multi-app feature needs a walk that covered each in-scope app**: a sign-off recorded PARTIAL
+   with an app's items unexercised is not a full walk, and those items are named in the verdict.
    **Agent-verified** (`walk: agent-pass …`): the proof is instead `<WS>/agent-walk/round-<n>/report.md`
    with every item `PASS` at a sha this verify covers. It proves an agent walked it — never that a
    human did — and the verdict says so in its first line.
