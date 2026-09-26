@@ -148,6 +148,7 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     // shell — so an unfilled block reads as absent, which is what an unfilled block means.
     ticket: unfilled(fm.ticket) ? null : (fm.ticket ?? null),
     design: unfilled(fm.design) ? null : (fm.design ?? null),
+    agentWalk: agentWalkOf(fm.agent_walk),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
 }
@@ -160,6 +161,23 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
 const unfilled = (block) => {
   if (!block || typeof block !== 'object') return false
   return Object.values(block).some((v) => typeof v === 'string' && /^<.*>$/.test(v.trim()))
+}
+
+/**
+ * The optional `agent_walk:` block — what an unattended /builder:fleet run needs. Absent, not a
+ * map, or still carrying a template `<placeholder>` → null, and `--agent-walk` refuses. `parallel`
+ * defaults to 3; `worktrees` is resolved by the fleet (default: a sibling of the repo).
+ */
+const agentWalkOf = (block) => {
+  if (!block || typeof block !== 'object' || Array.isArray(block) || unfilled(block)) return null
+  return {
+    driver: block.driver ?? null,
+    claudeArgs: block.claude_args ?? null,
+    worktrees: block.worktrees ?? null,
+    parallel: Number.isInteger(block.parallel) && block.parallel > 0 ? block.parallel : 3,
+    reset: block.reset ?? null,
+    stop: block.stop ?? null,
+  }
 }
 
 /** Print the reason and exit — the shared failure path for every builder script. */
