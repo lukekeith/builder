@@ -5,7 +5,7 @@ description: Turn an audited feature spec into a committed implementation plan a
 
 # `/builder:plan` — the audited spec becomes phases
 
-Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto]`**. Flags:
+Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-walk]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
@@ -120,7 +120,10 @@ heading at any level**: any heading between two task blocks is swept into the ea
 **A plan landing at 9+ phases is a feature that should be two.** Present the split before taking any
 go-ahead — by delivery slice or by domain — and proceed only on the split, or on an explicit "build
 it whole". **`--auto` does not decide this**: a split creates feature folders, which is a scope
-change and outside autopilot's remit; present it and stop.
+change and outside autopilot's remit; present it and stop. **Under `--agent-walk`** there is nobody
+to present it to: write `blocked: "plan wants a split into <parts> — clears when a human rules on it"`
+to the manifest, commit `chore(<ticket-or-feature>): <feature> — parked: plan wants a split`, and end
+the run (resume §`--agent-walk`).
 
 ## Writing the plan
 

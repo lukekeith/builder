@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
+description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature (except a draft PR for an agent-verified feature under --agent-walk). Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
 ---
 
 # `/builder:resume` — where a feature stands, and the next step
@@ -78,8 +78,9 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `verify: READY` **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
 | `verify: READY`, `hold: none`, `pr: none` | §Ship |
 | `hold:` set | 🛑 **parked** — local gates only. Nothing pushes; the hold is the human's to lift |
-| `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. Never under `--agent-walk` |
-| `pr: #N` open, SPEC header not yet `SHIPPED` | `/builder:ship --path <folder>` **on the open PR**, then watch CI. Merging is the user's call |
+| `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name **and** the manifest has an `agent-walk:` line (`on` or `off` — it was agent-walked) | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. **Not yet** → fall through to the next row that fits. Never under `--agent-walk` |
+| `pr: #N` set **and** `walk: agent-pass …` | 🔒 **stop — a draft PR awaiting the human.** They test it, then type `/builder:signoff --path <folder> <their words>`; ready, ship and merge wait on that. Under `--agent-walk`, end the run |
+| `pr: #N` open, `walk:` carries a human name, SPEC header not yet `SHIPPED` | `/builder:ship --path <folder>` **on the open PR**, then watch CI. Merging is the user's call |
 | **a requirement changed · a ruling reversed · a conflict surfaced** — at any state | `/builder:revise --path <folder> <the change>` first, then re-enter this table |
 
 `pr:` is written **here**, by §Ship, once the PR is open. `hold:` and the sign-off header are
@@ -224,7 +225,9 @@ already have, edits the design, or widens scope. Nothing about it touches the PR
 ## `--agent-walk`
 
 Unattended mode, for `/builder:fleet` (REFERENCE §Flags). It **implies `--auto`** and is recorded on
-the manifest as `agent-walk: on YYYY-MM-DD`, so a cold session keeps it. No `agent_walk:` block in the
+the manifest as `agent-walk: on YYYY-MM-DD`, so a cold session keeps it. That persisted line governs
+unattended runs only: a human `/builder:signoff` sets it to `agent-walk: off`, so the human's own
+`/builder:resume` afterwards is interactive and offers **Mark PR ready**. No `agent_walk:` block in the
 config → refuse in one line naming `/builder:init --update`.
 
 🔴 **Never call AskUserQuestion or ExitPlanMode** — nobody is there to answer, and a headless run that
@@ -244,12 +247,13 @@ asks hangs until it times out. Every point that would ask resolves one of two wa
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | The walk | `/builder:agent-walk --path <folder>` |
 | Opening the PR | §Ship's draft path, no question — starting the fleet was the permission |
+| After the draft PR (`pr:` set) | **stop — the run ends.** Marking it ready, `/builder:ship` and merging are the human's, after their `/builder:signoff` |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
-`--no-dev-env` when this run has it — `--auto` too, because plan, audit and align don't read
-`--agent-walk` and would otherwise still raise their own pauses (a plan step's `ExitPlanMode` for the
-go-ahead, for one); they do already honour `--auto`, so that's what settles them. Under
+`--no-dev-env` when this run has it — `--auto` too, because plan, audit and align read `--agent-walk`
+only to park (a plan's split) and would otherwise still raise their own pauses (a plan step's
+`ExitPlanMode` for the go-ahead, for one); they do already honour `--auto`, so that's what settles them. Under
 `--no-dev-env`, reaching walk readiness writes `ready: pending "dev env (fleet walk lane)"`, commits,
 and ends the run.
 
@@ -292,6 +296,9 @@ the unblocked feature closest to done. On selection, continue at Step 1 with tha
    `report.md` table. Under `--agent-walk` there is no question here. Step 3 records `pr:` as usual.
 3. **Write `pr: #N` to the manifest yourself and commit it** — `gh pr view --json number --jq
    .number` — plus `next: watch CI, then /builder:ship --path <folder>`. Nothing else writes that line.
+   🔴 **Agent-verified: §Ship ends here** — no CI watch, no ship. `next:` is `🔒 human: test it, then
+   /builder:signoff --path <folder>`; under `--agent-walk` the run ends. After the human's sign-off,
+   Step 1 asks **Mark PR ready**, and steps 4–5 run then, on the open PR.
 4. **Watch CI.** Merging is the user's call.
 5. **On the open PR:** `/builder:ship --path <folder>` flips the SPEC header to SHIPPED, removes
    `MANIFEST.md` and deletes the workspace.

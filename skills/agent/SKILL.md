@@ -20,15 +20,15 @@ node <builder>/scripts/list-features.mjs --json
 ```
 
 A row is offered when `done` is false, it has no `pr`, its `manifest.blocked` is unset or `none`, and
-its `state` is one of `spec aligned audited planned building built signed-off verified`. No config
-`agent_walk:` block → stop here and name `/builder:init --update`. Nothing offerable → say so, and
-name `/builder:brainstorm` for writing a spec. Parked rows are listed underneath as a count with
+its `manifest.state` is one of `spec aligned audited planned building built signed-off verified`. No
+config `agent_walk:` block → stop here and name `/builder:init --update`. Nothing offerable → say so,
+and name `/builder:brainstorm` for writing a spec. Parked rows are listed underneath as a count with
 their reasons, so it's clear why they're missing.
 
 ## 2. Pick — one multi-select
 
-One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the label; its step and
-`nextStep` as the description. **More than four offerable** → offer the four most recently touched
+One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the label; its
+`manifest.state` and `nextStep` as the description. **More than four offerable** → offer the four most recently touched
 (`updatedAt`), and say in the question that any others can be named with
 `/builder:fleet <feature> <feature>…`. Nothing picked → stop.
 

@@ -160,6 +160,12 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 4. Hand off ending `say go to continue here, or run /clear first, then /builder:resume --path <folder>`
    — all state is on disk, so continuing in this session loses nothing but room.
 
+**Under `--agent-walk`, a stop parks — nobody is there to ask.** Every one of the five stop classes,
+and the start of a phase in a `commit: manual` app, also writes `blocked: "<stop class> — clears when
+<what>"` to the manifest per resume §`--agent-walk` — in the same ledger line and manifest commit as
+steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>` — then **ends the
+run**. Never ask.
+
 ## When the last phase signs
 
 1. **Fast gates** for every app the build touched, as at any phase close.

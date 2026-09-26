@@ -20,8 +20,8 @@ never condenses, and never runs `/builder:signoff`. It exists so an unattended r
 | the config has no `agent_walk:` block | refuse; name `/builder:init --update` |
 | `blocked:` set | parked — print it, run nothing |
 | `walk:` already set | nothing to do; hand back to `/builder:resume --path <folder>` |
-| `ready:` is not `yes` at the current HEAD | not walkable yet — hand back to `/builder:resume` (walk readiness comes first) |
-| `state: built`, `walk: none`, `ready: yes` at HEAD | run |
+| `ready:` is not `yes <sha>` with no code commit since that sha (manifest/doc-only commits don't count) | not walkable yet — hand back to `/builder:resume` (walk readiness comes first) |
+| `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
 
 ## 1. Which round
 
@@ -54,8 +54,8 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
 - Every `walk.md` item present and `PASS` — `UNVERIFIABLE` allowed only when there is no driver, and
   each one listed — → **AGENT-PASS**.
-- Any `FAIL`, or an item of `walk.md` missing from the report (count it `FAIL — not walked`) →
-  **AGENT-PROBLEMS**.
+- Any `FAIL`, an item of `walk.md` missing from the report (count it `FAIL — not walked`), or any
+  `UNVERIFIABLE` item while a driver is configured → **AGENT-PROBLEMS**.
 
 ## 4. Write it
 
