@@ -73,6 +73,10 @@ the answer is a choice:
   `.mcp.json`, or `playwright`/`cypress` in a manifest; else ask; `claude_args` — recommend
   `--permission-mode bypassPermissions` and **say plainly** it lets every headless run execute any
   command inside its fleet worktree without asking; `reset` and `stop` from the §Walk readiness recon;
+  `copy` — recommend `.env` when an untracked `.env` exists; `setup` — the repo's install command
+  (`npm ci`, and so on); `env`/`start`/`smoke` — recommend an isolated second env, on other ports and
+  its own database, whenever §Walk readiness says the dev servers are the human's own or must not be
+  started twice; `parallel: 1` when the test suite shares one database;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.
@@ -99,7 +103,10 @@ mkdir -p .claude && cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder
   `- none recorded yet` line rather than a placeholder. **No `<…>` may survive** outside a code block.
 
 `--update`: edit the existing file in place — no `cp` — touching only gaps, placeholders and missing
-apps, and list each change.
+apps, and list each change. When the config has **no `agent_walk:` block**, that's not a gap to fill
+silently — **offer it once**: "Add an agent_walk block for unattended /builder:agent and
+/builder:fleet runs? (not yet / yes)". On yes, run §3's `agent_walk` questions and write the block; on
+*not yet*, leave the config without one and don't ask again this run.
 
 ## 5. Prove it
 

@@ -559,6 +559,22 @@ re-walk follows, and at the end of an xs/sm change the human will look at. The c
 config's **§Walk readiness**; a config without that section → infer them from the repo exactly as
 `/builder:init` would, say that you did, and suggest `/builder:init --update` to record them.
 
+**Under `--agent-walk`, when the config's `agent_walk.start` is set**, the fleet has already started
+an isolated dev env for this worktree, with the config's `agent_walk.env` in the environment, before
+this step ever runs. Readiness there:
+
+- still applies migrations and regenerates — steps 1–2 below — but against **that** environment's
+  database;
+- runs `agent_walk.smoke` in step 3, in place of §Walk readiness's own **smoke**;
+- 🔴 **never runs §Walk readiness's `start`, and never restarts anything** — the fleet owns that
+  process for the whole walk, and restarting it out from under a running poll is the race this split
+  exists to avoid.
+
+A restart-class change — the kind step 2 would otherwise restart for — parks instead:
+`blocked: "walk env needs a restart — clears on the next fleet run, which starts it fresh"`. The
+walker's URLs, wherever step 3 loads a page or hits an endpoint, come from `agent_walk.driver` and
+`agent_walk.env`, never from §Walk readiness's own start/smoke commands.
+
 1. **Migrations.** List the migrations this branch adds
    (`git diff --name-only --diff-filter=A <base_branch>...HEAD -- <the config's migrations path>`),
    then run the config's **status** command against the **dev** database.

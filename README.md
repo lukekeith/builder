@@ -141,8 +141,16 @@ per `walk.md` item. Every feature ends as a **draft PR** marked `🤖 AGENT-VERI
 or **parked** with the reason a human is needed. Nothing waits on a question. Review the drafts, walk
 what you like, and `/builder:signoff` in a feature's worktree to mark it ready.
 
-Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` adds it. Headless runs
-need permissions set explicitly (`claude_args`), because nobody is there to approve a prompt.
+Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` offers to add one when
+the config has none. Headless runs need permissions set explicitly (`claude_args`), because nobody is
+there to approve a prompt.
+
+Add `agent_walk.start` (and `smoke`) to give the walk lane its own dev env, on other ports and its own
+database, instead of the one you're using — the fleet starts it fresh after each `reset` and always
+stops it after, and never restarts it mid-walk. `copy` brings along untracked files (a `.env`, local
+certs) a fresh worktree wouldn't have, `setup` runs once per new worktree, and `env` reaches every
+hook and every headless `claude` child, with `{feature}` filled in so each worktree can point at its
+own port and database.
 
 ## What it never does
 

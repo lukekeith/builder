@@ -4,6 +4,27 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.6.0
+
+**An isolated walk env, owned by the fleet.** `agent_walk` gains five optional keys: `copy` (untracked
+files — a `.env`, local certs — brought into each NEW worktree; never overwrites a tracked file, and a
+missing source is just noted), `setup` (runs once per new worktree, after `copy`; a failure parks the
+feature with `setup failed — see <log>` and is retried on the next fleet run), `env` (whitespace-
+separated `KEY=VALUE` pairs, quotes allowed, `{feature}` substituted, merged over the environment and
+passed to every hook and every headless `claude -p` child — it can never set `CLAUDE_PROJECT_DIR`; the
+fleet drops it and notes that), and `start`/`smoke` (a second dev env for the walk lane: the fleet
+spawns `start` detached after `reset`, polls `smoke` every 2s for up to 5 min, and — after the walk
+ends for any reason, including a park — always kills `start`'s process group before running `stop`).
+If `smoke` never passes, or `start` exits first, the feature parks with "walk env didn't come up". A
+`start` with no `smoke` just waits 10s. REFERENCE §Walk readiness now says what changes when the fleet
+has already started this env: it runs `agent_walk.smoke` in place of its own, never starts or
+restarts anything, and a restart-class change parks instead of restarting.
+
+**`/builder:init`'s `--update`** now **offers** an `agent_walk:` block once, rather than filling it in
+outright, when the config has none — a missing optional block is not a gap.
+
+**Correction:** 2.5.0 said `/builder:init --update` adds the `agent_walk:` block. It offers it instead.
+
 ## 2.5.0
 
 **Unattended runs.** `/builder:agent` lets you tick unfinished features — at any step before the PR — and hands them to agents until each is a draft PR or parked with a reason; `/builder:fleet` takes a batch of written specs to draft PRs with no human in the
