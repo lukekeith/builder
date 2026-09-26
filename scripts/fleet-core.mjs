@@ -25,15 +25,17 @@ export function laneOf(mf) {
 
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
 export function decide({ lane, manifestText, exit, failures, runs, cap, progressed }) {
+  // A PR on the manifest is done however the run ended — one that timed out after `pr:` was
+  // written must not be retried into a second PR.
+  const mf = manifestText == null ? null : parseManifest(manifestText)
+  if (mf && laneOf(mf) === 'done') return { action: 'done', pr: mf.pr ?? null }
   if (exit !== 0) {
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
     return failures >= 1 ? { action: 'fail', reason: `run ${what} twice` } : { action: 'retry' }
   }
-  if (manifestText == null) return { action: 'park', reason: 'MANIFEST.md missing after the run' }
-  const mf = parseManifest(manifestText)
+  if (mf == null) return { action: 'park', reason: 'MANIFEST.md missing after the run' }
   const next = laneOf(mf)
   if (next === 'blocked') return { action: 'park', reason: unquote(mf.blocked) }
-  if (next === 'done') return { action: 'done', pr: mf.pr ?? null }
   if (next === 'unknown') return { action: 'park', reason: `manifest state '${mf.state ?? ''}' is not one the fleet knows` }
   if (lane === 'build' && next === 'walk') return { action: 'handoff' }
   if (!progressed) return { action: 'park', reason: 'no progress — the run changed neither MANIFEST.md nor HEAD' }

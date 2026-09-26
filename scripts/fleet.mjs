@@ -98,9 +98,14 @@ function requested() {
   })
 }
 
-/** The branch a feature runs on: the one it is already underway on, else a fresh builder/<feature>. */
+/**
+ * The branch a feature runs on: the one it is already underway on, else a fresh builder/<feature>.
+ * Before `planned`, a manifest's `branch:` is the branch the spec was written on, not a build
+ * branch — several specs may share it — so it is honoured only from `planned` on.
+ */
+const UNDERWAY = new Set(['planned', 'building', 'built', 'signed-off', 'verified'])
 function branchOf(feature, mf) {
-  const own = mf.branch && mf.branch !== 'none' ? mf.branch : null
+  const own = UNDERWAY.has(mf.state) && mf.branch && mf.branch !== 'none' ? mf.branch : null
   return own && own !== CFG.baseBranch ? own : `builder/${feature}`
 }
 
@@ -151,11 +156,17 @@ if (!asked.length && !Object.keys(fleet.features).length) {
 }
 const fresh = []
 const refused = {}
+const branchOwner = new Map(Object.entries(fleet.features).map(([f, row]) => [row.branch, f]))
 for (const feature of asked) {
   if (fleet.features[feature]) continue // already in the fleet — resumed below
-  const why = preflight(feature)
+  let why = preflight(feature)
+  const branch = why ? null : branchOf(feature, parseManifest(readManifest(ROOT, feature)))
+  if (!why && branchOwner.has(branch)) why = `${branchOwner.get(branch)} and ${feature} both resolve to branch ${branch}`
   if (why) refused[feature] = why
-  else fresh.push(feature)
+  else {
+    fresh.push(feature)
+    branchOwner.set(branch, feature)
+  }
 }
 
 if (flag('--dry-run')) {
@@ -173,41 +184,92 @@ if (flag('--dry-run')) {
 // ---- lock ----------------------------------------------------------------------------------
 const LOCK = join(DIR, 'lock')
 mkdirSync(DIR, { recursive: true })
-if (existsSync(LOCK)) {
-  const pid = Number(readFileSync(LOCK, 'utf8'))
-  let alive = false
+/** Create the lock only if there is none — 'wx' makes check-and-take one step. */
+const takeLock = () => {
   try {
-    process.kill(pid, 0)
-    alive = true
+    writeFileSync(LOCK, String(process.pid), { flag: 'wx' })
+    return true
   } catch (e) {
-    alive = e.code === 'EPERM'
+    if (e.code === 'EEXIST') return false
+    throw e
+  }
+}
+let tookOverStaleLock = false
+if (!takeLock()) {
+  let pid = NaN
+  try {
+    pid = Number(readFileSync(LOCK, 'utf8'))
+  } catch {}
+  let alive = false
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      process.kill(pid, 0)
+      alive = true
+    } catch (e) {
+      alive = e.code === 'EPERM'
+    }
   }
   if (alive) {
     console.error(`Another fleet is running in this repo (pid ${pid}). Stop it, or wait for it.`)
     process.exit(3)
   }
   console.error(`note: taking over a stale fleet lock (pid ${pid} is gone)`)
+  try {
+    unlinkSync(LOCK)
+  } catch {}
+  if (!takeLock()) {
+    console.error('Another fleet took the lock just now. Stop it, or wait for it.')
+    process.exit(3)
+  }
+  tookOverStaleLock = true
 }
-writeFileSync(LOCK, String(process.pid))
 const unlock = () => {
   try {
     unlinkSync(LOCK)
   } catch {}
 }
+process.on('exit', unlock)
 const save = () => saveFleet(ROOT, fleet)
 const active = new Set()
+let stopping = false
 const stopAll = (code) => {
+  if (stopping) return
+  stopping = true
   for (const c of active) {
     try {
       process.kill(-c.pid, 'SIGTERM')
     } catch {}
   }
+  // A walk cut short still gets its dev env stopped.
+  for (const f of Object.values(fleet.features)) if (f.status === 'walking' && f.worktree) hook(AW.stop, f.worktree)
   save()
   unlock()
   process.exit(code)
 }
 process.on('SIGINT', () => stopAll(130))
 process.on('SIGTERM', () => stopAll(143))
+process.on('SIGHUP', () => stopAll(129))
+process.on('unhandledRejection', (e) => {
+  console.error('fleet: unhandled rejection:', e)
+  stopAll(1)
+})
+process.on('uncaughtException', (e) => {
+  console.error('fleet: uncaught exception:', e)
+  stopAll(1)
+})
+
+// The fleet that left the stale lock may have left its headless runs behind — end them before
+// their features are queued again, or two runs would work one worktree.
+if (tookOverStaleLock) {
+  for (const f of Object.values(fleet.features)) {
+    if (f.pgid) {
+      try {
+        process.kill(-f.pgid, 'SIGKILL')
+      } catch {}
+    }
+    delete f.pgid
+  }
+}
 
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
@@ -230,6 +292,8 @@ function runClaude(wt, feature, lane, n) {
       settled = true
       clearTimeout(timer)
       active.delete(child)
+      delete fleet.features[feature].pgid
+      save()
       try {
         child.stdout.destroy()
       } catch {}
@@ -249,6 +313,11 @@ function runClaude(wt, feature, lane, n) {
       detached: true,
     })
     active.add(child)
+    // Recorded so a fleet that takes over this one's stale lock can end the group.
+    if (child.pid) {
+      fleet.features[feature].pgid = child.pid
+      save()
+    }
     child.stdout.pipe(out, { end: false })
     child.stderr.pipe(out, { end: false })
     const timer = setTimeout(() => {
@@ -280,7 +349,8 @@ async function drive(feature, lane) {
   let failures = 0
   for (;;) {
     const before = snapshot(f.worktree, feature)
-    f.runs = (f.runs ?? 0) + 1
+    f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
+    f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
     save()
     const { exit, log } = await runClaude(f.worktree, feature, lane, f.runs)
     f.log = log
@@ -289,7 +359,7 @@ async function drive(feature, lane) {
       manifestText: readManifest(f.worktree, feature),
       exit,
       failures,
-      runs: f.runs,
+      runs: f.runsThisTime,
       cap: RUN_CAP,
       progressed: snapshot(f.worktree, feature) !== before,
     })
@@ -350,6 +420,7 @@ const buildQueue = []
 const walkQueue = []
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
+  f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   try {
     f.worktree = ensureWorktree(feature, f.branch)
   } catch (e) {
