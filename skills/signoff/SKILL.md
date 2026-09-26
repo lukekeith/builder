@@ -106,7 +106,7 @@ writes it: `go-ahead: <name YYYY-MM-DD>`, `head`, `next: /builder:resume --path 
 **never as a sign-off**: no header line, no condense, the PR lock untouched.
 
 ```
-📍 <feature>: go-ahead recorded — next: /builder:resume --path <folder>
+📍 <feature>: go-ahead recorded — next: /builder:resume --path <folder> · or say go
 ```
 
 ## Re-signing
@@ -130,9 +130,12 @@ description, and the SPEC header carries it from then on.
 
 | Outcome | Footer |
 |---|---|
-| PASS | `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder>` |
-| PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder>` |
-| PROBLEMS / PARTIAL | `📍 <feature>: <n> fixes owed — next: /builder:resume --path <folder>` |
+| PASS | `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
+| PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder> · or say go` |
+| PROBLEMS / PARTIAL | `📍 <feature>: <n> fixes owed — next: /builder:resume --path <folder> · or say go` |
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
 
 On a hold, name the local-only steps that remain open and that the PR stays parked until the human
 lifts it. The condense's own line names what it removed: `§Plan index stripped · PLAN.md removed`.

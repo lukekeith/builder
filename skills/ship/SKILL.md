@@ -52,8 +52,11 @@ walk keeps **both** the §Plan index and `PLAN.md`.
    or standalone as `docs(<key>): condense <feature> at sign-off`.
 
 ```
-📍 <feature>: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path <folder>
+📍 <feature>: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path <folder> · or say go
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
+ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
 
 The middle clause names what actually went. A converted folder names `§Plan index stripped` alone, and
 says its existing phase docs stay.

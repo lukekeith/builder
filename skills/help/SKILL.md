@@ -148,7 +148,11 @@ with that line:
 📍 <feature>: <state> — next: <command>
 ```
 
-After any `/clear`: `/builder:resume --path <registry>/<feature>`. Status of everything:
+**You don't have to paste it.** Reply **go** (or yes, proceed, continue) and the footer's command runs.
+The exceptions are the ones that are yours by design: `/builder:signoff` and the walk, a step only you
+can do, a hold, and opening the PR, which asks once. "go, but …" is a change, not a go.
+
+After any `/clear`: `/builder:resume --path <registry>/<feature>`, or just ask to continue. Status of everything:
 `/builder:status`. Process scratch — briefs, the ledger, the walk script —
 lives in a git-ignored workspace; it is never something you have to read.
 
