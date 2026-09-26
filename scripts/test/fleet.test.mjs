@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
@@ -11,13 +12,14 @@ const FLEET = join(HERE, '..', 'fleet.mjs')
 const STUB = join(HERE, 'fixtures', 'stub-claude.mjs')
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim()
 
-function makeRepo(features, { reset, stop } = {}) {
+/** `lines` are extra `agent_walk:` keys, e.g. ['copy: .env.local', 'setup: pnpm i']. */
+function makeRepo(features, { reset, stop, lines = [] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'fleet-'))
   git(root, 'init', '-q', '-b', 'main')
   git(root, 'config', 'user.email', 't@t')
   git(root, 'config', 'user.name', 't')
   mkdirSync(join(root, '.claude'))
-  const hooks = [reset && `  reset: ${reset}`, stop && `  stop: ${stop}`].filter(Boolean).join('\n')
+  const hooks = [reset && `  reset: ${reset}`, stop && `  stop: ${stop}`, ...lines.map((l) => `  ${l}`)].filter(Boolean).join('\n')
   writeFileSync(
     join(root, '.claude/builder.md'),
     `---\nproject: fleet-test\nregistry: docs/features\nbase_branch: main\napps:\n  - name: app\n    path: app/\n    role: app\n    commit: auto\n` +
@@ -354,4 +356,183 @@ test('no agent_walk block refuses with the fix', () => {
   const r = runFleet(root, ['a'], {})
   assert.equal(r.status, 2)
   assert.match(r.stderr, /\/builder:init --update/)
+})
+
+// ---- the walk env: copy, setup, env, start, smoke ------------------------------------------
+
+test('copy brings untracked files into a new worktree; a missing path is noted', () => {
+  const root = makeRepo(['a'], { lines: ['copy: .env.local, secrets, missing.txt'] })
+  writeFileSync(join(root, '.env.local'), 'KEY=1\n')
+  mkdirSync(join(root, 'secrets/deep'), { recursive: true })
+  writeFileSync(join(root, 'secrets/deep/k'), 'shh\n')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const wt = r.fleet.features.a.worktree
+  assert.equal(readFileSync(join(wt, '.env.local'), 'utf8'), 'KEY=1\n')
+  assert.equal(readFileSync(join(wt, 'secrets/deep/k'), 'utf8'), 'shh\n')
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /missing\.txt/)
+})
+
+test('copy never overwrites a tracked file', () => {
+  const root = makeRepo(['a'], { lines: ['copy: app, extra.txt'] })
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/tracked.txt'), 'committed\n')
+  git(root, 'add', 'app/tracked.txt')
+  git(root, 'commit', '-qm', 'tracked')
+  writeFileSync(join(root, 'app/tracked.txt'), 'local edit\n')
+  writeFileSync(join(root, 'app/untracked.txt'), 'local only\n')
+  writeFileSync(join(root, 'extra.txt'), 'extra\n')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const wt = r.fleet.features.a.worktree
+  assert.equal(readFileSync(join(wt, 'app/tracked.txt'), 'utf8'), 'committed\n')
+  assert.equal(readFileSync(join(wt, 'app/untracked.txt'), 'utf8'), 'local only\n')
+  assert.equal(readFileSync(join(wt, 'extra.txt'), 'utf8'), 'extra\n')
+})
+
+test('setup runs once per new worktree, not again when the worktree is reused', () => {
+  const root = makeRepo(['a'])
+  // setup's command names a file under the repo, so the repo path is needed first — write it in.
+  const count = join(root, '.stub/setup-count')
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('agent_walk:\n', `agent_walk:\n  setup: pwd >> ${count}\n`))
+  git(root, 'commit', '-qam', 'setup')
+  const scenario = { a: ['audited', 'BLOCK:wait'] }
+  const first = runFleet(root, ['a'], scenario)
+  assert.equal(first.fleet.features.a.status, 'parked', first.stderr)
+  runFleet(root, [], scenario)
+  const lines = readFileSync(count, 'utf8').trim().split('\n')
+  assert.equal(lines.length, 1, 'setup ran once')
+  assert.equal(realpathSync(lines[0]), realpathSync(first.fleet.features.a.worktree), 'in the worktree')
+})
+
+test('a failed setup fails the feature, naming the setup log', () => {
+  const root = makeRepo(['a'], { lines: ['setup: echo nope; exit 4'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 1)
+  assert.equal(r.fleet.features.a.status, 'failed')
+  assert.match(r.fleet.features.a.reason, /^setup failed — see .*a-setup\.log$/)
+  assert.match(readFileSync(join(root, '.builder/fleet/logs/a-setup.log'), 'utf8'), /nope/)
+  assert.equal(r.calls.length, 0, 'no claude run')
+})
+
+test('env reaches every claude child with {feature} filled in; CLAUDE_PROJECT_DIR stays out', () => {
+  const root = makeRepo(['a'], { lines: ['env: WALK_MARK=x-{feature} OTHER="y z"'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.equal(starts.length, 7)
+  assert.ok(starts.every((l) => l.includes(' walk_mark=x-a ') && l.endsWith('project_dir=-')), starts.join('\n'))
+})
+
+test('env reaches the hooks', () => {
+  const root = makeRepo(['a'], { reset: `sh -c 'echo $WALK_MARK > reset-env'`, lines: ['env: WALK_MARK=x-{feature}'] })
+  const r = runFleet(root, ['a'], { a: ['READY-PENDING', 'PR:#1'] })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'reset-env'), 'utf8'), 'x-a\n')
+})
+
+// The walk env for the start/smoke tests: a tiny server on a port the test picks, which writes
+// its pid once listening and exits on SIGTERM; smoke connects to that port.
+const freePort = () =>
+  new Promise((ok) => {
+    const s = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = s.address()
+      s.close(() => ok(port))
+    })
+  })
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+async function walkEnvRepo(feature, { smoke } = {}) {
+  const port = await freePort()
+  const scratch = mkdtempSync(join(tmpdir(), 'fleet-env-'))
+  const server = join(scratch, 'server.mjs')
+  const pidFile = join(scratch, 'start.pid')
+  writeFileSync(
+    server,
+    `import { createServer } from 'node:net'\nimport { writeFileSync } from 'node:fs'\n` +
+      `const s = createServer((c) => c.end()).listen(Number(process.env.WALK_PORT), '127.0.0.1', () => writeFileSync(process.env.WALK_PID, String(process.pid)))\n` +
+      `process.on('SIGTERM', () => s.close(() => process.exit(0)))\n`
+  )
+  const probe = join(scratch, 'smoke.mjs')
+  writeFileSync(
+    probe,
+    `import { connect } from 'node:net'\n` +
+      `connect(Number(process.env.WALK_PORT), '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))\n`
+  )
+  const root = makeRepo([feature], {
+    lines: [`env: WALK_PORT=${port} WALK_PID=${pidFile}`, `start: node ${server}`, `smoke: ${smoke ?? `node ${probe}`}`],
+  })
+  return { root, pidFile }
+}
+const FAST = { FLEET_SMOKE_INTERVAL_MS: '100' }
+
+test('start and smoke bring up a walk env for the walk, and it is gone afterwards', async () => {
+  const { root, pidFile } = await walkEnvRepo('s')
+  const r = runFleet(root, ['s'], { s: HAPPY }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.fleet.features.s.status, 'done')
+  assert.equal(r.fleet.features.s.startPgid, undefined)
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  assert.equal(alive(pid), false, 'the start process is gone')
+  assert.ok(existsSync(join(root, '.builder/fleet/logs/s-start.log')), 'start output is logged')
+})
+
+test('start is killed even when the walk parks', async () => {
+  const { root, pidFile } = await walkEnvRepo('s')
+  const r = runFleet(root, ['s'], { s: ['READY-PENDING', 'BLOCK:agent walk failed twice'] }, FAST)
+  assert.equal(r.fleet.features.s.status, 'parked')
+  assert.equal(r.fleet.features.s.reason, 'agent walk failed twice')
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  assert.equal(alive(pid), false, 'the start process is gone')
+})
+
+test('a smoke that never passes parks the feature and skips the walk', async () => {
+  const { root, pidFile } = await walkEnvRepo('s', { smoke: 'exit 1' })
+  const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '1500' })
+  assert.equal(r.fleet.features.s.status, 'parked')
+  assert.match(r.fleet.features.s.reason, /^walk env didn't come up — see .*s-start\.log$/)
+  assert.equal(r.calls.filter((l) => l.split(' ')[2] === 'walk').length, 0, 'no walk-lane run')
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  assert.equal(alive(pid), false, 'the start process is gone')
+})
+
+test('a start that exits at once parks promptly', () => {
+  const root = makeRepo(['s'], { lines: ['start: echo bye', 'smoke: exit 1'] })
+  const t0 = Date.now()
+  const r = runFleet(root, ['s'], { s: HAPPY }, { FLEET_SMOKE_TIMEOUT_MS: '60000' })
+  assert.equal(r.fleet.features.s.status, 'parked')
+  assert.match(r.fleet.features.s.reason, /walk env didn't come up/)
+  assert.match(readFileSync(join(root, '.builder/fleet/logs/s-start.log'), 'utf8'), /bye/)
+  assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`)
+})
+
+test('SIGHUP mid-walk kills the start group before running stop', async () => {
+  const { root, pidFile } = await walkEnvRepo('h')
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ h: ['READY-PENDING', 'HANG'] }))
+  const fleet = spawn('node', [FLEET, 'h'], {
+    cwd: root,
+    stdio: 'ignore',
+    env: { ...process.env, ...FAST, FLEET_CLAUDE: STUB, STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub') },
+  })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  const calls = join(root, '.stub/calls.log')
+  const deadline = Date.now() + 10000
+  while (!(existsSync(calls) && / h walk .* HANG /.test(readFileSync(calls, 'utf8')))) {
+    assert.ok(Date.now() < deadline, 'the walk run never started')
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  assert.equal(alive(pid), true, 'the walk env is up during the walk')
+  fleet.kill('SIGHUP')
+  assert.equal(await exited, 129)
+  assert.equal(alive(pid), false, 'the start process is gone')
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.equal(fj.features.h.startPgid, undefined)
 })

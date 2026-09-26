@@ -21,7 +21,7 @@ writeFileSync(countFile, String(n + 1))
 let step = scenario[n] ?? 'NOOP'
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
 const log = (s) => appendFileSync(join(S, 'calls.log'), `${s}\n`)
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {
