@@ -1,0 +1,43 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, dirname } from 'node:path'
+import { spawnSync, execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+const LIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'list-features.mjs')
+
+function repo(manifests) {
+  const root = mkdtempSync(join(tmpdir(), 'lf-'))
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nregistry: docs/features\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
+  for (const [name, body] of Object.entries(manifests)) {
+    mkdirSync(join(root, 'docs/features', name), { recursive: true })
+    writeFileSync(join(root, 'docs/features', name, 'MANIFEST.md'), `size: md\nnext: x\n${body}\n`)
+  }
+  const r = spawnSync('node', [LIST, '--json'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
+  assert.equal(r.status, 0, r.stderr)
+  return Object.fromEntries(JSON.parse(r.stdout).features.map((f) => [f.feature, f]))
+}
+
+test('a parked feature says so, with its reason', () => {
+  const rows = repo({ p: 'state: audited\nblocked: "plan wants to split — clears when you split it"' })
+  assert.equal(rows.p.nextStep, '⛔ parked — plan wants to split — clears when you split it')
+})
+
+test('an agent-walked feature is not reported as human-walked', () => {
+  const rows = repo({
+    a: 'state: built\nwalk: agent-pass 2026-09-26 abc123',
+    v: 'state: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc123\npr: #5',
+  })
+  assert.equal(rows.a.lastDone, 'Agent-walked — not human-tested')
+  assert.equal(rows.a.nextStep, 'Deep verify, then a draft PR')
+  assert.equal(rows.v.nextStep, 'Review the draft PR, then /builder:signoff')
+})
+
+test('an agent-walk run at built says the agent walks next', () => {
+  const rows = repo({ b: 'state: built\nready: yes 2026-09-26 abc\nagent-walk: on 2026-09-26' })
+  assert.equal(rows.b.nextStep, 'Agent walk (fleet)')
+})
