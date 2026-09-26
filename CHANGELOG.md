@@ -4,6 +4,29 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.5.0
+
+**Unattended runs.** `/builder:agent` lets you tick unfinished features — at any step before the PR — and hands them to agents until each is a draft PR or parked with a reason; `/builder:fleet` takes a batch of written specs to draft PRs with no human in the
+loop: one worktree and `builder/<feature>` branch per spec, builds in parallel, walks one at a time
+through the shared dev environment. `scripts/fleet.mjs` does the work and resumes from
+`.builder/fleet/fleet.json` if stopped, and continues a feature already underway on its own branch; `--dry-run` and `--status` show the plan and the table.
+
+**`--agent-walk`** — the mode the fleet runs in — implies `--auto` and never asks: each pause takes
+its recommendation or **parks** the feature with a new manifest line, `blocked:`, which
+`/builder:resume` honours until a human clears it. **`--no-dev-env`** keeps parallel builds off the dev
+environment. **`/builder:agent-walk`** replaces the human walk with a fresh agent working `walk.md`
+with the configured driver, and records `walk: agent-pass` and `🤖 AGENT-VERIFIED — not human-tested`
+— never a human sign-off. Two failed rounds park the feature.
+
+**The PR lock, amended once:** an agent-verified feature may open a **draft** PR; marking it ready
+still requires `/builder:signoff`, which stays human-only. A human PASS supersedes the agent's verdict.
+
+**Config:** an optional `agent_walk:` block (`driver`, `claude_args`, and optionally `worktrees`,
+`parallel`, `reset`, `stop`). Without it nothing changes. `/builder:init --update` adds it.
+
+**Scripts:** `scripts/manifest.mjs` (shared parser), `scripts/fleet-core.mjs`, `scripts/fleet.mjs`, and
+the first test suite — `node --test 'scripts/test/*.test.mjs'`.
+
 ## 2.4.0
 
 **Say "go" instead of pasting the next command.** Every handoff still ends with its 📍 footer, but a
