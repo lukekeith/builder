@@ -132,6 +132,8 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). The walk is `/builder:agent-walk`; the PR opens as a draft. Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm --size sm move the save button into the header` |
 
@@ -162,6 +164,7 @@ migration). Those still ask, as they would have.
 | a human's step (`<the human's step>`, apply a migration, restart a service) | only they can do it | the step, then "say go once it's done" |
 | a placeholder only the human can fill (`<what you want built>`, `<the change>`) | there is nothing to run yet | ask for the missing text |
 | `🛑 held` | the pipeline is parked on their call | the hold's words, and that lifting it is theirs |
+| `⛔ parked` (`blocked:` set) | an unattended run stopped on something only the human can settle | the reason, and "delete the `blocked:` line once it's settled, then say go" |
 | more than one candidate (`/builder:status`, the picker) | "go" doesn't say which | one AskUserQuestion over the candidates; a feature name or row picks directly |
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
@@ -240,11 +243,13 @@ apps: <app>+<app>                                     # the in-scope apps, from 
 contract: frozen <YYYY-MM-DD> | open | none           # none = no producer change
 hold: none | "<reason>"                               # 🛑 PR HELD, in the human's words
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
-walk: <name YYYY-MM-DD> | none
+walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: written by /builder:agent-walk — never a human sign-off
 verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
 <design.flag>: <the resolved ref and its set> | none   # prototype mode; key named by the config
 auto: on YYYY-MM-DD | off
+blocked: none | "<reason> — clears when <what>"       # parked by an unattended run; resume runs nothing while it is set
+agent-walk: on YYYY-MM-DD | off                        # --agent-walk, recorded so a cold session keeps it
 ```
 
 **Write moments** — the manifest commits at step transitions and stops, never per phase: spec
@@ -255,6 +260,11 @@ Per-phase state is a ledger line plus `git log`.
 **`apps:` and `contract:` are the multi-app lines.** `apps:` is the plus-joined in-scope list, so the
 picker shows blast radius without opening the spec. `contract:` is the freeze — §The contract freeze.
 A single-app repo writes `contract: none` and the freeze machinery stays quiet.
+
+**`blocked:` is not `hold:`.** `hold:` is a human parking a finished PR on purpose; `blocked:` is an
+unattended run that could not go on without a human — a scope question, a manual-commit app, a
+migration the config says a human applies, two failed agent walks. While it is set, `/builder:resume`
+prints it and runs nothing. The human resolves what it names and deletes the line.
 
 **Program variant:** replace `size:` with `tier: program`, drop `state:` (a program has no state of
 its own — its children carry theirs), and add one `child: <name> — <state>` line per child.

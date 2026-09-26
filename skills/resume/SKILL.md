@@ -5,7 +5,7 @@ description: Where a feature stands and the one next step — reads the feature'
 
 # `/builder:resume` — where a feature stands, and the next step
 
-Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--help]`**. Flags:
+Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--agent-walk] [--no-dev-env] [--help]`**. Flags:
 [REFERENCE](REFERENCE.md) §Flags — flags first, and **ignore any flag this step does not use rather
 than erroring on it**.
 
@@ -57,6 +57,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | The manifest says | Next |
 |---|---|
 | SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm --size md <the new thing>` |
+| `blocked:` set (anything but `none`) | ⛔ **parked — run no step.** Print the reason and what clears it (REFERENCE §MANIFEST.md). Under `--agent-walk`, end the run: the fleet reads the line |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
 | **a `SPEC.md` with no manifest** | half-written, or a half-finished conversion. Write the missing manifest from what the SPEC records, then re-enter this table |
@@ -70,12 +71,14 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — run REFERENCE §Walk readiness, then the build's walk script and `state: built`. Don't re-run the final review |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
-| `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk |
+| `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk. **Under `--agent-walk`:** `/builder:agent-walk --path <folder>` instead |
+| `state: built`, `walk: agent-pass …`, `verify: none` | `/builder:verify --path <folder>` — an agent pass unlocks verify and a **draft** PR, nothing more |
 | `state: signed-off` **and** `verify: none` | `/builder:verify --path <folder>` |
 | `verify: INCOMPLETE` | §Working `## Fixes`, then `/builder:verify --path <folder>` again — scoped |
 | `verify: READY` **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
 | `verify: READY`, `hold: none`, `pr: none` | §Ship |
 | `hold:` set | 🛑 **parked** — local gates only. Nothing pushes; the hold is the human's to lift |
+| `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. Never under `--agent-walk` |
 | `pr: #N` open, SPEC header not yet `SHIPPED` | `/builder:ship --path <folder>` **on the open PR**, then watch CI. Merging is the user's call |
 | **a requirement changed · a ruling reversed · a conflict surfaced** — at any state | `/builder:revise --path <folder> <the change>` first, then re-enter this table |
 
@@ -176,6 +179,9 @@ there.
 Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --path <folder>` again —
 **scoped**, per its §A re-verify is SCOPED — plus a re-walk of any signed-off surface the fix changed.
 
+Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>)`) end with REFERENCE
+§Walk readiness again, then `/builder:agent-walk --path <folder>` — never a human re-walk request.
+
 ## Programs (`tier: program`)
 
 A program manifest tracks one `child: <name> — <state>` line per child instead of a state of its own.
@@ -215,6 +221,38 @@ Autopilot for work whose shape is already agreed. Recorded on the manifest as
 `--auto` never writes a sign-off, opens or pushes a PR, lifts a `hold:`, drops a capability users
 already have, edits the design, or widens scope. Nothing about it touches the PR lock.
 
+## `--agent-walk`
+
+Unattended mode, for `/builder:fleet` (REFERENCE §Flags). It **implies `--auto`** and is recorded on
+the manifest as `agent-walk: on YYYY-MM-DD`, so a cold session keeps it. No `agent_walk:` block in the
+config → refuse in one line naming `/builder:init --update`.
+
+🔴 **Never call AskUserQuestion or ExitPlanMode** — nobody is there to answer, and a headless run that
+asks hangs until it times out. Every point that would ask resolves one of two ways:
+
+- **Take the recommendation** — when it is local and reversible.
+- **Park** — write `blocked: "<reason> — clears when <what>"` and `next: /builder:resume --path
+  <folder>` to the manifest, commit `chore(<ticket-or-feature>): <feature> — parked: <reason>`, print
+  the footer, and **end the run**.
+
+| Pause | Under `--agent-walk` |
+|---|---|
+| Decisions gate · go-ahead · prototype gap · audit code defect | as `--auto`: the recommendation, recorded `auto (recommended)` |
+| An open scope question · a plan that wants to split | park — the spec needs a human |
+| An audit `blocked:` finding | park, citing it |
+| An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
+| Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
+| The walk | `/builder:agent-walk --path <folder>` |
+| Opening the PR | §Ship's draft path, no question — starting the fleet was the permission |
+| **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
+
+**The flags carry through:** every step this command runs gets `--agent-walk`, and `--no-dev-env`
+when this run has it. Under `--no-dev-env`, reaching walk readiness writes `ready: pending "dev env
+(fleet walk lane)"`, commits, and ends the run.
+
+`--agent-walk` never writes a human sign-off, never marks a PR ready, never lifts a `hold:`, and never
+merges.
+
 ## The picker (no `--path`, no text)
 
 Never ask "which feature?" as an open question. Run
@@ -246,6 +284,9 @@ the unblocked feature closest to done. On selection, continue at Step 1 with tha
    "go" continued the pipeline, it did not name an outward-facing action. **One PR for the
    feature, never one per phase** — a phase is one app, and the apps ship together or the contract
    is live with only half its consumers.
+   **Agent-verified** (`walk: agent-pass …`): `git push -u origin <branch>`, then the same command
+   with `--draft`, the body adding `## 🤖 Agent walk — not human-tested` and the last round's
+   `report.md` table. Under `--agent-walk` there is no question here. Step 3 records `pr:` as usual.
 3. **Write `pr: #N` to the manifest yourself and commit it** — `gh pr view --json number --jq
    .number` — plus `next: watch CI, then /builder:ship --path <folder>`. Nothing else writes that line.
 4. **Watch CI.** Merging is the user's call.
@@ -261,6 +302,11 @@ exercised the finished feature in the running app and said, in their own words, 
 A green gate run or a code review is evidence for the human — never their sign-off. In doubt = you
 don't have it: ask. "It works" and "open the PR" are two different permissions — a sign-off can carry
 `🛑 PR HELD`.
+
+**The one exception — agent-verified drafts.** A feature whose `walk:` reads `agent-pass …` and whose
+`verify:` reads `READY` may open its PR **only as a draft**, with the agent walk report in its body
+under `## 🤖 Agent walk — not human-tested`. **Marking it ready (`gh pr ready`) requires a human
+sign-off**, exactly as opening a PR always has.
 
 🔴 **Where the config marks an app `commit: manual`, the lock is stricter still**: committing there
 is an explicit user call at every size and under every flag — typically because that app produces a
