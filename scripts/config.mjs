@@ -129,6 +129,15 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
   const apps = Array.isArray(fm.apps) ? fm.apps.filter((a) => a && a.name) : []
   if (!apps.length) return { ok: false, path, reason: `${CONFIG_PATH} frontmatter lists no apps.` }
 
+  // agentWalkOf can throw (a malformed `env:` pair) — that's a config-authoring mistake, not a
+  // crash, so it surfaces through the same {ok: false, reason} path as every other bad config.
+  let agentWalk
+  try {
+    agentWalk = agentWalkOf(fm.agent_walk)
+  } catch (err) {
+    return { ok: false, path, reason: err.message }
+  }
+
   return {
     ok: true,
     path,
@@ -148,7 +157,7 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     // shell — so an unfilled block reads as absent, which is what an unfilled block means.
     ticket: unfilled(fm.ticket) ? null : (fm.ticket ?? null),
     design: unfilled(fm.design) ? null : (fm.design ?? null),
-    agentWalk: agentWalkOf(fm.agent_walk),
+    agentWalk,
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
 }
@@ -167,6 +176,12 @@ const unfilled = (block) => {
  * The optional `agent_walk:` block — what an unattended /builder:fleet run needs. Absent, not a
  * map, or still carrying a template `<placeholder>` → null, and `--agent-walk` refuses. `parallel`
  * defaults to 3; `worktrees` is resolved by the fleet (default: a sibling of the repo).
+ *
+ * `copy`, `setup`, `env`, `start` and `smoke` prepare an isolated dev env per worktree: `copy`
+ * brings along untracked files a fresh checkout wouldn't have, `setup` runs once, `env` is passed
+ * to every child process the fleet spawns, and `start`/`smoke` bring up and probe a walk-lane's
+ * own dev server. All five are optional and default to the shape a caller can iterate/spread with
+ * no special-casing: `[]`, `null` or `{}`, never `undefined`.
  */
 const agentWalkOf = (block) => {
   if (!block || typeof block !== 'object' || Array.isArray(block) || unfilled(block)) return null
@@ -177,7 +192,37 @@ const agentWalkOf = (block) => {
     parallel: Number.isInteger(block.parallel) && block.parallel > 0 ? block.parallel : 3,
     reset: block.reset ?? null,
     stop: block.stop ?? null,
+    copy:
+      typeof block.copy === 'string'
+        ? block.copy
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    setup: block.setup ?? null,
+    env: typeof block.env === 'string' ? parseEnvPairs(block.env) : {},
+    start: block.start ?? null,
+    smoke: block.smoke ?? null,
   }
+}
+
+/**
+ * Parse an `env:` value — whitespace-separated `KEY=VALUE` pairs, a value allowed to contain
+ * whitespace by wrapping it in double quotes (`A="x y"`). Each token splits at its FIRST `=`, so a
+ * value that itself contains `=` (a query string, say) survives intact. `{feature}` is left alone
+ * here — the fleet substitutes it per feature, once, right before it hands the env to a child.
+ */
+export function parseEnvPairs(s) {
+  const tokens = s.match(/(?:[^\s"]|"[^"]*")+/g) ?? []
+  const out = {}
+  for (const token of tokens) {
+    const i = token.indexOf('=')
+    const key = i === -1 ? '' : token.slice(0, i)
+    if (!key) throw new Error(`agent_walk.env: "${token}" is not KEY=VALUE`)
+    const raw = token.slice(i + 1)
+    out[key] = /^".*"$/.test(raw) ? raw.slice(1, -1) : raw
+  }
+  return out
 }
 
 /** Print the reason and exit — the shared failure path for every builder script. */
