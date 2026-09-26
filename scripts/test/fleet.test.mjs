@@ -96,6 +96,31 @@ test('a hung run times out twice and fails', () => {
   assert.match(r.fleet.features.e.reason, /timed out twice/)
 })
 
+test('a hung run with a grandchild holding stdout still times out and fails', () => {
+  const root = makeRepo(['e2'])
+  const start = Date.now()
+  const r = runFleet(root, ['e2'], { e2: ['HANG-CHILD', 'HANG-CHILD'] }, { FLEET_RUN_TIMEOUT_MS: '300' })
+  const elapsed = Date.now() - start
+  assert.equal(r.fleet.features.e2.status, 'failed')
+  assert.match(r.fleet.features.e2.reason, /timed out twice/)
+  assert.ok(elapsed < 10000, `fleet run took ${elapsed}ms — a grandchild holding stdout kept it from settling`)
+})
+
+test('an unknown flag refuses with exit 2 and creates nothing', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a', '--dryrun'], { a: HAPPY })
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /--dryrun/)
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.equal(r.calls.length, 0)
+})
+
+test('--parallel must be a positive integer', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a', '--parallel', '0'], { a: HAPPY })
+  assert.equal(r.status, 2)
+})
+
 test('walk lane runs one feature at a time', () => {
   const root = makeRepo(['w1', 'w2', 'w3'])
   const slow = ['READY-PENDING', 'SLOW:built', 'SLOW:verified', 'SLOW:PR:#9']

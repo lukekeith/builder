@@ -5,8 +5,10 @@
 //   BLOCK:<reason>  set blocked:      PR:<#n>        set pr:
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait 150 ms, then <step>
+//   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawn } from 'node:child_process'
 
 const prompt = process.argv[process.argv.indexOf('-p') + 1]
 const spec = /--path (\S+)/.exec(prompt)[1]
@@ -36,6 +38,10 @@ const finish = (code = 0) => {
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)
   await new Promise((r) => setTimeout(r, 150))
+}
+if (step === 'HANG-CHILD') {
+  spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
+  await new Promise(() => setInterval(() => {}, 1e6))
 }
 if (step === 'HANG') await new Promise(() => setInterval(() => {}, 1e6))
 if (step === 'FAIL') finish(3)
