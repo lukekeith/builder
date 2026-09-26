@@ -5,7 +5,7 @@ description: The code-changing step of the /builder:* pipeline — executes the 
 
 # `/builder:build` — PLAN.md, executed by subagents
 
-Invocation: **`/builder:build --path <folder> [--ticket <id>] [--auto]`**. Flags:
+Invocation: **`/builder:build --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--no-dev-env]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
@@ -174,6 +174,11 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
    `state: built`; write `state: building`, `ready: pending "<what>"`,
    `next: <what the human must do>, then /builder:resume --path <folder>` and hand off saying exactly
    that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
+   **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all — write
+   `state: building`, `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>`,
+   commit `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`, and end the
+   run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
+   becomes.
 4. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per
    app**: a multi-app feature is walked in more than one place, and a script naming one of them gets
    half a sign-off. Per app: where to go, what to do, what to look for **newest-first**, and the local
@@ -181,6 +186,8 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
    work locally. The walk is the human's; no agent signs it.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
+   **Under `--agent-walk`:** `next: /builder:agent-walk --path <folder>` and keep going into it — the
+   walk script is still written (the agent walks it), and no human is asked to.
 6. **"Rulings I made"** goes in the hand-off — every ledger line containing `Ruling:`, in order, each
    with what it costs if wrong. It is the only place those decisions reach the human.
 7. ⛔ **Do not delete the workspace** — the walk, verify and the sign-off still read it.

@@ -38,7 +38,8 @@ whose state is `signed-off` — an INCOMPLETE verdict leaves the state there, so
 |---|---|
 | there is no `MANIFEST.md` | this step does not run on it. One line, hand back, stop |
 | `walk:` carries a name + date **and** the SPEC header carries `✅ SIGNED OFF` | run |
-| `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. Never run the deep pass on a build nobody has looked at |
+| `walk: agent-pass …` **and** the SPEC header carries `🤖 AGENT-VERIFIED` | run, as an **agent-verified** feature: checklist item 1 holds on the agent walk report, the verdict says "agent-walked, not human-tested", and READY's `next:` is `/builder:resume --path <folder>` — which opens a **draft** |
+| `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. **Under `--agent-walk`:** hand to `/builder:agent-walk --path <folder>` instead. Never run the deep pass on a build nobody has looked at |
 | `verify:` already carries a verdict | a **re-verify** — scoped, per §A re-verify is SCOPED |
 | `hold:` set | run anyway: verify is local and changes nothing outward. The hold binds the PR, and the verdict carries it instead of a PR command |
 | `state:` anything before `built` | not built yet. One line naming the state and the step that owns it, hand back, stop |
@@ -78,6 +79,9 @@ a visual diff, and a renamed element changes what the walk does.
    a human typed it; a header written by an agent is **void** — re-offer the walk. 🔴 **A multi-app
    feature needs a walk that covered each in-scope app**: a sign-off recorded PARTIAL with an app's
    items unexercised is not a full walk, and those items are named in the verdict.
+   **Agent-verified** (`walk: agent-pass …`): the proof is instead `<WS>/agent-walk/round-<n>/report.md`
+   with every item `PASS` at a sha this verify covers. It proves an agent walked it — never that a
+   human did — and the verdict says so in its first line.
 2. **Every task landed** — the task list comes from the ledger's **pre-flight table**. Ledger gone →
    recover the plan from the sign-off commit's parent: `git log -- <folder>/SPEC.md` finds that sha,
    then `git show <sign-off sha>^:<folder>/PLAN.md`. Every task has a `Task N: complete` line, every
