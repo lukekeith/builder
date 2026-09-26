@@ -64,8 +64,13 @@ agent_walk:
   driver: <how the agent drives the UI — e.g. "the Playwright MCP tools (mcp__playwright__*)">
   claude_args: --permission-mode bypassPermissions   # headless runs can't ask; this lets them act in their worktree
   # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
-  # parallel: 3                    # build-lane concurrency
+  # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
+  # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
+  # setup: npm ci                  # runs once per NEW worktree, after copy; a failure parks the feature and is retried on the next fleet run
+  # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; reaches every hook and every claude -p child — never CLAUDE_PROJECT_DIR
   # reset: <command>               # dev DB back to base + seed, before each walk
+  # start: npm run dev             # a second, isolated dev env for the walk lane — write it, and every command above, as plain shell text: a bare true/false/number is parsed as that, not a command
+  # smoke: curl -sf localhost:4001/health   # polled every 2s for up to 5min; start with no smoke just waits 10s and proceeds
   # stop: <command>                # stop the dev env after each walk
 ---
 

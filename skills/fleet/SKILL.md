@@ -43,6 +43,10 @@ Run with the Bash tool's `run_in_background`:
 node <builder>/scripts/fleet.mjs <the same arguments>
 ```
 
+When the config's `agent_walk.start` is set, each walk in the walk lane gets its own dev env: the
+fleet starts it fresh after `reset`, polls `smoke` until it's up, and always stops it after the
+walk ends — for any reason, including a park — before running `stop`.
+
 Then say, in two lines: it's running, `/builder:fleet --status` shows where it stands, and a run that
 must outlive this session goes in a terminal instead:
 `nohup node <absolute builder path>/scripts/fleet.mjs <arguments> > .builder/fleet/fleet.out 2>&1 &`.

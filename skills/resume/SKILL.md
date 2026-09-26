@@ -245,6 +245,7 @@ asks hangs until it times out. Every point that would ask resolves one of two wa
 | An audit `blocked:` finding | park, citing it |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
+| Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
 | The walk | `/builder:agent-walk --path <folder>` |
 | Opening the PR | §Ship's draft path, no question — starting the fleet was the permission |
 | After the draft PR (`pr:` set) | **stop — the run ends.** Marking it ready, `/builder:ship` and merging are the human's, after their `/builder:signoff` |

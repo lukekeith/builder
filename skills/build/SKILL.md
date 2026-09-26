@@ -184,7 +184,8 @@ run**. Never ask.
    `state: building`, `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>`,
    commit `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`, and end the
    run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
-   becomes.
+   becomes. With `agent_walk.start` set, the fleet has already started the walk env for this worktree —
+   never start or restart it here (REFERENCE §Walk readiness).
 4. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per
    app**: a multi-app feature is walked in more than one place, and a script naming one of them gets
    half a sign-off. Per app: where to go, what to do, what to look for **newest-first**, and the local
