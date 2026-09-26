@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -406,6 +406,25 @@ test('setup runs once per new worktree, not again when the worktree is reused', 
   assert.equal(realpathSync(lines[0]), realpathSync(first.fleet.features.a.worktree), 'in the worktree')
 })
 
+test('a copy that throws still leaves setup owed, so the next run does it', { skip: process.getuid?.() === 0 && 'root reads a chmod 000 file' }, () => {
+  const root = makeRepo(['a'])
+  const count = join(root, '.stub/setup-count')
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('agent_walk:\n', `agent_walk:\n  copy: locked.txt\n  setup: pwd >> ${count}\n`))
+  git(root, 'commit', '-qam', 'copy+setup')
+  const locked = join(root, 'locked.txt')
+  writeFileSync(locked, 'secret\n')
+  chmodSync(locked, 0o000)
+  const scenario = { a: ['audited', 'BLOCK:wait'] }
+  const first = runFleet(root, ['a'], scenario)
+  chmodSync(locked, 0o644)
+  assert.equal(first.fleet.features.a.status, 'failed', first.stderr)
+  assert.match(first.fleet.features.a.reason, /^worktree: /)
+  assert.ok(!existsSync(count), 'setup did not run past a failed copy')
+  runFleet(root, [], scenario)
+  assert.equal(readFileSync(count, 'utf8').trim().split('\n').length, 1, 'setup ran on the re-run')
+})
+
 test('a failed setup fails the feature, naming the setup log', () => {
   const root = makeRepo(['a'], { lines: ['setup: echo nope; exit 4'] })
   const r = runFleet(root, ['a'], { a: HAPPY })
@@ -416,13 +435,25 @@ test('a failed setup fails the feature, naming the setup log', () => {
   assert.equal(r.calls.length, 0, 'no claude run')
 })
 
-test('env reaches every claude child with {feature} filled in; CLAUDE_PROJECT_DIR stays out', () => {
+test('env reaches walk-lane claude children with {feature} filled in, never build-lane ones; CLAUDE_PROJECT_DIR stays out', () => {
   const root = makeRepo(['a'], { lines: ['env: WALK_MARK=x-{feature} OTHER="y z"'] })
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
   const starts = r.calls.filter((l) => l.startsWith('start'))
   assert.equal(starts.length, 7)
-  assert.ok(starts.every((l) => l.includes(' walk_mark=x-a ') && l.endsWith('project_dir=-')), starts.join('\n'))
+  assert.ok(starts.every((l) => l.endsWith('project_dir=-')), starts.join('\n'))
+  const walk = starts.filter((l) => l.startsWith('start a walk '))
+  const build = starts.filter((l) => l.startsWith('start a build '))
+  assert.ok(walk.length > 0 && build.length > 0, starts.join('\n'))
+  assert.ok(walk.every((l) => l.includes(' walk_mark=x-a ')), walk.join('\n'))
+  assert.ok(build.every((l) => l.includes(' walk_mark=- ')), build.join('\n'))
+})
+
+test('setup never sees agent_walk.env', () => {
+  const root = makeRepo(['a'], { lines: ['setup: echo "${WALK_MARK:-unset}" > setup-env', 'env: WALK_MARK=x-{feature}'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'setup-env'), 'utf8'), 'unset\n')
 })
 
 test('env reaches the hooks', () => {
@@ -543,6 +574,8 @@ test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', (
   assert.equal(r.status, 0, r.stderr)
   const starts = r.calls.filter((l) => l.startsWith('start'))
   assert.equal(starts.length, 7)
-  assert.ok(starts.every((l) => l.includes(' walk_mark=x ') && l.endsWith('project_dir=-')), starts.join('\n'))
+  assert.ok(starts.every((l) => l.endsWith('project_dir=-')), starts.join('\n'))
+  const walk = starts.filter((l) => l.startsWith('start a walk '))
+  assert.ok(walk.length > 0 && walk.every((l) => l.includes(' walk_mark=x ')), walk.join('\n'))
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /agent_walk\.env may not set CLAUDE_PROJECT_DIR.*ignored/)
 })

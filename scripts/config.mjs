@@ -179,8 +179,8 @@ const unfilled = (block) => {
  *
  * `copy`, `setup`, `env`, `start` and `smoke` prepare an isolated dev env per worktree: `copy`
  * brings along untracked files a fresh checkout wouldn't have, `setup` runs once, `env` is passed
- * to every child process the fleet spawns, and `start`/`smoke` bring up and probe a walk-lane's
- * own dev server. All five are optional and default to the shape a caller can iterate/spread with
+ * to the walk lane's children only (its claude runs and reset/start/smoke/stop — never a build-lane
+ * run or setup), and `start`/`smoke` bring up and probe a walk-lane's own dev server. All five are optional and default to the shape a caller can iterate/spread with
  * no special-casing: `[]`, `null` or `{}`, never `undefined`.
  */
 const agentWalkOf = (block) => {
