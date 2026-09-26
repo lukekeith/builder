@@ -55,6 +55,18 @@ design:
   resolver: <command that resolves a ref>
   contracts: <where the normative design contracts live>
   owned_by: <the commands that WRITE that design — builder only ever reads it>
+
+# ─── unattended runs (optional) ────────────────────────────────────────────
+# /builder:fleet takes a batch of specs to draft PRs with no human in the loop:
+# a worktree per spec, an agent walk instead of yours, draft PRs only. Omit the
+# whole block and --agent-walk / /builder:fleet refuse.
+agent_walk:
+  driver: <how the agent drives the UI — e.g. "the Playwright MCP tools (mcp__playwright__*)">
+  claude_args: --permission-mode bypassPermissions   # headless runs can't ask; this lets them act in their worktree
+  # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
+  # parallel: 3                    # build-lane concurrency
+  # reset: <command>               # dev DB back to base + seed, before each walk
+  # stop: <command>                # stop the dev env after each walk
 ---
 
 # <Your Project> — builder config
