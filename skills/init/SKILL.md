@@ -68,6 +68,11 @@ the answer is a choice:
 - **`apply_mode`** for dev-database migrations — recommend `ask`: the pipeline asks before applying
   them, so a walk is never run against an old schema;
 - **known-red gates** — which of the listed gates fail on `{base_branch}` today;
+- the **`agent_walk` block** — only if the user wants unattended `/builder:fleet` runs (recommend
+  *not yet* unless they asked). If yes: `driver` — recon first: a Playwright/browser MCP server in
+  `.mcp.json`, or `playwright`/`cypress` in a manifest; else ask; `claude_args` — recommend
+  `--permission-mode bypassPermissions` and **say plainly** it lets every headless run execute any
+  command inside its fleet worktree without asking; `reset` and `stop` from the §Walk readiness recon;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.
@@ -80,10 +85,10 @@ Start from a copy of the template, then replace every `<placeholder>`:
 mkdir -p .claude && cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder.md
 ```
 
-- **Frontmatter** — the keys from steps 2–3. Delete the optional `ticket:` and `design:` blocks
-  outright when unused; commented-out keys mislead the next reader. Keep the parser's subset: flat
-  scalars, the `apps:` list of one-level maps, one level of nested map — `config.mjs` ignores
-  anything fancier rather than guessing.
+- **Frontmatter** — the keys from steps 2–3. Delete the optional `ticket:`, `design:` and
+  `agent_walk:` blocks outright when unused; commented-out keys mislead the next reader. Keep the
+  parser's subset: flat scalars, the `apps:` list of one-level maps, one level of nested map —
+  `config.mjs` ignores anything fancier rather than guessing.
 - **Body** — one real paragraph on what the repo is; a `### <app> — fast` block per app with its
   literal commands, each with a `# what it proves` comment; the deep set; §Global constraints with the
   template's fixed bullets kept verbatim and the commit line rewritten to the style `git log` shows;
