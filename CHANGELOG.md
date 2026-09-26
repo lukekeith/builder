@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 2.7.0
+
+**Program dependencies are enforced for unattended runs.** A program child whose PROGRAM §Children
+*Depends on* entries haven't all shipped is no longer offered by `/builder:agent`, and the fleet
+refuses it (`✗ <child> — waits on <dep> (<state>)`) instead of building it off `HEAD` against a
+contract that isn't merged. `list-features.mjs --json` gains a `waitsOn` array per row, and
+`/builder:status` shows `⏳ waits on …` as the next step. A dependency counts as shipped when its
+program `child:` line says so or its own folder does (a `✅ SHIPPED` header or `state: shipped`); a
+*Depends on* token naming no child holds the child back. Chains run one wave per fleet run, after
+each merge. No config change.
+
 ## 2.6.0
 
 **An isolated walk env, owned by the fleet.** `agent_walk` gains five optional keys: `copy` (untracked

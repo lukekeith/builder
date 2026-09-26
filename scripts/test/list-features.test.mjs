@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 const LIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'list-features.mjs')
 
-function repo(manifests) {
+function repo(manifests, files = {}) {
   const root = mkdtempSync(join(tmpdir(), 'lf-'))
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
   mkdirSync(join(root, '.claude'))
@@ -17,6 +17,7 @@ function repo(manifests) {
     mkdirSync(join(root, 'docs/features', name), { recursive: true })
     writeFileSync(join(root, 'docs/features', name, 'MANIFEST.md'), `size: md\nnext: x\n${body}\n`)
   }
+  for (const [path, body] of Object.entries(files)) writeFileSync(join(root, 'docs/features', path), body)
   const r = spawnSync('node', [LIST, '--json'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
   assert.equal(r.status, 0, r.stderr)
   return Object.fromEntries(JSON.parse(r.stdout).features.map((f) => [f.feature, f]))
@@ -40,4 +41,17 @@ test('an agent-walked feature is not reported as human-walked', () => {
 test('an agent-walk run at built says the agent walks next', () => {
   const rows = repo({ b: 'state: built\nready: yes 2026-09-26 abc\nagent-walk: on 2026-09-26' })
   assert.equal(rows.b.nextStep, 'Agent walk (fleet)')
+})
+
+test('a program child waiting on an unshipped dependency says so; its dependency does not wait', () => {
+  const rows = repo({
+    big: 'tier: program\nchild: api — building\nchild: ui — spec',
+    api: 'state: building',
+    ui: 'state: spec',
+  }, {
+    'big/PROGRAM.md': '# big — program\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n| 1 | api | md | app | x | — |\n| 2 | ui | md | app | y | api |\n',
+  })
+  assert.deepEqual(rows.ui.waitsOn, [{ name: 'api', state: 'building' }])
+  assert.equal(rows.ui.nextStep, '⏳ waits on api (building)')
+  assert.deepEqual(rows.api.waitsOn, [])
 })
