@@ -11,10 +11,12 @@ files — a `.env`, local certs — brought into each NEW worktree; never overwr
 missing source is just noted), `setup` (runs once per new worktree, after `copy`; a failure parks the
 feature with `setup failed — see <log>` and is retried on the next fleet run), `env` (whitespace-
 separated `KEY=VALUE` pairs, quotes allowed, `{feature}` substituted, merged over the environment and
-passed to every hook and every headless `claude -p` child — it can never set `CLAUDE_PROJECT_DIR`; the
-fleet drops it and notes that), and `start`/`smoke` (a second dev env for the walk lane: the fleet
-spawns `start` detached after `reset`, polls `smoke` every 2s for up to 5 min, and — after the walk
-ends for any reason, including a park — always kills `start`'s process group before running `stop`).
+passed to the walk lane only — its headless `claude -p` runs and the `reset`/`start`/`smoke`/`stop`
+hooks; build-lane runs and `setup` never see it, so parallel builds can't hit the walk env's ports or
+database — and it can never set `CLAUDE_PROJECT_DIR`; the fleet drops it and notes that), and
+`start`/`smoke` (a second dev env for the walk lane: the fleet spawns `start` detached after `reset`,
+polls `smoke` every 2s for up to 5 min, and — after the walk ends for any reason, including a park —
+always kills `start`'s process group before running `stop`).
 If `smoke` never passes, or `start` exits first, the feature parks with "walk env didn't come up". A
 `start` with no `smoke` just waits 10s. REFERENCE §Walk readiness now says what changes when the fleet
 has already started this env: it runs `agent_walk.smoke` in place of its own, never starts or

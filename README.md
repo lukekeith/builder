@@ -148,9 +148,10 @@ there to approve a prompt.
 Add `agent_walk.start` (and `smoke`) to give the walk lane its own dev env, on other ports and its own
 database, instead of the one you're using — the fleet starts it fresh after each `reset` and always
 stops it after, and never restarts it mid-walk. `copy` brings along untracked files (a `.env`, local
-certs) a fresh worktree wouldn't have, `setup` runs once per new worktree, and `env` reaches every
-hook and every headless `claude` child, with `{feature}` filled in so each worktree can point at its
-own port and database.
+certs) a fresh worktree wouldn't have, `setup` runs once per new worktree, and `env` reaches the walk
+lane — its headless `claude` runs and the `reset`/`start`/`smoke`/`stop` hooks — with `{feature}`
+filled in so each worktree's walk env can have its own port and database. Build-lane runs and `setup`
+never see `env`, so parallel builds stay off the walk env.
 
 ## What it never does
 

@@ -67,11 +67,16 @@ agent_walk:
   # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # setup: npm ci                  # runs once per NEW worktree, after copy; a failure parks the feature and is retried on the next fleet run
-  # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; reaches every hook and every claude -p child — never CLAUDE_PROJECT_DIR
-  # reset: <command>               # dev DB back to base + seed, before each walk
+  # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; the walk lane only — its claude -p runs and reset/start/smoke/stop — never build-lane runs or setup, and never CLAUDE_PROJECT_DIR
+  # reset, start, smoke and stop run with env. Give the walk env ports and a database of its own that
+  # the repo's own tooling (tests, scripts, your dev env) doesn't also use. reset and stop must never
+  # stop or recreate a service your own dev env shares — no `docker compose down`, and no `compose up`
+  # from a branch whose compose file may differ: start an existing container by name, or pin -f to
+  # the main checkout's compose file.
+  # reset: <command>               # the walk env's DB back to base + seed, before each walk — never a shared service
   # start: npm run dev             # a second, isolated dev env for the walk lane — write it, and every command above, as plain shell text: a bare true/false/number is parsed as that, not a command
   # smoke: curl -sf localhost:4001/health   # polled every 2s for up to 5min; start with no smoke just waits 10s and proceeds
-  # stop: <command>                # stop the dev env after each walk
+  # stop: <command>                # stop what the walk env needs stopped after each walk — never a service your own dev env shares
 ---
 
 # <Your Project> — builder config
