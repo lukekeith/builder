@@ -28,6 +28,7 @@ record nothing.
    | The manifest says | What this is |
    |---|---|
    | `state: built` · `walk: none` | the normal case — the walk sign-off below |
+   | `walk: agent-pass …` (an agent walked it; a draft PR may be open) | the walk sign-off below. A human PASS **supersedes** the agent's verdict — §What gets written, *Over an agent pass* |
    | `state: planned` · `go-ahead: none` | not a walk: the **build go-ahead** — §The go-ahead |
    | `walk:` set and a `- [ ] re-walk:` row under `## Fixes` | a **re-sign** — §Re-signing |
    | no `MANIFEST.md` | shipped, or a pre-builder layout — hand back to `/builder:resume`, stop |
@@ -82,6 +83,12 @@ record it without spin.**
 
 What was exercised **on which app**, what was skipped and every caveat from step 2 go in the **commit
 body** and in one ledger line; the header line stays one line.
+
+**Over an agent pass.** `walk:` becomes the human line (the `agent-pass` value is replaced, not kept
+beside it), and the SPEC's `> 🤖 AGENT-VERIFIED …` header line is replaced by the sign-off line. If
+`verify: READY` was recorded at the current HEAD, keep it and write `next: /builder:resume --path
+<folder>` — it marks the draft PR ready, after asking. Otherwise set `verify: none`: the code moved
+since the agent's verify, so it runs again.
 
 ## The condense
 
