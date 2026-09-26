@@ -126,11 +126,29 @@ Two further flags earn their keep: `commit: manual` means **an agent never commi
 stages and stops), and `released_artifact: true` means a shipped build cannot be hot-fixed, so any
 contract change it reads is breaking until §Apps states the transition.
 
+## Unattended runs
+
+Write the specs, then hand them over:
+
+```
+/builder:agent                  # pick unfinished features from a list
+/builder:fleet --all            # or: every fresh spec, scripted — or name the features
+```
+
+Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
+at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
+per `walk.md` item. Every feature ends as a **draft PR** marked `🤖 AGENT-VERIFIED — not human-tested`,
+or **parked** with the reason a human is needed. Nothing waits on a question. Review the drafts, walk
+what you like, and `/builder:signoff` in a feature's worktree to mark it ready.
+
+Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` adds it. Headless runs
+need permissions set explicitly (`claude_args`), because nobody is there to approve a prompt.
+
 ## What it never does
 
 - **Open a PR before a human has walked the feature.** The PR lock is spent by `/builder:signoff`,
   which is `disable-model-invocation` — an agent cannot type it, and a sign-off written any other way
-  is void.
+  is void. (An agent-walked feature gets a **draft** PR; only your sign-off marks it ready.)
 - **Write your design system.** Prototype mode *reads* a design as requirements and routes every gap
   to the command your config says owns it.
 - **Write to your ticket system, or deploy.** Both are explicit commands of yours.

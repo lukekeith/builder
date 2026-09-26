@@ -17,6 +17,7 @@ Keep that line.
 ## Before you open a PR
 
 ```bash
+node --test 'scripts/test/*.test.mjs'      # the scripts' tests — no dependencies, Node's own runner
 claude plugin validate .        # manifests, plus the skills/agents/commands in the tree
 scripts/workspace --self-test   # the one script with a built-in self-test
 ```
