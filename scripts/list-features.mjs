@@ -128,6 +128,8 @@ const inspect = (root, name) => {
       if (mf.verify && mf.verify !== 'none') bits.push(`verify ${mf.verify}`)
       if (mf.auto && /^on/i.test(mf.auto)) bits.push('auto')
       if (out.blocked) bits.push('🛑 PR HELD')
+      if (isSet(mf.blocked)) bits.push('⛔ parked')
+      if (mf['agent-walk'] && /^on/i.test(mf['agent-walk'])) bits.push('agent-walk')
       out.state = bits.join(' · ')
       if (!mf.state) out.problems.push('MANIFEST.md has no "state:" line')
       if (mf.size && !VALID_SIZES.has(mf.size)) {
@@ -361,10 +363,17 @@ const statusOf = (r) => {
     lastDone = state === 'building' ? 'Build finished — dev env not ready' : lastDone
     nextStep = `Get the dev env ready: ${pending}`
   } else if (state === 'built' && !/^yes/.test(ready)) nextStep = 'Check walk readiness, then 🔒 walk it'
+  const agentPass = /^agent-pass/.test(mf.walk ?? '')
+  if (state === 'built' && agentPass) {
+    lastDone = 'Agent-walked — not human-tested'
+    nextStep = 'Deep verify, then a draft PR'
+  } else if (state === 'built' && /^on/i.test(mf['agent-walk'] ?? '') && /^yes/.test(ready)) nextStep = 'Agent walk (fleet)'
+  if (state === 'verified' && agentPass && r.pr) nextStep = 'Review the draft PR, then /builder:signoff'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
+  const parked = isSet(mf.blocked) ? mf.blocked.replace(/^"|"$/g, '') : null
   return {
     lastDone: lastDone + (r.pr ? ` (PR ${r.pr})` : ''),
-    nextStep: held ? `🛑 PR held — ${held}` : nextStep,
+    nextStep: parked ? `⛔ parked — ${parked}` : held ? `🛑 PR held — ${held}` : nextStep,
     command: resume,
   }
 }
