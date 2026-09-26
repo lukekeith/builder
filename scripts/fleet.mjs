@@ -14,9 +14,9 @@
  *
  * State lives in .builder/fleet/ (fleet.json, STATUS.md, logs/). Re-running resumes.
  */
-import { spawn, execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync } from 'node:fs'
-import { join, dirname, basename, resolve } from 'node:path'
+import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
+import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
 import { laneOf, decide, loadFleet, saveFleet, fleetDir } from './fleet-core.mjs'
@@ -24,6 +24,11 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir } from './fleet-core.mjs
 const RUN_CAP = 12
 const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 45 * 60 * 1000
 const CLAUDE = process.env.FLEET_CLAUDE || 'claude'
+const SMOKE_TIMEOUT_MS = Number(process.env.FLEET_SMOKE_TIMEOUT_MS) || 5 * 60 * 1000
+const SMOKE_INTERVAL_MS = Number(process.env.FLEET_SMOKE_INTERVAL_MS) || 2000
+const SMOKE_ATTEMPT_MS = 10 * 1000 // one probe that hangs (a half-up server) must not stall the poll
+const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, then walk
+const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
 const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status]'
@@ -136,14 +141,87 @@ function worktreeProblem(feature, branch) {
   return cur === branch ? null : `${wt} exists on branch '${cur}', not ${branch}`
 }
 
+/**
+ * The env every child the fleet spawns gets — hooks, setup, start, smoke and each `claude -p`.
+ * CLAUDE_PROJECT_DIR is dropped so the child reads ITS worktree's config and manifests, never the
+ * main checkout's; agent_walk.env goes over the top with {feature} filled in, which is how two
+ * worktrees' dev envs get their own ports and databases.
+ */
+function envFor(feature) {
+  const env = { ...process.env }
+  delete env.CLAUDE_PROJECT_DIR
+  for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  return env
+}
+
+const addNote = (note) => {
+  fleet.notes = [...new Set([...(fleet.notes ?? []), note])]
+}
+
+/**
+ * Bring agent_walk.copy's untracked files (a .env, local certs) from the main checkout into a new
+ * worktree. A tracked file is never overwritten — the branch's committed version is the one the
+ * build must see, and a local edit in the main checkout would silently leak into it otherwise.
+ */
+function copyInto(wt) {
+  const tracked = new Set(git(['ls-files', '-z'], wt).split('\0').filter(Boolean))
+  for (const rel of AW.copy) {
+    const src = join(ROOT, rel)
+    if (!existsSync(src)) {
+      addNote(`agent_walk.copy: ${rel} doesn't exist in ${ROOT} — skipped`)
+      continue
+    }
+    const skipped = []
+    cpSync(src, join(wt, rel), {
+      recursive: true,
+      filter: (from) => {
+        const r = relative(ROOT, from)
+        if (!tracked.has(r) || statSync(from).isDirectory()) return true
+        skipped.push(r)
+        return false
+      },
+    })
+    for (const r of skipped) addNote(`agent_walk.copy: ${r} is tracked — the worktree keeps the committed version`)
+  }
+}
+
+/** agent_walk.setup in a new worktree, output to logs/<feature>-setup.log. Throws, naming the log, on failure. */
+function runSetup(feature, wt) {
+  const log = join(DIR, 'logs', `${feature}-setup.log`)
+  mkdirSync(dirname(log), { recursive: true })
+  const fd = openSync(log, 'w')
+  try {
+    execSync(AW.setup, { cwd: wt, env: envFor(feature), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+  } catch {
+    throw Object.assign(new Error(`setup failed — see ${log}`), { setup: true })
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
+ * The feature's worktree, created if it isn't there yet. Only a NEW worktree gets `copy` and
+ * `setup` — a reused one already has them, and re-running an install on every fleet run is minutes
+ * of nothing. The one exception is a setup that failed: `setupOwed` stays on the row until setup
+ * succeeds, so fixing the command and re-running the fleet retries it instead of building on a
+ * worktree that never got its dependencies.
+ */
 function ensureWorktree(feature, branch) {
   const problem = worktreeProblem(feature, branch)
   if (problem) throw new Error(problem)
+  const f = fleet.features[feature]
   const wt = join(WORKTREES, feature)
-  if (existsSync(wt)) return wt
-  mkdirSync(WORKTREES, { recursive: true })
-  const exists = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
-  git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, 'HEAD'])
+  if (!existsSync(wt)) {
+    mkdirSync(WORKTREES, { recursive: true })
+    const exists = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
+    git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, 'HEAD'])
+    copyInto(wt)
+    if (AW.setup) f.setupOwed = true
+  }
+  if (f.setupOwed) {
+    runSetup(feature, wt)
+    delete f.setupOwed
+  }
   return wt
 }
 
@@ -240,8 +318,9 @@ const stopAll = (code) => {
       process.kill(-c.pid, 'SIGTERM')
     } catch {}
   }
-  // A walk cut short still gets its dev env stopped.
-  for (const f of Object.values(fleet.features)) if (f.status === 'walking' && f.worktree) hook(AW.stop, f.worktree)
+  // A walk cut short still gets its dev env stopped: its `start` group first, then `stop`.
+  for (const f of Object.values(fleet.features)) killStartSync(f)
+  for (const [name, f] of Object.entries(fleet.features)) if (f.status === 'walking' && f.worktree) hook(AW.stop, f.worktree, name)
   save()
   unlock()
   process.exit(code)
@@ -262,12 +341,14 @@ process.on('uncaughtException', (e) => {
 // their features are queued again, or two runs would work one worktree.
 if (tookOverStaleLock) {
   for (const f of Object.values(fleet.features)) {
-    if (f.pgid) {
+    for (const pgid of [f.pgid, f.startPgid]) {
+      if (!pgid) continue
       try {
-        process.kill(-f.pgid, 'SIGKILL')
+        process.kill(-pgid, 'SIGKILL')
       } catch {}
     }
     delete f.pgid
+    delete f.startPgid
   }
 }
 
@@ -280,9 +361,7 @@ function runClaude(wt, feature, lane, n) {
   const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk${lane === 'build' ? ' --no-dev-env' : ''}`
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
-  // The child must read ITS worktree's config and manifests — never the main checkout's.
-  const env = { ...process.env }
-  delete env.CLAUDE_PROJECT_DIR
+  const env = envFor(feature)
   return new Promise((done) => {
     const out = createWriteStream(log)
     let settled = false
@@ -385,15 +464,96 @@ async function drive(feature, lane) {
   }
 }
 
-/** A config hook (reset/stop) in the worktree. False when it failed. */
-function hook(cmd, cwd) {
+/** A config hook (reset/stop) in the worktree, with the feature's env. False when it failed. */
+function hook(cmd, cwd, feature) {
   if (!cmd) return true
   try {
-    execSync(cmd, { cwd, stdio: 'ignore', timeout: 10 * 60 * 1000 })
+    execSync(cmd, { cwd, env: envFor(feature), stdio: 'ignore', timeout: 10 * 60 * 1000 })
     return true
   } catch {
     return false
   }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const groupAlive = (pgid) => {
+  try {
+    process.kill(-pgid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+
+/**
+ * Bring up the feature's own dev env: `start` detached (its own process group, so everything it
+ * forks — a watcher, a DB, a server — goes down with one kill), then poll `smoke` until it passes.
+ * True when the env is up. False when smoke never passed in time or `start` exited first — a dev
+ * server that dies at once won't come back by waiting, so the exit ends the poll early.
+ */
+async function startWalkEnv(feature) {
+  const f = fleet.features[feature]
+  const log = join(DIR, 'logs', `${feature}-start.log`)
+  mkdirSync(dirname(log), { recursive: true })
+  f.startLog = log
+  const fd = openSync(log, 'w')
+  const child = spawn('sh', ['-c', AW.start], { cwd: f.worktree, env: envFor(feature), stdio: ['ignore', fd, fd], detached: true })
+  closeSync(fd) // the child holds its own copy
+  let exited = false
+  const gone = new Promise((r) => {
+    child.on('exit', () => r((exited = true)))
+    child.on('error', () => r((exited = true)))
+  })
+  // Recorded so stopAll, and a fleet that takes over this one's stale lock, can end the group.
+  if (child.pid) {
+    f.startPgid = child.pid
+    save()
+  }
+  if (!AW.smoke) {
+    await Promise.race([gone, sleep(START_GRACE_MS)])
+    return !exited
+  }
+  const deadline = Date.now() + SMOKE_TIMEOUT_MS
+  const probe = () =>
+    new Promise((r) =>
+      execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err))
+    )
+  for (;;) {
+    if (exited) return false
+    if (await probe()) return !exited
+    if (Date.now() >= deadline) return false
+    await Promise.race([gone, sleep(Math.min(SMOKE_INTERVAL_MS, Math.max(0, deadline - Date.now())))])
+  }
+}
+
+/** End a feature's `start` group: SIGTERM, then SIGKILL if it outlives the grace period. */
+async function killStart(f) {
+  const pgid = f.startPgid
+  if (!pgid) return
+  try {
+    process.kill(-pgid, 'SIGTERM')
+  } catch {}
+  for (const until = Date.now() + KILL_GRACE_MS; groupAlive(pgid) && Date.now() < until; ) await sleep(100)
+  try {
+    process.kill(-pgid, 'SIGKILL')
+  } catch {}
+  delete f.startPgid
+  save()
+}
+
+/** killStart for stopAll, which is synchronous — it exits right after, so no event loop to wait on. */
+function killStartSync(f) {
+  const pgid = f.startPgid
+  if (!pgid) return
+  try {
+    process.kill(-pgid, 'SIGTERM')
+  } catch {}
+  const tick = new Int32Array(new SharedArrayBuffer(4))
+  for (const until = Date.now() + KILL_GRACE_MS; groupAlive(pgid) && Date.now() < until; ) Atomics.wait(tick, 0, 0, 100)
+  try {
+    process.kill(-pgid, 'SIGKILL')
+  } catch {}
+  delete f.startPgid
 }
 
 async function walkOne(feature) {
@@ -401,15 +561,22 @@ async function walkOne(feature) {
   f.status = 'walking'
   save()
   try {
-    if (!hook(AW.reset, f.worktree)) {
+    if (!hook(AW.reset, f.worktree, feature)) {
       Object.assign(f, { status: 'parked', reason: `agent_walk.reset failed: ${AW.reset}` })
+      save()
+      return
+    }
+    // `smoke` without `start` has nothing to probe — ignored, as the spec says.
+    if (AW.start && !(await startWalkEnv(feature))) {
+      Object.assign(f, { status: 'parked', reason: `walk env didn't come up — see ${f.startLog}` })
       save()
       return
     }
     await drive(feature, 'walk')
   } finally {
-    if (!hook(AW.stop, f.worktree)) {
-      fleet.notes = [...new Set([...(fleet.notes ?? []), `agent_walk.stop failed after ${feature}: ${AW.stop}`])]
+    await killStart(f)
+    if (!hook(AW.stop, f.worktree, feature)) {
+      addNote(`agent_walk.stop failed after ${feature}: ${AW.stop}`)
       save()
     }
   }
@@ -424,7 +591,7 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   try {
     f.worktree = ensureWorktree(feature, f.branch)
   } catch (e) {
-    Object.assign(f, { status: 'failed', reason: `worktree: ${e.message.split('\n')[0]}` })
+    Object.assign(f, { status: 'failed', reason: e.setup ? e.message : `worktree: ${e.message.split('\n')[0]}` })
     continue
   }
   const text = readManifest(f.worktree, feature)
