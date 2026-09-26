@@ -142,14 +142,16 @@ function worktreeProblem(feature, branch) {
 }
 
 /**
- * The env every child the fleet spawns gets — hooks, setup, start, smoke and each `claude -p`.
- * CLAUDE_PROJECT_DIR is dropped so the child reads ITS worktree's config and manifests, never the
- * main checkout's; agent_walk.env goes over the top with {feature} filled in, which is how two
- * worktrees' dev envs get their own ports and databases.
+ * The env a child the fleet spawns gets. CLAUDE_PROJECT_DIR is always dropped so the child reads
+ * ITS worktree's config and manifests, never the main checkout's. Only the WALK lane — its
+ * `claude -p` runs and the reset/start/smoke/stop hooks — also gets agent_walk.env, with {feature}
+ * filled in, which is how two worktrees' walk envs get their own ports and databases. The build
+ * lane and `setup` never see it: build lanes run while a walk is up, and a build's gates pointed
+ * at the walk env's ports and database would collide with it or write into it.
  */
-function envFor(feature) {
+function envFor(feature, lane) {
   const env = { ...process.env }
-  for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
@@ -193,7 +195,7 @@ function runSetup(feature, wt) {
   mkdirSync(dirname(log), { recursive: true })
   const fd = openSync(log, 'w')
   try {
-    execSync(AW.setup, { cwd: wt, env: envFor(feature), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    execSync(AW.setup, { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
   } catch {
     throw Object.assign(new Error(`setup failed — see ${log}`), { setup: true })
   } finally {
@@ -217,8 +219,10 @@ function ensureWorktree(feature, branch) {
     mkdirSync(WORKTREES, { recursive: true })
     const exists = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
     git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, 'HEAD'])
-    copyInto(wt)
+    // Owed BEFORE the copy: a copy that throws leaves a worktree that exists, and the next run
+    // would otherwise take it as fully prepared and never run setup.
     if (AW.setup) f.setupOwed = true
+    copyInto(wt)
   }
   if (f.setupOwed) {
     runSetup(feature, wt)
@@ -363,7 +367,7 @@ function runClaude(wt, feature, lane, n) {
   const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk${lane === 'build' ? ' --no-dev-env' : ''}`
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
-  const env = envFor(feature)
+  const env = envFor(feature, lane)
   return new Promise((done) => {
     const out = createWriteStream(log)
     let settled = false
@@ -466,11 +470,11 @@ async function drive(feature, lane) {
   }
 }
 
-/** A config hook (reset/stop) in the worktree, with the feature's env. False when it failed. */
+/** A config hook (reset/stop) in the worktree, with the feature's walk env. False when it failed. */
 function hook(cmd, cwd, feature) {
   if (!cmd) return true
   try {
-    execSync(cmd, { cwd, env: envFor(feature), stdio: 'ignore', timeout: 10 * 60 * 1000 })
+    execSync(cmd, { cwd, env: envFor(feature, 'walk'), stdio: 'ignore', timeout: 10 * 60 * 1000 })
     return true
   } catch {
     return false
@@ -499,7 +503,7 @@ async function startWalkEnv(feature) {
   mkdirSync(dirname(log), { recursive: true })
   f.startLog = log
   const fd = openSync(log, 'w')
-  const child = spawn('sh', ['-c', AW.start], { cwd: f.worktree, env: envFor(feature), stdio: ['ignore', fd, fd], detached: true })
+  const child = spawn('sh', ['-c', AW.start], { cwd: f.worktree, env: envFor(feature, 'walk'), stdio: ['ignore', fd, fd], detached: true })
   closeSync(fd) // the child holds its own copy
   let exited = false
   const gone = new Promise((r) => {
@@ -518,7 +522,7 @@ async function startWalkEnv(feature) {
   const deadline = Date.now() + SMOKE_TIMEOUT_MS
   const probe = () =>
     new Promise((r) =>
-      execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err))
+      execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err))
     )
   for (;;) {
     if (exited) return false
