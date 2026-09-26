@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadConfig } from '../config.mjs'
+import { loadConfig, parseEnvPairs } from '../config.mjs'
 
 const APPS = 'apps:\n  - name: app\n    path: app/\n    role: app\n    commit: auto'
 const cfgWith = (extra) => {
@@ -26,7 +26,55 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     parallel: 3,
     reset: null,
     stop: null,
+    copy: [],
+    setup: null,
+    env: {},
+    start: null,
+    smoke: null,
   })
+})
+
+test('copy, setup, env, start and smoke are all parsed', () => {
+  const cfg = cfgWith(
+    'agent_walk:\n  driver: x\n  claude_args: --a\n  copy: .env, .env.local\n  setup: npm install\n  env: A=1 B="x y"\n  start: npm run dev\n  smoke: curl -sf localhost:3000'
+  )
+  assert.deepEqual(cfg.agentWalk.copy, ['.env', '.env.local'])
+  assert.equal(cfg.agentWalk.setup, 'npm install')
+  assert.deepEqual(cfg.agentWalk.env, { A: '1', B: 'x y' })
+  assert.equal(cfg.agentWalk.start, 'npm run dev')
+  assert.equal(cfg.agentWalk.smoke, 'curl -sf localhost:3000')
+})
+
+test('copy trims entries and drops empties', () => {
+  const cfg = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a\n  copy: .env, .env.local ,')
+  assert.deepEqual(cfg.agentWalk.copy, ['.env', '.env.local'])
+})
+
+test('a placeholder in start means the whole block is unconfigured', () => {
+  const cfg = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a\n  start: <the dev server command>')
+  assert.equal(cfg.agentWalk, null)
+})
+
+test('parseEnvPairs splits whitespace-separated KEY=VALUE pairs, quotes and all', () => {
+  assert.deepEqual(parseEnvPairs('A=1 B="x y" C=http://h:1/p?q=a=b'), {
+    A: '1',
+    B: 'x y',
+    C: 'http://h:1/p?q=a=b',
+  })
+})
+
+test('parseEnvPairs rejects a token with no "="', () => {
+  assert.throws(() => parseEnvPairs('A=1 NOTAPAIR'), /agent_walk\.env: "NOTAPAIR" is not KEY=VALUE/)
+})
+
+test('parseEnvPairs rejects an empty key', () => {
+  assert.throws(() => parseEnvPairs('=x'), /agent_walk\.env: "=x" is not KEY=VALUE/)
+})
+
+test('a bad env pair in the config surfaces as ok:false, not a crash', () => {
+  const cfg = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a\n  env: NOTAPAIR')
+  assert.equal(cfg.ok, false)
+  assert.match(cfg.reason, /agent_walk\.env: "NOTAPAIR" is not KEY=VALUE/)
 })
 
 test('parallel, worktrees and hooks are read', () => {
