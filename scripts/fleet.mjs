@@ -149,8 +149,10 @@ function worktreeProblem(feature, branch) {
  */
 function envFor(feature) {
   const env = { ...process.env }
-  delete env.CLAUDE_PROJECT_DIR
   for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
+  // would point every child at one fixed checkout — the bug the delete exists to prevent.
+  delete env.CLAUDE_PROJECT_DIR
   return env
 }
 
@@ -605,6 +607,7 @@ for (const [feature, f] of Object.entries(fleet.features)) {
 }
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset'))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
+if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
 
 // ---- the two lanes -------------------------------------------------------------------------
