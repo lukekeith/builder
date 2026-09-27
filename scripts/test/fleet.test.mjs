@@ -747,3 +747,18 @@ test('a fleet with unfinished work refuses to run from another branch', () => {
   assert.equal(r.status, 2)
   assert.match(r.stderr, /This fleet merges into main, but elsewhere is checked out/)
 })
+
+test('@delta gates get their baseline measured at fleet start, once per target sha', () => {
+  const root = makeRepo(['a'])
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('---\nbody\n', '---\n\n## Quality gates\n\n### app — fast\n\n```\necho 7   # a count @delta\n```\n'))
+  git(root, 'commit', '-qam', 'delta gate')
+  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:wait'] })
+  assert.equal(first.fleet.features.a.status, 'parked', first.stderr)
+  const baseline = join(root, '.builder/gates/baseline.json')
+  assert.ok(existsSync(baseline))
+  const b1 = JSON.parse(readFileSync(baseline, 'utf8'))
+  assert.equal(b1.values['echo 7'], 7)
+  runFleet(root, [], { a: ['BLOCK:wait'] })
+  assert.equal(JSON.parse(readFileSync(baseline, 'utf8')).when, b1.when, 'not re-measured while the target sha is unchanged')
+})

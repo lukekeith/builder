@@ -4,6 +4,13 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.1
+
+- A `<placeholder>` gate line written `cd <dir> && …` names the changed test files relative to `<dir>`
+  and takes only files under it, for a package whose dotenv path is relative to its own directory.
+- The fleet measures `@delta` baselines only when the target sha has moved since the last
+  measurement — an e2e-sized baseline is minutes, not something to pay at every start.
+
 ## 3.3.0
 
 **The gates run once, and builds run side by side.** Measured on one fleet day (two repos, seven
