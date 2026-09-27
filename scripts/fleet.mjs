@@ -41,7 +41,7 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status]'
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status]   (named while a fleet runs: added to its queue)'
 const KNOWN_FLAGS = new Set(['--all', '--parallel', '--dry-run', '--status'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
@@ -259,6 +259,28 @@ function ensureWorktree(feature, branch) {
   return wt
 }
 
+// ---- the lock, read-only ---------------------------------------------------------------------
+const LOCK = join(DIR, 'lock')
+const INBOX = join(DIR, 'inbox')
+const INBOX_POLL_MS = Number(process.env.FLEET_INBOX_POLL_MS) || 15000
+/** The pid of a live fleet holding the lock, or null. */
+function lockHolder() {
+  let pid = NaN
+  try {
+    pid = Number(readFileSync(LOCK, 'utf8'))
+  } catch {
+    return null
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return null
+  try {
+    process.kill(pid, 0)
+    return pid
+  } catch (e) {
+    return e.code === 'EPERM' ? pid : null
+  }
+}
+const runningPid = lockHolder()
+
 // ---- dry run -------------------------------------------------------------------------------
 const fleet = loadFleet(ROOT)
 /**
@@ -276,17 +298,25 @@ if (fleet.target && fleet.target !== HERE && Object.values(fleet.features).some(
 }
 const TARGET = HERE
 const asked = requested()
+if (!asked.length && runningPid) {
+  console.error(`Another fleet is running in this repo (pid ${runningPid}). Name specs to add them to its queue; /builder:fleet --status shows where it stands.`)
+  process.exit(3)
+}
 if (!asked.length && !Object.keys(fleet.features).length) {
   console.error('Name the specs to run (feature names or folders), or pass --all.')
   process.exit(2)
 }
 const fresh = []
+const requeue = [] // parked or failed rows named again while a fleet runs — it retries them
 const refused = {}
 const after = {} // feature → the dependencies in this run it waits for
 const branchOwner = new Map(Object.entries(fleet.features).map(([f, row]) => [row.branch, f]))
 const inRun = new Set([...asked, ...Object.keys(fleet.features)])
 for (const feature of asked) {
-  if (fleet.features[feature]) continue // already in the fleet — resumed below
+  if (fleet.features[feature]) {
+    if (runningPid && ['parked', 'failed'].includes(fleet.features[feature].status)) requeue.push(feature)
+    continue // already in the fleet — resumed below
+  }
   let why = preflight(feature)
   const branch = why ? null : branchOf(feature, parseManifest(readManifest(ROOT, feature)))
   if (!why && branchOwner.has(branch)) why = `${branchOwner.get(branch)} and ${feature} both resolve to branch ${branch}`
@@ -318,16 +348,42 @@ if (flag('--dry-run')) {
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
+  if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
   for (const f of fresh)
     console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}`)
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
-  for (const [f, row] of Object.entries(fleet.features)) console.log(`  ↻ ${f} — resuming (${row.status})`)
+  for (const [f, row] of Object.entries(fleet.features))
+    console.log(`  ↻ ${f} — ${runningPid ? (requeue.includes(f) ? `re-queued (${row.status})` : `already in the running fleet (${row.status})`) : `resuming (${row.status})`}`)
   process.exit(0)
 }
 
 // ---- lock ----------------------------------------------------------------------------------
-const LOCK = join(DIR, 'lock')
 mkdirSync(DIR, { recursive: true })
+
+/**
+ * Specs named while a fleet runs join ITS queue: one file per spec in .builder/fleet/inbox/,
+ * created with 'wx' so a second drop of the same name is a no-op and nothing needs a lock. The
+ * running fleet drains the inbox whenever a lane looks for work. Admission was checked above,
+ * exactly as at a launch; the fleet checks once more when it drains.
+ */
+function addToRunning(pid) {
+  mkdirSync(INBOX, { recursive: true })
+  const drop = (f, verb) => {
+    try {
+      writeFileSync(join(INBOX, f), JSON.stringify({ waitsOn: after[f] ?? [] }) + '\n', { flag: 'wx' })
+      console.log(`  ↳ ${f} — ${verb} for the running fleet (pid ${pid})`)
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e
+      console.log(`  ↳ ${f} — already queued for the running fleet (pid ${pid})`)
+    }
+  }
+  for (const f of fresh) drop(f, 'queued')
+  for (const f of requeue) drop(f, 're-queued')
+  for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
+  for (const f of asked) if (fleet.features[f] && !requeue.includes(f)) console.log(`  ↻ ${f} — already in the running fleet (${fleet.features[f].status})`)
+  if (fresh.length || requeue.length) console.log('picked up when a lane frees — /builder:fleet --status shows the queue')
+  process.exit(0)
+}
 /** Create the lock only if there is none — 'wx' makes check-and-take one step. */
 const takeLock = () => {
   try {
@@ -340,24 +396,17 @@ const takeLock = () => {
 }
 let tookOverStaleLock = false
 if (!takeLock()) {
-  let pid = NaN
-  try {
-    pid = Number(readFileSync(LOCK, 'utf8'))
-  } catch {}
-  let alive = false
-  if (Number.isInteger(pid) && pid > 0) {
-    try {
-      process.kill(pid, 0)
-      alive = true
-    } catch (e) {
-      alive = e.code === 'EPERM'
-    }
-  }
-  if (alive) {
-    console.error(`Another fleet is running in this repo (pid ${pid}). Stop it, or wait for it.`)
+  const pid = lockHolder()
+  if (pid) {
+    if (asked.length) addToRunning(pid) // exits
+    console.error(`Another fleet is running in this repo (pid ${pid}). Name specs to add them to its queue; /builder:fleet --status shows where it stands.`)
     process.exit(3)
   }
-  console.error(`note: taking over a stale fleet lock (pid ${pid} is gone)`)
+  let stale = '?'
+  try {
+    stale = readFileSync(LOCK, 'utf8').trim()
+  } catch {}
+  console.error(`note: taking over a stale fleet lock (pid ${stale} is gone)`)
   try {
     unlinkSync(LOCK)
   } catch {}
@@ -843,6 +892,55 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   enqueue(feature)
 }
+
+/**
+ * Specs a second invocation dropped in the inbox while this fleet ran (or left for it, when the
+ * fleet that was running died). Rows are made first and queued after, so a batch added together —
+ * a program child with its dependency — finds its dependencies as rows. A spec that no longer
+ * passes admission gets a note, not a row: the caller was told at drop time, and a half-made row
+ * would break the next re-run. Returns whether anything joined.
+ */
+function drainInbox() {
+  if (!existsSync(INBOX)) return false
+  const names = readdirSync(INBOX)
+    .filter((n) => !n.startsWith('.'))
+    .sort()
+  const joining = []
+  for (const name of names) {
+    let meta = {}
+    try {
+      meta = JSON.parse(readFileSync(join(INBOX, name), 'utf8'))
+    } catch {}
+    try {
+      unlinkSync(join(INBOX, name))
+    } catch {}
+    const row = fleet.features[name]
+    if (row && !['parked', 'failed'].includes(row.status)) continue // queued or running already
+    if (row) {
+      Object.assign(row, { status: 'queued', reason: null, runsThisTime: 0 })
+      joining.push(name)
+      continue
+    }
+    let why = preflight(name)
+    const branch = why ? null : branchOf(name, parseManifest(readManifest(ROOT, name)))
+    const owner = branch && Object.entries(fleet.features).find(([, r]) => r.branch === branch)?.[0]
+    if (!why && owner) why = `${owner} and ${name} both resolve to branch ${branch}`
+    if (why) {
+      addNote(`${name} was added while the fleet ran but can't join: ${why}`)
+      continue
+    }
+    const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => fleet.features[d]?.status !== 'done')
+    fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, ...(waits.length && { waitsOn: waits }) }
+    joining.push(name)
+  }
+  // Rows saved before their worktrees are made: a second drop of the same name in that window
+  // reads fleet.json and sees the row.
+  if (joining.length || names.length) save()
+  for (const name of joining) enqueue(name)
+  if (joining.length) save()
+  return joining.length > 0
+}
+drainInbox()
 // A note about a worktree that is gone (merged, then removed by hand) has nothing left to say.
 fleet.notes = (fleet.notes ?? []).filter((n) => {
   const m = /its worktree (\S+) was kept/.exec(n)
@@ -892,6 +990,7 @@ const wakeAll = () => {
   for (const r of w) r()
 }
 let inFlight = 0
+let closing = false // one lane found everything idle — every lane stops, together
 const idle = () => !pool.length && !walkQueue.length && inFlight === 0
 
 function route(feature, outcome) {
@@ -902,6 +1001,7 @@ function route(feature, outcome) {
 
 async function poolWorker() {
   for (;;) {
+    if (closing) return
     if (pool.length) {
       const { feature, lane } = pool.shift()
       fleet.features[feature].status = RUNNING[lane]
@@ -916,13 +1016,18 @@ async function poolWorker() {
       wakeAll()
       continue
     }
-    if (idle()) return wakeAll()
+    if (drainInbox()) {
+      wakeAll()
+      continue
+    }
+    if (idle()) return close()
     await nextWake()
   }
 }
 
 async function walkLane() {
   for (;;) {
+    if (closing) return
     if (walkQueue.length) {
       const feature = walkQueue.shift()
       inFlight++
@@ -932,12 +1037,29 @@ async function walkLane() {
       wakeAll()
       continue
     }
-    if (idle()) return wakeAll()
+    if (drainInbox()) {
+      wakeAll()
+      continue
+    }
+    if (idle()) return close()
     await nextWake()
   }
 }
+const close = () => {
+  closing = true
+  wakeAll()
+}
 
-await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])
+// A spec added while every lane is busy is picked up on the poll, not only when a run ends. One
+// dropped between the last drain and the exit stays in the inbox for the next start.
+const poll = setInterval(() => {
+  if (!closing && drainInbox()) wakeAll()
+}, INBOX_POLL_MS)
+do {
+  closing = false
+  await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])
+} while (drainInbox())
+clearInterval(poll)
 
 // Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
 for (const f of Object.values(fleet.features))

@@ -320,13 +320,18 @@ test('a planned feature whose spec branch another feature is building on gets it
   assert.match(r.stdout, /✓ i → builder\/i/)
 })
 
-test('a second fleet is refused while one holds the lock', () => {
+test('specs named while one holds the lock go to its inbox; naming nothing is refused', () => {
   const root = makeRepo(['a'])
   mkdirSync(join(root, '.builder/fleet'), { recursive: true })
   writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: {} }))
   const r = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(r.status, 3)
-  assert.match(r.stderr, /Another fleet is running/)
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /↳ a — queued for the running fleet \(pid \d+\)/)
+  assert.equal(JSON.parse(readFileSync(join(root, '.builder/fleet/inbox/a'), 'utf8')).waitsOn.length, 0)
+  const bare = runFleet(root, [], { a: HAPPY })
+  assert.equal(bare.status, 3)
+  assert.match(bare.stderr, /Another fleet is running/)
 })
 
 test('a stale lock is taken over', () => {
@@ -805,4 +810,108 @@ test('a note about a worktree that no longer exists is dropped on the next run',
   const status = readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8')
   assert.doesNotMatch(status, /\/nowhere\/x/)
   assert.match(status, /y merged; its worktree/)
+})
+
+// ---- adding to a running fleet: the inbox ----------------------------------------------------
+
+const ENV = (root, env = {}) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env })
+const until = async (pred, what, ms = 15000) => {
+  for (const deadline = Date.now() + ms; !pred(); ) {
+    assert.ok(Date.now() < deadline, what)
+    await new Promise((r) => setTimeout(r, 50))
+  }
+}
+
+test('a spec named while a fleet runs joins its queue and is picked up when a slot frees', async () => {
+  const root = makeRepo(['a', 'b', 'c'])
+  const scenario = { a: ['CHATTY:4000:audited', ...HAPPY.slice(1)], b: HAPPY, c: HAPPY }
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
+  const fleet = spawn('node', [FLEET, 'a', '--parallel', '1'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: ENV(root, { FLEET_INBOX_POLL_MS: '100' }) })
+  let out = ''
+  fleet.stdout.on('data', (d) => (out += d))
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  const calls = join(root, '.stub/calls.log')
+  await until(() => existsSync(calls) && /^start a build/m.test(readFileSync(calls, 'utf8')), 'a never started')
+
+  // A dry run says what a second invocation would do.
+  const dry = runFleet(root, ['b', '--dry-run'], scenario)
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /adds to the running fleet \(pid \d+\)/)
+  assert.match(dry.stdout, /✓ b → builder\/b/)
+
+  // Naming specs queues them and returns at once — no second fleet, no wait.
+  const add = runFleet(root, ['b', 'c'], scenario)
+  assert.equal(add.status, 0, add.stderr)
+  assert.match(add.stdout, /↳ b — queued for the running fleet \(pid \d+\)/)
+  assert.match(add.stdout, /↳ c — queued for the running fleet/)
+  assert.equal(existsSync(join(root, '.builder/fleet/inbox/b')), true)
+
+  // Naming them again is not an error, and not a second copy.
+  const again = runFleet(root, ['b'], scenario)
+  assert.equal(again.status, 0, again.stderr)
+  assert.match(again.stdout, /b — already (queued for|in) the running fleet/)
+
+  // Naming nothing while it runs is still the old refusal.
+  const bare = runFleet(root, [], scenario)
+  assert.equal(bare.status, 3)
+  assert.match(bare.stderr, /Another fleet is running in this repo \(pid \d+\)\. Name specs to add them/)
+
+  assert.equal(await exited, 0, out)
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.equal(fj.features.a.status, 'done')
+  assert.equal(fj.features.b.status, 'done')
+  assert.equal(fj.features.c.status, 'done')
+  assert.equal(existsSync(join(root, '.builder/fleet/inbox/b')), false, 'the inbox entry was consumed')
+  const log = readFileSync(calls, 'utf8')
+  assert.ok(/^start b build/m.test(log) && /^start c build/m.test(log), 'both additions ran')
+  const merges = git(root, 'log', '--first-parent', '--oneline', '-3').split('\n')
+  assert.deepEqual(merges.map((l) => /merge\((\w)\)/.exec(l)?.[1]).sort(), ['a', 'b', 'c'], 'all three merged into main')
+})
+
+test('an added spec that fails admission is refused with the reason and never queued', async () => {
+  const root = makeRepo(['a', 'bad'])
+  writeFileSync(join(root, 'docs/features/bad/MANIFEST.md'), 'size: md\nstate: spec\nnext: x\nnote: dirty\n') // uncommitted
+  const scenario = { a: ['CHATTY:1500:audited', ...HAPPY.slice(1)] }
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
+  const fleet = spawn('node', [FLEET, 'a'], { cwd: root, stdio: 'ignore', env: ENV(root, { FLEET_INBOX_POLL_MS: '100' }) })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  await until(() => existsSync(join(root, '.stub/calls.log')), 'a never started')
+  const add = runFleet(root, ['bad'], scenario)
+  assert.equal(add.status, 0)
+  assert.match(add.stdout + add.stderr, /✗ bad — .*uncommitted changes/)
+  assert.equal(existsSync(join(root, '.builder/fleet/inbox/bad')), false)
+  assert.equal(await exited, 0)
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.equal('bad' in fj.features, false)
+})
+
+test('an inbox left by a fleet that died is drained at the next start', () => {
+  const root = makeRepo(['a', 'b'])
+  mkdirSync(join(root, '.builder/fleet/inbox'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/inbox/b'), '{}')
+  const r = runFleet(root, ['a'], { a: HAPPY, b: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.fleet.features.a.status, 'done')
+  assert.equal(r.fleet.features.b.status, 'done')
+  assert.equal(existsSync(join(root, '.builder/fleet/inbox/b')), false)
+})
+
+test('a parked feature named again while the fleet runs is re-queued once its block is cleared', async () => {
+  const root = makeRepo(['a', 'p'])
+  const scenario = { a: ['CHATTY:2500:audited', ...HAPPY.slice(1)], p: ['BLOCK:"needs a human"', ...HAPPY] }
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
+  const fleet = spawn('node', [FLEET, 'a', 'p', '--parallel', '2'], { cwd: root, stdio: 'ignore', env: ENV(root, { FLEET_INBOX_POLL_MS: '100' }) })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  const fj = () => JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  await until(() => existsSync(join(root, '.builder/fleet/fleet.json')) && fj().features.p?.status === 'parked', 'p never parked')
+  // Clear the block in the worktree as a human would, commit it, then name p again.
+  const wt = fj().features.p.worktree
+  const mf = join(wt, 'docs/features/p/MANIFEST.md')
+  writeFileSync(mf, readFileSync(mf, 'utf8').replace(/^blocked:.*\n/m, ''))
+  git(wt, 'commit', '-qam', 'unblock p')
+  const add = runFleet(root, ['p'], scenario)
+  assert.equal(add.status, 0, add.stderr)
+  assert.match(add.stdout, /↳ p — re-queued for the running fleet/)
+  assert.equal(await exited, 0)
+  assert.equal(fj().features.p.status, 'done')
 })

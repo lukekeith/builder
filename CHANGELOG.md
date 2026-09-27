@@ -4,6 +4,18 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.6.0
+
+**Add to a running fleet.** `/builder:fleet <specs>` — and `/builder:agent`'s picks — while a fleet is
+running no longer refuse with "Another fleet is running": admission is checked as at a launch, each
+admitted spec is dropped in `.builder/fleet/inbox/` (one file per spec, so nothing needs a lock), and
+the running fleet drains the inbox whenever a lane looks for work and on a 15 s poll
+(`FLEET_INBOX_POLL_MS`), so a spec added while every lane is busy starts the moment one frees. A parked
+or failed feature named again is retried. A dry run says `adds to the running fleet (pid N)`; naming
+nothing while one runs is still refused, now with the hint. An inbox a dead fleet left behind is drained
+at the next start. The running fleet's `--parallel` stands. `/builder:agent` stops offering features
+already in the running fleet. No config changes.
+
 ## 3.5.1
 
 - The progress bar reads the ledger at `state: planned` too: the build writes `state: building` only at

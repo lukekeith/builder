@@ -18,6 +18,11 @@ agent-verified, not human-tested` — and removes its worktree and `builder/` br
 on that one branch, so you test the whole batch in one place. It **never pushes and never opens a
 PR** — both stay yours — never writes a *human* sign-off, never lifts a `hold:`, and never deploys.
 A re-run must start from the same branch while any of the fleet's features are unfinished.
+**Specs named while a fleet is running join its queue** — the same command, no flag: admission is
+checked as at a launch, each admitted spec is dropped in `.builder/fleet/inbox/`, and the running fleet
+picks it up the moment a lane frees (it polls every 15 s, so a spec added while every lane is busy
+never waits for a run to end). `--parallel` is the running fleet's; adding never raises it. A parked
+feature named again is retried, once its `blocked:` line is cleared in its worktree.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
 the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time. **Every
 worktree is brought up to the target first**: before each build- or ship-lane run, and before the
@@ -59,7 +64,8 @@ node <builder>/scripts/fleet.mjs <the same arguments> --dry-run
 ```
 
 Print it verbatim. For every `✗` line, say what fixes it in a few words — for `waits on`, adding
-that dependency to the run. The script refusing the whole
+that dependency to the run. A line `adds to the running fleet (pid N)` means a fleet is already
+running here and the specs join its queue — §3 and §4 say how that changes the wording. The script refusing the whole
 batch (no `agent_walk:` block, no `claude_args`) → name `/builder:init --update` and stop. `--dry-run`
 was asked for → stop here.
 
@@ -72,6 +78,10 @@ changes in this checkout (`git status --short`): the fleet merges into this work
 that would overwrite one of them parks that feature until it is out of the way.
 This is the only question the fleet ever asks.
 
+**A fleet is already running** (the dry run said `adds to the running fleet`): the options are **Add
+to the running fleet** / **Not now**, and the question says how many specs join the queue and that
+they start as lanes free — the running fleet's `--parallel` stands.
+
 ## 4. Launch
 
 Run with the Bash tool's `run_in_background`:
@@ -79,6 +89,15 @@ Run with the Bash tool's `run_in_background`:
 ```bash
 node <builder>/scripts/fleet.mjs <the same arguments>
 ```
+
+**Adding to a running fleet:** run the same command in the foreground — it drops the specs in the
+inbox and returns at once. Print its `↳` / `✗` / `↻` lines, then the footer:
+
+~~~
+📍 fleet: <n> spec(s) added to the running fleet — next: /builder:fleet --status
+~~~
+
+and stop; the rest of this section is the launch of a NEW fleet.
 
 When the config's `agent_walk.start` is set, each walk in the walk lane gets its own dev env: the
 fleet starts it fresh after `reset`, polls `smoke` until it's up, and always stops it after the

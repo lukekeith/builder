@@ -161,6 +161,7 @@ Write the specs, then hand them over:
 ```
 /builder:agent                  # pick unfinished features from a list
 /builder:fleet --all            # or: every fresh spec, scripted — or name the features
+/builder:fleet <feature>…       # while a fleet runs: the specs join its queue, no second fleet
 ```
 
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
