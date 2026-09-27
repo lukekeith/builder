@@ -141,9 +141,10 @@ touches neither the SPEC header nor the PR lock.
 
 ## 🔒 The walk (before the deep pass)
 
-1. **Fast gates only, for the apps the build touched** (the config's §Quality gates) — ⛔ not the
-   cross-app walk, not the full deep set. The build ran them at the last phase close; re-run what a
-   commit since then can turn red.
+1. **Fast gates only, for the apps the build touched** — `node <builder>/scripts/gate.mjs <app>…`
+   (REFERENCE §Quality gates) — ⛔ not the cross-app walk, not the full deep set. The build ran them
+   at the last phase close; the runner re-runs an app a commit since then can have turned red and
+   quotes the rest.
 1b. 🔴 **Walk readiness** — REFERENCE §Walk readiness, whenever the manifest's `ready:` is not
    `yes` at the current HEAD, or anything since could have left the dev environment behind (a new
    migration, a restart-class change). Pending → hand off the one step that's left; ⛔ **never print
@@ -253,6 +254,11 @@ a reviewer whose verdict is never read, a feature the fleet then parks for "no p
   `node <builder>/scripts/job.mjs start <name> -- <command>` and then waited on in the foreground,
   **Bash timeout 600000**, with `node <builder>/scripts/job.mjs wait <name>` — again and again while it
   prints `still running` (exit 75), until it prints an exit code. That code is the gate's result.
+  Gate suites are always `scripts/gate.mjs` (REFERENCE §Quality gates), so the command under `job.mjs`
+  is `node <builder>/scripts/gate.mjs …`, never the config's commands pasted by hand.
+- **Never kill a process you did not start in this run**, and never `pkill`/`killall` by pattern:
+  other fleet worktrees share this machine, and their suites look exactly like yours. Wrap a command
+  of yours that may hang in `timeout`.
 - **The run's last message is a handoff after the work finished** — never "waiting on …", "I'll
   pick this up when …", or "still running". Work that cannot finish in this run ends at a committed
   manifest the next run resumes from.
@@ -266,7 +272,7 @@ Every point that would ask resolves one of two ways:
 
 | Pause | Under `--agent-walk` |
 |---|---|
-| Decisions gate · go-ahead · prototype gap · audit code defect | as `--auto`: the recommendation, recorded `auto (recommended)` |
+| Decisions gate · go-ahead · prototype gap · audit code defect | as `--auto`: the recommendation, recorded `auto (recommended)`. 🔴 **A go-ahead is never a reason to park**, however many decisions were auto-ruled on the way to it: handing the feature to agents was the go-ahead. A run that wrote `blocked: "no human go-ahead …"` misread this table |
 | An open scope question · a plan that wants to split | park — the spec needs a human |
 | An audit `blocked:` finding | park, citing it |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
@@ -358,12 +364,15 @@ runs without a question; a step that can't finish **parks** (`blocked:` + commit
 2. **Bring the target in.** `git merge --no-edit <into>` — a local branch, visible from this
    worktree.
    - Nothing new → go on.
-   - Merged cleanly with new commits (another feature landed first) → run the **fast gates of every
-     in-scope app** (through `job.mjs`). Red → each failure a `- [ ] <app>: … (target sync)` under
+   - Nothing new is the normal case: the fleet merges the target into the worktree before every
+     build-lane run and before the walk env starts, so the tree already carries it.
+   - Merged cleanly with new commits (another feature landed first) → `node <builder>/scripts/gate.mjs
+     <every in-scope app>` (through `job.mjs`). The runner re-runs only the apps whose inputs the
+     merge changed and quotes the rest. Red → each failure a `- [ ] <app>: … (target sync)` under
      `## Fixes`, fixed per §Working `## Fixes`, gates green, then on.
    - Conflicts → resolve them when the resolution is mechanical (both sides additive, a lockfile to
-     regenerate, imports) and re-run those apps' fast gates; otherwise `git merge --abort` and park
-     `"conflict with <into> in <files> — clears when a human resolves it"`.
+     regenerate, imports) and run `gate.mjs` for the in-scope apps; otherwise `git merge --abort` and
+     park `"conflict with <into> in <files> — clears when a human resolves it"`.
 3. **Ship.** `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) — the SHIPPED
    header naming `<into>`, `MANIFEST.md` removed, the workspace removed, a program child's line set
    to `shipped` — one commit.

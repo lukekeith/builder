@@ -116,7 +116,9 @@ plugins/builder/
     config.mjs               parses .claude/builder.md — the one thing that knows your project
     list-features.mjs        every feature and its next command; the picker's data source and /builder:status
     check-obligations.mjs    the cross-section gate on a SPEC.md
-    workspace                the git-ignored per-feature scratch directory
+    gate.mjs                 runs an app's gate block or the deep set; flaky re-runs, @delta baselines,
+                             and a memo that quotes a green run whose inputs haven't changed
+    workspace                the git-ignored per-feature scratch directory (--remove at ship)
     task-brief               extracts one task's text for its implementer
     review-package           the diff a reviewer reads in one call
   skills/
@@ -181,7 +183,16 @@ stops it after, and never restarts it mid-walk. `copy` brings along untracked fi
 certs) a fresh worktree wouldn't have, `setup` runs once per new worktree, and `env` reaches the walk
 lane — its headless `claude` runs and the `reset`/`start`/`smoke`/`stop` hooks — with `{feature}`
 filled in so each worktree's walk env can have its own port and database. Build-lane runs and `setup`
-never see `env`, so parallel builds stay off the walk env.
+never see `env`, so parallel builds stay off the walk env. **`worktree_env`** reaches every run and
+`setup` in a worktree with `{feature}` filled in — a `TEST_DATABASE_URL` per worktree is what makes
+`parallel: 3` safe when the test suites would otherwise share one database.
+
+Every worktree is merged up to the branch the fleet runs from before each build run and before its
+walk env starts, so features integrate as they land rather than all at ship. Gate blocks run through
+`scripts/gate.mjs`, which re-runs the config's known flakes once, judges `@delta` counts against the
+base branch, and quotes a green run whose inputs have not changed instead of re-running it — the
+measured reason a d2m-sized feature spent 60% of its wall-clock in tests was the same suite running
+about fourteen times.
 
 ## What it never does
 

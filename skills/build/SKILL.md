@@ -99,6 +99,10 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   stages and stops**.
 - **The reviewer gets §Contract** as well as the constraints block, and checks the diff against it
   rather than against the implementer's description.
+- **The implementer runs its own tests and the type-check, not the app's suite.** The prompt says
+  so; do not add "run the full suite" to a dispatch. The suite is the phase close's, once, through
+  the gate runner — an implementer running it per task was the largest single cost measured in a
+  real build, and it proved nothing the phase close did not prove again minutes later.
 - **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**.
 - **Carry the config's §Environment landmines into the dispatch** when one applies to this task. A
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
@@ -111,12 +115,17 @@ A phase closes when every task the `## Phases` table assigns to it carries a `Ta
 line. **The table's `Tasks` cell is the membership source; a block's `Phase:` line is its per-block
 echo** — when they disagree, the table decides and the mismatch is said out loud. Then:
 
-1. **That app's fast set, fresh** — from the config's §Quality gates, run from there, never from
-   memory. 🔴 *Fresh* is literal, and it is
-   [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law: if you
-   have not run the command in this message, you cannot report that it passes. A phase does not close
-   on a run from before the last three commits, and "should still be green" is not a gate result. Report a delta where the config asks for one, and record a gate the config marks
-   KNOWN-RED as BLOCKED with evidence rather than failing on it.
+1. **That app's fast set, through the gate runner:**
+   `node <builder>/scripts/gate.mjs <app>` (under `--agent-walk`, started with `job.mjs start` and
+   waited on — REFERENCE §Quality gates). It runs the config's block for that app, applies the
+   config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself, and prints one
+   verdict line per command and one for the set. 🔴 *Fresh* is
+   [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law, and the
+   runner is how it is kept: a set is quoted only when the runner itself proves its inputs are
+   byte-identical to its last green run, and it says so with the sha. A gate result you remember
+   from an earlier message is not one. Never run the block's commands by hand to "save time" and
+   never read the config's tails to decide what a failure means — the runner's `✗` lines carry the
+   tail, and a `✗` is a red gate, full stop.
    ⛔ **No cross-app walk, no deep set here** — that runs once, in `/builder:verify`.
 2. 🔴 **A phase whose gates are red does not close.** Each failure becomes a fix dispatch against the
    task that caused it, reviewed like any other finding — never a controller fix — then the gate
@@ -171,7 +180,9 @@ run**. Never ask.
 
 ## When the last phase signs
 
-1. **Fast gates** for every app the build touched, as at any phase close.
+1. **Fast gates** for every app the build touched: `node <builder>/scripts/gate.mjs <app> <app>…` in
+   one call. An app with no commit since its phase close is quoted by the runner, not re-run — that
+   is the point of running it this way, and the quoted line is the evidence.
 2. **The final whole-branch review** — EXECUTION.md §The final whole-branch review, using
    [`prompts/final-reviewer.md`](prompts/final-reviewer.md) on the most capable model, pointed at the
    ledger's deferred-minor and parked lines **and at §Contract**. ONE fix dispatch, one scoped
@@ -183,10 +194,13 @@ run**. Never ask.
    `state: built`; write `state: building`, `ready: pending "<what>"`,
    `next: <what the human must do>, then /builder:resume --path <folder>` and hand off saying exactly
    that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
-   **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all — write
-   `state: building`, `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>`,
-   commit `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`, and end the
-   run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
+   **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all. Instead, **run the
+   deep set here**, where it runs in parallel with other builds instead of holding the one-at-a-time
+   walk lane: `node <builder>/scripts/gate.mjs --deep <every in-scope app>` through `job.mjs`. Red
+   deep gates are fix dispatches like any red phase gate. Verify will quote this run if nothing
+   changes the tree before it — and re-run it if something does. Then write `state: building`,
+   `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>`, commit
+   `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`, and end the run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
    becomes. With `agent_walk.start` set, the fleet has already started the walk env for this worktree —
    never start or restart it here (REFERENCE §Walk readiness).
 4. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per

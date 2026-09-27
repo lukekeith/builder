@@ -99,7 +99,7 @@ fast set — never another app's, never the deep set.
 ### Task N: <name>
 App: <app>
 Phase: <n>
-Recipe: <the companion skill to read FIRST, or the REFERENCE section that governs this work>
+Recipe: <the companion skill to read FIRST, or the REFERENCE section that governs this work; append ` · tiny` for a one-file edit with its test, so the build reviews it at the cheapest tier>
 
 **Files:**
 - Create: `exact/path/to/file.ts`

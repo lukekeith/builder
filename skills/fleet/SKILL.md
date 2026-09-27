@@ -19,7 +19,16 @@ on that one branch, so you test the whole batch in one place. It **never pushes 
 PR** — both stay yours — never writes a *human* sign-off, never lifts a `hold:`, and never deploys.
 A re-run must start from the same branch while any of the fleet's features are unfinished.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
-the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time.
+the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time. **Every
+worktree is brought up to the target first**: before each build- or ship-lane run, and before the
+walk env starts (at walk readiness and at verify — never between readiness and the walk), the fleet
+merges the target branch into the worktree, so a feature builds on what the others have landed and
+the ship step's own merge finds nothing new. A conflict there parks the feature.
+**Builds run in parallel safely when each worktree has its own test database**: `agent_walk.worktree_env`
+(`TEST_DATABASE_URL=…_{feature}`, say) reaches every run and `setup` in a worktree, `{feature}` filled
+in, and `setup` can create that database. With it, `parallel: 3`; without it, suites that share one
+database must run with `parallel: 1`. If the config has `@delta` gates, the fleet measures their
+baselines on the target branch at start (`gate.mjs --baseline`, log in `.builder/fleet/logs/`).
 
 **A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
 entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree

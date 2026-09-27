@@ -25,6 +25,8 @@ import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
 import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr } from './fleet-core.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
+import { parseGates } from './gates-core.mjs'
+import { fileURLToPath } from 'node:url'
 
 const RUN_CAP = 12
 // A run is killed when it goes quiet, not when it runs long: a 20-task build can take hours and
@@ -157,14 +159,18 @@ function worktreeProblem(feature, branch) {
 
 /**
  * The env a child the fleet spawns gets. CLAUDE_PROJECT_DIR is always dropped so the child reads
- * ITS worktree's config and manifests, never the main checkout's. Only the WALK lane — its
+ * ITS worktree's config and manifests, never the main checkout's. Every child — any lane, and
+ * `setup` — gets agent_walk.worktree_env with {feature} filled in. Only the WALK lane — its
  * `claude -p` runs and the reset/start/smoke/stop hooks — also gets agent_walk.env, with {feature}
  * filled in, which is how two worktrees' walk envs get their own ports and databases. The build
- * lane and `setup` never see it: build lanes run while a walk is up, and a build's gates pointed
+ * lane and `setup` never see `env`: build lanes run while a walk is up, and a build's gates pointed
  * at the walk env's ports and database would collide with it or write into it.
  */
 function envFor(feature, lane) {
   const env = { ...process.env }
+  // worktree_env first, every lane: it is how each worktree's tests get their own database, which
+  // is what lets `parallel` builds share a machine without sharing a test DB.
+  for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = v.replaceAll('{feature}', feature)
   if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
@@ -203,13 +209,13 @@ function copyInto(wt) {
   }
 }
 
-/** agent_walk.setup in a new worktree, output to logs/<feature>-setup.log. Throws, naming the log, on failure. */
+/** agent_walk.setup in a new worktree ({feature} filled in), output to logs/<feature>-setup.log. Throws, naming the log, on failure. */
 function runSetup(feature, wt) {
   const log = join(DIR, 'logs', `${feature}-setup.log`)
   mkdirSync(dirname(log), { recursive: true })
   const fd = openSync(log, 'w')
   try {
-    execSync(AW.setup, { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    execSync(AW.setup.replaceAll('{feature}', feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
   } catch {
     throw Object.assign(new Error(`setup failed — see ${log}`), { setup: true })
   } finally {
@@ -463,6 +469,7 @@ function runClaude(wt, feature, lane, n) {
     // The raw stream goes to <log>.jsonl; the .log gets what a human reads — the run's own words
     // as it goes, and its final result. Any output at all resets the idle timer.
     let buf = ''
+    const seen = { lastText: '' }
     child.stdout.on('data', (chunk) => {
       clearTimeout(idle)
       idle = setTimeout(kill, IDLE_TIMEOUT_MS)
@@ -470,7 +477,7 @@ function runClaude(wt, feature, lane, n) {
       buf += chunk
       const lines = buf.split('\n')
       buf = lines.pop()
-      for (const line of lines) out.write(readable(line))
+      for (const line of lines) out.write(readable(line, seen))
     })
     child.stderr.on('data', (chunk) => {
       clearTimeout(idle)
@@ -494,8 +501,9 @@ function runClaude(wt, feature, lane, n) {
 }
 
 /** One stream-json line as log text: assistant prose and the final result; anything else verbatim
- *  unless it is JSON, which only the .jsonl keeps. */
-function readable(line) {
+ *  unless it is JSON, which only the .jsonl keeps. The result is the last assistant message's text
+ *  again, so it is dropped when it repeats what was just written — the log said it once. */
+function readable(line, seen = { lastText: '' }) {
   if (!line.trim()) return ''
   let ev
   try {
@@ -503,12 +511,15 @@ function readable(line) {
   } catch {
     return `${line}\n`
   }
-  if (ev.type === 'result') return `\n${ev.result ?? ''}\n`
-  if (ev.type === 'assistant')
-    return (ev.message?.content ?? [])
-      .filter((b) => b.type === 'text' && b.text?.trim())
-      .map((b) => `· ${b.text.trim()}\n`)
-      .join('')
+  if (ev.type === 'result') {
+    const text = (ev.result ?? '').trim()
+    return text && text === seen.lastText ? '' : `\n${ev.result ?? ''}\n`
+  }
+  if (ev.type === 'assistant') {
+    const texts = (ev.message?.content ?? []).filter((b) => b.type === 'text' && b.text?.trim()).map((b) => b.text.trim())
+    if (texts.length) seen.lastText = texts[texts.length - 1]
+    return texts.map((t) => `· ${t}\n`).join('')
+  }
   return ''
 }
 
@@ -699,11 +710,22 @@ function killStartSync(f) {
   delete f.startPgid
 }
 
+/** The manifest states at which the walk lane merges the target in before starting the env: before
+ *  walk readiness (it re-smokes the merged code) and before verify (it re-gates it). Never at
+ *  `built` with the walk still owed — a merge there would void the readiness the walk needs, and
+ *  the run would bounce between readiness and the walk. */
+const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
+
 async function walkOne(feature) {
   const f = fleet.features[feature]
   f.status = 'walking'
   save()
   try {
+    const text = readManifest(f.worktree, feature)
+    if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
+      const why = syncTarget(f.worktree, 'what other features merged')
+      if (why) return park(f, why)
+    }
     if (!hook(AW.reset, f.worktree, feature)) {
       Object.assign(f, { status: 'parked', reason: `agent_walk.reset failed: ${AW.reset}` })
       save()
@@ -769,14 +791,21 @@ function enqueue(feature) {
 }
 
 /**
- * A released child whose branch already existed may predate its dependencies' merge. Bring the
- * target in, so it builds on their shipped code; a conflict is a reason to park.
+ * Bring the target into a worktree — the code every other finished feature has merged into — so
+ * the feature builds, walks and verifies on it, and the ship step's own merge finds nothing new.
+ * Measured before this existed: a walk env started at the pre-merge code parked a signed-off
+ * feature for a whole fleet cycle, and every ship re-ran every app's gates on a tree that had
+ * just moved. Only a clean tree is merged (a manual-commit app may have work staged); a conflict
+ * is a reason to park. Returns null when the worktree is at the target, or the merge went in.
  */
-function syncBase(wt) {
+function syncTarget(wt, why = "its dependencies' code") {
+  if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return null
+  if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return null // not ours to merge over
   if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) !== null) return null
   tryGit(['merge', '--abort'], wt)
-  return `merging ${TARGET} (its dependencies' code) conflicted — clears when a human merges it into the branch`
+  return `merging ${TARGET} (${why}) conflicted — clears when a human merges it into the branch`
 }
+const syncBase = (wt) => syncTarget(wt)
 
 /** A dependency shipped: queue every child that was waiting only on what has now merged. */
 function release() {
@@ -788,6 +817,19 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   enqueue(feature)
+}
+// @delta gates compare against the target's counts: measure them here, once, before any run.
+if ([...Object.values(parseGates(CFG.body).fast).flat(), ...parseGates(CFG.body).deep].some((g) => g.delta)) {
+  const log = join(DIR, 'logs', 'baseline.log')
+  mkdirSync(dirname(log), { recursive: true })
+  const fd = openSync(log, 'w')
+  try {
+    execFileSync('node', [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--baseline'], { cwd: ROOT, env: process.env, stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+  } catch {
+    addNote(`gate baseline: measuring the @delta gates on ${TARGET} failed — see ${log}; a worktree's first measurement becomes its baseline`)
+  } finally {
+    closeSync(fd)
+  }
 }
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset'))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
@@ -821,7 +863,10 @@ async function poolWorker() {
       fleet.features[feature].status = RUNNING[lane]
       save()
       inFlight++
-      const outcome = await drive(feature, lane)
+      // Every pool run starts on the latest target, so a build integrates other features' merges
+      // as they land instead of meeting them all at ship.
+      const why = syncTarget(fleet.features[feature].worktree, 'what other features merged')
+      const outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
       inFlight--
       route(feature, outcome)
       wakeAll()

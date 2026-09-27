@@ -83,7 +83,8 @@ Below, `<builder>/scripts/x` means that resolved path.
 |---|---|
 | `list-features.mjs` | every feature in the registry with its state and next command — the picker's data source. `--json` · `--check` · `--all` · `--status` (the `/builder:status` table) |
 | `check-obligations.mjs` | the cross-section gate on a `SPEC.md` (§SPEC.md). Exit 1 = a dangling obligation, and it names its own rows |
-| `workspace <feature>` | prints and ensures the git-ignored workspace for one feature |
+| `gate.mjs <app>… \| --deep [<app>…] \| --all` | 🔴 **the only way a gate block is run** (§Quality gates — the mechanism): runs the config's fast set per app and/or its deep set, applies `flaky:`, `@delta` and `@known-red`, and quotes a set whose inputs are byte-identical to its last green run, naming the sha. Exit 0 green, 1 red. `--force` runs regardless; `--baseline` records the `@delta` counts (the fleet does this at start) |
+| `workspace <feature>` | prints and ensures the git-ignored workspace for one feature. `--remove <feature>` deletes it — the ship step's call, because `rm -rf "$(…)"` is refused by the harness |
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
 
@@ -536,14 +537,37 @@ section is missing and stops.
 
 ## Quality gates — the mechanism
 
-The **fast set** is the config's per-app block, run **fresh at every phase close by the controller**.
-A phase touches ONE app, so its gates are one block, never all of them.
+The **fast set** is the config's per-app block, run **at every phase close by the controller**. A
+phase touches ONE app, so its gates are one block, never all of them.
 
-The **deep set** runs ONCE, in `/builder:verify`: every in-scope app's fast set fresh, plus whatever
-the config's deep block names, plus consumer parity against the frozen §Contract.
+The **deep set** is the config's deep block — **what the fast sets do not cover**, an e2e suite, a
+whole-repo check — and its verdict is written ONCE, in `/builder:verify`, beside every in-scope
+app's fast set and consumer parity against the frozen §Contract. Under the fleet, the build lane
+runs the deep block when the last phase closes (in parallel with other builds, off the one-at-a-time
+walk lane) and verify quotes that run when nothing has changed the tree since.
 
-A gate the config marks **KNOWN-RED repo-wide** is recorded as BLOCKED with evidence rather than
-failing a feature; where the config asks for a **delta** rather than a green exit, report the delta.
+🔴 **Every gate block is run through `scripts/gate.mjs`, never by pasting the config's commands.**
+The runner does what a controller used to do by hand at every close, in opus turns over 100-line
+tails: it runs the block, re-runs a failure the config's `flaky:` list matches (once, the narrow
+`rerun:` when given), compares an `@delta` count against the baseline measured on the target branch,
+reports an `@known-red` gate without counting it, and prints one line per command and one per set.
+
+**The memo, and what "fresh" means.** The runner records each GREEN set against a content hash of
+its inputs — the app's path, every tracked path no other app owns (shared packages, the lockfile,
+root config), the registry excluded, and the gate commands themselves. When a later call finds the
+tree clean and the hash unchanged, it **quotes** the recorded run, naming the sha and time, and exits
+green. That is fresh evidence in [`verification-before-completion`](../verification-before-completion/SKILL.md)'s
+sense: the claim rests on a run the runner can prove is against this exact input, not on a model
+remembering. A red result is never quoted — red always runs again. Measured before the memo: the same
+server suite ran about fourteen times per feature and test execution was 60% of a fleet's wall-clock;
+most of those runs re-proved a tree nothing had touched.
+
+**Implementers do not run the suite.** Their prompt limits them to the tests of the code they change
+plus the type-check; the phase close runs the block once, on the committed tree.
+
+**Baseline drift.** A gate written as a count (`… | grep -c "error TS"   # @delta`) is judged against
+the count on the target branch, measured by `gate.mjs --baseline` — the fleet runs it at start in the
+main checkout, and a worktree reads it from there. No hard-coded number goes stale in the config.
 
 ### 🔴 The cross-app E2E walk is an END-OF-BUILD gate, not a per-phase one
 
@@ -574,7 +598,8 @@ config's **§Walk readiness**; a config without that section → infer them from
 
 **Under `--agent-walk`, when the config's `agent_walk.start` is set**, the fleet has already started
 an isolated dev env for this worktree, with the config's `agent_walk.env` in the environment, before
-this step ever runs. Readiness there:
+this step ever runs — and, first, merged the fleet's target branch into the worktree, so the env runs
+the code every other finished feature has landed on. Readiness there:
 
 - still applies migrations and regenerates — steps 1–2 below — but against **that** environment's
   database;

@@ -4,6 +4,55 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.0
+
+**The gates run once, and builds run side by side.** Measured on one fleet day (two repos, seven
+features): test execution was ~60% of a d2m-sized feature's wall-clock, the same server suite ran
+about fourteen times per feature, and `parallel: 1` — set because the suites shared one test database
+— serialised four builds of three hours each. No config key is required; every new key is optional.
+
+- **`scripts/gate.mjs`** runs an app's fast set (`gate.mjs <app>…`), the deep set (`--deep`), or
+  every app (`--all`) from `.claude/builder.md` §Quality gates, and is now the only way a gate block
+  is run — phase close, last-phase gates, verify, the ship step's target sync. It records each green
+  set against a content hash of its inputs (the app's path, every tracked path no other app owns, the
+  commands themselves; the registry excluded) and **quotes** that run, naming the sha, when the tree is
+  clean and the hash is unchanged. A red run is never quoted. REFERENCE §Quality gates says why that
+  is fresh evidence in the iron law's sense.
+- **Flakes and baselines are the config's call, not a model's.** A `flaky:` list (`match:` a regex on
+  the failure output, `rerun:` the narrow command that proves the file alone) gets one automatic
+  re-run; a gate comment ending `@delta` means the command prints a count that must not exceed the base
+  branch's, measured by `gate.mjs --baseline` (the fleet runs it at start in the main checkout, and a
+  worktree reads it from there); `@known-red` marks inherited debt that is reported, never counted.
+  The template's deep set is now "only what the fast sets don't cover".
+- **Implementers no longer run the app's suite.** The prompt limits them to the tests of the code they
+  change plus the type-check; the phase close runs the block once. Reviewers are told not to re-run
+  suites at all.
+- **The build lane runs the deep set** when the last phase closes under `--no-dev-env`, in parallel
+  with other builds; verify quotes it if the tree is unchanged, so the one-at-a-time walk lane no
+  longer spends 40–50 minutes on gates per feature.
+- **`agent_walk.worktree_env`** — `KEY=VALUE` pairs with `{feature}` that reach EVERY run and `setup`
+  in a worktree (the walk lane's `env` layers on top). A `TEST_DATABASE_URL` per worktree, plus a
+  `setup` that creates it (`setup` now has `{feature}` filled in too), is what makes `parallel: 3`
+  safe for suites that share a database. `/builder:init` recommends it in place of `parallel: 1`.
+- **The fleet merges the target into each worktree** before every build- and ship-lane run, and
+  before the walk env starts at walk readiness and at verify (never between readiness and the walk),
+  so features integrate as they land, the walk env never runs code the run has since merged past, and
+  the ship step's own merge finds nothing new. A conflict parks the feature naming the cause.
+- **Never kill what you did not start.** Implementer, reviewer and controller prompts, and the
+  template's §Global constraints: no `pkill`/`killall` by pattern, no killing PIDs found in `ps`,
+  `timeout` on a command that may hang. One lane's `pkill -f "node --test"` killed the other lane's
+  verify suite (exit 137) and cost a nine-minute re-run.
+- **`workspace --remove <feature>`** replaces `rm -rf "$(workspace …)"` at ship: the harness refuses
+  an `rm -rf` on a substituted path, and inside a chained command that refusal ran nothing — five of
+  five agent-mode ships lost a turn to it.
+- **A go-ahead is never a park.** `/builder:plan` and resume's `--agent-walk` table now say so
+  explicitly; a run had written `blocked: "no human go-ahead"` on a spec whose decisions were all
+  auto-ruled, which cost the feature its fleet day.
+- **Tiny tasks.** The plan step folds a one-line change into an existing task of the same app, or
+  marks the task `tiny` on its `Recipe:` line so the build reviews it at the cheapest tier — three
+  consecutive one-task phases had cost as much as a phase of five real tasks.
+- The fleet's `.log` no longer prints a run's final message twice.
+
 ## 3.2.0
 
 - **`/builder:update` — take the newest release from inside a session.** It refreshes the marketplace

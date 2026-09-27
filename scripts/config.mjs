@@ -158,6 +158,7 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     ticket: unfilled(fm.ticket) ? null : (fm.ticket ?? null),
     design: unfilled(fm.design) ? null : (fm.design ?? null),
     agentWalk,
+    flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
 }
@@ -173,6 +174,20 @@ const unfilled = (block) => {
 }
 
 /**
+ * The optional `flaky:` list — gates whose failure output matching `match` (a regex, or the literal
+ * text when it is not one) earns ONE re-run: `rerun` when given (the narrow command that proves the
+ * flaky file alone), else the same command. `scripts/gate.mjs` applies it, so the decision "is this
+ * the known flake?" is made by the config, not by a model reading a 100-line tail each time. An
+ * entry with no `match`, or still a template `<placeholder>`, is dropped.
+ */
+const flakyOf = (list) => {
+  if (!Array.isArray(list)) return []
+  return list
+    .filter((e) => e && typeof e === 'object' && typeof e.match === 'string' && e.match.trim() && !unfilled(e))
+    .map((e) => ({ match: e.match.trim(), rerun: typeof e.rerun === 'string' && e.rerun.trim() ? e.rerun.trim() : null }))
+}
+
+/**
  * The optional `agent_walk:` block — what an unattended /builder:fleet run needs. Absent, not a
  * map, or still carrying a template `<placeholder>` → null, and `--agent-walk` refuses. `parallel`
  * defaults to 3; `worktrees` is resolved by the fleet (default: a sibling of the repo).
@@ -180,8 +195,12 @@ const unfilled = (block) => {
  * `copy`, `setup`, `env`, `start` and `smoke` prepare an isolated dev env per worktree: `copy`
  * brings along untracked files a fresh checkout wouldn't have, `setup` runs once, `env` is passed
  * to the walk lane's children only (its claude runs and reset/start/smoke/stop — never a build-lane
- * run or setup), and `start`/`smoke` bring up and probe a walk-lane's own dev server. All five are optional and default to the shape a caller can iterate/spread with
- * no special-casing: `[]`, `null` or `{}`, never `undefined`.
+ * run or setup), and `start`/`smoke` bring up and probe a walk-lane's own dev server.
+ * `worktree_env` reaches EVERY child in a worktree — build-lane and ship-lane runs, `setup`, and
+ * the walk lane underneath `env` — with `{feature}` filled in: it is how each worktree's tests get
+ * their own database, which is what makes `parallel` > 1 safe when the suites share one. All six are
+ * optional and default to the shape a caller can iterate/spread with no special-casing: `[]`,
+ * `null` or `{}`, never `undefined`.
  */
 const agentWalkOf = (block) => {
   if (!block || typeof block !== 'object' || Array.isArray(block) || unfilled(block)) return null
@@ -201,6 +220,7 @@ const agentWalkOf = (block) => {
         : [],
     setup: block.setup ?? null,
     env: typeof block.env === 'string' ? parseEnvPairs(block.env) : {},
+    worktreeEnv: typeof block.worktree_env === 'string' ? parseEnvPairs(block.worktree_env, 'agent_walk.worktree_env') : {},
     start: block.start ?? null,
     smoke: block.smoke ?? null,
   }
@@ -212,13 +232,13 @@ const agentWalkOf = (block) => {
  * value that itself contains `=` (a query string, say) survives intact. `{feature}` is left alone
  * here — the fleet substitutes it per feature, once, right before it hands the env to a child.
  */
-export function parseEnvPairs(s) {
+export function parseEnvPairs(s, where = 'agent_walk.env') {
   const tokens = s.match(/(?:[^\s"]|"[^"]*")+/g) ?? []
   const out = {}
   for (const token of tokens) {
     const i = token.indexOf('=')
     const key = i === -1 ? '' : token.slice(0, i)
-    if (!key) throw new Error(`agent_walk.env: "${token}" is not KEY=VALUE`)
+    if (!key) throw new Error(`${where}: "${token}" is not KEY=VALUE`)
     const raw = token.slice(i + 1)
     out[key] = /^".*"$/.test(raw) ? raw.slice(1, -1) : raw
   }

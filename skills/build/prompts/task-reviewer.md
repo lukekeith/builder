@@ -91,6 +91,10 @@ Subagent (general-purpose):
     Warnings or other noise in the reported test output are findings — test
     output should be pristine.
 
+    Run every command in the foreground, never `run_in_background`, and
+    never kill a process you did not start: other worktrees share this
+    machine.
+
     Evidence you cannot see is not evidence that doesn't exist. If the report
     or its test evidence looks truncated, re-read the file at its stated path —
     and if it is genuinely missing or garbled, report that as a gap. Re-running

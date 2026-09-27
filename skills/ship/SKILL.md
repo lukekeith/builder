@@ -94,7 +94,10 @@ human either hands it back to agents (`/builder:fleet <feature>`) or tests it an
 2. **`git rm MANIFEST.md`** — its `state:` has arrived, and the SPEC header now carries the state.
 
 3. **Remove the workspace** — git-ignored scratch whose job is done:
-   `rm -rf "$(<builder>/scripts/workspace <feature>)"`. Re-resolve that path inline.
+   `<builder>/scripts/workspace --remove <feature>`, **in its own Bash call**. 🔴 Never
+   `rm -rf "$(…)"`: the harness refuses an `rm -rf` on a substituted path, and when that refusal is
+   inside a chained ship command nothing in the chain runs — five of five agent-mode ships lost a turn
+   to exactly this.
 
 4. **A program child** — find the parent by its own `child:` line
    (`grep -l 'child: <name>' <registry>/*/MANIFEST.md`), set that program's

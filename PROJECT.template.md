@@ -67,7 +67,8 @@ agent_walk:
   # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
   # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
-  # setup: npm ci                  # runs once per NEW worktree, after copy; a failure parks the feature and is retried on the next fleet run
+  # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
+  # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
   # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; the walk lane only — its claude -p runs and reset/start/smoke/stop — never build-lane runs or setup, and never CLAUDE_PROJECT_DIR
   # reset, start, smoke and stop run with env. Give the walk env ports and a database of its own that
   # the repo's own tooling (tests, scripts, your dev env) doesn't also use. reset and stop must never
@@ -78,6 +79,15 @@ agent_walk:
   # start: npm run dev             # a second, isolated dev env for the walk lane — write it, and every command above, as plain shell text: a bare true/false/number is parsed as that, not a command
   # smoke: curl -sf localhost:4001/health   # polled every 2s for up to 5min; start with no smoke just waits 10s and proceeds
   # stop: <command>                # stop what the walk env needs stopped after each walk — never a service your own dev env shares
+
+# ─── flaky gates (optional) ────────────────────────────────────────────────
+# A test that fails under the whole suite and passes alone. When a gate fails and
+# its output matches `match` (a regex), scripts/gate.mjs re-runs `rerun` once —
+# the narrow command that proves the file alone — or the same gate when there is
+# no `rerun`, and passes the gate on a green re-run. Omit the block if none.
+# flaky:
+#   - match: intake\.test\.ts
+#     rerun: node --test apps/server/test/intake.test.ts
 ---
 
 # <Your Project> — builder config
@@ -86,24 +96,33 @@ One paragraph: what this repo is, and how its units relate.
 
 ## Quality gates
 
-The literal commands, per app. **The fast set runs at every phase close** — a
-phase touches ONE app, so its gates are one block below. **The deep set runs
-once, in `/builder:verify`.**
+The literal commands, per app, run by `scripts/gate.mjs` — never pasted by an
+agent. **The fast set runs at every phase close** — a phase touches ONE app, so
+its gates are one block below. **The deep set is only what the fast sets do NOT
+cover** (an e2e suite, a whole-repo check): every in-scope app's fast set runs
+beside it in `/builder:verify`, so a fast command repeated here runs twice.
 
-> Record any gate that is KNOWN-RED repo-wide here, with what makes it red, so
-> a feature is judged on the gates that actually exist rather than failing on
-> inherited debt.
+The runner quotes a set whose inputs (the app's path, shared code, the commands)
+are byte-identical to its last green run, so a gate is not re-run for an app
+nothing has touched. Two markers go at the end of a line's comment:
+
+- `@known-red` — red for inherited debt on the base branch; run and reported,
+  never counted against a feature. Say what makes it red.
+- `@delta` — the command prints a number (a type-error count, say) that must not
+  exceed the base branch's, measured by `gate.mjs --baseline` (the fleet does
+  this at start). No count is typed into this file to go stale.
 
 ### <app> — fast
 
 ```
 <command>          # what it proves
+<command> 2>&1 | grep -c "error TS"   # type errors, must not grow @delta
 ```
 
 ### Deep set (verify only)
 
 ```
-<command>          # what it proves
+<command>          # what it proves, and why the fast sets don't
 ```
 
 ## Walk readiness
@@ -130,6 +149,7 @@ Write each bullet as ONE long line — it survives the paste whole that way. Kee
 it to what an implementer who has never seen this repo would get wrong.
 
 - **Your task touches ONE app.** Its `App:` line says which. Do not edit another app "while you are in there".
+- **Run the tests for the code you change and the type-check, not the app's whole suite** — the phase close runs the gate block once, on the committed tree. Run every command in the foreground. **Never kill a process you did not start in this task, and never `pkill`/`killall` by pattern**: other worktrees share this machine and their suites look like yours; wrap a command that may hang in `timeout`.
 - <one line per binding rule: layering, validation, auth, styling, test policy…>
 - Commits: **exactly one commit for this task** — code and tests together — `<type>(<TICKET>): <subject>`. If review sends you back, each fix round is its own commit. **Never `git commit --amend`.**
 - Never create a branch, a worktree or a ticket. Never open a PR.

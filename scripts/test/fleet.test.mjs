@@ -111,6 +111,7 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   const log = readFileSync(join(root, '.builder/fleet/logs/t1-01.log'), 'utf8')
   assert.match(log, /· still working/)
   assert.match(log, /did audited/)
+  assert.equal(log.match(/did audited/g).length, 1, 'the result repeating the last assistant text is printed once')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/t1-01.jsonl')))
 })
 
@@ -494,6 +495,63 @@ test('env reaches walk-lane claude children with {feature} filled in, never buil
   assert.ok(walk.length > 0 && build.length > 0, starts.join('\n'))
   assert.ok(walk.every((l) => l.includes(' walk_mark=x-a ')), walk.join('\n'))
   assert.ok(build.every((l) => l.includes(' walk_mark=- ')), build.join('\n'))
+})
+
+test('worktree_env reaches every lane with {feature} filled in; env still only the walk lane', () => {
+  const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'env: WALK_MARK=x-{feature}'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.equal(starts.length, 8)
+  assert.ok(starts.every((l) => l.includes(' wt_mark=db-a ')), starts.join('\n'))
+  assert.ok(starts.filter((l) => l.startsWith('start a build ')).every((l) => l.includes(' walk_mark=- ')), starts.join('\n'))
+  assert.ok(starts.filter((l) => l.startsWith('start a walk ')).every((l) => l.includes(' walk_mark=x-a ')), starts.join('\n'))
+})
+
+test('setup sees worktree_env and gets {feature} filled in', () => {
+  const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'setup: echo "${WT_MARK:-unset} {feature}" > setup-wt-env'] })
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })
+  assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'setup-wt-env'), 'utf8'), 'db-a a\n')
+})
+
+/** A feature underway on its own branch, recorded on main, with main then moving on. */
+function laggingBranch(root, feature, edits = () => {}) {
+  git(root, 'switch', '-q', '-c', `feat/${feature}`)
+  writeFileSync(join(root, `docs/features/${feature}/MANIFEST.md`), `size: md\nstate: building\nbranch: feat/${feature}\nnext: x\n`)
+  writeFileSync(join(root, 'shared.txt'), 'base\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', `${feature} building`)
+  git(root, 'switch', '-q', 'main')
+  git(root, 'merge', '-q', '--ff-only', `feat/${feature}`)
+  edits()
+  writeFileSync(join(root, 'moved.txt'), 'main moved on\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'main moved')
+}
+
+test('a pool-lane run starts on the latest target: a branch that lags main gets main merged in first', () => {
+  const root = makeRepo(['u'])
+  laggingBranch(root, 'u')
+  const r = runFleet(root, ['u'], { u: ['BLOCK:stop here'] })
+  assert.equal(r.fleet.features.u.status, 'parked', r.stderr)
+  assert.equal(r.fleet.features.u.branch, 'feat/u')
+  assert.ok(existsSync(join(r.fleet.features.u.worktree, 'moved.txt')), "main's commit is in the worktree before the run")
+  assert.match(git(r.fleet.features.u.worktree, 'log', '--oneline', '-3'), /main moved/)
+})
+
+test('a target sync that conflicts parks the feature, naming the cause', () => {
+  const root = makeRepo(['u'])
+  laggingBranch(root, 'u', () => {
+    git(root, 'switch', '-q', 'feat/u')
+    writeFileSync(join(root, 'shared.txt'), 'theirs\n')
+    git(root, 'commit', '-qam', 'u edits shared')
+    git(root, 'switch', '-q', 'main')
+    writeFileSync(join(root, 'shared.txt'), 'ours\n')
+  })
+  const r = runFleet(root, ['u'], { u: HAPPY })
+  assert.equal(r.fleet.features.u.status, 'parked')
+  assert.match(r.fleet.features.u.reason, /merging main \(what other features merged\) conflicted/)
+  assert.equal(r.calls.length, 0, 'no run on a tree that could not be synced')
 })
 
 test('setup never sees agent_walk.env', () => {
