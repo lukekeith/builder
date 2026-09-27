@@ -56,7 +56,7 @@ test('a fresh install copies what runs, registers it in the host, and names noth
   const dir = join(root, 'plugins/builder')
   for (const f of ['skills/resume/SKILL.md', 'scripts/fleet.mjs', 'scripts/workspace', 'PROJECT.template.md', 'LICENSE', '.claude-plugin/plugin.json'])
     assert.ok(existsSync(join(dir, f)), f)
-  for (const f of ['README.md', 'CHANGELOG.md', 'RELEASING.md', 'CONTRIBUTING.md', 'docs', 'scripts/test', '.claude-plugin/marketplace.json', '.git'])
+  for (const f of ['README.md', 'CHANGELOG.md', 'RELEASING.md', 'CONTRIBUTING.md', 'docs', 'scripts/test', 'skills/update', '.claude-plugin/marketplace.json', '.git'])
     assert.ok(!existsSync(join(dir, f)), `${f} must not be vendored`)
   assert.ok(statSync(join(dir, 'scripts/workspace')).mode & 0o100, 'scripts stay executable')
   const pj = JSON.parse(readFileSync(join(dir, '.claude-plugin/plugin.json'), 'utf8'))

@@ -4,6 +4,15 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.2.0
+
+- **`/builder:update` — take the newest release from inside a session.** It refreshes the marketplace
+  the running copy came from (read from its install path, never hard-coded), updates the user-scope
+  install, summarises the changelog since the version you had with breaking changes first, and names
+  any project- or local-scope install in the current repo that pins an older version over it,
+  offering to remove it. `--check` only reports. `scripts/vendor.mjs` leaves it out of a vendored
+  copy: that is updated with `/builder:vendor`.
+
 ## 3.1.1
 
 - **`/builder:resume` with no argument asks which feature, from a list.** The picker now runs before
