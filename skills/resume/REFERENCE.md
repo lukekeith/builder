@@ -137,7 +137,7 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
-| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk is `/builder:agent-walk`; the PR opens as a draft. Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature goes on to a PR, green CI and the merge (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm --size sm move the save button into the header` |
@@ -174,8 +174,8 @@ migration). Those still ask, as they would have.
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
 is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
-runs — except under `--agent-walk`, where resume §`--agent-walk` governs: the draft opens with no
-question.
+runs — except under `--agent-walk`, where resume §Ship in agent mode governs: the PR opens, and
+merges, with no question.
 
 **Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
 `/builder:revise` (or brainstorm, for a feature not yet audited) exactly as if it had come with no
@@ -249,7 +249,7 @@ apps: <app>+<app>                                     # the in-scope apps, from 
 contract: frozen <YYYY-MM-DD> | open | none           # none = no producer change
 hold: none | "<reason>"                               # 🛑 PR HELD, in the human's words
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
-walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: written by /builder:agent-walk — never a human sign-off
+walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: the agent sign-off, written by /builder:agent-walk — never a human's
 verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
 <design.flag>: <the resolved ref and its set> | none   # prototype mode; key named by the config
@@ -629,6 +629,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 | Moment | What happens |
 |---|---|
 | **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md`; write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
+| **agent sign-off** (AGENT-PASS in agent mode, written by `/builder:agent-walk`) | the same condense; the line is `> 🤖 AGENT SIGNED OFF <date> — <sha> · agent walk round <n> · not human-tested · evidence: …` |
 | **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; commit on the PR branch |
 
 **State detection, binding on every skill in the family:**
@@ -638,7 +639,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 | manifest `state:` spec · aligned · audited · planned · building · built | in flight | route on the manifest's `next:` line |
 | SPEC header carries `SHIPPED` | **DONE** | run no step; print the header; offer a new feature folder |
 | header carries `SIGNED OFF`, manifest `verify: none` | signed off | verify next |
-| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it |
+| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, through to the merge |
 | manifest `hold:` set | parked | local-only steps until the human lifts the hold |
 
 **Legacy layouts.** 🔴 **The manifest is the discriminator.** A folder holding `MANIFEST.md` is this

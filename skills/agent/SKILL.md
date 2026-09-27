@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — a draft PR with agent walk evidence, or parked with the reason a human is needed. Offers every feature at any step before its PR (written spec, audited, planned, part-built, built, verified) that is not parked; one multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written.
+description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged, after an agent walk, an agent sign-off, verify and green CI — or parked with the reason a human is needed. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open) that is not parked; one multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written.
 ---
 
 # `/builder:agent` — pick the work, let agents finish it
@@ -8,9 +8,10 @@ description: Pick one or more unfinished /builder:* features from a list and han
 Invocation: **`/builder:agent`**. No arguments; `--help` prints this line and stops.
 
 The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it promises holds here: a
-worktree per feature, builds in parallel, walks one at a time, an agent walk in place of yours,
-**draft PRs only**, and nothing that waits on a question. "Done" means a **draft PR** or **parked
-with a reason**; your `/builder:signoff` is what marks a draft ready. Resolve `<builder>` per
+worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
+sign-off** in place of yours, then verify, a PR, CI, the ship commit and the **merge** — and nothing
+that waits on a question. "Done" means **merged**, or **parked with a reason**. Every record says the
+feature was agent-verified, not human-tested. Resolve `<builder>` per
 [REFERENCE](../resume/REFERENCE.md) §The scripts.
 
 ## 1. What can be picked
@@ -19,9 +20,9 @@ with a reason**; your `/builder:signoff` is what marks a draft ready. Resolve `<
 node <builder>/scripts/list-features.mjs --json
 ```
 
-A row is offered when `done` is false, it has no `pr`, its `manifest.blocked` is unset or `none`, its
+A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, its
 `waitsOn` is empty, and its `manifest.state` is one of `spec aligned audited planned building built
-signed-off verified`. No config `agent_walk:` block → stop here and name `/builder:init --update`.
+signed-off verified` (an open `pr` is fine — agents take it on to merged). No config `agent_walk:` block → stop here and name `/builder:init --update`.
 Nothing offerable → say so, and name `/builder:brainstorm` for writing a spec. Parked rows are listed
 underneath as a count with their reasons, and **waiting** rows — program children whose PROGRAM
 §Children *Depends on* entries haven't shipped — with their `nextStep` (`⏳ waits on …`), so it's

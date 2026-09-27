@@ -18,7 +18,8 @@ Invocation: **`/builder:ship --path <folder>`**. Without `--path`,
 ## At sign-off
 
 **Precondition: a PASS.** The manifest says `state: signed-off` with a `walk:` name and date — that
-pair is the whole test, because **this step is what writes the header line**. ⛔ **No PASS → stop and
+pair is the whole test, because **this step is what writes the header line**. (Agent mode's sign-off
+runs this same condense from `/builder:agent-walk` §4, with its own 🤖 header line.) ⛔ **No PASS → stop and
 say so.** Condensing an unwalked feature deletes the plan it still needs, and a PROBLEMS or PARTIAL
 walk keeps **both** the §Plan index and `PLAN.md`.
 
@@ -72,8 +73,10 @@ PR, or on a PR whose verify is not READY** — that line is what every skill and
 treat as DONE, and a feature marked DONE runs no step again. If the PR is later closed unmerged,
 revert the ship commit.
 
-⛔ **`walk:` reads `agent-pass …` → refuse.** The SHIPPED line names a human who signed it off, and
-nobody has: hand back in one line — the human tests it, then `/builder:signoff --path <folder>`.
+**Agent-signed-off** (`walk: agent-pass …`, header `> 🤖 AGENT SIGNED OFF …`): ship only under
+`--agent-walk` — agent mode's §Ship runs this step, with the manifest still saying `agent-walk: on`.
+Otherwise refuse in one line: nobody has tested it, and the human either hands it back to agents
+(`/builder:fleet <feature>`) or tests it and runs `/builder:signoff --path <folder>`.
 
 1. **Flip the header's first line** to, exactly:
 
@@ -83,6 +86,8 @@ nobody has: hand back in one line — the human tests it, then `/builder:signoff
 
    The sign-off's name and words carry over verbatim; the ticket comes from the manifest, read
    **before** step 2 removes it. A `🛑 PR HELD` line is dropped — the hold was lifted by the ship.
+   **Agent-signed-off**, the line is instead:
+   `> ✅ SHIPPED <date> — PR #N · <ticket> · 🤖 agent signed off (walk round <n>), not human-tested`.
 
 2. **`git rm MANIFEST.md`** — its `state:` has arrived, and the SPEC header now carries the state.
 

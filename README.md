@@ -137,9 +137,11 @@ Write the specs, then hand them over:
 
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
 at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
-per `walk.md` item. Every feature ends as a **draft PR** marked `🤖 AGENT-VERIFIED — not human-tested`,
-or **parked** with the reason a human is needed. Nothing waits on a question. Review the drafts, walk
-what you like, and `/builder:signoff` in a feature's worktree to mark it ready.
+per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it
+verifies, opens a PR, gets CI green, ships and **merges**. Every feature ends **merged**, or **parked**
+with the reason a human is needed — a required review, a conflict it can't resolve mechanically, CI
+red twice, a hold. Nothing waits on a question, and nothing runs in the background of a headless run:
+long gates go through `scripts/job.mjs`, and a run is killed only after 30 minutes of silence.
 
 Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` offers to add one when
 the config has none. Headless runs need permissions set explicitly (`claude_args`), because nobody is
@@ -157,7 +159,8 @@ never see `env`, so parallel builds stay off the walk env.
 
 - **Open a PR before a human has walked the feature.** The PR lock is spent by `/builder:signoff`,
   which is `disable-model-invocation` — an agent cannot type it, and a sign-off written any other way
-  is void. (An agent-walked feature gets a **draft** PR; only your sign-off marks it ready.)
+  is void. (Agent mode — `/builder:agent`, `/builder:fleet` — is the one exception you opt into: its
+  sign-off is the agent's, labelled 🤖, and it merges; it never writes yours.)
 - **Write your design system.** Prototype mode *reads* a design as requirements and routes every gap
   to the command your config says owns it.
 - **Write to your ticket system, or deploy.** Both are explicit commands of yours.
