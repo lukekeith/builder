@@ -4,6 +4,11 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.4
+
+- `/builder:fleet --status` (and the end-of-run report) reply with the status as a rendered markdown
+  table instead of pasting the file in a code fence, which showed as raw pipes in the terminal.
+
 ## 3.3.3
 
 - The fleet saves `setupOwed` the moment a worktree is created, and saves a failed setup at once, so a
