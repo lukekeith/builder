@@ -818,8 +818,16 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   enqueue(feature)
 }
-// @delta gates compare against the target's counts: measure them here, once, before any run.
-if ([...Object.values(parseGates(CFG.body).fast).flat(), ...parseGates(CFG.body).deep].some((g) => g.delta)) {
+// @delta gates compare against the target's counts: measure them here, once, before any run — and
+// only when the target has moved since the last measurement (an e2e-sized baseline is minutes).
+const baselineFor = (() => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, '.builder', 'gates', 'baseline.json'), 'utf8')).head
+  } catch {
+    return null
+  }
+})()
+if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.values(parseGates(CFG.body).fast).flat(), ...parseGates(CFG.body).deep].some((g) => g.delta)) {
   const log = join(DIR, 'logs', 'baseline.log')
   mkdirSync(dirname(log), { recursive: true })
   const fd = openSync(log, 'w')

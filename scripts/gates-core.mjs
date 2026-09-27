@@ -171,9 +171,15 @@ export function expandPlaceholders(cmd, { root, appPath, baseBranch }) {
   } catch {
     return null
   }
+  // `cd <dir> && …` runs the tests from <dir> (a package whose dotenv path is relative), so the
+  // files are named relative to it, and only files under it qualify.
+  const cd = /^cd\s+(\S+)\s*&&\s*/.exec(cmd)
+  const dir = cd ? strip(cd[1]) : ''
   const changed = git(['diff', '--name-only', base, 'HEAD', '--', strip(appPath)], root)
     .split('\n')
     .filter((f) => /\.(test|spec)\.[cm]?[jt]sx?$|_test\.(go|py)$|test_[^/]*\.py$/.test(f))
+    .filter((f) => !dir || f.startsWith(`${dir}/`))
+    .map((f) => (dir ? f.slice(dir.length + 1) : f))
   if (!changed.length) return null
   return cmd.replace(/\S*<[^>]+>\S*/g, changed.join(' ')).replace(/\s{2,}/g, ' ')
 }

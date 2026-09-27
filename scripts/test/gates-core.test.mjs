@@ -272,6 +272,12 @@ test('a <placeholder> gate line runs over the test files the branch changed unde
   assert.equal(some.status, 0, some.stdout)
   assert.match(some.stdout, /→ echo RUN apps\/server\/a\.test\.ts/)
   assert.match(some.stdout, /✓ echo RUN apps\/server\/a\.test\.ts/)
+  assert.equal(
+    expandPlaceholders('cd apps/server && npx tsx --test src/<path>/<file>.test.ts', { root, appPath: 'apps/server/', baseBranch: 'main' }),
+    'cd apps/server && npx tsx --test a.test.ts',
+    'a cd prefix makes the files relative to that directory'
+  )
+  assert.equal(expandPlaceholders('cd apps/web && x <f>', { root, appPath: 'apps/server/', baseBranch: 'main' }), null, 'nothing under the cd directory')
   assert.equal(expandPlaceholders('no placeholders', { root, appPath: 'x', baseBranch: 'main' }), 'no placeholders')
   assert.equal(expandPlaceholders('x <f>', { root, appPath: 'x', baseBranch: 'no-such-branch' }), null)
 })
