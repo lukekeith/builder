@@ -4,6 +4,11 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.2
+
+- `gate.mjs` creates `.builder/gates/` before a command runs, so a gate line can `tee` its full output
+  there on the first run.
+
 ## 3.3.1
 
 - A `<placeholder>` gate line written `cd <dir> && …` names the changed test files relative to `<dir>`

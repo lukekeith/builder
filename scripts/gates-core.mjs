@@ -138,12 +138,13 @@ const fmt = (ms) => (ms >= 60000 ? `${Math.round(ms / 60000)}m${String(Math.roun
 /** Run one shell command; its output is returned whole and written to `logFile` when given. */
 export function runCommand(cmd, { cwd, env = process.env, logFile = null, timeoutMs = 0 } = {}) {
   const t0 = Date.now()
+  // Before the command: a gate line may `tee` into .builder/gates/ itself, and the directory has
+  // to be there on the first run, not after it.
+  if (logFile) mkdirSync(dirname(logFile), { recursive: true })
+  if (cwd) mkdirSync(join(cwd, '.builder', 'gates'), { recursive: true })
   const r = spawnSync('sh', ['-c', cmd], { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: timeoutMs || undefined })
   const output = `${r.stdout ?? ''}${r.stderr ?? ''}`
-  if (logFile) {
-    mkdirSync(dirname(logFile), { recursive: true })
-    writeFileSync(logFile, `$ ${cmd}\n${output}\n[exit ${r.status ?? 'signal ' + r.signal}]\n`)
-  }
+  if (logFile) writeFileSync(logFile, `$ ${cmd}\n${output}\n[exit ${r.status ?? 'signal ' + r.signal}]\n`)
   return { exit: r.status === null ? 1 : r.status, stdout: r.stdout ?? '', output, ms: Date.now() - t0 }
 }
 
