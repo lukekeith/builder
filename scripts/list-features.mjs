@@ -365,11 +365,15 @@ const statusOf = (r) => {
     nextStep = `Get the dev env ready: ${pending}`
   } else if (state === 'built' && !/^yes/.test(ready)) nextStep = 'Check walk readiness, then 🔒 walk it'
   const agentPass = /^agent-pass/.test(mf.walk ?? '')
+  const agentMode = /^on/i.test(mf['agent-walk'] ?? '')
   if (state === 'built' && agentPass) {
+    // Walked before agents signed off (pre-3.0): the sign-off and condense are still owed.
     lastDone = 'Agent-walked — not human-tested'
-    nextStep = 'Deep verify, then a draft PR'
-  } else if (state === 'built' && /^on/i.test(mf['agent-walk'] ?? '') && /^yes/.test(ready)) nextStep = 'Agent walk (fleet)'
-  if (state === 'verified' && agentPass && r.pr) nextStep = 'Review the draft PR, then /builder:signoff'
+    nextStep = 'Agent sign-off, then deep verify'
+  } else if (state === 'built' && agentMode && /^yes/.test(ready)) nextStep = 'Agent walk (fleet)'
+  if (state === 'signed-off' && agentPass) lastDone = 'Agent signed off — not human-tested'
+  if (state === 'verified' && agentPass)
+    nextStep = agentMode ? (r.pr ? 'CI, ship and merge (agent)' : 'Open the PR, CI, ship and merge (agent)') : r.pr ? 'Review the PR, then /builder:signoff' : 'Open the PR'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
   const parked = isSet(mf.blocked) ? mf.blocked.replace(/^"|"$/g, '') : null
   const waits = r.waitsOn?.length ? `⏳ ${waitsOnText(r.waitsOn)}` : null

@@ -1,6 +1,6 @@
 ---
 name: agent-walk
-description: The unattended stand-in for the human walk, run only under --agent-walk (the /builder:fleet path) — a fresh subagent works the feature's walk.md item by item with the driver the project config's agent_walk block names, records PASS/FAIL per item with evidence, and this step writes an AGENT-PASS or AGENT-PROBLEMS verdict. Never a human sign-off — an agent pass unlocks /builder:verify and a DRAFT PR only, and the SPEC header says the feature is not human-tested. Use when /builder:resume routes here under --agent-walk.
+description: The unattended stand-in for the human walk and sign-off, run only under --agent-walk (agent mode — /builder:agent and /builder:fleet) — a fresh subagent works the feature's walk.md item by item with the driver the project config's agent_walk block names, records PASS/FAIL per item with evidence, and this step writes an AGENT-PASS or AGENT-PROBLEMS verdict. On AGENT-PASS it writes the AGENT sign-off and condenses the folder, so verify, the PR, CI, ship and merge follow unattended. Never a human sign-off — every record says the feature is not human-tested. Use when /builder:resume routes here under --agent-walk.
 ---
 
 # `/builder:agent-walk` — an agent walks it, and says so
@@ -8,9 +8,10 @@ description: The unattended stand-in for the human walk, run only under --agent-
 Invocation: **`/builder:agent-walk --path <folder> [--ticket <id>]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — ignore any flag this step does not use.
 
-🔴 **This is not a sign-off.** It never writes `✅ SIGNED OFF`, never writes a name into `walk:`,
-never condenses, and never runs `/builder:signoff`. It exists so an unattended run can reach a
-**draft** PR carrying evidence. Whether that PR goes ready is still the human's sign-off.
+🔴 **This is the agent's sign-off, never the human's.** It never writes `✅ SIGNED OFF`, never writes a
+name into `walk:`, and never runs `/builder:signoff` (which stays human-only). On a pass it writes
+its own, differently-labelled record — `walk: agent-pass`, `> 🤖 AGENT SIGNED OFF …` — and condenses,
+so agent mode can take the feature to merged with every record saying it is not human-tested.
 
 ## Precondition — read `<folder>/MANIFEST.md`
 
@@ -19,7 +20,8 @@ never condenses, and never runs `/builder:signoff`. It exists so an unattended r
 | `agent-walk:` is not `on …` | refuse in one line: this step runs only under `--agent-walk`. A human walk is recorded by `/builder:signoff` |
 | the config has no `agent_walk:` block | refuse; name `/builder:init --update` |
 | `blocked:` set | parked — print it, run nothing |
-| `walk:` already set | nothing to do; hand back to `/builder:resume --path <folder>` |
+| `state: built` · `walk: agent-pass …` (walked before agents signed off) | no new round: go straight to §4 **AGENT-PASS**'s sign-off and condense, citing the round that passed |
+| `walk:` already set, anything else | nothing to do; hand back to `/builder:resume --path <folder>` |
 | `ready:` is not `yes <sha>` with no code commit since that sha (manifest/doc-only commits don't count) | not walkable yet — hand back to `/builder:resume` (walk readiness comes first) |
 | `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
 
@@ -62,11 +64,15 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
 ## 4. Write it
 
-**AGENT-PASS**
-- Manifest: `walk: agent-pass YYYY-MM-DD <sha>`, `next: /builder:verify --path <folder>`, `head`.
-- SPEC header, directly under the title:
-  `> 🤖 AGENT-VERIFIED YYYY-MM-DD — <sha> · round <n> · not human-tested · evidence: .builder/<feature>/agent-walk/round-<n>/`
-- Commit both: `chore(<ticket-or-feature>): <feature> — agent walk PASS (not human-tested)`.
+**AGENT-PASS — the agent sign-off**
+- Manifest: `walk: agent-pass YYYY-MM-DD <sha>`, `state: signed-off`, `verify: none`, `head`,
+  `next: /builder:verify --path <folder>`.
+- **Condense** exactly as [`builder:ship`](../ship/SKILL.md) §At sign-off does — the §Plan index cut
+  by its heading, `git rm <folder>/PLAN.md` — except the header line written directly under the title
+  is:
+  `> 🤖 AGENT SIGNED OFF YYYY-MM-DD — <sha> · agent walk round <n> · not human-tested · evidence: .builder/<feature>/agent-walk/round-<n>/`
+  (it replaces an older `> 🤖 AGENT-VERIFIED …` line if there is one).
+- Commit all of it: `docs(<ticket-or-feature>): <feature> agent signed off (not human-tested)`.
 
 **AGENT-PROBLEMS**
 - Each failing item becomes `- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)`
@@ -80,7 +86,7 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 The verdict, the round, the counts (pass · fail · unverifiable), and where the evidence is. Then:
 
 ~~~
-📍 <feature>: agent walk PASS (round <n>, not human-tested) — next: /builder:verify --path <folder> · or say go
+📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: /builder:verify --path <folder> · or say go
 📍 <feature>: agent walk round <n> — <k> fixes owed — next: /builder:resume --path <folder> · or say go
 📍 <feature>: ⛔ parked — agent walk failed twice — next: a human walk, then /builder:signoff --path <folder>
 ~~~

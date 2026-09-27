@@ -44,7 +44,8 @@ whose state is `signed-off` — an INCOMPLETE verdict leaves the state there, so
 |---|---|
 | there is no `MANIFEST.md` | this step does not run on it. One line, hand back, stop |
 | `walk:` carries a name + date **and** the SPEC header carries `✅ SIGNED OFF` | run |
-| `walk: agent-pass …` **and** the SPEC header carries `🤖 AGENT-VERIFIED` | run, as an **agent-verified** feature: checklist item 1 holds on the agent walk report, the verdict says "agent-walked, not human-tested", and READY's `next:` is `/builder:resume --path <folder>` — which opens a **draft** |
+| `walk: agent-pass …` **and** the SPEC header carries `🤖 AGENT SIGNED OFF` | run, as an **agent-signed-off** feature: checklist item 1 holds on the agent walk report, the verdict says "agent-walked, not human-tested", and READY's `next:` is `/builder:resume --path <folder>` — which, in agent mode, opens the PR and takes it to merged |
+| `walk: agent-pass …` at `state: built` (walked before agents signed off) | not signed off yet: hand to `/builder:agent-walk --path <folder>`, which writes the agent sign-off |
 | `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. **Under `--agent-walk`:** hand to `/builder:agent-walk --path <folder>` instead. Never run the deep pass on a build nobody has looked at |
 | `verify:` already carries a verdict | a **re-verify** — scoped, per §A re-verify is SCOPED |
 | `hold:` set | run anyway: verify is local and changes nothing outward. The hold binds the PR, and the verdict carries it instead of a PR command |

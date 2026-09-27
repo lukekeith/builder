@@ -2,10 +2,12 @@
 /**
  * fleet — take a batch of specs through the /builder:* pipeline unattended.
  *
- * Each spec gets its own worktree and branch (builder/<feature>). The BUILD lane runs up to
- * `parallel` of them at once with --no-dev-env, so nothing touches the shared dev environment; the
- * WALK lane takes them one at a time through that environment — walk readiness, the agent walk,
- * verify, the draft PR. Progress is read from each worktree's MANIFEST.md, never from a run's output.
+ * Each spec gets its own worktree and branch (builder/<feature>). A pool of `parallel` workers runs
+ * the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared dev environment; the
+ * WALK lane takes features one at a time through that environment — walk readiness, the agent walk
+ * and its sign-off, verify. The SHIP lane opens the PR, watches CI, ships and merges. A feature is
+ * done when it is merged. Progress is read from each worktree's MANIFEST.md (and, once shipped, its
+ * SPEC header), never from a run's output.
  *
  *   node <plugin>/scripts/fleet.mjs <feature|path>… [--parallel N]
  *   node <plugin>/scripts/fleet.mjs --all [--parallel N]
@@ -19,7 +21,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, create
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr } from './fleet-core.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 
 const RUN_CAP = 12
@@ -92,6 +94,10 @@ const readManifest = (base, feature) => {
   const p = join(base, specOf(feature), 'MANIFEST.md')
   return existsSync(p) ? readFileSync(p, 'utf8') : null
 }
+const readSpec = (base, feature) => {
+  const p = join(base, specOf(feature), 'SPEC.md')
+  return existsSync(p) ? readFileSync(p, 'utf8') : null
+}
 const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
 const nameOf = (a) => basename(a.replace(/\/(MANIFEST|SPEC)\.md$/, '').replace(/\/+$/, ''))
 
@@ -122,13 +128,14 @@ function branchOf(feature, mf) {
 function preflight(feature) {
   const spec = specOf(feature)
   const text = readManifest(ROOT, feature)
+  if (text == null && shippedPr(readSpec(ROOT, feature))) return `${spec} already shipped — nothing left for the fleet`
   if (text == null) return `no ${spec}/MANIFEST.md`
   if (tryGit(['ls-files', '--error-unmatch', `${spec}/MANIFEST.md`]) === null) return `${spec} is not committed — commit it so the worktree gets it`
   if (tryGit(['diff', '--quiet', 'HEAD', '--', spec]) === null) return `${spec} has uncommitted changes — commit them first`
   const mf = parseManifest(text)
   const lane = laneOf(mf)
   if (lane === 'blocked') return `${spec} is blocked: ${unquote(mf.blocked)}`
-  if (lane === 'done') return `${spec} already has a PR (${mf.pr ?? 'shipped'}) — nothing left for the fleet`
+  if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
   // A program child builds off HEAD, so the contract it consumes must already be merged there.
   const waits = waitsOn(ROOT, CFG.registry, feature)
@@ -265,7 +272,7 @@ if (flag('--dry-run')) {
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
-  console.log('  pushes a branch and opens DRAFT PRs for each feature that passes')
+  console.log('  pushes a branch, opens a PR, watches CI and MERGES each feature that passes')
   for (const f of fresh) console.log(`  ✓ ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}`)
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
   for (const [f, row] of Object.entries(fleet.features)) console.log(`  ↻ ${f} — resuming (${row.status})`)
@@ -371,7 +378,7 @@ for (const f of fresh)
 
 // ---- one claude run ------------------------------------------------------------------------
 function runClaude(wt, feature, lane, n) {
-  const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk${lane === 'build' ? ' --no-dev-env' : ''}`
+  const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk${lane === 'walk' ? '' : ' --no-dev-env'}`
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
@@ -474,7 +481,25 @@ function readable(line) {
 
 const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev-parse', 'HEAD'], wt)}`
 
-/** Run a feature's lane until it hands off, finishes, parks or fails. Returns the outcome. */
+/**
+ * A SHIPPED header is written on the PR branch before the merge. Where gh can see the PR, trust the
+ * header only once the PR says MERGED; where it cannot (no gh, no remote), the header stands.
+ */
+function unmerged(wt, pr) {
+  if (!/^#\d+$/.test(pr ?? '')) return null
+  try {
+    const state = execFileSync('gh', ['pr', 'view', pr.slice(1), '--json', 'state', '--jq', '.state'], { cwd: wt, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000 }).trim()
+    return state && state !== 'MERGED' ? state : null
+  } catch {
+    return null
+  }
+}
+
+const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
+const RUNNING = { build: 'building', walk: 'walking', ship: 'shipping' }
+
+/** Run a feature's lane until it hands off, finishes, parks or fails. Returns the outcome — for a
+ *  handoff, the lane it goes to next. */
 async function drive(feature, lane) {
   const f = fleet.features[feature]
   let failures = 0
@@ -489,6 +514,7 @@ async function drive(feature, lane) {
     const d = decide({
       lane,
       manifestText: readManifest(f.worktree, feature),
+      specText: readSpec(f.worktree, feature),
       exit,
       failures,
       stalls,
@@ -508,12 +534,18 @@ async function drive(feature, lane) {
     stalls = 0
     if (d.action === 'again') continue
     if (d.action === 'handoff') {
-      Object.assign(f, { status: 'awaiting-walk', reason: null })
+      Object.assign(f, { status: QUEUED[d.to] ?? 'queued', reason: null })
       save()
-      return 'handoff'
+      return d.to
     }
     if (d.action === 'done') {
-      Object.assign(f, { status: 'done', pr: d.pr, reason: null, evidence: join(f.worktree, '.builder', feature, 'agent-walk') })
+      const open = unmerged(f.worktree, d.pr)
+      if (open) {
+        Object.assign(f, { status: 'parked', pr: d.pr, reason: `SPEC says SHIPPED but PR ${d.pr} is ${open}, not merged — merge or revert the ship commit` })
+        save()
+        return 'parked'
+      }
+      Object.assign(f, { status: 'done', pr: d.pr, reason: null })
       save()
       return 'done'
     }
@@ -623,15 +655,15 @@ async function walkOne(feature) {
     if (!hook(AW.reset, f.worktree, feature)) {
       Object.assign(f, { status: 'parked', reason: `agent_walk.reset failed: ${AW.reset}` })
       save()
-      return
+      return 'parked'
     }
     // `smoke` without `start` has nothing to probe — ignored, as the spec says.
     if (AW.start && !(await startWalkEnv(feature))) {
       Object.assign(f, { status: 'parked', reason: `walk env didn't come up — see ${f.startLog}` })
       save()
-      return
+      return 'parked'
     }
-    await drive(feature, 'walk')
+    return await drive(feature, 'walk')
   } finally {
     await killStart(f)
     if (!hook(AW.stop, f.worktree, feature)) {
@@ -642,7 +674,7 @@ async function walkOne(feature) {
 }
 
 // ---- queue everything ----------------------------------------------------------------------
-const buildQueue = []
+const pool = [] // { feature, lane: 'build' | 'ship' } — the parallel workers' queue
 const walkQueue = []
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
@@ -657,8 +689,9 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf)
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
+  else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'done', pr: shippedPr(readSpec(f.worktree, feature)), reason: null })
   else if (lane === 'done') Object.assign(f, { status: 'done', pr: mf.pr ?? null, reason: null })
-  else if (lane === 'build') Object.assign(f, { status: 'queued', reason: null }) && buildQueue.push(feature)
+  else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
   else Object.assign(f, { status: 'parked', reason: 'MANIFEST.md missing or its state not understood' })
 }
@@ -667,42 +700,60 @@ if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulate
 if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
 
-// ---- the two lanes -------------------------------------------------------------------------
-let wake = () => {}
-const signal = () => wake()
-const nextWake = () => new Promise((r) => (wake = r))
-let buildsDone = false
+// ---- the lanes -----------------------------------------------------------------------------
+// The pool runs build and ship work, `parallel` at a time; the walk lane runs one feature at a
+// time. A handoff moves a feature to the other queue. Everyone stops once both queues are empty
+// and nothing is in flight — no running feature can hand anything on.
+let waiters = []
+const nextWake = () => new Promise((r) => waiters.push(r))
+const wakeAll = () => {
+  const w = waiters
+  waiters = []
+  for (const r of w) r()
+}
+let inFlight = 0
+const idle = () => !pool.length && !walkQueue.length && inFlight === 0
 
-async function buildWorker() {
-  while (buildQueue.length) {
-    const feature = buildQueue.shift()
-    fleet.features[feature].status = 'building'
-    save()
-    if ((await drive(feature, 'build')) === 'handoff') {
-      walkQueue.push(feature)
-      signal()
+function route(feature, outcome) {
+  if (outcome === 'walk') walkQueue.push(feature)
+  else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
+}
+
+async function poolWorker() {
+  for (;;) {
+    if (pool.length) {
+      const { feature, lane } = pool.shift()
+      fleet.features[feature].status = RUNNING[lane]
+      save()
+      inFlight++
+      const outcome = await drive(feature, lane)
+      inFlight--
+      route(feature, outcome)
+      wakeAll()
+      continue
     }
+    if (idle()) return wakeAll()
+    await nextWake()
   }
 }
 
 async function walkLane() {
   for (;;) {
     if (walkQueue.length) {
-      await walkOne(walkQueue.shift())
+      const feature = walkQueue.shift()
+      inFlight++
+      const outcome = await walkOne(feature)
+      inFlight--
+      route(feature, outcome)
+      wakeAll()
       continue
     }
-    if (buildsDone) return
+    if (idle()) return wakeAll()
     await nextWake()
   }
 }
 
-await Promise.all([
-  Promise.all(Array.from({ length: PARALLEL }, buildWorker)).then(() => {
-    buildsDone = true
-    signal()
-  }),
-  walkLane(),
-])
+await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])
 
 save()
 unlock()

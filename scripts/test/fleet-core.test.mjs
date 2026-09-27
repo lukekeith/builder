@@ -3,15 +3,17 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
   assert.equal(laneOf({ state: 'building' }), 'build')
   assert.equal(laneOf({ state: 'building', ready: 'pending "dev env (fleet walk lane)"' }), 'walk')
   assert.equal(laneOf({ state: 'built' }), 'walk')
-  assert.equal(laneOf({ state: 'verified' }), 'walk')
-  assert.equal(laneOf({ state: 'verified', pr: '#3' }), 'done')
+  assert.equal(laneOf({ state: 'signed-off' }), 'walk')
+  assert.equal(laneOf({ state: 'verified' }), 'ship')
+  assert.equal(laneOf({ state: 'verified', pr: '#3' }), 'ship')
+  assert.equal(laneOf({ state: 'signed-off', pr: '#3' }), 'walk', 'a re-verify after CI fixes still needs the dev env')
   assert.equal(laneOf({ state: 'shipped' }), 'done')
   assert.equal(laneOf({ state: 'audited', blocked: '"x"' }), 'blocked')
   assert.equal(laneOf({ state: 'audited', blocked: 'none' }), 'build')
@@ -39,18 +41,30 @@ test('blocked parks with the reason, unquoted', () => {
   assert.deepEqual(d, { action: 'park', reason: 'plan wants to split' })
 })
 
-test('a PR means done', () => {
-  assert.deepEqual(decide({ ...base, lane: 'walk', manifestText: mf('state: verified\npr: #7') }), { action: 'done', pr: '#7' })
+const SHIPPED = '# f — spec\n> ✅ SHIPPED 2026-09-26 — PR #7 · none · 🤖 agent signed off (round 1), not human-tested\n'
+
+test('an open PR is not done — the ship lane takes it to merged', () => {
+  assert.deepEqual(decide({ ...base, lane: 'ship', manifestText: mf('state: verified\npr: #7') }), { action: 'again' })
 })
 
-test('a run that timed out after writing pr: still counts as done', () => {
-  assert.deepEqual(decide({ ...base, lane: 'walk', exit: null, manifestText: mf('state: verified\npr: #5') }), { action: 'done', pr: '#5' })
-  assert.deepEqual(decide({ ...base, lane: 'walk', exit: 3, failures: 1, manifestText: mf('state: verified\npr: #5') }), { action: 'done', pr: '#5' })
+test('shipped — the manifest gone and the SPEC header SHIPPED — is done, with its PR', () => {
+  assert.equal(shippedPr(SHIPPED), '#7')
+  assert.equal(shippedPr('# f\n> ✅ SIGNED OFF 2026-09-26'), null)
+  assert.deepEqual(decide({ ...base, lane: 'ship', manifestText: null, specText: SHIPPED }), { action: 'done', pr: '#7' })
+})
+
+test('a run that timed out after shipping still counts as done', () => {
+  assert.deepEqual(decide({ ...base, lane: 'ship', exit: null, manifestText: null, specText: SHIPPED }), { action: 'done', pr: '#7' })
+  assert.deepEqual(decide({ ...base, lane: 'ship', exit: 3, failures: 1, manifestText: null, specText: SHIPPED }), { action: 'done', pr: '#7' })
+})
+
+test('the walk lane hands off to the ship lane at verify READY', () => {
+  assert.deepEqual(decide({ ...base, lane: 'walk', manifestText: mf('state: verified\nverify: READY 2026-09-26') }), { action: 'handoff', to: 'ship' })
 })
 
 test('the build lane hands off once the feature needs the dev env', () => {
   const d = decide({ ...base, manifestText: mf('state: building\nready: pending "dev env (fleet walk lane)"') })
-  assert.deepEqual(d, { action: 'handoff' })
+  assert.deepEqual(d, { action: 'handoff', to: 'walk' })
 })
 
 test('a first run with no progress runs again; a second in a row parks', () => {
