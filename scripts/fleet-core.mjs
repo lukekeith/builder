@@ -24,7 +24,7 @@ export function laneOf(mf) {
 }
 
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
-export function decide({ lane, manifestText, exit, failures, runs, cap, progressed }) {
+export function decide({ lane, manifestText, exit, failures, stalls = 0, runs, cap, progressed }) {
   // A PR on the manifest is done however the run ended — one that timed out after `pr:` was
   // written must not be retried into a second PR.
   const mf = manifestText == null ? null : parseManifest(manifestText)
@@ -38,7 +38,9 @@ export function decide({ lane, manifestText, exit, failures, runs, cap, progress
   if (next === 'blocked') return { action: 'park', reason: unquote(mf.blocked) }
   if (next === 'unknown') return { action: 'park', reason: `manifest state '${mf.state ?? ''}' is not one the fleet knows` }
   if (lane === 'build' && next === 'walk') return { action: 'handoff' }
-  if (!progressed) return { action: 'park', reason: 'no progress — the run changed neither MANIFEST.md nor HEAD' }
+  // One stall is often a run that ended mid-step (a turn that stopped to wait); the next run
+  // resumes from the ledger. Two in a row is a real stall.
+  if (!progressed) return stalls >= 1 ? { action: 'park', reason: 'no progress — two runs in a row changed neither MANIFEST.md nor HEAD' } : { action: 'stalled' }
   if (runs >= cap) return { action: 'park', reason: `run cap (${cap}) reached` }
   return { action: 'again' }
 }

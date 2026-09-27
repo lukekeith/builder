@@ -53,8 +53,9 @@ test('the build lane hands off once the feature needs the dev env', () => {
   assert.deepEqual(d, { action: 'handoff' })
 })
 
-test('no progress parks', () => {
-  const d = decide({ ...base, progressed: false, manifestText: mf('state: planned') })
+test('a first run with no progress runs again; a second in a row parks', () => {
+  assert.deepEqual(decide({ ...base, progressed: false, manifestText: mf('state: planned') }), { action: 'stalled' })
+  const d = decide({ ...base, progressed: false, stalls: 1, manifestText: mf('state: planned') })
   assert.equal(d.action, 'park')
   assert.match(d.reason, /no progress/)
 })

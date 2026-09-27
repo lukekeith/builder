@@ -23,6 +23,12 @@ It reads four things, and **trusts nothing remembered from the build** — every
 🔴 **Re-resolve that path inline in every command that uses it** — a shell variable does not survive
 between Bash calls. **The deep set runs here and nowhere else.**
 
+🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
+the background: independent subagents go out together in one foreground message, and a suite that
+may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code
+(resume §`--agent-walk`). A verify that ends its turn "waiting on the gates" is lost when the headless
+run exits.
+
 🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)
 applied to a feature.** Its iron law governs every line of the verdict: *no completion claim without
 fresh verification evidence.* Every item below is a claim that needs a command behind it, run in this

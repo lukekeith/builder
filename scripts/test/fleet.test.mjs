@@ -78,6 +78,25 @@ test('a run that changes nothing parks as no progress', () => {
   assert.match(r.fleet.features.c.reason, /no progress/)
 })
 
+test('one run with no progress runs again; the feature carries on', () => {
+  const root = makeRepo(['c2'])
+  const r = runFleet(root, ['c2'], { c2: ['NOOP', ...HAPPY] })
+  assert.equal(r.fleet.features.c2.status, 'done', r.fleet.features.c2.reason)
+})
+
+test('a run that keeps talking outlives the idle timeout; a silent one does not', () => {
+  const root = makeRepo(['t1', 't2'])
+  const env = { FLEET_IDLE_TIMEOUT_MS: '400' }
+  const r = runFleet(root, ['t1', 't2'], { t1: ['CHATTY:1200:audited', ...HAPPY.slice(1)], t2: ['HANG', 'HANG'] }, env)
+  assert.equal(r.fleet.features.t1.status, 'done', r.fleet.features.t1.reason)
+  assert.equal(r.fleet.features.t2.status, 'failed')
+  assert.match(r.fleet.features.t2.reason, /timed out twice/)
+  const log = readFileSync(join(root, '.builder/fleet/logs/t1-01.log'), 'utf8')
+  assert.match(log, /· still working/)
+  assert.match(log, /did audited/)
+  assert.ok(existsSync(join(root, '.builder/fleet/logs/t1-01.jsonl')))
+})
+
 test('a run that fails twice fails, naming the log', () => {
   const root = makeRepo(['d'])
   const r = runFleet(root, ['d'], { d: ['FAIL', 'FAIL'] })

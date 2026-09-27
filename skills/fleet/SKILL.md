@@ -53,6 +53,12 @@ When the config's `agent_walk.start` is set, each walk in the walk lane gets its
 fleet starts it fresh after `reset`, polls `smoke` until it's up, and always stops it after the
 walk ends — for any reason, including a park — before running `stop`.
 
+A run is killed only when it goes **quiet** — 30 minutes with no output
+(`FLEET_IDLE_TIMEOUT_MS`), with a 6-hour backstop (`FLEET_RUN_TIMEOUT_MS`) — so a long build that is
+still working is never cut off. Each run's words go to `.builder/fleet/logs/<feature>-NN.log` as it
+works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets one more run before
+the feature parks.
+
 Then say, in two lines: it's running, `/builder:fleet --status` shows where it stands, and a run that
 must outlive this session goes in a terminal instead:
 `nohup node <absolute builder path>/scripts/fleet.mjs <arguments> > .builder/fleet/fleet.out 2>&1 &`.

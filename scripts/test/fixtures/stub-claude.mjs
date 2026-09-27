@@ -6,6 +6,7 @@
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait 150 ms, then <step>
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
+//   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -35,6 +36,15 @@ const finish = (code = 0) => {
   process.exit(code)
 }
 
+if (step.startsWith('CHATTY:')) {
+  const [, ms, ...restStep] = step.split(':')
+  step = restStep.join(':')
+  for (const until = Date.now() + Number(ms); Date.now() < until; ) {
+    process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'still working' }] } }) + '\n')
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}` }) + '\n')
+}
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)
   await new Promise((r) => setTimeout(r, 150))

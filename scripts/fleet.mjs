@@ -23,7 +23,10 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir } from './fleet-core.mjs
 import { waitsOn, waitsOnText } from './program.mjs'
 
 const RUN_CAP = 12
-const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 45 * 60 * 1000
+// A run is killed when it goes quiet, not when it runs long: a 20-task build can take hours and
+// still be healthy. Its stream-json output is the heartbeat. The hard cap is only a backstop.
+const IDLE_TIMEOUT_MS = Number(process.env.FLEET_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
+const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 6 * 60 * 60 * 1000
 const CLAUDE = process.env.FLEET_CLAUDE || 'claude'
 const SMOKE_TIMEOUT_MS = Number(process.env.FLEET_SMOKE_TIMEOUT_MS) || 5 * 60 * 1000
 const SMOKE_INTERVAL_MS = Number(process.env.FLEET_SMOKE_INTERVAL_MS) || 2000
@@ -374,12 +377,22 @@ function runClaude(wt, feature, lane, n) {
   const env = envFor(feature, lane)
   return new Promise((done) => {
     const out = createWriteStream(log)
+    const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
     let settled = false
     let timedOut = false
+    const kill = () => {
+      timedOut = true
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {}
+    }
+    let idle = setTimeout(kill, IDLE_TIMEOUT_MS)
     const finish = (exit) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      clearTimeout(idle)
+      raw.end()
       active.delete(child)
       delete fleet.features[feature].pgid
       save()
@@ -395,7 +408,7 @@ function runClaude(wt, feature, lane, n) {
     // behind (a dev server, an MCP server, a test watcher) can be killed along with it — a plain
     // `child.kill()` only reaches the direct child, and 'close' never fires while a grandchild
     // still holds the inherited stdout/stderr pipes open.
-    const child = spawn(CLAUDE, ['-p', prompt, ...AW.claudeArgs.split(/\s+/).filter(Boolean)], {
+    const child = spawn(CLAUDE, ['-p', prompt, '--output-format', 'stream-json', '--verbose', ...AW.claudeArgs.split(/\s+/).filter(Boolean)], {
       cwd: wt,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -407,14 +420,24 @@ function runClaude(wt, feature, lane, n) {
       fleet.features[feature].pgid = child.pid
       save()
     }
-    child.stdout.pipe(out, { end: false })
-    child.stderr.pipe(out, { end: false })
-    const timer = setTimeout(() => {
-      timedOut = true
-      try {
-        process.kill(-child.pid, 'SIGKILL')
-      } catch {}
-    }, RUN_TIMEOUT_MS)
+    // The raw stream goes to <log>.jsonl; the .log gets what a human reads — the run's own words
+    // as it goes, and its final result. Any output at all resets the idle timer.
+    let buf = ''
+    child.stdout.on('data', (chunk) => {
+      clearTimeout(idle)
+      idle = setTimeout(kill, IDLE_TIMEOUT_MS)
+      raw.write(chunk)
+      buf += chunk
+      const lines = buf.split('\n')
+      buf = lines.pop()
+      for (const line of lines) out.write(readable(line))
+    })
+    child.stderr.on('data', (chunk) => {
+      clearTimeout(idle)
+      idle = setTimeout(kill, IDLE_TIMEOUT_MS)
+      out.write(chunk)
+    })
+    const timer = setTimeout(kill, RUN_TIMEOUT_MS)
     child.on('error', (e) => {
       out.write(`\n[fleet] could not start ${CLAUDE}: ${e.message}\n`)
       finish(127)
@@ -430,12 +453,32 @@ function runClaude(wt, feature, lane, n) {
   })
 }
 
+/** One stream-json line as log text: assistant prose and the final result; anything else verbatim
+ *  unless it is JSON, which only the .jsonl keeps. */
+function readable(line) {
+  if (!line.trim()) return ''
+  let ev
+  try {
+    ev = JSON.parse(line)
+  } catch {
+    return `${line}\n`
+  }
+  if (ev.type === 'result') return `\n${ev.result ?? ''}\n`
+  if (ev.type === 'assistant')
+    return (ev.message?.content ?? [])
+      .filter((b) => b.type === 'text' && b.text?.trim())
+      .map((b) => `· ${b.text.trim()}\n`)
+      .join('')
+  return ''
+}
+
 const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev-parse', 'HEAD'], wt)}`
 
 /** Run a feature's lane until it hands off, finishes, parks or fails. Returns the outcome. */
 async function drive(feature, lane) {
   const f = fleet.features[feature]
   let failures = 0
+  let stalls = 0
   for (;;) {
     const before = snapshot(f.worktree, feature)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
@@ -448,6 +491,7 @@ async function drive(feature, lane) {
       manifestText: readManifest(f.worktree, feature),
       exit,
       failures,
+      stalls,
       runs: f.runsThisTime,
       cap: RUN_CAP,
       progressed: snapshot(f.worktree, feature) !== before,
@@ -457,6 +501,11 @@ async function drive(feature, lane) {
       continue
     }
     failures = 0
+    if (d.action === 'stalled') {
+      stalls++
+      continue
+    }
+    stalls = 0
     if (d.action === 'again') continue
     if (d.action === 'handoff') {
       Object.assign(f, { status: 'awaiting-walk', reason: null })

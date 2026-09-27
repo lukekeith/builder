@@ -51,6 +51,11 @@ paste the absolute path thereafter — 🔴 a shell variable does not survive be
 }
 ```
 
+`job.mjs` is the one for unattended runs: `start <name> -- <command>` launches a long command
+detached under `.builder/jobs/`, and `wait <name>` blocks up to 9 minutes (Bash timeout 600000) and
+exits with the command's own code — or 75 with `still running`, to be called again. It is how a
+headless run waits on a gate suite without backgrounding anything (resume §`--agent-walk`).
+
 🔴 **Prefer `$CLAUDE_PLUGIN_ROOT`.** It is the documented, portable way for a plugin to reference its
 own files, and it is correct for every install shape — marketplace, vendored, or a local skills
 directory. The fallbacks exist only because it is not set in every context, and each has a flaw the
