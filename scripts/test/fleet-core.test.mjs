@@ -116,3 +116,20 @@ test('loadFleet on a fresh repo is empty', () => {
 test('renderStatus with nothing in it', () => {
   assert.match(renderStatus({ features: {} }), /0 feature\(s\): none/)
 })
+
+test('renderStatus keeps only informative columns, names the target and the worktree root once', () => {
+  const out = renderStatus({
+    target: 'main',
+    features: {
+      a: { status: 'building', runs: 2, worktree: '/w/root/a', reason: null, pr: null },
+      b: { status: 'done', runs: 3, worktree: null, reason: null, pr: '#7' },
+    },
+    notes: ['a note'],
+  })
+  assert.match(out, /^# builder fleet — 2 feature\(s\): 1 building · 1 done\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n/)
+  assert.match(out, /\| Feature \| Status \| Runs \| Reason \| Worktree \|/)
+  assert.doesNotMatch(out, /Evidence|\| PR \|/)
+  assert.match(out, /\| a \| building \| 2 \| — \| yes \|/)
+  assert.match(out, /\| b \| done \| 3 \| PR #7 \| — \|/)
+  assert.match(out, /- a note$/m)
+})
