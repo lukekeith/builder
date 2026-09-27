@@ -540,6 +540,27 @@ test('a pool-lane run starts on the latest target: a branch that lags main gets 
   assert.match(git(r.fleet.features.u.worktree, 'log', '--oneline', '-3'), /main moved/)
 })
 
+test('sync runs in the worktree after a target merge that brought new commits, with worktree_env and {feature}', () => {
+  const root = makeRepo(['u'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'sync: echo "$WT_MARK {feature}" >> synced'] })
+  laggingBranch(root, 'u')
+  const r = runFleet(root, ['u'], { u: ['BLOCK:stop here'] })
+  assert.equal(r.fleet.features.u.status, 'parked', r.stderr)
+  assert.equal(readFileSync(join(r.fleet.features.u.worktree, 'synced'), 'utf8'), 'db-u u\n', 'ran once, after the one merge')
+  assert.ok(existsSync(join(root, '.builder/fleet/logs/u-sync.log')))
+})
+
+test('a failing sync parks the feature naming its log; a target already merged runs no sync', () => {
+  const root = makeRepo(['u'], { lines: ['sync: echo nope >&2; exit 4'] })
+  laggingBranch(root, 'u')
+  const r = runFleet(root, ['u'], { u: HAPPY })
+  assert.equal(r.fleet.features.u.status, 'parked')
+  assert.match(r.fleet.features.u.reason, /agent_walk\.sync failed after merging main — see .*u-sync\.log/)
+  assert.equal(r.calls.length, 0)
+  const quiet = makeRepo(['a'], { lines: ['sync: touch synced'] })
+  const q = runFleet(quiet, ['a'], { a: ['audited', 'BLOCK:wait'] })
+  assert.equal(existsSync(join(q.fleet.features.a.worktree, 'synced')), false, 'no merge, no sync')
+})
+
 test('a target sync that conflicts parks the feature, naming the cause', () => {
   const root = makeRepo(['u'])
   laggingBranch(root, 'u', () => {

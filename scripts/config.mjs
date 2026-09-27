@@ -198,9 +198,12 @@ const flakyOf = (list) => {
  * run or setup), and `start`/`smoke` bring up and probe a walk-lane's own dev server.
  * `worktree_env` reaches EVERY child in a worktree — build-lane and ship-lane runs, `setup`, and
  * the walk lane underneath `env` — with `{feature}` filled in: it is how each worktree's tests get
- * their own database, which is what makes `parallel` > 1 safe when the suites share one. All six are
- * optional and default to the shape a caller can iterate/spread with no special-casing: `[]`,
- * `null` or `{}`, never `undefined`.
+ * their own database, which is what makes `parallel` > 1 safe when the suites share one. `sync` runs
+ * in a worktree after the fleet merges the target in WITH new commits — the install and the
+ * test-DB migration that a merge bringing a new package or a new migration needs (seen: a walk env
+ * that could not find a package the merge had just added). All seven are optional and default to
+ * the shape a caller can iterate/spread with no special-casing: `[]`, `null` or `{}`, never
+ * `undefined`.
  */
 const agentWalkOf = (block) => {
   if (!block || typeof block !== 'object' || Array.isArray(block) || unfilled(block)) return null
@@ -219,6 +222,7 @@ const agentWalkOf = (block) => {
             .filter(Boolean)
         : [],
     setup: block.setup ?? null,
+    sync: block.sync ?? null,
     env: typeof block.env === 'string' ? parseEnvPairs(block.env) : {},
     worktreeEnv: typeof block.worktree_env === 'string' ? parseEnvPairs(block.worktree_env, 'agent_walk.worktree_env') : {},
     start: block.start ?? null,

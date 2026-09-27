@@ -188,7 +188,8 @@ never see `env`, so parallel builds stay off the walk env. **`worktree_env`** re
 `parallel: 3` safe when the test suites would otherwise share one database.
 
 Every worktree is merged up to the branch the fleet runs from before each build run and before its
-walk env starts, so features integrate as they land rather than all at ship. Gate blocks run through
+walk env starts, so features integrate as they land rather than all at ship; `sync` (an install plus
+the test-DB migration) runs after a merge that brought new commits. Gate blocks run through
 `scripts/gate.mjs`, which re-runs the config's known flakes once, judges `@delta` counts against the
 base branch, and quotes a green run whose inputs have not changed instead of re-running it — the
 measured reason a d2m-sized feature spent 60% of its wall-clock in tests was the same suite running

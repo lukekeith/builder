@@ -4,6 +4,14 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.4.0
+
+**`agent_walk.sync`** — an optional command the fleet runs in a worktree right after merging the target
+in with new commits, with `worktree_env` and `{feature}` filled in: the install and the test-DB
+migration a merged-in package or migration needs. Without it, a walk env failed on `Cannot find
+package '@d2m/colors'` — the package another feature had just landed on main, merged in after the
+worktree's `npm ci`. A failing `sync` parks the feature naming its log. No existing config changes.
+
 ## 3.3.5
 
 - The fleet saves its table before measuring `@delta` baselines and says so in a note, so `--status`

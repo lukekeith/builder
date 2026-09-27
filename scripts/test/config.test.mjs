@@ -28,6 +28,7 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     stop: null,
     copy: [],
     setup: null,
+    sync: null,
     env: {},
     worktreeEnv: {},
     start: null,
@@ -52,12 +53,13 @@ test('flaky: a list of match + optional rerun; entries without a match or with p
   ])
 })
 
-test('copy, setup, env, start and smoke are all parsed', () => {
+test('copy, setup, sync, env, start and smoke are all parsed', () => {
   const cfg = cfgWith(
-    'agent_walk:\n  driver: x\n  claude_args: --a\n  copy: .env, .env.local\n  setup: npm install\n  env: A=1 B="x y"\n  start: npm run dev\n  smoke: curl -sf localhost:3000'
+    'agent_walk:\n  driver: x\n  claude_args: --a\n  copy: .env, .env.local\n  setup: npm install\n  sync: npm install && make migrate\n  env: A=1 B="x y"\n  start: npm run dev\n  smoke: curl -sf localhost:3000'
   )
   assert.deepEqual(cfg.agentWalk.copy, ['.env', '.env.local'])
   assert.equal(cfg.agentWalk.setup, 'npm install')
+  assert.equal(cfg.agentWalk.sync, 'npm install && make migrate')
   assert.deepEqual(cfg.agentWalk.env, { A: '1', B: 'x y' })
   assert.equal(cfg.agentWalk.start, 'npm run dev')
   assert.equal(cfg.agentWalk.smoke, 'curl -sf localhost:3000')

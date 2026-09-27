@@ -90,7 +90,10 @@ the answer is a choice:
   pin the compose file to the main checkout's; **`worktree_env`** when the test suites share one
   database — a `TEST_DATABASE_URL` (or the ORM's equivalent) ending in `_{feature}`, plus a `setup`
   that creates it (`createdb … {feature}`, or the ORM's create-and-migrate), so `parallel: 3` is
-  safe; only when that is impossible, `parallel: 1`;
+  safe; only when that is impossible, `parallel: 1`; **`sync`** — the install plus the test-DB migration
+  (`npm ci && <migrate against the worktree's test DB>`), run after the fleet merges the target into a
+  worktree with new commits, so a package or migration another feature landed is present before the
+  next run;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.
