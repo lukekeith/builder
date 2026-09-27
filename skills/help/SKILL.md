@@ -52,8 +52,8 @@ second plugin to install. If a step says it cannot find the config, that file is
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
 | Running one step by hand | `/builder:brainstorm` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged** or parked with a reason |
-| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged** or parked with a reason. Needs the config's `agent_walk:` block |
+| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch** or parked with a reason |
+| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** or parked with a reason. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
 | Changing something after the spec exists | `/builder:revise --path <folder> <the change>` — post-build the default is a code fix plus at most one doc line |
 | Verify is READY and the PR is open | `/builder:ship --path <folder>` — flips the SPEC header to SHIPPED citing the PR, removes the manifest and the workspace |
@@ -142,7 +142,8 @@ state**, and no flag passes the PR lock or commits in a manual-commit app.
 
 **`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, parks what only you can
 settle, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT
-SIGNED OFF — not human-tested`. It then verifies, opens the PR, gets CI green, ships and **merges**.
+SIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the branch you ran it
+from** — locally, one merge commit per feature; it never pushes or opens a PR.
 Your `/builder:signoff` over it takes the feature back into the human flow.
 
 ## Resuming

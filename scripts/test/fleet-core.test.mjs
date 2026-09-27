@@ -50,6 +50,7 @@ test('an open PR is not done — the ship lane takes it to merged', () => {
 test('shipped — the manifest gone and the SPEC header SHIPPED — is done, with its PR', () => {
   assert.equal(shippedPr(SHIPPED), '#7')
   assert.equal(shippedPr('# f\n> ✅ SIGNED OFF 2026-09-26'), null)
+  assert.equal(shippedPr('# f\n> ✅ SHIPPED 2026-09-26 — merged into main · none'), 'shipped')
   assert.deepEqual(decide({ ...base, lane: 'ship', manifestText: null, specText: SHIPPED }), { action: 'done', pr: '#7' })
 })
 

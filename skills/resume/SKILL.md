@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, PR, CI, ship and merge. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
+description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, ship, and a merge into the branch the fleet was run from. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
 ---
 
 # `/builder:resume` — where a feature stands, and the next step
@@ -77,10 +77,10 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `verify: INCOMPLETE` | §Working `## Fixes`, then `/builder:verify --path <folder>` again — scoped |
 | `verify: READY` **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
 | `verify: READY`, `hold: none`, `pr: none` | §Ship — under `--agent-walk`, §Ship in agent mode |
-| `pr: #N` set **and** `walk: agent-pass …` **under `--agent-walk`** | §Ship in agent mode, from the step it stands at — it finishes the PR: CI, ship, merge |
+| `verify: READY` **and** `walk: agent-pass …` **under `--agent-walk`**, whatever `pr:` says | §Ship in agent mode |
 | `hold:` set | 🛑 **parked** — local gates only. Nothing pushes; the hold is the human's to lift |
 | `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name **and** the manifest has an `agent-walk:` line (`on` or `off` — it was agent-walked) | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. **Not yet** → fall through to the next row that fits. Never under `--agent-walk` |
-| `pr: #N` set **and** `walk: agent-pass …`, not under `--agent-walk` | an agent-mode PR, not human-tested. Say so, and offer the two ways on: the fleet finishes it (`/builder:fleet <feature>` — CI, ship, merge), or the human tests it and types `/builder:signoff --path <folder> <their words>`, which hands it back to them |
+| `walk: agent-pass …`, not under `--agent-walk` | agent-signed-off, not human-tested. Say so, and offer the two ways on: the fleet finishes it (`/builder:fleet <feature>` — ship, and the merge into the branch it runs from), or the human tests it and types `/builder:signoff --path <folder> <their words>`, which hands it back to them |
 | `pr: #N` open, `walk:` carries a human name, SPEC header not yet `SHIPPED` | `/builder:ship --path <folder>` **on the open PR**, then watch CI. Merging is the user's call |
 | **a requirement changed · a ruling reversed · a conflict surfaced** — at any state | `/builder:revise --path <folder> <the change>` first, then re-enter this table |
 
@@ -186,8 +186,8 @@ Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>
 Under `--agent-walk`, the re-walk after a verify INCOMPLETE is the scoped re-verify's cross-app walk
 leg for the surface the fix changed — no human is asked, and no new agent-walk round is started.
 
-Tasks from **CI** (§Ship in agent mode, rows tagged `(CI round <n>)`) end with that app's fast gates
-green locally, one commit per fix, a push, and §Ship in agent mode's CI step again.
+Tasks from a **target sync** (§Ship in agent mode, rows tagged `(target sync)`) end with those apps'
+fast gates green, one commit per fix, and §Ship in agent mode again.
 
 ## Programs (`tier: program`)
 
@@ -271,7 +271,7 @@ Every point that would ask resolves one of two ways:
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
 | The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
 | The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
-| Opening the PR, CI, the ship commit, the merge | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
+| The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
@@ -281,10 +281,10 @@ only to park (a plan's split) and would otherwise still raise their own pauses (
 `--no-dev-env`, reaching walk readiness writes `ready: pending "dev env (fleet walk lane)"`, commits,
 and ends the run.
 
-**Agent mode's job is a merged feature.** A run that stops short of that without a `blocked:` line
-has not finished — the fleet runs it again. What it never does, at any step: write a **human**
-sign-off (or run `/builder:signoff`), lift a `hold:`, merge with `--admin` or past a required
-review, force-push, commit in a `commit: manual` app, or deploy. Each of those parks instead.
+**Agent mode's job is a feature merged into the target branch.** A run that stops short of that
+without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
+write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
+`commit: manual` app, or deploy. Each of those parks instead, or is left to the human.
 
 ## The picker (no `--path`, no text)
 
@@ -329,48 +329,34 @@ the unblocked feature closest to done. On selection, continue at Step 1 with tha
 
 ### Ship in agent mode (`--agent-walk`)
 
-The feature has an agent sign-off (`walk: agent-pass …`, SPEC header `> 🤖 AGENT SIGNED OFF …`) and
-`verify: READY`. The whole of this runs without a question; each step that can't finish **parks**
-(`blocked:` + commit + end the run, per §`--agent-walk`). Long waits go through `scripts/job.mjs`.
-Start at the first step not yet done — the manifest's `pr:` and the PR's own state say which.
+Agent mode lands every feature on **one branch: the one the human ran `/builder:agent` or
+`/builder:fleet` from**, which the fleet passes as `--into <branch>`. It opens no PR and pushes
+nothing — pushing that branch, and any PR from it, stay the human's. The feature has an agent
+sign-off (`walk: agent-pass …`, SPEC header `> 🤖 AGENT SIGNED OFF …`) and `verify: READY`. This
+runs without a question; a step that can't finish **parks** (`blocked:` + commit + end the run, per
+§`--agent-walk`). Long waits go through `scripts/job.mjs`.
 
-1. **Pre-flight.** `hold:` set → park (the hold is the human's). Step 0 above (already shipped inside
-   another PR) applies as written.
-2. **Sync with the base.** `git fetch origin <base_branch>` then `git merge --no-edit
-   origin/<base_branch>`.
+1. **Pre-flight.** No `--into` → park `"no target branch — run it through /builder:fleet"`.
+   `hold:` set → park (the hold is the human's).
+2. **Bring the target in.** `git merge --no-edit <into>` — a local branch, visible from this
+   worktree.
    - Nothing new → go on.
-   - Merged cleanly with new commits → run the **fast gates of every in-scope app** (through
-     `job.mjs`). Red → each failure a `- [ ] <app>: … (base sync)` under `## Fixes`, fixed per
-     §Working `## Fixes`, gates green, then on.
+   - Merged cleanly with new commits (another feature landed first) → run the **fast gates of every
+     in-scope app** (through `job.mjs`). Red → each failure a `- [ ] <app>: … (target sync)` under
+     `## Fixes`, fixed per §Working `## Fixes`, gates green, then on.
    - Conflicts → resolve them when the resolution is mechanical (both sides additive, a lockfile to
      regenerate, imports) and re-run those apps' fast gates; otherwise `git merge --abort` and park
-     `"merge conflict with <base_branch> in <files> — clears when a human resolves it"`.
-3. **Push and open the PR — ready, not draft.** `git push -u origin <branch>`. `pr: none` →
-   `gh pr create --base <base_branch> --title "<type>(<ticket-or-feature>): <feature>" --body "<the
-   agent sign-off line + what changed per app>"`, the body ending `## 🤖 Agent walk — not
-   human-tested` and the last round's `report.md` table. A PR already open as a **draft** (an earlier
-   version of this pipeline) → `gh pr ready <N>`. Write `pr: #N` and `next: /builder:resume --path
-   <folder>` to the manifest, commit, push.
-4. **Can it merge?** `gh pr view <N> --json reviewDecision,mergeable`. `reviewDecision:
-   REVIEW_REQUIRED` or `CHANGES_REQUESTED` → park `"PR #N needs a human review to merge — clears when
-   it is approved"`. Checked **before** the ship commit, because after it the manifest is gone.
-5. **CI green.** `job.mjs start ci-<N> -- gh pr checks <N> --watch --interval 30`, then `wait` until
-   it exits. "no checks reported" is green. Red → `gh run view --log-failed` for each failing check;
-   each failure a `- [ ] <app>: <check> — <what failed> (CI round <r>)` under `## Fixes`, fixed per
-   §Working `## Fixes`, pushed, and this step again. **The second red round parks**: `"CI red twice —
-   <checks> — clears when a human looks"`.
-6. **Ship on the PR.** `/builder:ship --path <folder>` (its §At ship, agent form) — the SHIPPED
-   header, `MANIFEST.md` removed, the workspace removed, a program child's line set to `shipped` —
-   then `git push`. Watch CI once more (step 5's command; a docs-only commit, so red here is not a
-   fix round — it parks).
-7. **Merge.** The method is the first the repo allows — `gh repo view --json
-   squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed`: squash, else merge, else rebase —
-   `gh pr merge <N> --<method>`. Then `gh pr view <N> --json state` must read `MERGED`.
-   The merge refused → `git revert --no-edit HEAD` (the ship commit, which brings the manifest
-   back), push, and park `"merge refused — <gh's reason> — clears when a human merges or unblocks
-   it"`.
-8. **Hand off** with the merged PR, the checks that ran, every ruling the run made, and:
-   `📍 <feature>: shipped — PR #N merged (agent-verified, not human-tested)`.
+     `"conflict with <into> in <files> — clears when a human resolves it"`.
+3. **Ship.** `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) — the SHIPPED
+   header naming `<into>`, `MANIFEST.md` removed, the workspace removed, a program child's line set
+   to `shipped` — one commit.
+4. **End the run.** The fleet merges this branch into `<into>` in the human's checkout (one `--no-ff`
+   merge commit per feature, `merge(<feature>): agent-verified, not human-tested`) and removes the
+   worktree. Hand off with every ruling the run made, and:
+   `📍 <feature>: shipped — merging into <into> (agent-verified, not human-tested)`.
+
+A feature that already has a PR open (a draft from an earlier version of this pipeline) ships the
+same way; the PR is left for the human to close.
 
 ### 🔒 The PR lock (binding on every skill in this family)
 
@@ -380,11 +366,12 @@ A green gate run or a code review is evidence for the human — never their sign
 don't have it: ask. "It works" and "open the PR" are two different permissions — a sign-off can carry
 `🛑 PR HELD`.
 
-**The one exception — agent mode.** A feature the human handed to agents (`/builder:agent` or
-`/builder:fleet`, recorded `agent-walk: on`) is taken all the way by §Ship in agent mode: the agent
-walk and its **agent** sign-off stand in for the human's, and handing it over was the permission for
-the PR, the ship and the merge. The records say so everywhere — `walk: agent-pass`, the 🤖 header,
-the PR body — so nobody mistakes it for human-tested. A human `/builder:signoff` over an agent one
+**Agent mode is not an exception to it.** A feature the human handed to agents (`/builder:agent` or
+`/builder:fleet`, recorded `agent-walk: on`) is taken all the way by §Ship in agent mode — the agent
+walk and its **agent** sign-off stand in for the human's, and it is merged into the branch the human
+ran it from, **locally**. No PR opens and nothing is pushed: the human tests the merged result there
+and makes those calls. The records say so everywhere — `walk: agent-pass`, the 🤖 header, the merge
+commit — so nobody mistakes it for human-tested. A human `/builder:signoff` over an agent one
 sets `agent-walk: off` and hands the rest back to the human flow.
 
 🔴 **Where the config marks an app `commit: manual`, the lock is stricter still**: committing there

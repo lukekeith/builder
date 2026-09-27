@@ -373,7 +373,7 @@ const statusOf = (r) => {
   } else if (state === 'built' && agentMode && /^yes/.test(ready)) nextStep = 'Agent walk (fleet)'
   if (state === 'signed-off' && agentPass) lastDone = 'Agent signed off — not human-tested'
   if (state === 'verified' && agentPass)
-    nextStep = agentMode ? (r.pr ? 'CI, ship and merge (agent)' : 'Open the PR, CI, ship and merge (agent)') : r.pr ? 'Review the PR, then /builder:signoff' : 'Open the PR'
+    nextStep = agentMode ? 'Ship and merge into the fleet branch (agent)' : r.pr ? 'Review the PR, then /builder:signoff' : 'Open the PR'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null
   const parked = isSet(mf.blocked) ? mf.blocked.replace(/^"|"$/g, '') : null
   const waits = r.waitsOn?.length ? `⏳ ${waitsOnText(r.waitsOn)}` : null

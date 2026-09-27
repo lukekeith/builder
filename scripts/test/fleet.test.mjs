@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync, unlinkSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -47,16 +47,16 @@ function runFleet(root, args, scenario, env = {}) {
   return { ...r, fleet: existsSync(fj) ? JSON.parse(readFileSync(fj, 'utf8')) : null, calls }
 }
 
-const HAPPY = ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'PR:#1', 'SHIP:#1']
+const HAPPY = ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
 
 test('a feature with an open PR is taken on to merged, not refused', () => {
   const root = makeRepo(['o'])
   writeFileSync(join(root, 'docs/features/o/MANIFEST.md'), 'size: md\nstate: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc\npr: #5\nbranch: builder/o\nnext: x\n')
   git(root, 'commit', '-qam', 'o has a draft PR')
-  const r = runFleet(root, ['o'], { o: ['SHIP:#5'] })
+  const r = runFleet(root, ['o'], { o: ['SHIP'] })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.fleet.features.o.status, 'done')
-  assert.equal(r.fleet.features.o.pr, '#5')
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(o\): agent-verified, not human-tested/)
   assert.match(r.calls[0], /^start o build /, 'the ship lane, without the dev env')
 })
 
@@ -66,13 +66,18 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(r.status, 0, r.stderr)
   const a = r.fleet.features.a
   assert.equal(a.status, 'done')
-  assert.equal(a.pr, '#1')
-  assert.equal(a.runs, 9)
-  assert.equal(git(a.worktree, 'branch', '--show-current'), 'builder/a')
+  assert.equal(a.runs, 8)
   // The stub reports a --no-dev-env run as 'build': the ship lane runs without the dev env too.
   const lanes = r.calls.filter((l) => l.startsWith('start')).map((l) => l.split(' ')[2])
-  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'walk', 'build', 'build'])
-  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| a \| done \| 9 \| #1 \|/)
+  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'walk', 'build'])
+  assert.ok(r.calls.filter((l) => l.startsWith('end')).every((l) => l.endsWith('into=main')), 'every run is told the target')
+  // Landed on the branch the fleet ran from, as one merge commit; the worktree and branch are gone.
+  assert.equal(git(root, 'branch', '--show-current'), 'main')
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\): agent-verified, not human-tested/)
+  assert.match(readFileSync(join(root, 'docs/features/a/SPEC.md'), 'utf8'), /SHIPPED/)
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| a \| done \| 8 \|/)
 })
 
 test('a blocked spec parks with its reason and the fleet exits 1', () => {
@@ -156,7 +161,7 @@ test('--parallel must be a positive integer', () => {
 
 test('walk lane runs one feature at a time', () => {
   const root = makeRepo(['w1', 'w2', 'w3'])
-  const slow = ['READY-PENDING', 'SLOW:built', 'SLOW:verified', 'SLOW:PR:#9', 'SHIP:#9']
+  const slow = ['READY-PENDING', 'SLOW:built', 'SLOW:verified', 'SHIP']
   const r = runFleet(root, ['w1', 'w2', 'w3', '--parallel', '3'], { w1: slow, w2: slow, w3: slow })
   assert.equal(r.status, 0, r.stderr)
   const walk = []
@@ -193,7 +198,7 @@ test('without reset, the summary says dev-DB state accumulates', () => {
 
 test('re-running resumes and retries a cleared park', () => {
   const root = makeRepo(['a'])
-  const scenario = { a: ['audited', 'BLOCK:plan wants to split', 'planned', 'READY-PENDING', 'verified', 'SHIP:#2'] }
+  const scenario = { a: ['audited', 'BLOCK:plan wants to split', 'planned', 'READY-PENDING', 'verified', 'SHIP'] }
   const first = runFleet(root, ['a'], scenario)
   assert.equal(first.fleet.features.a.status, 'parked')
   const mfPath = join(first.fleet.features.a.worktree, 'docs/features/a/MANIFEST.md')
@@ -205,7 +210,6 @@ test('re-running resumes and retries a cleared park', () => {
   const second = runFleet(root, [], scenario)
   assert.equal(second.status, 0, second.stderr)
   assert.equal(second.fleet.features.a.status, 'done')
-  assert.equal(second.fleet.features.a.pr, '#2')
   assert.equal(second.fleet.features.a.runs, 6, 'run count continues across fleet runs')
   assert.equal(second.fleet.features.a.runsThisTime, 4, 'the cap counts this fleet run only')
 })
@@ -213,16 +217,15 @@ test('re-running resumes and retries a cleared park', () => {
 test('a feature parked at the run cap gets a fresh cap on the next fleet run', () => {
   const root = makeRepo(['a'])
   const churn = Array.from({ length: 12 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
-  const scenario = { a: [...churn, 'building', 'READY-PENDING', 'verified', 'PR:#8', 'SHIP:#8'] }
+  const scenario = { a: [...churn, 'building', 'READY-PENDING', 'verified', 'SHIP'] }
   const first = runFleet(root, ['a'], scenario)
   assert.equal(first.fleet.features.a.status, 'parked')
   assert.match(first.fleet.features.a.reason, /run cap \(12\) reached/)
   const second = runFleet(root, [], scenario)
   assert.equal(second.status, 0, second.stderr)
   assert.equal(second.fleet.features.a.status, 'done')
-  assert.equal(second.fleet.features.a.pr, '#8')
-  assert.equal(second.fleet.features.a.runs, 17, 'lifetime runs for the table')
-  assert.equal(second.fleet.features.a.runsThisTime, 5)
+  assert.equal(second.fleet.features.a.runs, 16, 'lifetime runs for the table')
+  assert.equal(second.fleet.features.a.runsThisTime, 4)
 })
 
 test('a worktree on another branch is refused, the rest proceed', () => {
@@ -244,7 +247,7 @@ test('--dry-run creates nothing', () => {
   assert.equal(r.calls.length, 0)
 })
 
-test('refusals: uncommitted, already shipped, branch checked out here', () => {
+test('refusals: uncommitted, already shipped; a feature whose branch is the target gets a builder/ branch', () => {
   const root = makeRepo(['a', 'h', 'k'])
   git(root, 'rm', '-q', 'docs/features/h/MANIFEST.md')
   mkdirSync(join(root, 'docs/features/h'), { recursive: true })
@@ -257,7 +260,8 @@ test('refusals: uncommitted, already shipped, branch checked out here', () => {
   const r = runFleet(root, ['a', 'h', 'k', '--dry-run'], {})
   assert.match(r.stdout, /✗ a — .*uncommitted changes/)
   assert.match(r.stdout, /✗ h — .*already shipped/)
-  assert.match(r.stdout, /✗ k — feat\/k is checked out in this folder/)
+  assert.match(r.stdout, /✓ k → builder\/k/)
+  assert.match(r.stdout, /merges into: feat\/k/)
 })
 
 test('a feature already underway continues on its own branch, in the lane it is in', () => {
@@ -267,22 +271,22 @@ test('a feature already underway continues on its own branch, in the lane it is 
   git(root, 'commit', '-qam', 'u built')
   git(root, 'switch', '-q', 'main')
   git(root, 'merge', '-q', '--ff-only', 'feat/u')
-  const r = runFleet(root, ['u'], { u: ['verified', 'PR:#4', 'SHIP:#4'] })
+  const r = runFleet(root, ['u'], { u: ['verified', 'SHIP'] })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.fleet.features.u.branch, 'feat/u')
-  assert.equal(git(r.fleet.features.u.worktree, 'branch', '--show-current'), 'feat/u')
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(u\)/)
+  assert.ok(git(root, 'branch', '--list', 'feat/u'), 'a branch the fleet did not create is kept')
   assert.equal(r.calls.find((l) => l.startsWith('start')).split(' ')[2], 'walk', 'went straight to the walk lane')
-  assert.equal(r.fleet.features.u.pr, '#4')
 })
 
 test('a planned feature joins the build lane where it is', () => {
   const root = makeRepo(['p'])
   writeFileSync(join(root, 'docs/features/p/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: auto (recommended) 2026-09-26\nnext: x\n')
   git(root, 'commit', '-qam', 'p planned')
-  const r = runFleet(root, ['p'], { p: ['building', 'READY-PENDING', 'verified', 'PR:#6', 'SHIP:#6'] })
+  const r = runFleet(root, ['p'], { p: ['building', 'READY-PENDING', 'verified', 'SHIP'] })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.fleet.features.p.branch, 'builder/p')
-  assert.equal(r.fleet.features.p.runs, 5)
+  assert.equal(r.fleet.features.p.runs, 4)
 })
 
 test('a manifest branch: before planned is the spec branch, not a build branch', () => {
@@ -399,8 +403,7 @@ test('copy brings untracked files into a new worktree; a missing path is noted',
   writeFileSync(join(root, '.env.local'), 'KEY=1\n')
   mkdirSync(join(root, 'secrets/deep'), { recursive: true })
   writeFileSync(join(root, 'secrets/deep/k'), 'shh\n')
-  const r = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(r.status, 0, r.stderr)
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })
   const wt = r.fleet.features.a.worktree
   assert.equal(readFileSync(join(wt, '.env.local'), 'utf8'), 'KEY=1\n')
   assert.equal(readFileSync(join(wt, 'secrets/deep/k'), 'utf8'), 'shh\n')
@@ -416,8 +419,7 @@ test('copy never overwrites a tracked file', () => {
   writeFileSync(join(root, 'app/tracked.txt'), 'local edit\n')
   writeFileSync(join(root, 'app/untracked.txt'), 'local only\n')
   writeFileSync(join(root, 'extra.txt'), 'extra\n')
-  const r = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(r.status, 0, r.stderr)
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })
   const wt = r.fleet.features.a.worktree
   assert.equal(readFileSync(join(wt, 'app/tracked.txt'), 'utf8'), 'committed\n')
   assert.equal(readFileSync(join(wt, 'app/untracked.txt'), 'utf8'), 'local only\n')
@@ -474,7 +476,7 @@ test('env reaches walk-lane claude children with {feature} filled in, never buil
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
   const starts = r.calls.filter((l) => l.startsWith('start'))
-  assert.equal(starts.length, 9)
+  assert.equal(starts.length, 8)
   assert.ok(starts.every((l) => l.endsWith('project_dir=-')), starts.join('\n'))
   const walk = starts.filter((l) => l.startsWith('start a walk '))
   const build = starts.filter((l) => l.startsWith('start a build '))
@@ -485,15 +487,13 @@ test('env reaches walk-lane claude children with {feature} filled in, never buil
 
 test('setup never sees agent_walk.env', () => {
   const root = makeRepo(['a'], { lines: ['setup: echo "${WALK_MARK:-unset}" > setup-env', 'env: WALK_MARK=x-{feature}'] })
-  const r = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(r.status, 0, r.stderr)
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })
   assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'setup-env'), 'utf8'), 'unset\n')
 })
 
 test('env reaches the hooks', () => {
   const root = makeRepo(['a'], { reset: `sh -c 'echo $WALK_MARK > reset-env'`, lines: ['env: WALK_MARK=x-{feature}'] })
-  const r = runFleet(root, ['a'], { a: ['READY-PENDING', 'verified', 'SHIP:#1'] })
-  assert.equal(r.status, 0, r.stderr)
+  const r = runFleet(root, ['a'], { a: ['READY-PENDING', 'BLOCK:stop here so the worktree stays'] })
   assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'reset-env'), 'utf8'), 'x-a\n')
 })
 
@@ -607,7 +607,7 @@ test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', (
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
   const starts = r.calls.filter((l) => l.startsWith('start'))
-  assert.equal(starts.length, 9)
+  assert.equal(starts.length, 8)
   assert.ok(starts.every((l) => l.endsWith('project_dir=-')), starts.join('\n'))
   const walk = starts.filter((l) => l.startsWith('start a walk '))
   assert.ok(walk.length > 0 && walk.every((l) => l.includes(' walk_mark=x ')), walk.join('\n'))
@@ -654,4 +654,27 @@ test('a child whose dependency is not in the run is refused', () => {
   program(root, ['api', 'ui'], { ui: 'api' })
   const dry = runFleet(root, ['ui', '--dry-run'], {})
   assert.match(dry.stdout, /✗ ui — waits on api \(spec\) — not in this run/)
+})
+
+test('a merge your uncommitted changes would clobber parks; the next run merges it', () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, 'docs/features/a/SPEC.md'), 'my local edit\n') // the ship writes SPEC.md
+  const first = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(first.fleet.features.a.status, 'parked')
+  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — clears when that is fixed; re-run the fleet/)
+  assert.equal(readFileSync(join(root, 'docs/features/a/SPEC.md'), 'utf8'), 'my local edit\n', 'your change is untouched')
+  unlinkSync(join(root, 'docs/features/a/SPEC.md'))
+  const second = runFleet(root, [], { a: HAPPY })
+  assert.equal(second.status, 0, second.stderr)
+  assert.equal(second.fleet.features.a.status, 'done')
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+})
+
+test('a fleet with unfinished work refuses to run from another branch', () => {
+  const root = makeRepo(['a'])
+  runFleet(root, ['a'], { a: ['audited', 'BLOCK:later'] })
+  git(root, 'switch', '-q', '-c', 'elsewhere')
+  const r = runFleet(root, [], {})
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /This fleet merges into main, but elsewhere is checked out/)
 })
