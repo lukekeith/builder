@@ -29,9 +29,27 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     copy: [],
     setup: null,
     env: {},
+    worktreeEnv: {},
     start: null,
     smoke: null,
   })
+})
+
+test('worktree_env is parsed like env, and a bad pair names itself', () => {
+  const cfg = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a\n  worktree_env: TEST_DATABASE_URL="postgres://h/t_{feature}" X=1')
+  assert.deepEqual(cfg.agentWalk.worktreeEnv, { TEST_DATABASE_URL: 'postgres://h/t_{feature}', X: '1' })
+  const bad = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a\n  worktree_env: NOPE')
+  assert.equal(bad.ok, false)
+  assert.match(bad.reason, /agent_walk\.worktree_env: "NOPE" is not KEY=VALUE/)
+})
+
+test('flaky: a list of match + optional rerun; entries without a match or with placeholders are dropped', () => {
+  assert.deepEqual(cfgWith('').flaky, [])
+  const cfg = cfgWith('flaky:\n  - match: intake\\.test\\.ts\n    rerun: node --test apps/server/test/intake.test.ts\n  - match: two servers race\n  - rerun: no match here\n  - match: <pattern>')
+  assert.deepEqual(cfg.flaky, [
+    { match: 'intake\\.test\\.ts', rerun: 'node --test apps/server/test/intake.test.ts' },
+    { match: 'two servers race', rerun: null },
+  ])
 })
 
 test('copy, setup, env, start and smoke are all parsed', () => {

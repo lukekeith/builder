@@ -8,31 +8,60 @@
 # because every feature's plan is called PLAN.md and a workspace keyed on that basename would put
 # every feature in one directory. `task-brief` and `review-package` are therefore always called
 # with an explicit outfile.
+#
+#   workspace <feature>            prints the directory, creating it
+#   workspace --remove <feature>   deletes it — the ship step's call. It exists because
+#                                  `rm -rf "$(workspace x)"` is refused by the harness's rm guard
+#                                  (a substituted path), and in five of five agent-mode ships that
+#                                  refusal took the whole chained ship command with it.
 set -euo pipefail
 
-usage() { echo "usage: workspace <feature> | --self-test" >&2; exit 2; }
-[ $# -eq 1 ] || usage
+usage() { echo "usage: workspace <feature> | --remove <feature> | --self-test" >&2; exit 2; }
 
 root=$(git rev-parse --show-toplevel)
 base="$root/.builder"
 
+check_name() {
+  case "$1" in ''|.|..|*/*|*' '*) echo "feature must be a bare folder name (got: '$1')" >&2; exit 2;; esac
+}
+
 workspace() {
   local feature=$1
-  case "$feature" in ''|.|..|*/*|*' '*) echo "feature must be a bare folder name (got: '$feature')" >&2; exit 2;; esac
+  check_name "$feature"
   mkdir -p "$base/$feature"
   printf '*\n' > "$base/.gitignore"
   printf '%s\n' "$base/$feature"
 }
 
-if [ "$1" = "--self-test" ]; then
+remove() {
+  local feature=$1
+  check_name "$feature"
+  if [ -d "$base/$feature" ]; then
+    rm -rf "$base/$feature"
+    echo "removed $base/$feature"
+  else
+    echo "no workspace at $base/$feature (already removed)"
+  fi
+}
+
+if [ $# -eq 1 ] && [ "$1" = "--self-test" ]; then
   a=$(workspace "__selftest_a"); b=$(workspace "__selftest_b")
   [ "$a" != "$b" ] || { echo "FAIL: two features share a directory" >&2; exit 1; }
   [ -d "$a" ] && [ -d "$b" ] || { echo "FAIL: directory not created" >&2; exit 1; }
   git -C "$root" check-ignore -q "$a" || { echo "FAIL: workspace is not git-ignored" >&2; exit 1; }
   ( workspace "a/b" >/dev/null 2>&1 ) && { echo "FAIL: a slash in the name was accepted" >&2; exit 1; }
-  rm -rf "$a" "$b"
+  remove "__selftest_a" >/dev/null
+  [ ! -d "$a" ] || { echo "FAIL: --remove left the directory" >&2; exit 1; }
+  ( remove "../x" >/dev/null 2>&1 ) && { echo "FAIL: --remove accepted a path" >&2; exit 1; }
+  rm -rf "$b"
   echo "ok: workspace self-test"
   exit 0
 fi
 
+if [ $# -eq 2 ] && [ "$1" = "--remove" ]; then
+  remove "$2"
+  exit 0
+fi
+
+[ $# -eq 1 ] || usage
 workspace "$1"

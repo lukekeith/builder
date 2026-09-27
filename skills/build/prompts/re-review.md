@@ -63,7 +63,8 @@ Subagent (general-purpose):
     covering tests and shows their output, and verify the claims against the
     diff. Do not re-run the suite to confirm the report. Run a test only when
     reading the code raises a specific doubt no existing run answers — and then
-    a focused test, never a package-wide suite.
+    a focused test, never a package-wide suite. Run it in the foreground, and
+    never kill a process you did not start: other worktrees share this machine.
 
     ## Output format
 

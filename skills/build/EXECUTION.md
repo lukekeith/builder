@@ -84,7 +84,9 @@ Use the least powerful model that can handle each role.
   a standard model.
 - **Architecture and design, and the final whole-branch review:** the most capable available.
 - **Reviews:** the same judgment, scaled to the diff's size, complexity and risk. Scoped re-reviews
-  of small fix diffs take a cheap-to-mid tier.
+  of small fix diffs take a cheap-to-mid tier, and so does the review of a task the plan marked
+  `tiny` on its `Recipe:` line (a one-file edit with its test) — the review still happens, at the
+  cheapest tier that can read a diff.
 - **Fix-loop escalation (rounds 4–5):** at least one tier above the implementer that got stuck.
 
 🔴 **Always name the model on every dispatch.** An omitted model inherits your session's — often the
@@ -137,6 +139,8 @@ need it.
   entry.
 - Record the implementer's agent identity — fix rounds 1–3 resume it.
 - **Never dispatch implementation subagents in parallel** (conflicts).
+- **Do not tell the implementer to run the app's suite or a gate block.** Its prompt limits it to
+  the tests of the code it changes plus the type-check; the suite runs once at the phase close.
 
 Template: [prompts/implementer.md](prompts/implementer.md)
 

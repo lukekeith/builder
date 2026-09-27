@@ -117,13 +117,24 @@ that is correct — a four-app `md` sitting at 5 phases is not oversized, it is 
 **Phases are renumbered 1..n sequentially** once merging is done. `PLAN.md` carries **no `Phase N`
 heading at any level**: any heading between two task blocks is swept into the earlier task's brief.
 
+**A one-task phase for a tiny change is the most expensive shape a plan can take.** A phase costs a
+brief, a fresh implementer, a fresh reviewer and a gate run whatever its size; measured on a real
+build, three consecutive phases of one small task each (a tool description, a rule line, a guard)
+cost as much as a phase of five real tasks. Before accepting one: fold the change into a task of the
+same app that already exists, or — when the app has no other phase — write it as one task whose
+steps are exactly the edit and its test, and note `tiny` on its `Recipe:` line so the build picks the
+cheapest reviewer tier. Never fold across an app boundary to avoid a phase.
+
 **A plan landing at 9+ phases is a feature that should be two.** Present the split before taking any
 go-ahead — by delivery slice or by domain — and proceed only on the split, or on an explicit "build
 it whole". **`--auto` does not decide this**: a split creates feature folders, which is a scope
 change and outside autopilot's remit; present it and stop. **Under `--agent-walk`** there is nobody
 to present it to: write `blocked: "plan wants a split into <parts> — clears when a human rules on it"`
 to the manifest, commit `chore(<ticket-or-feature>): <feature> — parked: plan wants a split`, and end
-the run (resume §`--agent-walk`).
+the run (resume §`--agent-walk`). 🔴 **That is the only park this step ever writes.** The go-ahead
+under `--agent-walk` is `auto (recommended)` and the run proceeds — a spec whose decisions were all
+auto-ruled is still a spec the human handed to agents, and "Luke should review the auto rulings" is
+what the hand-off's rulings list is for, not a `blocked:` line.
 
 ## Writing the plan
 

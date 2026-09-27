@@ -67,7 +67,13 @@ the answer is a choice:
   commits;
 - **`apply_mode`** for dev-database migrations — recommend `ask`: the pipeline asks before applying
   them, so a walk is never run against an old schema;
-- **known-red gates** — which of the listed gates fail on `{base_branch}` today;
+- **known-red gates** — which of the listed gates fail on `{base_branch}` today. A gate that is red
+  for inherited debt gets `@known-red` in its comment; one the repo judges as "must not grow" (a
+  type-error count) is written to print the number and gets `@delta`, so `scripts/gate.mjs` compares
+  it against the base branch instead of a count someone typed in;
+- **flaky tests** — any test file that fails under the whole suite and passes alone. Each becomes a
+  `flaky:` entry: `match:` the text that identifies it in the output, `rerun:` the command that runs
+  that file alone. The gate runner then re-runs it once instead of a model deciding each time;
 - the **`agent_walk` block** — only if the user wants unattended `/builder:fleet` runs (recommend
   *not yet* unless they asked). If yes: `driver` — recon first: a Playwright/browser MCP server in
   `.mcp.json`, or `playwright`/`cypress` in a manifest; else ask; `claude_args` — recommend
@@ -81,7 +87,10 @@ the answer is a choice:
   own tooling (tests, scripts, the human's dev env) doesn't also use. Check that `reset` and `stop`
   never stop or recreate a service the human's own dev env shares: no `docker compose down`, and no
   `compose up` from a branch whose compose file may differ — start an existing container by name, or
-  pin the compose file to the main checkout's; `parallel: 1` when the test suite shares one database;
+  pin the compose file to the main checkout's; **`worktree_env`** when the test suites share one
+  database — a `TEST_DATABASE_URL` (or the ORM's equivalent) ending in `_{feature}`, plus a `setup`
+  that creates it (`createdb … {feature}`, or the ORM's create-and-migrate), so `parallel: 3` is
+  safe; only when that is impossible, `parallel: 1`;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.

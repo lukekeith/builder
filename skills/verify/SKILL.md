@@ -21,7 +21,9 @@ It reads four things, and **trusts nothing remembered from the build** — every
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 
 🔴 **Re-resolve that path inline in every command that uses it** — a shell variable does not survive
-between Bash calls. **The deep set runs here and nowhere else.**
+between Bash calls. **The deep set's verdict is written here and nowhere else** — the fleet's build
+lane may have run the deep block already, and `gate.mjs` quotes that run when the tree is unchanged
+(REFERENCE §Quality gates).
 
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that
@@ -95,9 +97,15 @@ a visual diff, and a renamed element changes what the walk does.
    phase its `Phase N: closed` line. **No `- [ ]` remains under `## Fixes`.** 🔴 **A phase in a
    `commit: manual` app whose commits were staged but never approved is not landed** — say so plainly;
    it is the human's call, not a failure.
-3. **Gates green NOW, per app** — the full fast set for **every app §Apps marks in scope**, plus
-   whatever the config's deep block adds, outputs recorded. Record the config's KNOWN-RED gates as
-   BLOCKED with evidence; report a delta where it asks for one.
+3. **Gates green NOW, per app** — one call:
+   `node <builder>/scripts/gate.mjs --deep <every in-scope app>` (through `job.mjs` under
+   `--agent-walk`). It runs each in-scope app's fast set and the config's deep block, applying the
+   config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself. A set the runner
+   **quotes** — its inputs byte-identical to a green run it recorded, at a sha it names — counts as
+   run: that is REFERENCE §Quality gates' rule, and the quoted line with its sha is the evidence the
+   verdict cites. A set it runs, it runs whole. Never run the config's commands by hand beside it,
+   and never re-run a red gate yourself to see whether it is "really" red — the runner already
+   applied the flake rule; a `✗` is a finding.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly
    deferred with a named decider; Data plans executed. 🔴 **And the migration re-applies on a clean
    database** — one that only works against your local state is a production incident waiting.
@@ -118,8 +126,10 @@ a visual diff, and a renamed element changes what the walk does.
 8. **§Testing satisfied** — each named test exists and passes at its layer; in prototype mode every
    `B#` owed row is backed by a committed test or a captured state, not by a walk that saw it once.
 9. **Whatever the config's deep set names beyond gates** — a visual diff suite, an integration suite,
-   a boundary check. Run it, record the output, and honour the config's own caveats about how to read
-   it (an advisory percentage is advisory; a known rendering artifact is not a regression).
+   a boundary check. Item 3's `--deep` run covered what the deep block lists; this item is for what
+   the config describes in prose beside it. Run it, record the output, and honour the config's own
+   caveats about how to read it (an advisory percentage is advisory; a known rendering artifact is
+   not a regression).
 10. **The cross-app E2E walk** — 🔴 the ONE place the pipeline exercises every app at once: §Testing's
     walk script, executed live. Can't bring the stack up → **BLOCKED-on-environment**, never READY.
     Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is

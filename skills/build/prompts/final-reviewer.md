@@ -38,7 +38,10 @@ Subagent (general-purpose):
 
     Your review is read-only on this checkout. Do not mutate the working tree,
     the index, HEAD, or branch state. If you need a working copy of another
-    revision, use a separate temporary worktree — never move HEAD here.
+    revision, use a separate temporary worktree — never move HEAD here. Do not
+    re-run the gate suites — the phase closes ran them, and the controller
+    re-runs them after your findings are fixed. Run every command in the
+    foreground, and never kill a process you did not start.
 
     ## You do not dispatch subagents
 

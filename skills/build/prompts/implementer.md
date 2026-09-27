@@ -46,8 +46,20 @@ Subagent (general-purpose):
     **While you work:** if you hit something unexpected or unclear, **ask**.
     It is always OK to pause and clarify. Don't guess.
 
-    While iterating, run the focused test for what you're changing; run the
-    broader suite once before committing, not after every edit.
+    **Tests you run:** the test files for the code you are changing, plus the
+    type-check, once each at the end. 🔴 Do NOT run the app's whole suite or
+    any gate block from the project config: the controller runs the full set
+    once when the phase closes, on the committed tree. Measured on a real
+    build, implementers re-running the suite before every commit was the
+    single largest cost of the whole run and proved nothing the phase close
+    did not prove again minutes later.
+
+    **Processes:** run every command in the foreground — never
+    `run_in_background`, and never end your turn with something still
+    running. Never kill a process you did not start in this task, and never
+    `pkill`/`killall` by name or pattern: other worktrees share this machine,
+    and their test suites look exactly like yours in `ps`. If a command of
+    yours may hang, wrap it in `timeout <seconds>` when you start it.
 
     ## You do not dispatch subagents
 

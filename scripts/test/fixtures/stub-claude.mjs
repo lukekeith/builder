@@ -24,7 +24,7 @@ writeFileSync(countFile, String(n + 1))
 let step = scenario[n] ?? 'NOOP'
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
 const log = (s) => appendFileSync(join(S, 'calls.log'), `${s}\n`)
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {
@@ -49,6 +49,8 @@ if (step.startsWith('CHATTY:')) {
     process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'still working' }] } }) + '\n')
     await new Promise((r) => setTimeout(r, 50))
   }
+  // The real CLI's result repeats the last assistant text; the fleet's .log must not print it twice.
+  process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: `did ${step}` }] } }) + '\n')
   process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}` }) + '\n')
 }
 if (step.startsWith('SLOW:')) {
