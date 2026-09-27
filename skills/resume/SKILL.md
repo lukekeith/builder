@@ -231,7 +231,24 @@ unattended runs only: a human `/builder:signoff` sets it to `agent-walk: off`, s
 config → refuse in one line naming `/builder:init --update`.
 
 🔴 **Never call AskUserQuestion or ExitPlanMode** — nobody is there to answer, and a headless run that
-asks hangs until it times out. Every point that would ask resolves one of two ways:
+asks hangs until it times out.
+
+🔴 **Nothing runs in the background, and no turn ends waiting.** A headless `claude -p` run **exits
+when its last turn ends**, and whatever it left running goes with it — a gate suite cut off half-way,
+a reviewer whose verdict is never read, a feature the fleet then parks for "no progress". So under
+`--agent-walk`, in this command and every step it runs:
+
+- **Never** `run_in_background` on Bash or Agent, never `ScheduleWakeup`, `Monitor` or a cron.
+  Subagents run in the foreground, several in one message when they are independent.
+- **A command that may outlast one Bash call** (a gate suite, an e2e run, a CI watch) is started with
+  `node <builder>/scripts/job.mjs start <name> -- <command>` and then waited on in the foreground,
+  **Bash timeout 600000**, with `node <builder>/scripts/job.mjs wait <name>` — again and again while it
+  prints `still running` (exit 75), until it prints an exit code. That code is the gate's result.
+- **The run's last message is a handoff after the work finished** — never "waiting on …", "I'll
+  pick this up when …", or "still running". Work that cannot finish in this run ends at a committed
+  manifest the next run resumes from.
+
+Every point that would ask resolves one of two ways:
 
 - **Take the recommendation** — when it is local and reversible.
 - **Park** — write `blocked: "<reason> — clears when <what>"` and `next: /builder:resume --path

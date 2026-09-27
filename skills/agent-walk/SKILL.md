@@ -23,6 +23,9 @@ never condenses, and never runs `/builder:signoff`. It exists so an unattended r
 | `ready:` is not `yes <sha>` with no code commit since that sha (manifest/doc-only commits don't count) | not walkable yet — hand back to `/builder:resume` (walk readiness comes first) |
 | `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
 
+🔴 **The walk subagent runs in the foreground** and its report is read in this run — never
+`run_in_background` (resume §`--agent-walk`: a headless run exits when its turn ends).
+
 ## 1. Which round
 
 `<WS>` is `"$(<builder>/scripts/workspace <feature>)"` — re-resolve it inline in every command
