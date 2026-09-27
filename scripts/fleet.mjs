@@ -23,7 +23,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, create
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress } from './fleet-core.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
 import { fileURLToPath } from 'node:url'
@@ -67,9 +67,13 @@ const CFG = requireConfig()
 const ROOT = CFG.root
 const DIR = fleetDir(ROOT)
 
+// Progress is read live from each feature's worktree (or the root before it has one): the manifest's
+// state, the plan's tasks and the ledger's completed ones. A few small files per feature.
+const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
+
 if (flag('--status')) {
-  const p = join(DIR, 'STATUS.md')
-  console.log(existsSync(p) ? readFileSync(p, 'utf8') : 'No fleet has run in this repo yet.')
+  const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
+  console.log(fleet ? renderStatus(fleet, progressOf) : 'No fleet has run in this repo yet.')
   process.exit(0)
 }
 
@@ -369,7 +373,7 @@ const unlock = () => {
   } catch {}
 }
 process.on('exit', unlock)
-const save = () => saveFleet(ROOT, fleet)
+const save = () => saveFleet(ROOT, fleet, progressOf)
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {

@@ -77,7 +77,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.match(readFileSync(join(root, 'docs/features/a/SPEC.md'), 'utf8'), /SHIPPED/)
   assert.equal(existsSync(`${root}-wt/a`), false)
   assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
-  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| a \| done \| 8 \|/)
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| a \| done \| ▓▓▓▓▓▓▓▓▓▓ 100% · merged \| 8 \|/)
 })
 
 test('a blocked spec parks with its reason and the fleet exits 1', () => {
@@ -393,11 +393,19 @@ test('SIGHUP stops the fleet: children killed, the walk stop hook run, the lock 
   assert.equal(existsSync(join(root, '.builder/fleet/lock')), false, 'lock released')
 })
 
-test('--status prints the last table', () => {
-  const root = makeRepo(['a'])
+test('--status renders the table live, with progress read from each feature', () => {
+  const root = makeRepo(['a', 'b'])
   runFleet(root, ['a'], { a: HAPPY })
   const r = runFleet(root, ['--status'], {})
-  assert.match(r.stdout, /\| a \| done/)
+  assert.match(r.stdout, /\| Feature \| Status \| Progress \|/)
+  assert.match(r.stdout, /\| a \| done \| ▓▓▓▓▓▓▓▓▓▓ 100% · merged \| 8 \|/)
+  // b never joined the fleet, so it is not a row; the overall bar is the mean over the fleet's rows.
+  assert.match(r.stdout, /1 feature\(s\): 1 done · ▓▓▓▓▓▓▓▓▓▓ 100%/)
+  // Progress is read at --status time, not from the saved file: edit the manifest, the table follows.
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
+  writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\nnext: x\n')
+  const r2 = runFleet(root, ['--status'], {})
+  assert.match(r2.stdout, /\| b \| building \| ▓░░░░░░░░░ 10% · audited \| 1 \|/)
 })
 
 test('no agent_walk block refuses with the fix', () => {
