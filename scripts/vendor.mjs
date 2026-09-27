@@ -9,7 +9,7 @@
  *   1. Finds where builder lives in the host: the host's own `.claude-plugin/marketplace.json`
  *      entry named `builder` (its `source` path), else `plugins/builder` in a marketplace named
  *      after the host directory, created if missing.
- *   2. Builds the copy: `skills/`, `scripts/` (not its tests), `PROJECT.template.md`, the licences,
+ *   2. Builds the copy: `skills/` (not `update`), `scripts/` (not its tests), `PROJECT.template.md`, the licences,
  *      and `.claude-plugin/plugin.json` cut to name, description and version, its author the host
  *      marketplace's owner. Nothing else — no
  *      README, changelog, release notes, docs, marketplace file or git metadata.
@@ -104,10 +104,12 @@ function buildCopy(author) {
     const p = join(SRC, rel)
     files[rel] = { data: readFileSync(p), mode: statSync(p).mode & 0o777 }
   }
+  // Tests don't run in a host, and /builder:update updates a plugin install, which a copy is not.
+  const SKIP = new Set([join('scripts', 'test'), join('skills', 'update')])
   const walk = (rel) => {
     for (const n of readdirSync(join(SRC, rel)).sort()) {
       const r = join(rel, n)
-      if (n === '.DS_Store' || r === join('scripts', 'test')) continue
+      if (n === '.DS_Store' || SKIP.has(r)) continue
       statSync(join(SRC, r)).isDirectory() ? walk(r) : add(r)
     }
   }

@@ -65,6 +65,10 @@ newer version is available. Project facts stay in `.claude/builder.md`, which it
 
 ### Updating
 
+`/builder:update` in any Claude session does it: it refreshes the marketplace, updates the user-scope
+install, summarises the changelog since your version, and names any project-scope install pinning an
+older one in the repo you're in. `--check` only reports. By hand:
+
 ```bash
 claude plugin marketplace update claude-builder   # re-read the marketplace from GitHub
 claude plugin update builder                      # take the new version (restart to apply)
@@ -118,6 +122,7 @@ plugins/builder/
   skills/
     init/SKILL.md            writes .claude/builder.md for a repo
     status/SKILL.md          the table of in-progress work, with a paste-able command per row
+    update/SKILL.md          takes the newest release of a plugin install (never vendored)
     <13 pipeline skills>/SKILL.md
     test-driven-development/ · systematic-debugging/ · receiving-code-review/
     verification-before-completion/        the four craft skills — how work is DONE

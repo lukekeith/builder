@@ -55,6 +55,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch** or parked with a reason |
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** or parked with a reason. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
+| **Wanting the newest builder** | `/builder:update` — refreshes the plugin install, says what changed, and names any older install shadowing it in this repo. `--check` only reports. Not in a vendored copy |
 | **A repo that won't take an outside plugin** | `/builder:vendor` — a local copy in the repo naming nothing outside it; run it again to update. `--check` proves it clean |
 | Changing something after the spec exists | `/builder:revise --path <folder> <the change>` — post-build the default is a code fix plus at most one doc line |
 | Verify is READY and the PR is open | `/builder:ship --path <folder>` — flips the SPEC header to SHIPPED citing the PR, removes the manifest and the workspace |
