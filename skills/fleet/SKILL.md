@@ -18,10 +18,12 @@ merges past a required review or with `--admin`, and never deploys — each of t
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
 the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time.
 
-**Program children run in waves, not chains.** Every worktree branches off `HEAD`, so a child whose
-PROGRAM §Children *Depends on* entries haven't all **shipped** is refused (`✗ <child> — waits on
-<dep> (<state>)`) — it would build against a contract that isn't merged. Pick the next wave in a
-later run, after the last one's PRs merge.
+**A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
+entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree
+until they merge, then is branched and has `origin/<base_branch>` merged in, so it builds on its
+dependencies' shipped code. A dependency that isn't in the run and hasn't shipped refuses the child
+(`✗ <child> — waits on <dep> (<state>) — not in this run`); one that parks or fails parks its
+waiters too, naming it.
 
 ## 1. `--status`
 
@@ -33,8 +35,8 @@ later run, after the last one's PRs merge.
 node <builder>/scripts/fleet.mjs <the same arguments> --dry-run
 ```
 
-Print it verbatim. For every `✗` line, say what fixes it in a few words — for `waits on`, merging
-that dependency's PR. The script refusing the whole
+Print it verbatim. For every `✗` line, say what fixes it in a few words — for `waits on`, adding
+that dependency to the run. The script refusing the whole
 batch (no `agent_walk:` block, no `claude_args`) → name `/builder:init --update` and stop. `--dry-run`
 was asked for → stop here.
 
