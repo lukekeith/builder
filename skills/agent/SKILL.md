@@ -23,6 +23,13 @@ node <builder>/scripts/list-features.mjs --json
 
 A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, and its `manifest.state` is one of `spec aligned audited planned building built
 signed-off verified` (an open `pr` is fine — agents take it on to merged). No config `agent_walk:` block → stop here and name `/builder:init --update`.
+
+**A fleet may already be running.** `.builder/fleet/lock` holding a pid that `kill -0 <pid>` accepts
+means one is: then a row `.builder/fleet/fleet.json` lists with a status other than `parked` or
+`failed` is in it already and is **not offered** (say "N already running or queued" in the question);
+parked and failed rows stay offerable — picking one retries it. Picks join the running fleet's queue
+(§3) instead of starting a second one.
+
 Nothing offerable → say so, and name `/builder:brainstorm` for writing a spec. Parked rows are listed
 underneath as a count with their reasons, so it's clear why they're missing. A program child whose
 `waitsOn` isn't empty is offered with `after <deps>` in its description: picked together with its
@@ -51,3 +58,8 @@ when it finishes), with the picks as the arguments.
 ~~~
 📍 agents: <n> feature(s) running — next: /builder:fleet --status
 ~~~
+
+When a fleet is already running, the dry run says `adds to the running fleet (pid N)`: the
+confirmation is **Add to the running fleet** / **Not now**, the command runs in the foreground and
+returns at once, and the footer is `/builder:fleet` §4's `added` line. The running fleet starts each
+pick as a lane frees; `/builder:fleet --status` shows the queue.
