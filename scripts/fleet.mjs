@@ -239,9 +239,13 @@ function ensureWorktree(feature, branch) {
     mkdirSync(WORKTREES, { recursive: true })
     const exists = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
     git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, `refs/heads/${TARGET}`])
-    // Owed BEFORE the copy: a copy that throws leaves a worktree that exists, and the next run
-    // would otherwise take it as fully prepared and never run setup.
-    if (AW.setup) f.setupOwed = true
+    // Owed BEFORE the copy, and SAVED at once: a copy that throws leaves a worktree that exists,
+    // and a fleet killed before its next save would otherwise take it as fully prepared on the
+    // re-run and never run setup (seen: a setup that failed, then a kill during the baseline).
+    if (AW.setup) {
+      f.setupOwed = true
+      save()
+    }
     copyInto(wt)
   }
   if (f.setupOwed) {
@@ -770,6 +774,7 @@ function enqueue(feature) {
     f.worktree = ensureWorktree(feature, f.branch)
   } catch (e) {
     Object.assign(f, { status: 'failed', reason: e.setup ? e.message : `worktree: ${e.message.split('\n')[0]}` })
+    save()
     return
   }
   if (released && !fresh) {

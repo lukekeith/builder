@@ -481,6 +481,7 @@ test('a failed setup fails the feature, naming the setup log', () => {
   assert.match(r.fleet.features.a.reason, /^setup failed — see .*a-setup\.log$/)
   assert.match(readFileSync(join(root, '.builder/fleet/logs/a-setup.log'), 'utf8'), /nope/)
   assert.equal(r.calls.length, 0, 'no claude run')
+  assert.equal(r.fleet.features.a.setupOwed, true, 'setup stays owed on disk, so a re-run retries it')
 })
 
 test('env reaches walk-lane claude children with {feature} filled in, never build-lane ones; CLAUDE_PROJECT_DIR stays out', () => {
