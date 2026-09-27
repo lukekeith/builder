@@ -16,6 +16,9 @@ picker, nothing written.
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
 `/builder:init`, and stop.
 
+**No `--path` and no text → §The picker first**, before Step 1. Never ask "which feature?" as an
+open question, and never guess one from the branch or the session.
+
 **This command never sizes or designs anything.** New work — free text, a `--size`, a design ref with
 no folder behind it — is `/builder:brainstorm`'s: hand it there verbatim, flags included, and stop.
 `/builder:resume` picks up a feature that already has a folder: it reads the manifest, names the
@@ -294,12 +297,26 @@ Never ask "which feature?" as an open question. Run
 node <builder>/scripts/list-features.mjs --json
 ```
 
-Each row gives `feature`, `path`, `layout`, `state`, `next`, `done`, `blocked`, `convert`, plus
-`manifest` or `children`. Present **one AskUserQuestion**: one option per row whose `done` is false —
-the `feature` as the label, its `state` + `next` as the description — plus **New (describe it)**,
-which hands the description to `/builder:brainstorm`. Rows with `done` appear only as a count. **Mark
-a `convert: true` row as needing conversion**, so the human knows picking it starts there. Recommend
-the unblocked feature closest to done. On selection, continue at Step 1 with that row's `path`.
+Each row gives `feature`, `path`, `layout`, `state`, `done`, `convert`, `lastDone`, `nextStep`,
+`updatedAt`, `branch`, plus `manifest` or `children`.
+
+- **Offerable** — `done` false and `manifest.blocked` unset or `none`. Parked rows are listed under
+  the question as a count with their reasons, so it's clear why they're missing; `done` rows only as
+  a count.
+- **Nothing offerable** → say so, name `/builder:brainstorm <what you want built>`, and stop.
+- **Exactly one** → still ask, with **Not now** as the second option (AskUserQuestion needs two).
+  Don't start it unasked.
+
+Present **one AskUserQuestion**, single-select. Each option: the `feature` as the label; `lastDone`
+→ `nextStep` as the description, plus `on <branch>` when `branch` isn't the current branch and
+`needs conversion` for a `convert: true` row. **AskUserQuestion takes at most four options**, so
+with more than four offerable, offer the four most recently touched (`updatedAt`) and say in the
+question that any other can be typed by name under **Other**. Put the unblocked feature closest to
+done first with `(Recommended)`. **Other** also takes new work: text that names no feature is
+handed to `/builder:brainstorm` verbatim.
+
+On selection, continue at Step 1 with that row's `path`. A row on another branch → switch to it
+first (`git switch <branch>`) if the tree is clean; otherwise stop and name the command.
 
 ## Ship
 
