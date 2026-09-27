@@ -78,20 +78,26 @@ export function saveFleet(root, fleet) {
   writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet))
 }
 
+/**
+ * The table a terminal renders: only columns that carry information. `PR` and `Evidence` are gone —
+ * agent mode opens no PR since 3.0, and nothing ever wrote evidence — and the worktree root is said
+ * once above the table instead of repeated per row; a row shows `worktree` only when it has one.
+ * Wide, always-empty columns were what squeezed `Runs` onto two lines in the CLI's table renderer.
+ */
 export function renderStatus(fleet) {
   const rows = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
   const counts = {}
   for (const [, f] of rows) counts[f.status] = (counts[f.status] ?? 0) + 1
   const summary = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')
-  const lines = [
-    `# builder fleet — ${rows.length} feature(s): ${summary || 'none'}`,
-    '',
-    '| Feature | Status | Runs | PR | Reason | Evidence | Worktree |',
-    '|---|---|---|---|---|---|---|',
-  ]
-  for (const [name, f] of rows)
-    lines.push(`| ${cell(name)} | ${cell(f.status)} | ${f.runs ?? 0} | ${cell(f.pr)} | ${cell(f.reason)} | ${cell(f.evidence)} | ${cell(f.worktree)} |`)
+  const roots = new Set(rows.map(([, f]) => f.worktree && f.worktree.replace(/\/[^/]+\/?$/, '')).filter(Boolean))
+  const lines = [`# builder fleet — ${rows.length} feature(s): ${summary || 'none'}`]
+  if (fleet.target) lines.push('', `merges into **${fleet.target}**${roots.size ? ` · worktrees under ${[...roots].join(', ')}` : ''}`)
+  lines.push('', '| Feature | Status | Runs | Reason | Worktree |', '|---|---|---|---|---|')
+  for (const [name, f] of rows) {
+    const reason = f.pr && f.pr !== 'shipped' ? `${f.reason ? `${f.reason} · ` : ''}PR ${f.pr}` : f.reason
+    lines.push(`| ${cell(name)} | ${cell(f.status)} | ${f.runs ?? 0} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+  }
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))
   return lines.join('\n') + '\n'
 }

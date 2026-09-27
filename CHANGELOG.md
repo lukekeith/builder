@@ -4,6 +4,12 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.4.1
+
+- The fleet's status table drops the always-empty `PR` and `Evidence` columns and the repeated worktree
+  path (the target and the worktree root are named once above it), so the terminal's table renderer
+  stops wrapping `Runs` and feature names onto two lines.
+
 ## 3.4.0
 
 **`agent_walk.sync`** — an optional command the fleet runs in a worktree right after merging the target
