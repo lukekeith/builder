@@ -69,6 +69,7 @@ agent_walk:
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
   # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
+  # sync: npm ci && npm run db:migrate:test   # runs in a worktree right after the fleet merges the target in WITH new commits — the install and test-DB migration a merged-in package or migration needs; a failure parks the feature
   # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; the walk lane only — its claude -p runs and reset/start/smoke/stop — never build-lane runs or setup, and never CLAUDE_PROJECT_DIR
   # reset, start, smoke and stop run with env. Give the walk env ports and a database of its own that
   # the repo's own tooling (tests, scripts, your dev env) doesn't also use. reset and stop must never

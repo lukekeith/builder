@@ -727,7 +727,7 @@ async function walkOne(feature) {
   try {
     const text = readManifest(f.worktree, feature)
     if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
-      const why = syncTarget(f.worktree, 'what other features merged')
+      const why = syncTarget(f.worktree, 'what other features merged', feature)
       if (why) return park(f, why)
     }
     if (!hook(AW.reset, f.worktree, feature)) {
@@ -803,12 +803,28 @@ function enqueue(feature) {
  * just moved. Only a clean tree is merged (a manual-commit app may have work staged); a conflict
  * is a reason to park. Returns null when the worktree is at the target, or the merge went in.
  */
-function syncTarget(wt, why = "its dependencies' code") {
+function syncTarget(wt, why = "its dependencies' code", feature = null) {
   if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return null
   if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return null // not ours to merge over
-  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) !== null) return null
-  tryGit(['merge', '--abort'], wt)
-  return `merging ${TARGET} (${why}) conflicted — clears when a human merges it into the branch`
+  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) === null) {
+    tryGit(['merge', '--abort'], wt)
+    return `merging ${TARGET} (${why}) conflicted — clears when a human merges it into the branch`
+  }
+  // New commits came in: a package or a migration may have come with them, and the worktree's
+  // install and test database were made before it. agent_walk.sync brings them up to date.
+  if (AW.sync && feature) {
+    const log = join(DIR, 'logs', `${feature}-sync.log`)
+    mkdirSync(dirname(log), { recursive: true })
+    const fd = openSync(log, 'a')
+    try {
+      execSync(AW.sync.replaceAll('{feature}', feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    } catch {
+      return `agent_walk.sync failed after merging ${TARGET} — see ${log}; clears when it passes`
+    } finally {
+      closeSync(fd)
+    }
+  }
+  return null
 }
 const syncBase = (wt) => syncTarget(wt)
 
@@ -889,7 +905,7 @@ async function poolWorker() {
       inFlight++
       // Every pool run starts on the latest target, so a build integrates other features' merges
       // as they land instead of meeting them all at ship.
-      const why = syncTarget(fleet.features[feature].worktree, 'what other features merged')
+      const why = syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
       const outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
       inFlight--
       route(feature, outcome)

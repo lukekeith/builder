@@ -23,7 +23,9 @@ the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one featur
 worktree is brought up to the target first**: before each build- or ship-lane run, and before the
 walk env starts (at walk readiness and at verify — never between readiness and the walk), the fleet
 merges the target branch into the worktree, so a feature builds on what the others have landed and
-the ship step's own merge finds nothing new. A conflict there parks the feature.
+the ship step's own merge finds nothing new. A conflict there parks the feature. When that merge brings
+new commits, `agent_walk.sync` runs in the worktree — the install and the test-DB migration a merged-in
+package or migration needs (without it, a walk env once failed on a package the merge had just added).
 **Builds run in parallel safely when each worktree has its own test database**: `agent_walk.worktree_env`
 (`TEST_DATABASE_URL=…_{feature}`, say) reaches every run and `setup` in a worktree, `{feature}` filled
 in, and `setup` can create that database. With it, `parallel: 3`; without it, suites that share one
