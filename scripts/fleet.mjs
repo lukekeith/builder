@@ -137,9 +137,6 @@ function preflight(feature) {
   if (lane === 'blocked') return `${spec} is blocked: ${unquote(mf.blocked)}`
   if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
-  // A program child builds off HEAD, so the contract it consumes must already be merged there.
-  const waits = waitsOn(ROOT, CFG.registry, feature)
-  if (waits.length) return `${waitsOnText(waits)} — a chain runs one wave per fleet run, after each merge`
   const branch = branchOf(feature, mf)
   if (tryGit(['branch', '--show-current']) === branch)
     return `${branch} is checked out in this folder — switch away, or run /builder:resume --path ${spec} here`
@@ -254,16 +251,33 @@ if (!asked.length && !Object.keys(fleet.features).length) {
 }
 const fresh = []
 const refused = {}
+const after = {} // feature → the dependencies in this run it waits for
 const branchOwner = new Map(Object.entries(fleet.features).map(([f, row]) => [row.branch, f]))
+const inRun = new Set([...asked, ...Object.keys(fleet.features)])
 for (const feature of asked) {
   if (fleet.features[feature]) continue // already in the fleet — resumed below
   let why = preflight(feature)
   const branch = why ? null : branchOf(feature, parseManifest(readManifest(ROOT, feature)))
   if (!why && branchOwner.has(branch)) why = `${branchOwner.get(branch)} and ${feature} both resolve to branch ${branch}`
+  // A program child builds against its dependencies' merged code. One this run will ship is
+  // waited for; one nothing here will ship is a refusal, not a wait that never ends.
+  const waits = why ? [] : waitsOn(ROOT, CFG.registry, feature).filter((d) => fleet.features[d.name]?.status !== 'done')
+  const outside = waits.filter((d) => !inRun.has(d.name))
+  if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
   if (why) refused[feature] = why
   else {
     fresh.push(feature)
     branchOwner.set(branch, feature)
+    if (waits.length) after[feature] = waits.map((d) => d.name)
+  }
+}
+// A dependency refused above can't ship either — its waiters go with it.
+for (let changed = true; changed; ) {
+  changed = false
+  for (const f of fresh.filter((x) => after[x]?.some((d) => refused[d]))) {
+    refused[f] = `waits on ${after[f].filter((d) => refused[d]).join(', ')}, which can't run`
+    fresh.splice(fresh.indexOf(f), 1)
+    changed = true
   }
 }
 
@@ -273,7 +287,8 @@ if (flag('--dry-run')) {
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
   console.log('  pushes a branch, opens a PR, watches CI and MERGES each feature that passes')
-  for (const f of fresh) console.log(`  ✓ ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}`)
+  for (const f of fresh)
+    console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}`)
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
   for (const [f, row] of Object.entries(fleet.features)) console.log(`  ↻ ${f} — resuming (${row.status})`)
   process.exit(0)
@@ -374,7 +389,7 @@ if (tookOverStaleLock) {
 
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
-  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null }
+  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
 
 // ---- one claude run ------------------------------------------------------------------------
 function runClaude(wt, feature, lane, n) {
@@ -676,14 +691,34 @@ async function walkOne(feature) {
 // ---- queue everything ----------------------------------------------------------------------
 const pool = [] // { feature, lane: 'build' | 'ship' } — the parallel workers' queue
 const walkQueue = []
-for (const [feature, f] of Object.entries(fleet.features)) {
-  if (f.status === 'done') continue
-  f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
+const pendingDeps = (f) => (f.waitsOn ?? []).filter((d) => fleet.features[d]?.status !== 'done')
+
+/**
+ * Put a feature in the queue its manifest says. A program child still waiting on a dependency
+ * gets no worktree yet: it is branched once they have merged, so it starts from their code.
+ */
+function enqueue(feature) {
+  const f = fleet.features[feature]
+  const pending = pendingDeps(f)
+  if (pending.length) {
+    Object.assign(f, { status: 'waiting', waitsOn: pending, reason: `after ${pending.join(', ')}` })
+    return
+  }
+  const released = 'waitsOn' in f
+  delete f.waitsOn
+  const fresh = !f.worktree || !existsSync(f.worktree)
   try {
     f.worktree = ensureWorktree(feature, f.branch)
   } catch (e) {
     Object.assign(f, { status: 'failed', reason: e.setup ? e.message : `worktree: ${e.message.split('\n')[0]}` })
-    continue
+    return
+  }
+  if (released && fresh) {
+    const why = syncBase(f.worktree)
+    if (why) {
+      Object.assign(f, { status: 'parked', reason: why })
+      return
+    }
   }
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
@@ -694,6 +729,30 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
   else Object.assign(f, { status: 'parked', reason: 'MANIFEST.md missing or its state not understood' })
+}
+
+/**
+ * A released child's new branch came from this checkout's HEAD, which the merges this run made
+ * never reached. Bring the base in, so the child builds on its dependencies' shipped code. No
+ * remote (or no fetch) → nothing to bring; a conflict → a reason to park.
+ */
+function syncBase(wt) {
+  if (tryGit(['fetch', '--quiet', 'origin', CFG.baseBranch], wt) === null) return null
+  if (tryGit(['merge', '--no-edit', '--quiet', `origin/${CFG.baseBranch}`], wt) !== null) return null
+  tryGit(['merge', '--abort'], wt)
+  return `merging origin/${CFG.baseBranch} (its dependencies' code) conflicted — clears when a human merges it into the branch`
+}
+
+/** A dependency shipped: queue every child that was waiting only on what has now merged. */
+function release() {
+  for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'waiting' && !pendingDeps(f).length) enqueue(feature)
+  save()
+}
+
+for (const [feature, f] of Object.entries(fleet.features)) {
+  if (f.status === 'done') continue
+  f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
+  enqueue(feature)
 }
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset'))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
@@ -717,6 +776,7 @@ const idle = () => !pool.length && !walkQueue.length && inFlight === 0
 function route(feature, outcome) {
   if (outcome === 'walk') walkQueue.push(feature)
   else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
+  else if (outcome === 'done') release()
 }
 
 async function poolWorker() {
@@ -755,6 +815,10 @@ async function walkLane() {
 
 await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])
 
+// Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
+for (const f of Object.values(fleet.features))
+  if (f.status === 'waiting')
+    Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}` })
 save()
 unlock()
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))

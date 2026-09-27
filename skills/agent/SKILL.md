@@ -20,14 +20,13 @@ feature was agent-verified, not human-tested. Resolve `<builder>` per
 node <builder>/scripts/list-features.mjs --json
 ```
 
-A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, its
-`waitsOn` is empty, and its `manifest.state` is one of `spec aligned audited planned building built
+A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, and its `manifest.state` is one of `spec aligned audited planned building built
 signed-off verified` (an open `pr` is fine — agents take it on to merged). No config `agent_walk:` block → stop here and name `/builder:init --update`.
 Nothing offerable → say so, and name `/builder:brainstorm` for writing a spec. Parked rows are listed
-underneath as a count with their reasons, and **waiting** rows — program children whose PROGRAM
-§Children *Depends on* entries haven't shipped — with their `nextStep` (`⏳ waits on …`), so it's
-clear why they're missing. A chain runs one wave per pick: the next wave is offered once the last
-one's PRs have merged.
+underneath as a count with their reasons, so it's clear why they're missing. A program child whose
+`waitsOn` isn't empty is offered with `after <deps>` in its description: picked together with its
+dependencies, the fleet runs the chain in order in one run; picked without them, the dry-run refuses
+it and says which to add.
 
 ## 2. Pick — one multi-select
 

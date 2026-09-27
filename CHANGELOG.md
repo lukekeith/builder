@@ -4,6 +4,42 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.0.0
+
+**Agent mode finishes the job.** `/builder:agent` and `/builder:fleet` now take a feature all the way
+to **merged**, or park it with the reason a human is needed. No config key changes, but what
+`--agent-walk` does has changed, so it is a major.
+
+- **Agent sign-off.** An agent walk that passes writes the agent's sign-off (`walk: agent-pass`,
+  `state: signed-off`, SPEC header `> 🤖 AGENT SIGNED OFF … not human-tested`) and condenses the
+  folder, the way `/builder:signoff` does for a human. `/builder:signoff` stays human-only, and a
+  human sign-off over an agent one hands the feature back to the human flow.
+- **Ship in agent mode** (resume): sync with the base (fast gates if it moved; a conflict that isn't
+  mechanical parks), push, open a **ready** PR (an old draft is marked ready), park if it needs a
+  human review, get CI green (two fix rounds, then park), `/builder:ship` on the PR, merge with the
+  first method the repo allows, and confirm `MERGED`. A refused merge reverts the ship commit and
+  parks. It never merges with `--admin`, lifts a `hold:`, force-pushes or deploys.
+- **The fleet has a ship lane** sharing the parallel pool with builds, so CI waits never hold the
+  one-at-a-time walk lane. Done means the SPEC header says SHIPPED **and** `gh` says the PR merged. A
+  feature with an open PR is taken on to merged instead of refused.
+- **Program chains run in one fleet run.** A child waits for its dependencies in the same run to
+  merge, then is branched and has `origin/<base_branch>` merged in. A dependency outside the run
+  refuses it; one that parks parks its waiters.
+
+**Headless runs finish what they start.** A `claude -p` run exits when its last turn ends, taking
+anything it backgrounded with it — in practice, a verify whose gate suite was cut off three runs in a
+row, then parked for "no progress".
+
+- Under `--agent-walk` nothing runs in the background: no `run_in_background`, `ScheduleWakeup` or
+  `Monitor`; subagents run in the foreground; a long command goes through the new
+  **`scripts/job.mjs`** (`start` it detached, `wait` on it in bounded foreground calls until it
+  reports an exit code); and a run's last message is a handoff after the work finished.
+- The fleet streams each run's output (`--output-format stream-json`) and kills a run only after **30
+  minutes of silence** (`FLEET_IDLE_TIMEOUT_MS`), with a 6-hour backstop (`FLEET_RUN_TIMEOUT_MS`),
+  instead of a flat 45 minutes that killed healthy long builds. The `.log` gets the run's words as it
+  works; the raw stream goes to a `.jsonl` beside it.
+- One run with no progress gets another; two in a row park.
+
 ## 2.7.0
 
 **Program dependencies are enforced for unattended runs.** A program child whose PROGRAM §Children

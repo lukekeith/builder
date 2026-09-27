@@ -439,8 +439,9 @@ consumes ships first — the phase rule, one level up.
 *Depends on* is read by the scripts (`scripts/program.mjs`): `#` row numbers or child folder names,
 comma- or space-separated; `—` or empty for none. A dependency is met when its `child:` line reads
 `— shipped` or its own folder shows it shipped; a token naming no child is unmet. Until every entry
-is met, `/builder:agent` doesn't offer the child, `/builder:status` shows `⏳ waits on …`, and the
-fleet refuses it — so an unattended chain runs **one wave per fleet run**, after each merge.
+is met, `/builder:status` shows `⏳ waits on …`, and the fleet holds the child back: it waits for a
+dependency in the same run to merge, then branches from that code; a dependency outside the run
+refuses it.
 
 ## Prototype mode
 

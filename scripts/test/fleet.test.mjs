@@ -614,20 +614,44 @@ test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', (
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /agent_walk\.env may not set CLAUDE_PROJECT_DIR.*ignored/)
 })
 
-test('a program child whose dependency has not shipped is refused; the dependency runs', () => {
-  const root = makeRepo(['api', 'ui'])
+function program(root, children, deps) {
   mkdirSync(join(root, 'docs/features/big'))
-  writeFileSync(join(root, 'docs/features/big/MANIFEST.md'), 'tier: program\nnext: x\nchild: api — spec\nchild: ui — spec\n')
-  writeFileSync(
-    join(root, 'docs/features/big/PROGRAM.md'),
-    '# big — program\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n| 1 | api | md | app | x | — |\n| 2 | ui | md | app | y | 1 |\n'
-  )
+  writeFileSync(join(root, 'docs/features/big/MANIFEST.md'), `tier: program\nnext: x\n${children.map((c) => `child: ${c} — spec`).join('\n')}\n`)
+  const rows = children.map((c, i) => `| ${i + 1} | ${c} | md | app | x | ${deps[c] ?? '—'} |`).join('\n')
+  writeFileSync(join(root, 'docs/features/big/PROGRAM.md'), `# big — program\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n${rows}\n`)
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'program')
+}
+
+test('a program chain runs to the end in one fleet run: the child starts after its dependency merges', () => {
+  const root = makeRepo(['api', 'ui'])
+  program(root, ['api', 'ui'], { ui: 'api' })
   const dry = runFleet(root, ['api', 'ui', '--dry-run'], {})
   assert.match(dry.stdout, /✓ api → builder\/api/)
-  assert.match(dry.stdout, /✗ ui — waits on api \(spec\)/)
-  const r = runFleet(root, ['api', 'ui'], { api: HAPPY })
+  assert.match(dry.stdout, /⏳ ui → builder\/ui, once api merges/)
+  const r = runFleet(root, ['api', 'ui'], { api: HAPPY, ui: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
   assert.equal(r.fleet.features.api.status, 'done')
-  assert.equal(r.fleet.features.ui, undefined)
+  assert.equal(r.fleet.features.ui.status, 'done')
+  const lastApi = r.calls.findLastIndex((l) => l.startsWith('end api '))
+  const firstUi = r.calls.findIndex((l) => l.startsWith('start ui '))
+  assert.ok(firstUi > lastApi, r.calls.join('\n'))
+})
+
+test('a child whose dependency parks is parked too, saying why', () => {
+  const root = makeRepo(['api', 'ui'])
+  program(root, ['api', 'ui'], { ui: '#1' })
+  const r = runFleet(root, ['api', 'ui'], { api: ['audited', 'BLOCK:needs a human'] })
+  assert.equal(r.fleet.features.api.status, 'parked')
+  assert.equal(r.fleet.features.ui.status, 'parked')
+  assert.equal(r.fleet.features.ui.reason, 'waits on api (parked)')
+  assert.ok(!r.calls.some((l) => l.startsWith('start ui ')), 'ui never ran')
+  assert.equal(r.fleet.features.ui.worktree, null, 'no worktree before its dependency ships')
+})
+
+test('a child whose dependency is not in the run is refused', () => {
+  const root = makeRepo(['api', 'ui'])
+  program(root, ['api', 'ui'], { ui: 'api' })
+  const dry = runFleet(root, ['ui', '--dry-run'], {})
+  assert.match(dry.stdout, /✗ ui — waits on api \(spec\) — not in this run/)
 })
