@@ -39,7 +39,9 @@ waiters too, naming it.
 
 ## 1. `--status`
 
-`node <builder>/scripts/fleet.mjs --status` — print it verbatim and stop.
+`node <builder>/scripts/fleet.mjs --status` — reply with its contents **as markdown, never inside a
+code fence**: the heading line, then the table as a markdown table (the terminal renders it; fenced,
+it shows as raw pipes), then any notes as bullets. Change no cell. Then stop.
 
 ## 2. Always dry-run first
 
@@ -85,7 +87,8 @@ must outlive this session goes in a terminal instead:
 
 ## 5. When it finishes
 
-Print `.builder/fleet/STATUS.md` verbatim. Then, briefly:
+Reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+§1 does. Then, briefly:
 
 - **done** — merged into this branch: `git log --merges` lists them. Test the result here; push
   when you're happy. `git revert -m 1 <merge>` takes one back out.
