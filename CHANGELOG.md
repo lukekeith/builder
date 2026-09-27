@@ -4,6 +4,19 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.1.0
+
+**`/builder:vendor` — a local copy that names nothing outside the repo.** For a repo whose policy
+rejects a plugin fetched from elsewhere (a settings entry naming this marketplace got a PR reverted).
+`scripts/vendor.mjs <repo>` copies only what runs — `skills/`, `scripts/` without tests,
+`PROJECT.template.md`, the licences, a `plugin.json` cut to name, description, version and the host as
+author — into the folder the repo's own marketplace names for `builder` (else `plugins/builder`),
+enables it from that marketplace, removes settings entries naming this one, and switches the
+user-scope install off in the git-ignored `settings.local.json`. It scans the copy for the source's
+marketplace name, repo, homepage, owner and path **before writing anything**, and everything it
+wrote after. Re-running it is the update: the copy is replaced whole. `--dry-run` previews, `--check`
+proves an existing copy clean and names a newer version.
+
 ## 3.0.1
 
 - **A *Depends on* entry outside the program counts.** `glyph-library (shipped)` named a shipped
