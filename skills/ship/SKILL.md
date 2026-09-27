@@ -73,10 +73,12 @@ PR, or on a PR whose verify is not READY** — that line is what every skill and
 treat as DONE, and a feature marked DONE runs no step again. If the PR is later closed unmerged,
 revert the ship commit.
 
-**Agent-signed-off** (`walk: agent-pass …`, header `> 🤖 AGENT SIGNED OFF …`): ship only under
-`--agent-walk` — agent mode's §Ship runs this step, with the manifest still saying `agent-walk: on`.
-Otherwise refuse in one line: nobody has tested it, and the human either hands it back to agents
-(`/builder:fleet <feature>`) or tests it and runs `/builder:signoff --path <folder>`.
+**Agent form** (`walk: agent-pass …`, header `> 🤖 AGENT SIGNED OFF …`, run by resume §Ship in
+agent mode with `--into <branch>`): there is **no PR** — the precondition is `verify: READY` and the
+target branch already merged into this one; the fleet merges the result into `<branch>` once this
+commit lands. Without `--agent-walk` and `--into`, refuse in one line: nobody has tested it, and the
+human either hands it back to agents (`/builder:fleet <feature>`) or tests it and runs
+`/builder:signoff --path <folder>`.
 
 1. **Flip the header's first line** to, exactly:
 
@@ -86,8 +88,8 @@ Otherwise refuse in one line: nobody has tested it, and the human either hands i
 
    The sign-off's name and words carry over verbatim; the ticket comes from the manifest, read
    **before** step 2 removes it. A `🛑 PR HELD` line is dropped — the hold was lifted by the ship.
-   **Agent-signed-off**, the line is instead:
-   `> ✅ SHIPPED <date> — PR #N · <ticket> · 🤖 agent signed off (walk round <n>), not human-tested`.
+   **Agent form**, the line is instead:
+   `> ✅ SHIPPED <date> — merged into <branch> · <ticket> · 🤖 agent signed off (walk round <n>), not human-tested`.
 
 2. **`git rm MANIFEST.md`** — its `state:` has arrived, and the SPEC header now carries the state.
 
@@ -99,7 +101,7 @@ Otherwise refuse in one line: nobody has tested it, and the human either hands i
    `child: <name> — shipped`, and when every child reads `shipped`, flip `PROGRAM.md`'s own header the
    same way.
 
-Commit: `docs(<key>): <feature> shipped in PR #N`.
+Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
 
 🔴 **Shipping does not update the ticket system.** The config's §Companion skills names the command
 that reports a fix back with its evidence, and it is the human's to make. Name it in the hand-off when

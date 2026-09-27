@@ -2,12 +2,14 @@
 /**
  * fleet — take a batch of specs through the /builder:* pipeline unattended.
  *
- * Each spec gets its own worktree and branch (builder/<feature>). A pool of `parallel` workers runs
- * the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared dev environment; the
- * WALK lane takes features one at a time through that environment — walk readiness, the agent walk
- * and its sign-off, verify. The SHIP lane opens the PR, watches CI, ships and merges. A feature is
- * done when it is merged. Progress is read from each worktree's MANIFEST.md (and, once shipped, its
- * SPEC header), never from a run's output.
+ * Everything lands on ONE branch: the one checked out here when the fleet first ran (its TARGET).
+ * Each spec gets its own worktree and branch (builder/<feature>) cut from the target. A pool of
+ * `parallel` workers runs the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared
+ * dev environment; the WALK lane takes features one at a time through that environment — walk
+ * readiness, the agent walk and its sign-off, verify. The SHIP lane brings the target in and writes
+ * the ship commit; then the fleet merges the feature into the target here (--no-ff, one merge
+ * commit per feature) and removes its worktree and branch. Nothing is pushed. Progress is read from
+ * each worktree's MANIFEST.md (and, once shipped, its SPEC header), never from a run's output.
  *
  *   node <plugin>/scripts/fleet.mjs <feature|path>… [--parallel N]
  *   node <plugin>/scripts/fleet.mjs --all [--parallel N]
@@ -121,7 +123,7 @@ function requested() {
 const UNDERWAY = new Set(['planned', 'building', 'built', 'signed-off', 'verified'])
 function branchOf(feature, mf) {
   const own = UNDERWAY.has(mf.state) && mf.branch && mf.branch !== 'none' ? mf.branch : null
-  return own && own !== CFG.baseBranch ? own : `builder/${feature}`
+  return own && own !== CFG.baseBranch && own !== TARGET ? own : `builder/${feature}`
 }
 
 /** The one reason this spec cannot join the fleet, or null. Accepts any step before the PR. */
@@ -229,7 +231,7 @@ function ensureWorktree(feature, branch) {
   if (!existsSync(wt)) {
     mkdirSync(WORKTREES, { recursive: true })
     const exists = tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null
-    git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, 'HEAD'])
+    git(exists ? ['worktree', 'add', wt, branch] : ['worktree', 'add', '-b', branch, wt, `refs/heads/${TARGET}`])
     // Owed BEFORE the copy: a copy that throws leaves a worktree that exists, and the next run
     // would otherwise take it as fully prepared and never run setup.
     if (AW.setup) f.setupOwed = true
@@ -244,6 +246,20 @@ function ensureWorktree(feature, branch) {
 
 // ---- dry run -------------------------------------------------------------------------------
 const fleet = loadFleet(ROOT)
+/**
+ * The branch every finished feature is merged into: the one checked out here when this fleet first
+ * ran, kept in fleet.json so a re-run lands on the same one.
+ */
+const HERE = tryGit(['branch', '--show-current'])
+if (!HERE) {
+  console.error('This checkout is on a detached HEAD — check out the branch the features should be merged into.')
+  process.exit(2)
+}
+if (fleet.target && fleet.target !== HERE && Object.values(fleet.features).some((f) => f.status !== 'done')) {
+  console.error(`This fleet merges into ${fleet.target}, but ${HERE} is checked out. Switch back to ${fleet.target}, or finish or clear that fleet (.builder/fleet/) first.`)
+  process.exit(2)
+}
+const TARGET = HERE
 const asked = requested()
 if (!asked.length && !Object.keys(fleet.features).length) {
   console.error('Name the specs to run (feature names or folders), or pass --all.')
@@ -283,10 +299,10 @@ for (let changed = true; changed; ) {
 
 if (flag('--dry-run')) {
   console.log('builder fleet — plan (nothing created)')
+  console.log(`  merges into: ${TARGET} (this checkout) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
-  console.log('  pushes a branch, opens a PR, watches CI and MERGES each feature that passes')
   for (const f of fresh)
     console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}`)
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
@@ -387,13 +403,14 @@ if (tookOverStaleLock) {
   }
 }
 
+fleet.target = TARGET
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
 
 // ---- one claude run ------------------------------------------------------------------------
 function runClaude(wt, feature, lane, n) {
-  const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk${lane === 'walk' ? '' : ' --no-dev-env'}`
+  const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
@@ -496,21 +513,50 @@ function readable(line) {
 
 const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev-parse', 'HEAD'], wt)}`
 
-/**
- * A SHIPPED header is written on the PR branch before the merge. Where gh can see the PR, trust the
- * header only once the PR says MERGED; where it cannot (no gh, no remote), the header stands.
- */
-function unmerged(wt, pr) {
-  if (!/^#\d+$/.test(pr ?? '')) return null
-  try {
-    const state = execFileSync('gh', ['pr', 'view', pr.slice(1), '--json', 'state', '--jq', '.state'], { cwd: wt, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000 }).trim()
-    return state && state !== 'MERGED' ? state : null
-  } catch {
-    return null
-  }
-}
 
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
+
+/**
+ * Merge a shipped feature into the target, here, and clear its worktree and branch. Synchronous, so
+ * two features never merge at once. `--no-ff` keeps one merge commit per feature — easy to find, and
+ * `git revert -m 1` takes a feature back out. A refusal (your uncommitted changes overlap, or the
+ * target moved into a conflict) parks the feature; the next fleet run retries the merge.
+ */
+function land(feature) {
+  const f = fleet.features[feature]
+  f.pr = shippedPr(readSpec(f.worktree, feature))
+  if (f.pr && !/^#/.test(f.pr)) f.pr = null
+  const merged = () => tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) !== null
+  if (!merged()) {
+    const here = tryGit(['branch', '--show-current'])
+    if (here !== TARGET) return park(f, `shipped, but this checkout is on ${here ?? 'a detached HEAD'}, not ${TARGET} — switch back and re-run the fleet to merge it`)
+    try {
+      execFileSync('git', ['merge', '--no-ff', '--no-edit', '-m', `merge(${feature}): agent-verified, not human-tested`, f.branch], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      tryGit(['merge', '--abort'])
+      const why = String(e.stderr || e.stdout || e.message).split('\n').find((l) => l.trim()) ?? 'git merge failed'
+      return park(f, `shipped, but merging into ${TARGET} failed: ${why.trim()} — clears when that is fixed; re-run the fleet to merge it`)
+    }
+  }
+  Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
+  // The worktree held nothing but this branch; a tracked change there would be lost, so only a
+  // clean one goes (untracked files — a copied .env, walk evidence — go with it).
+  if (f.worktree && existsSync(f.worktree) && tryGit(['status', '--porcelain', '--untracked-files=no'], f.worktree) === '') {
+    if (tryGit(['worktree', 'remove', '--force', f.worktree]) !== null) {
+      f.worktree = null
+      if (f.branch.startsWith('builder/')) tryGit(['branch', '-d', f.branch])
+    }
+  }
+  if (f.worktree) addNote(`${feature} merged; its worktree ${f.worktree} was kept (it has changes) — remove it with git worktree remove`)
+  save()
+  return 'done'
+}
+
+function park(f, reason) {
+  Object.assign(f, { status: 'parked', reason })
+  save()
+  return 'parked'
+}
 const RUNNING = { build: 'building', walk: 'walking', ship: 'shipping' }
 
 /** Run a feature's lane until it hands off, finishes, parks or fails. Returns the outcome — for a
@@ -553,17 +599,7 @@ async function drive(feature, lane) {
       save()
       return d.to
     }
-    if (d.action === 'done') {
-      const open = unmerged(f.worktree, d.pr)
-      if (open) {
-        Object.assign(f, { status: 'parked', pr: d.pr, reason: `SPEC says SHIPPED but PR ${d.pr} is ${open}, not merged — merge or revert the ship commit` })
-        save()
-        return 'parked'
-      }
-      Object.assign(f, { status: 'done', pr: d.pr, reason: null })
-      save()
-      return 'done'
-    }
+    if (d.action === 'done') return land(feature)
     Object.assign(f, d.action === 'fail' ? { status: 'failed', reason: `${d.reason} — see ${log}` } : { status: 'parked', reason: d.reason })
     save()
     return f.status
@@ -713,7 +749,7 @@ function enqueue(feature) {
     Object.assign(f, { status: 'failed', reason: e.setup ? e.message : `worktree: ${e.message.split('\n')[0]}` })
     return
   }
-  if (released && fresh) {
+  if (released && !fresh) {
     const why = syncBase(f.worktree)
     if (why) {
       Object.assign(f, { status: 'parked', reason: why })
@@ -724,7 +760,7 @@ function enqueue(feature) {
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf)
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
-  else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'done', pr: shippedPr(readSpec(f.worktree, feature)), reason: null })
+  else if (text == null && shippedPr(readSpec(f.worktree, feature))) land(feature) // shipped, the merge still owed
   else if (lane === 'done') Object.assign(f, { status: 'done', pr: mf.pr ?? null, reason: null })
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
@@ -732,15 +768,13 @@ function enqueue(feature) {
 }
 
 /**
- * A released child's new branch came from this checkout's HEAD, which the merges this run made
- * never reached. Bring the base in, so the child builds on its dependencies' shipped code. No
- * remote (or no fetch) → nothing to bring; a conflict → a reason to park.
+ * A released child whose branch already existed may predate its dependencies' merge. Bring the
+ * target in, so it builds on their shipped code; a conflict is a reason to park.
  */
 function syncBase(wt) {
-  if (tryGit(['fetch', '--quiet', 'origin', CFG.baseBranch], wt) === null) return null
-  if (tryGit(['merge', '--no-edit', '--quiet', `origin/${CFG.baseBranch}`], wt) !== null) return null
+  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) !== null) return null
   tryGit(['merge', '--abort'], wt)
-  return `merging origin/${CFG.baseBranch} (its dependencies' code) conflicted — clears when a human merges it into the branch`
+  return `merging ${TARGET} (its dependencies' code) conflicted — clears when a human merges it into the branch`
 }
 
 /** A dependency shipped: queue every child that was waiting only on what has now merged. */

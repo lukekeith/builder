@@ -137,7 +137,8 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
-| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature goes on to a PR, green CI and the merge (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation or parks the feature (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--into <branch>` | agent mode's target: the branch the fleet was run from, which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm --size sm move the save button into the header` |
@@ -174,8 +175,8 @@ migration). Those still ask, as they would have.
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
 is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
-runs — except under `--agent-walk`, where resume §Ship in agent mode governs: the PR opens, and
-merges, with no question.
+runs — except under `--agent-walk`, where no PR opens at all: resume §Ship in agent mode merges into
+the fleet's target branch locally.
 
 **Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
 `/builder:revise` (or brainstorm, for a feature not yet audited) exactly as if it had come with no
@@ -640,7 +641,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 | manifest `state:` spec · aligned · audited · planned · building · built | in flight | route on the manifest's `next:` line |
 | SPEC header carries `SHIPPED` | **DONE** | run no step; print the header; offer a new feature folder |
 | header carries `SIGNED OFF`, manifest `verify: none` | signed off | verify next |
-| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, through to the merge |
+| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship and merge into the target branch |
 | manifest `hold:` set | parked | local-only steps until the human lifts the hold |
 
 **Legacy layouts.** 🔴 **The manifest is the discriminator.** A folder holding `MANIFEST.md` is this

@@ -6,25 +6,30 @@ agree — see [RELEASING.md](RELEASING.md).
 
 ## 3.0.0
 
-**Agent mode finishes the job.** `/builder:agent` and `/builder:fleet` now take a feature all the way
-to **merged**, or park it with the reason a human is needed. No config key changes, but what
-`--agent-walk` does has changed, so it is a major.
+**Agent mode finishes the job, on your branch.** `/builder:agent` and `/builder:fleet` now take every
+feature all the way — verified and **merged into the branch you ran them from** — or park it with the
+reason a human is needed. Run it against five specs and you get five merge commits on one branch to
+test, not five worktrees to walk. No config key changes, but what `--agent-walk` does has changed, so
+it is a major.
 
 - **Agent sign-off.** An agent walk that passes writes the agent's sign-off (`walk: agent-pass`,
   `state: signed-off`, SPEC header `> 🤖 AGENT SIGNED OFF … not human-tested`) and condenses the
   folder, the way `/builder:signoff` does for a human. `/builder:signoff` stays human-only, and a
   human sign-off over an agent one hands the feature back to the human flow.
-- **Ship in agent mode** (resume): sync with the base (fast gates if it moved; a conflict that isn't
-  mechanical parks), push, open a **ready** PR (an old draft is marked ready), park if it needs a
-  human review, get CI green (two fix rounds, then park), `/builder:ship` on the PR, merge with the
-  first method the repo allows, and confirm `MERGED`. A refused merge reverts the ship commit and
-  parks. It never merges with `--admin`, lifts a `hold:`, force-pushes or deploys.
-- **The fleet has a ship lane** sharing the parallel pool with builds, so CI waits never hold the
-  one-at-a-time walk lane. Done means the SPEC header says SHIPPED **and** `gh` says the PR merged. A
-  feature with an open PR is taken on to merged instead of refused.
-- **Program chains run in one fleet run.** A child waits for its dependencies in the same run to
-  merge, then is branched and has `origin/<base_branch>` merged in. A dependency outside the run
-  refuses it; one that parks parks its waiters.
+- **Ship in agent mode** (resume): merge the target branch in (fast gates if it moved; a conflict
+  that isn't mechanical parks), then `/builder:ship` with a `SHIPPED … merged into <branch>` header.
+- **The fleet merges** each shipped feature into the branch checked out where it was started — its
+  target, kept in `fleet.json` — as one `--no-ff` merge commit, `merge(<feature>): agent-verified,
+  not human-tested`, then removes the feature's worktree and `builder/` branch. A merge your
+  uncommitted changes are in the way of parks, untouched, and the next fleet run retries it. A
+  re-run from another branch is refused while the fleet has unfinished work. **Nothing is pushed and
+  no PR is opened** — both stay yours. Every run is told the target (`--into <branch>`).
+- **The fleet has a ship lane** sharing the parallel pool with builds, so shipping never holds the
+  one-at-a-time walk lane. A feature with an open PR (an agent draft from 2.x) is taken on and
+  merged locally; its PR is left for you to close.
+- **Program chains run in one fleet run.** A child waits for its dependencies in the same run to be
+  merged into the target, then is branched from it. A dependency outside the run refuses the child;
+  one that parks parks its waiters.
 
 **Headless runs finish what they start.** A `claude -p` run exits when its last turn ends, taking
 anything it backgrounded with it — in practice, a verify whose gate suite was cut off three runs in a
