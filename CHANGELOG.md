@@ -4,6 +4,15 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.1.1
+
+- **`/builder:resume` with no argument asks which feature, from a list.** The picker now runs before
+  Step 1 instead of being a section the flow reached last, and it fits AskUserQuestion the way
+  `/builder:agent` does: at most four options, the most recently touched unfinished features, the one
+  closest to done recommended, parked ones listed underneath with their reasons. **Other** takes any
+  feature by name, or new work for `/builder:brainstorm`. A pick on another branch switches to it
+  when the tree is clean.
+
 ## 3.1.0
 
 **`/builder:vendor` — a local copy that names nothing outside the repo.** For a repo whose policy
