@@ -289,7 +289,7 @@ test('a planned feature joins the build lane where it is', () => {
   assert.equal(r.fleet.features.p.runs, 4)
 })
 
-test('a manifest branch: before planned is the spec branch, not a build branch', () => {
+test('a manifest branch: before building is the spec branch, not a build branch', () => {
   const root = makeRepo(['a'])
   writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: audited\nbranch: specs/batch\nnext: x\n')
   git(root, 'commit', '-qam', 'a audited on the spec branch')
@@ -300,12 +300,23 @@ test('a manifest branch: before planned is the spec branch, not a build branch',
 
 test('two features resolving to one branch: the second is refused', () => {
   const root = makeRepo(['p1', 'p2'])
-  for (const f of ['p1', 'p2']) writeFileSync(join(root, `docs/features/${f}/MANIFEST.md`), 'size: md\nstate: planned\nbranch: feat/shared\nnext: x\n')
-  git(root, 'commit', '-qam', 'both planned on one branch')
+  for (const f of ['p1', 'p2']) writeFileSync(join(root, `docs/features/${f}/MANIFEST.md`), 'size: md\nstate: building\nbranch: feat/shared\nnext: x\n')
+  git(root, 'commit', '-qam', 'both building on one branch')
   git(root, 'branch', 'feat/shared')
   const r = runFleet(root, ['p1', 'p2', '--dry-run'], {})
   assert.match(r.stdout, /✓ p1 → feat\/shared/)
   assert.match(r.stdout, /✗ p2 — p1 and p2 both resolve to branch feat\/shared/)
+})
+
+test('a planned feature whose spec branch another feature is building on gets its own branch', () => {
+  const root = makeRepo(['m', 'i'])
+  writeFileSync(join(root, 'docs/features/m/MANIFEST.md'), 'size: md\nstate: built\nbranch: feat/shared\nnext: x\n')
+  writeFileSync(join(root, 'docs/features/i/MANIFEST.md'), 'size: md\nstate: planned\nbranch: feat/shared\nnext: x\n')
+  git(root, 'commit', '-qam', 'm built, i planned, both on feat/shared')
+  git(root, 'branch', 'feat/shared')
+  const r = runFleet(root, ['m', 'i', '--dry-run'], {})
+  assert.match(r.stdout, /✓ m → feat\/shared/)
+  assert.match(r.stdout, /✓ i → builder\/i/)
 })
 
 test('a second fleet is refused while one holds the lock', () => {
