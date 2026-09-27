@@ -117,10 +117,11 @@ function requested() {
 
 /**
  * The branch a feature runs on: the one it is already underway on, else a fresh builder/<feature>.
- * Before `planned`, a manifest's `branch:` is the branch the spec was written on, not a build
- * branch — several specs may share it — so it is honoured only from `planned` on.
+ * Until the build starts, a manifest's `branch:` is the branch the spec and plan were written on,
+ * not a build branch — several specs may share it (and one of them may be building there) — so it
+ * is honoured only from `building` on.
  */
-const UNDERWAY = new Set(['planned', 'building', 'built', 'signed-off', 'verified'])
+const UNDERWAY = new Set(['building', 'built', 'signed-off', 'verified'])
 function branchOf(feature, mf) {
   const own = UNDERWAY.has(mf.state) && mf.branch && mf.branch !== 'none' ? mf.branch : null
   return own && own !== CFG.baseBranch && own !== TARGET ? own : `builder/${feature}`

@@ -63,7 +63,23 @@ test("a dependency whose own folder shows it shipped is met, even when the child
 
 test('a token that names no child holds the child back rather than letting it run', () => {
   const root = registry({ children: { a: 'shipped', c: 'spec' }, deps: { c: 'a, typo' } })
-  assert.deepEqual(waitsOn(root, REG, 'c'), [{ name: 'typo', state: 'no such child in PROGRAM §Children' }])
+  assert.deepEqual(waitsOn(root, REG, 'c'), [{ name: 'typo', state: 'no such child or feature' }])
+})
+
+test('a dependency outside the program is a registry feature, met once it shipped; a parenthetical is a note', () => {
+  const root = registry({
+    children: { a: 'planned', c: 'spec' },
+    deps: { a: 'lib (shipped)', c: 'a, other' },
+    folders: {
+      lib: { 'MANIFEST.md': 'tier: program\nchild: x — shipped\n', 'PROGRAM.md': '# lib — program\n> ✅ SHIPPED 2026-09-26 — PR #1\n' },
+      other: { 'MANIFEST.md': 'size: md\nstate: building\n' },
+    },
+  })
+  assert.deepEqual(waitsOn(root, REG, 'a'), [])
+  assert.deepEqual(waitsOn(root, REG, 'c'), [
+    { name: 'a', state: 'planned' },
+    { name: 'other', state: 'building' },
+  ])
 })
 
 test('the feature cell may be a link or code span', () => {
