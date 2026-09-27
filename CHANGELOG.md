@@ -4,6 +4,11 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.3
+
+- The fleet saves `setupOwed` the moment a worktree is created, and saves a failed setup at once, so a
+  fleet killed before its next save does not treat that worktree as prepared on the re-run.
+
 ## 3.3.2
 
 - `gate.mjs` creates `.builder/gates/` before a command runs, so a gate line can `tee` its full output
