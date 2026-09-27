@@ -28,14 +28,18 @@ test('a parked feature says so, with its reason', () => {
   assert.equal(rows.p.nextStep, '⛔ parked — plan wants to split — clears when you split it')
 })
 
-test('an agent-walked feature is not reported as human-walked', () => {
+test('an agent-signed-off feature is not reported as human-walked; agent mode takes it to merged', () => {
   const rows = repo({
-    a: 'state: built\nwalk: agent-pass 2026-09-26 abc123',
-    v: 'state: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc123\npr: #5',
+    a: 'state: built\nwalk: agent-pass 2026-09-26 abc123\nagent-walk: on 2026-09-26',
+    s: 'state: signed-off\nwalk: agent-pass 2026-09-26 abc123\nagent-walk: on 2026-09-26',
+    v: 'state: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc123\npr: #5\nagent-walk: on 2026-09-26',
+    h: 'state: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc123\npr: #6\nagent-walk: off',
   })
   assert.equal(rows.a.lastDone, 'Agent-walked — not human-tested')
-  assert.equal(rows.a.nextStep, 'Deep verify, then a draft PR')
-  assert.equal(rows.v.nextStep, 'Review the draft PR, then /builder:signoff')
+  assert.equal(rows.a.nextStep, 'Agent sign-off, then deep verify')
+  assert.equal(rows.s.lastDone, 'Agent signed off — not human-tested')
+  assert.equal(rows.v.nextStep, 'CI, ship and merge (agent)')
+  assert.equal(rows.h.nextStep, 'Review the PR, then /builder:signoff')
 })
 
 test('an agent-walk run at built says the agent walks next', () => {
