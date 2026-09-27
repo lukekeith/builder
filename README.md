@@ -42,6 +42,27 @@ To make the plugin itself install for everyone who clones your repo, declare it 
 }
 ```
 
+### A local copy inside the repo
+
+Some repos won't take a plugin fetched from outside them — a settings entry naming this marketplace
+gets a PR rejected. Vendor it instead: a copy inside the repo that names nothing outside it.
+
+```
+/builder:vendor            # inside a Claude session in that repo, with the plugin installed at user scope
+```
+
+or, from a clone of this repo, `node scripts/vendor.mjs <path to the repo>`. It copies only what runs
+(`skills/`, `scripts/` without tests, `PROJECT.template.md`, the licences, and a `plugin.json` cut to
+name, description, version and the host as author) into the folder the repo's own
+`.claude-plugin/marketplace.json` names for `builder` — else `plugins/builder`, in a marketplace
+named after the repo. It enables `builder@<that marketplace>` in `.claude/settings.json`, removes any
+entry there naming this one, and switches the user-scope install off in the git-ignored
+`.claude/settings.local.json` so the repo answers `/builder:*` from its own copy. It **refuses to write
+anything** if the copy would name its source (this marketplace, repo, homepage or path), and scans
+again after. **Updating is running it again**: the copy is replaced whole, and a file a newer version
+dropped is deleted. `--dry-run` previews; `--check` proves an existing copy clean and says whether a
+newer version is available. Project facts stay in `.claude/builder.md`, which it never touches.
+
 ### Updating
 
 ```bash
