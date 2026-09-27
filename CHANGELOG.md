@@ -4,6 +4,11 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.3.5
+
+- The fleet saves its table before measuring `@delta` baselines and says so in a note, so `--status`
+  during those minutes shows the queue as it is; a note about a worktree that no longer exists is dropped.
+
 ## 3.3.4
 
 - `/builder:fleet --status` (and the end-of-run report) reply with the status as a rendered markdown

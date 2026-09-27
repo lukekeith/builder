@@ -762,4 +762,18 @@ test('@delta gates get their baseline measured at fleet start, once per target s
   assert.equal(b1.values['echo 7'], 7)
   runFleet(root, [], { a: ['BLOCK:wait'] })
   assert.equal(JSON.parse(readFileSync(baseline, 'utf8')).when, b1.when, 'not re-measured while the target sha is unchanged')
+  assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /measuring @delta/, 'the baseline note is gone once it is measured')
+})
+
+test('a note about a worktree that no longer exists is dropped on the next run', () => {
+  const root = makeRepo(['a'])
+  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:wait'] })
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  fj.notes = ['x merged; its worktree /nowhere/x was kept (it has changes) — remove it with git worktree remove', `y merged; its worktree ${first.fleet.features.a.worktree} was kept (it has changes) — remove it with git worktree remove`]
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify(fj))
+  runFleet(root, [], { a: ['BLOCK:wait'] })
+  const status = readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8')
+  assert.doesNotMatch(status, /\/nowhere\/x/)
+  assert.match(status, /y merged; its worktree/)
 })

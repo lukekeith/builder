@@ -823,6 +823,14 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   enqueue(feature)
 }
+// A note about a worktree that is gone (merged, then removed by hand) has nothing left to say.
+fleet.notes = (fleet.notes ?? []).filter((n) => {
+  const m = /its worktree (\S+) was kept/.exec(n)
+  return !m || existsSync(m[1])
+})
+// Saved HERE, before the baseline: --status during those minutes shows the queue as it is, not
+// as the last run left it.
+save()
 // @delta gates compare against the target's counts: measure them here, once, before any run — and
 // only when the target has moved since the last measurement (an e2e-sized baseline is minutes).
 const baselineFor = (() => {
@@ -832,9 +840,12 @@ const baselineFor = (() => {
     return null
   }
 })()
+const BASELINE_NOTE = 'measuring @delta gate baselines on '
 if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.values(parseGates(CFG.body).fast).flat(), ...parseGates(CFG.body).deep].some((g) => g.delta)) {
   const log = join(DIR, 'logs', 'baseline.log')
   mkdirSync(dirname(log), { recursive: true })
+  addNote(`${BASELINE_NOTE}${TARGET} before the first run — see ${log}`)
+  save()
   const fd = openSync(log, 'w')
   try {
     execFileSync('node', [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--baseline'], { cwd: ROOT, env: process.env, stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
@@ -844,7 +855,7 @@ if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.value
     closeSync(fd)
   }
 }
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset'))
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
 if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
