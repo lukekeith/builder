@@ -160,6 +160,11 @@ test('featureProgress: building counts ledger tasks against the plan', () => {
   assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: null, ledgerText: null }), { pct: 15, label: 'build' })
   const allDone = LEDGER + '- Task 3: complete (x)\n- Task 4: complete (x)\n'
   assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: PLAN, ledgerText: allDone }), { pct: 70, label: 'build 4/4' })
+  // The build writes `state: building` only when a phase closes, so a plan mid-first-phase still says
+  // `planned` while its ledger fills — the ledger wins whenever it has a completed task.
+  const planned = 'size: md\nstate: planned\ngo-ahead: auto\nnext: x\n'
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: planned, planText: PLAN, ledgerText: LEDGER }), { pct: 43, label: 'build 2/4' })
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: planned, planText: PLAN, ledgerText: null }), { pct: 15, label: 'planned' })
   const readyPending = 'size: md\nstate: building\nready: pending "dev env (fleet walk lane)"\nnext: x\n'
   assert.deepEqual(featureProgress({ status: 'walking', manifestText: readyPending, planText: PLAN, ledgerText: allDone }), { pct: 72, label: 'walk readiness' })
 })

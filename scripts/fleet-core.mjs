@@ -98,11 +98,14 @@ export function featureProgress({ status, manifestText = null, planText = null, 
   if (manifestText == null) return { pct: 0, label: '—' }
   const mf = parseManifest(manifestText)
   const state = mf.state ?? ''
-  if (state === 'building') {
+  // The build writes `state: building` at a phase close or a stop, not at its first task — so a
+  // `planned` manifest whose ledger already has completed tasks is a build in its first phase.
+  if (state === 'building' || state === 'planned') {
     if (/^pending/.test(mf.ready ?? '')) return { pct: BUILD_TOP + 2, label: 'walk readiness' }
     const total = taskIds(planText, /^#{2,4}\s+Task\s+(\d+)\b/gm).size
-    if (!total) return { pct: STAGE_FLOOR.building, label: 'build' }
     const done = Math.min(total, taskIds(ledgerText, /^\W*Task\s+(\d+):\s*complete\b/gm).size)
+    if (state === 'planned' && !done) return { pct: STAGE_FLOOR.planned, label: 'planned' }
+    if (!total) return { pct: STAGE_FLOOR.building, label: 'build' }
     return { pct: Math.round(STAGE_FLOOR.building + ((BUILD_TOP - STAGE_FLOOR.building) * done) / total), label: `build ${done}/${total}` }
   }
   if (state === 'built' && /^agent-pass|^pass/.test(mf.walk ?? '')) return { pct: 78, label: 'walked' }

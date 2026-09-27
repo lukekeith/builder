@@ -4,6 +4,12 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.5.1
+
+- The progress bar reads the ledger at `state: planned` too: the build writes `state: building` only at
+  a phase close or a stop, so a feature two tasks into its first phase showed `15% · planned` instead
+  of `build 2/9`.
+
 ## 3.5.0
 
 **Progress in the fleet table.** `--status` now renders the table live instead of printing the saved
