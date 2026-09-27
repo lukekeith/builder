@@ -4,6 +4,15 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.5.0
+
+**Progress in the fleet table.** `--status` now renders the table live instead of printing the saved
+file, with a `Progress` column per feature — `▓▓▓▓░░░░░░ 43% · build 2/4` — and an overall bar in the
+heading (the mean over the rows). The percentage counts pipeline steps, not time: each manifest state
+sets a floor (spec 0 → planned 15 → built 75 → signed-off 80 → verified 90 → merged 100), and inside
+`building` the span to 70 scales with the ledger's `Task N: complete` lines against the plan's
+`### Task N` headings. `STATUS.md` carries the same column at every save. No config changes.
+
 ## 3.4.1
 
 - The fleet's status table drops the always-empty `PR` and `Evidence` columns and the repeated worktree

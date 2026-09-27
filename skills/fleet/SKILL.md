@@ -45,6 +45,13 @@ waiters too, naming it.
 code fence**: the heading line, then the table as a markdown table (the terminal renders it; fenced,
 it shows as raw pipes), then any notes as bullets. Change no cell. Then stop.
 
+The table is rendered live: its `Progress` column reads each feature's manifest, plan and ledger from
+its worktree at that moment, and the heading's bar is the mean across the rows. It measures **steps,
+not time** — the manifest state sets a floor (planned 15, built 75, verified 90, merged 100) and inside
+the build the bar climbs with `Task N: complete` ledger lines against the plan's tasks (`build 5/9`).
+Half the bar is not half the wall-clock: the walk lane is one at a time and a task takes as long as it
+takes. If asked how long is left, say that.
+
 ## 2. Always dry-run first
 
 ```bash
