@@ -38,7 +38,7 @@ test('an agent-signed-off feature is not reported as human-walked; agent mode ta
   assert.equal(rows.a.lastDone, 'Agent-walked — not human-tested')
   assert.equal(rows.a.nextStep, 'Agent sign-off, then deep verify')
   assert.equal(rows.s.lastDone, 'Agent signed off — not human-tested')
-  assert.equal(rows.v.nextStep, 'CI, ship and merge (agent)')
+  assert.equal(rows.v.nextStep, 'Ship and merge into the fleet branch (agent)')
   assert.equal(rows.h.nextStep, 'Review the PR, then /builder:signoff')
 })
 

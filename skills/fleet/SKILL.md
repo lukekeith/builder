@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, a PR, CI and the MERGE per feature; anything that would ask a question takes its recommendation or parks the feature with a reason. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
+description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the branch it was run from; anything that would ask a question takes its recommendation or parks the feature with a reason. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
 ---
 
 # `/builder:fleet` — many specs, no one watching
@@ -12,16 +12,19 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 
 **What it will do, per spec:** a worktree at `<agent_walk.worktrees>/<feature>` on a new branch
 `builder/<feature>` (or the branch it is already underway on); `claude -p "/builder:resume --path <spec> --agent-walk"` runs until the feature
-is **merged** or **parked** (resume §`--agent-walk`, §Ship in agent mode). It **pushes branches, opens
-PRs, watches CI and merges them.** It never writes a *human* sign-off, never lifts a `hold:`, never
-merges past a required review or with `--admin`, and never deploys — each of those parks instead.
+is **shipped** or **parked** (resume §`--agent-walk`, §Ship in agent mode). Then the fleet **merges
+it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
+agent-verified, not human-tested` — and removes its worktree and `builder/` branch. Everything lands
+on that one branch, so you test the whole batch in one place. It **never pushes and never opens a
+PR** — both stay yours — never writes a *human* sign-off, never lifts a `hold:`, and never deploys.
+A re-run must start from the same branch while any of the fleet's features are unfinished.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
 the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time.
 
 **A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
 entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree
-until they merge, then is branched and has `origin/<base_branch>` merged in, so it builds on its
-dependencies' shipped code. A dependency that isn't in the run and hasn't shipped refuses the child
+until they are merged into this branch, then is branched from it, so it builds on its
+dependencies' merged code. A dependency that isn't in the run and hasn't shipped refuses the child
 (`✗ <child> — waits on <dep> (<state>) — not in this run`); one that parks or fails parks its
 waiters too, naming it.
 
@@ -43,8 +46,10 @@ was asked for → stop here.
 ## 3. Confirm once
 
 One AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
-worktree root, the permission args (`claude <claude_args>`), and "pushes branches, opens PRs and
-merges each feature into <base_branch> once CI is green".
+worktree root, the permission args (`claude <claude_args>`), and "merges each finished feature
+into <the current branch> here, one merge commit each; nothing is pushed". Mention uncommitted
+changes in this checkout (`git status --short`): the fleet merges into this working tree, and a merge
+that would overwrite one of them parks that feature until it is out of the way.
 This is the only question the fleet ever asks.
 
 ## 4. Launch
@@ -73,12 +78,12 @@ must outlive this session goes in a terminal instead:
 
 Print `.builder/fleet/STATUS.md` verbatim. Then, briefly:
 
-- **done** — each merged PR. The worktrees stay; once you've looked, `git worktree remove <worktree>`
-  clears one.
+- **done** — merged into this branch: `git log --merges` lists them. Test the result here; push
+  when you're happy. `git revert -m 1 <merge>` takes one back out.
 - **parked** — the reason; delete the `blocked:` line in the worktree's manifest once it's settled, and
   re-run `/builder:fleet` — it resumes, and retries only what you cleared.
 - **failed** — the log path.
 
 ~~~
-📍 fleet: <n> merged · <m> parked · <k> failed — next: settle the parked ones, then /builder:fleet again
+📍 fleet: <n> merged into <branch> · <m> parked · <k> failed — next: test <branch>; settle the parked ones, then /builder:fleet again
 ~~~
