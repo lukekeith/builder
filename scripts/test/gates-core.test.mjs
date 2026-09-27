@@ -281,3 +281,10 @@ test('a <placeholder> gate line runs over the test files the branch changed unde
   assert.equal(expandPlaceholders('no placeholders', { root, appPath: 'x', baseBranch: 'main' }), 'no placeholders')
   assert.equal(expandPlaceholders('x <f>', { root, appPath: 'x', baseBranch: 'no-such-branch' }), null)
 })
+
+test('gate.mjs creates .builder/gates before the first command, so a gate line can tee into it', () => {
+  const root = configured('### server — fast\n\n```\necho hi | tee .builder/gates/hi.log   # tees on the first run\n```\n')
+  const r = run(root, 'server')
+  assert.equal(r.status, 0, r.stdout)
+  assert.equal(readFileSync(join(root, '.builder/gates/hi.log'), 'utf8'), 'hi\n')
+})
