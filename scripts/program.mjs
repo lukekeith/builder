@@ -4,9 +4,11 @@
  * builds, a child against a contract that isn't merged yet. A chain runs one wave per fleet run.
  *
  * A dependency is MET when the program manifest's `child: <dep> — shipped` line says so, or the
- * dependency's own folder does (a `✅ SHIPPED` SPEC header, or `state: shipped`) — ship condenses
- * the folder, and the child line can lag it. A Depends on token that names no child is unmet: a
- * typo holds the child back rather than letting it run.
+ * dependency's own folder does (a `✅ SHIPPED` SPEC or PROGRAM header, or `state: shipped`) — ship
+ * condenses the folder, and the child line can lag it. A token that is not a child may name another
+ * feature or program in the registry (`glyph-library (shipped)`): met the same way. A parenthetical
+ * is a note, not a dependency. A token naming nothing is unmet: a typo holds the child back rather
+ * than letting it run.
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -50,7 +52,7 @@ export function parseChildren(text) {
     .slice(1)
     .filter((r) => !r.every((c) => /^:?-+:?$/.test(c)))
     .map((r) => {
-      const deps = iDeps < 0 ? '' : bare(r[iDeps] ?? '')
+      const deps = iDeps < 0 ? '' : bare(r[iDeps] ?? '').replace(/\([^)]*\)/g, ' ').trim()
       return {
         num: iNum < 0 ? null : bare(r[iNum] ?? ''),
         name: bare(r[iName] ?? '').split(/\s+/)[0],
@@ -60,9 +62,15 @@ export function parseChildren(text) {
 }
 
 const shippedFolder = (dir) => {
-  if (/✅\s*\*{0,2}SHIPPED/.test((read(join(dir, 'SPEC.md')) ?? '').slice(0, 800))) return true
+  for (const doc of ['SPEC.md', 'PROGRAM.md']) if (/✅\s*\*{0,2}SHIPPED/.test((read(join(dir, doc)) ?? '').slice(0, 800))) return true
   const mf = read(join(dir, 'MANIFEST.md'))
   return mf != null && parseManifest(mf).state === 'shipped'
+}
+
+/** The state a registry folder's manifest reports, for the "waits on" text. */
+const folderState = (dir) => {
+  const mf = read(join(dir, 'MANIFEST.md'))
+  return (mf && parseManifest(mf).state) || 'not shipped'
 }
 
 /** The unmet dependencies of `feature`, as [{ name, state }] — [] for a feature in no program. */
@@ -89,7 +97,11 @@ export function waitsOn(root, registry, feature) {
       const n = tok.replace(/^#/, '')
       const dep = /^\d+$/.test(n) ? rows.find((r) => r.num?.replace(/^#/, '') === n)?.name : rows.find((r) => r.name === tok)?.name
       if (!dep) {
-        out.push({ name: tok, state: 'no such child in PROGRAM §Children' })
+        // Not a child — another feature or program in the registry, or nothing at all.
+        const dir = join(reg, tok)
+        if (/^[\w.-]+$/.test(tok) && existsSync(dir)) {
+          if (!shippedFolder(dir)) out.push({ name: tok, state: folderState(dir) })
+        } else out.push({ name: tok, state: 'no such child or feature' })
         continue
       }
       if (states.get(dep) === 'shipped' || shippedFolder(join(reg, dep))) continue

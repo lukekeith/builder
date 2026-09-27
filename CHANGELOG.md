@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.0.1
+
+- **A *Depends on* entry outside the program counts.** `glyph-library (shipped)` named a shipped
+  program in the registry, but the parser read it as two unknown children and held the child back
+  for good. A parenthetical is now a note, and a token that isn't a child is looked up as a registry
+  feature or program — met when its SPEC or PROGRAM header says SHIPPED or its manifest says
+  `state: shipped`. A token naming nothing still holds the child back.
+- **A planned feature no longer claims its spec branch.** A manifest's `branch:` is honoured only from
+  `building` on (was `planned`), so a feature planned on the branch another feature is building on
+  gets its own `builder/<feature>` branch instead of colliding with it.
+
 ## 3.0.0
 
 **Agent mode finishes the job, on your branch.** `/builder:agent` and `/builder:fleet` now take every
