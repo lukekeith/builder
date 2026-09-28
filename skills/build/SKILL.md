@@ -172,11 +172,21 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 **Under `--agent-walk`, nothing runs in the background** — implementers, reviewers and gates run in
 the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agent-walk`).
 
-**Under `--agent-walk`, a stop parks — nobody is there to ask.** Every one of the five stop classes,
-and the start of a phase in a `commit: manual` app, also writes `blocked: "<stop class> — clears when
-<what>"` to the manifest per resume §`--agent-walk` — in the same ledger line and manifest commit as
-steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>` — then **ends the
-run**. Never ask.
+**Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (resume
+§`--agent-walk`: agent mode builds to done). Of the five stop classes:
+
+- **an irreversible or destructive operation, a security-sensitive action, a side effect outside the
+  repo** — none is ever needed to build a feature to merged-locally. Take the path that avoids it (a
+  new migration instead of an edited one, a local stub instead of a live service, no push, no
+  deploy), record `Ruling: <the path taken> — avoided <the operation> under --agent-walk`, and keep
+  going. Not a park.
+- **a commit in a `commit: manual` app** (from the start of its phase) and **a plan so broken that
+  every path forward is a guess at what the product should be** — these park: write
+  `blocked: "<stop class> — clears when <what>"` to the manifest in the same ledger line and manifest
+  commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
+  **end the run**. A plan that is merely wrong in places is not this: rule, fix the task, go on.
+
+Never ask.
 
 ## When the last phase signs
 

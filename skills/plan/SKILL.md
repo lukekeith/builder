@@ -128,11 +128,12 @@ cheapest reviewer tier. Never fold across an app boundary to avoid a phase.
 **A plan landing at 9+ phases is a feature that should be two.** Present the split before taking any
 go-ahead — by delivery slice or by domain — and proceed only on the split, or on an explicit "build
 it whole". **`--auto` does not decide this**: a split creates feature folders, which is a scope
-change and outside autopilot's remit; present it and stop. **Under `--agent-walk`** there is nobody
-to present it to: write `blocked: "plan wants a split into <parts> — clears when a human rules on it"`
-to the manifest, commit `chore(<ticket-or-feature>): <feature> — parked: plan wants a split`, and end
-the run (resume §`--agent-walk`). 🔴 **That is the only park this step ever writes.** The go-ahead
-under `--agent-walk` is `auto (recommended)` and the run proceeds — a spec whose decisions were all
+change and outside autopilot's remit; present it and stop. **Under `--agent-walk`** the human
+already chose: they handed this spec to agents to build, so it is **built whole** — no new folders,
+no park. Write the plan as one feature, and put the split it wanted in the ledger and the hand-off as
+`Ruling: built as one feature under --agent-walk — a split into <parts> was on the table` (resume
+§`--agent-walk`). 🔴 **This step never parks under `--agent-walk`.** The go-ahead there is
+`auto (recommended)` and the run proceeds — a spec whose decisions were all
 auto-ruled is still a spec the human handed to agents, and "Luke should review the auto rulings" is
 what the hand-off's rulings list is for, not a `blocked:` line.
 

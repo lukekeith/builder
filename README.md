@@ -169,9 +169,10 @@ at a time through your dev environment, done by an agent (`/builder:agent-walk`)
 per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it
 verifies, ships, and **merges it into the branch you ran it from** — one merge commit per feature,
 and the worktree removed — so a batch of five specs lands as five merges on one branch for you to
-test. Nothing is pushed and no PR is opened. Every feature ends **merged**, or **parked** with the
-reason a human is needed — a conflict it can't resolve mechanically, a hold, your uncommitted change
-in the way of a merge. Nothing waits on a question, and nothing runs in the background of a headless run:
+test. Nothing is pushed and no PR is opened. Every feature ends **merged**. Merge conflicts, red
+gates, failed agent walks and a walk env that won't start are work the agents do, not reasons to
+stop; a feature **parks** only when its spec leaves a product decision open, or on a step you reserve
+to yourself (a `commit: manual` app, a `hold:`, your uncommitted change in the way of the merge). Nothing waits on a question, and nothing runs in the background of a headless run:
 long gates go through `scripts/job.mjs`, and a run is killed only after 30 minutes of silence.
 
 Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` offers to add one when

@@ -7,8 +7,10 @@
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait 150 ms, then <step>
+//   SWITCH-THEN-SHIP  run .stub/switch.sh (the human switching branches), then SHIP
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
+// The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
@@ -17,13 +19,45 @@ const prompt = process.argv[process.argv.indexOf('-p') + 1]
 const spec = /--path (\S+)/.exec(prompt)[1]
 const feature = spec.split('/').pop()
 const S = process.env.STUB_STATE
-const scenario = JSON.parse(readFileSync(process.env.STUB_SCENARIO, 'utf8'))[feature] ?? []
-const countFile = join(S, `${feature}.count`)
-const n = existsSync(countFile) ? Number(readFileSync(countFile, 'utf8')) : 0
-writeFileSync(countFile, String(n + 1))
-let step = scenario[n] ?? 'NOOP'
-const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
 const log = (s) => appendFileSync(join(S, 'calls.log'), `${s}\n`)
+const all = JSON.parse(readFileSync(process.env.STUB_SCENARIO, 'utf8'))
+const next = (key, fallback) => {
+  const countFile = join(S, `${key.replace(':', '.')}.count`)
+  const n = existsSync(countFile) ? Number(readFileSync(countFile, 'utf8')) : 0
+  writeFileSync(countFile, String(n + 1))
+  return (all[key] ?? [])[n] ?? fallback
+}
+
+// The fleet's own prompts, not a /builder:resume run: scenario keys `<feature>:resolve` and
+// `<feature>:env`.
+//   resolve  RESOLVE (default)  every conflicted file gets both sides, markers dropped; commit
+//            NOOP               leave the merge as it is      ABORT   git merge --abort
+//   env      FIX                touch walk-env-fixed and commit      NOOP (default)
+if (/stopped on conflicts/.test(prompt)) {
+  const step = next(`${feature}:resolve`, 'RESOLVE')
+  log(`resolve ${feature} ${step}`)
+  if (step === 'ABORT') execFileSync('git', ['merge', '--abort'])
+  if (step === 'RESOLVE') {
+    const files = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { encoding: 'utf8' }).split('\n').filter(Boolean)
+    for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace(/^(<<<<<<<|=======|>>>>>>>).*\n/gm, ''))
+    execFileSync('git', ['add', ...files])
+    execFileSync('git', ['commit', '-qm', `stub: resolve ${feature}`])
+  }
+  process.exit(0)
+}
+if (/could not bring up the walk env/.test(prompt)) {
+  const step = next(`${feature}:env`, 'NOOP')
+  log(`envfix ${feature} ${step}`)
+  if (step === 'FIX') {
+    writeFileSync('walk-env-fixed', 'yes\n')
+    execFileSync('git', ['add', 'walk-env-fixed'])
+    execFileSync('git', ['commit', '-qm', `stub: fix walk env ${feature}`])
+  }
+  process.exit(0)
+}
+
+let step = next(feature, 'NOOP')
+const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
 log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
@@ -64,6 +98,10 @@ if (step === 'HANG-CHILD') {
 if (step === 'HANG') await new Promise(() => setInterval(() => {}, 1e6))
 if (step === 'FAIL') finish(3)
 if (step === 'NOOP') finish(0)
+if (step === 'SWITCH-THEN-SHIP') {
+  execFileSync('sh', [join(S, 'switch.sh')])
+  step = 'SHIP'
+}
 if (step.startsWith('BLOCK:')) set('blocked', step.slice(6))
 else if (step.startsWith('PR:')) set('pr', step.slice(3))
 else if (step === 'SHIP') {

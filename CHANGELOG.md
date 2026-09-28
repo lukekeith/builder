@@ -4,6 +4,34 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.7.0
+
+**Agent mode builds to done; it parks only on a decision the spec left open.** A feature handed to
+`/builder:agent` or `/builder:fleet` is an approved spec, so the problems that used to park it are now
+work an agent does:
+
+- **Merge conflicts.** When bringing the target into a worktree conflicts, the fleet leaves the
+  merge in progress and runs an agent to resolve it — both sides kept, the touched apps' gates green,
+  the merge committed — then carries on. Only a conflict two such runs could not resolve parks. Before
+  a shipped feature merges into the target the fleet brings the target into its branch the same way,
+  so that merge never conflicts. §Ship in agent mode resolves every conflict instead of only
+  "mechanical" ones.
+- **Landing after you switch branches.** A feature that ships while the checkout is on another
+  branch still lands on the target: the `--no-ff` merge commit is written straight onto it.
+- **A walk env that won't come up** gets one agent run to find and fix the cause, then one more try.
+  A readiness step that needs the env restarted writes `blocked: "walk env needs a restart — …"`,
+  which the fleet clears itself, restarting the env, instead of waiting for you.
+- **A plan that wants to split** is built whole under `--agent-walk`, the split recorded as a ruling.
+- **A failed agent walk** is fixed and walked again for up to five rounds (from round 3 the fixes go
+  through systematic-debugging), not parked after two.
+- **The build's stop classes** under `--agent-walk`: destructive, security-sensitive and outside-the-repo
+  operations are avoided with a ruling instead of parking; only a `commit: manual` app and a plan too
+  broken to rule on still park.
+
+What still parks: an open scope question no ruling can settle, an audit `blocked:` finding, a
+`commit: manual` app, `apply_mode: human` migrations, a `hold:`, and your own uncommitted changes in
+the way of the merge. No config changes.
+
 ## 3.6.0
 
 **Add to a running fleet.** `/builder:fleet <specs>` — and `/builder:agent`'s picks — while a fleet is

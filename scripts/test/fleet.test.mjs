@@ -574,19 +574,36 @@ test('a failing sync parks the feature naming its log; a target already merged r
   assert.equal(existsSync(join(q.fleet.features.a.worktree, 'synced')), false, 'no merge, no sync')
 })
 
-test('a target sync that conflicts parks the feature, naming the cause', () => {
-  const root = makeRepo(['u'])
-  laggingBranch(root, 'u', () => {
-    git(root, 'switch', '-q', 'feat/u')
+/** laggingBranch, with the branch and main both editing shared.txt. */
+function conflictingBranch(root, feature) {
+  laggingBranch(root, feature, () => {
+    git(root, 'switch', '-q', `feat/${feature}`)
     writeFileSync(join(root, 'shared.txt'), 'theirs\n')
-    git(root, 'commit', '-qam', 'u edits shared')
+    git(root, 'commit', '-qam', `${feature} edits shared`)
     git(root, 'switch', '-q', 'main')
     writeFileSync(join(root, 'shared.txt'), 'ours\n')
   })
+}
+
+test('a target sync that conflicts goes to an agent run, and the feature carries on to merged', () => {
+  const root = makeRepo(['u'])
+  conflictingBranch(root, 'u')
   const r = runFleet(root, ['u'], { u: HAPPY })
+  assert.equal(r.fleet.features.u.status, 'done', r.fleet.features.u.reason)
+  assert.equal(r.calls[0], 'resolve u RESOLVE', 'the conflict is resolved before the first pipeline run')
+  assert.equal(readFileSync(join(root, 'shared.txt'), 'utf8'), 'theirs\nours\n', 'both sides landed on main')
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(u\): agent-verified/)
+})
+
+test('a conflict two agent runs leave unresolved parks, the merge backed out', () => {
+  const root = makeRepo(['u'])
+  conflictingBranch(root, 'u')
+  const r = runFleet(root, ['u'], { u: HAPPY, 'u:resolve': ['NOOP', 'ABORT'] })
   assert.equal(r.fleet.features.u.status, 'parked')
-  assert.match(r.fleet.features.u.reason, /merging main \(what other features merged\) conflicted/)
-  assert.equal(r.calls.length, 0, 'no run on a tree that could not be synced')
+  assert.match(r.fleet.features.u.reason, /merging main \(what other features merged\) conflicted and two agent runs could not resolve it — see .*u-02\.log/)
+  assert.deepEqual(r.calls, ['resolve u NOOP', 'resolve u ABORT'], 'an aborted merge is started again for the second run; no pipeline run follows')
+  const wt = r.fleet.features.u.worktree
+  assert.equal(git(wt, 'status', '--porcelain', '--untracked-files=no'), '', 'no half-merged tree is left behind')
 })
 
 test('setup never sees agent_walk.env', () => {
@@ -662,14 +679,30 @@ test('start is killed even when the walk parks', async () => {
   assert.equal(alive(pid), false, 'the start process is gone')
 })
 
-test('a smoke that never passes parks the feature and skips the walk', async () => {
+test('a smoke that never passes gets one agent fix run, then parks and skips the walk', async () => {
   const { root, pidFile } = await walkEnvRepo('s', { smoke: 'exit 1' })
   const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '1500' })
   assert.equal(r.fleet.features.s.status, 'parked')
-  assert.match(r.fleet.features.s.reason, /^walk env didn't come up — see .*s-start\.log$/)
+  assert.match(r.fleet.features.s.reason, /^walk env didn't come up — see .*s-start\.log — an agent run could not fix it/)
+  assert.equal(r.calls.filter((l) => l === 'envfix s NOOP').length, 1, 'one fix run')
   assert.equal(r.calls.filter((l) => l.split(' ')[2] === 'walk').length, 0, 'no walk-lane run')
   const pid = Number(readFileSync(pidFile, 'utf8'))
   assert.equal(alive(pid), false, 'the start process is gone')
+})
+
+test('a walk env the agent fix run repairs comes up, and the walk goes on', () => {
+  const root = makeRepo(['s'], { lines: ['start: test -f walk-env-fixed && sleep 30', 'smoke: test -f walk-env-fixed'] })
+  const r = runFleet(root, ['s'], { s: HAPPY, 's:env': ['FIX'] }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '3000' })
+  assert.equal(r.fleet.features.s.status, 'done', r.fleet.features.s.reason)
+  assert.ok(r.calls.includes('envfix s FIX'))
+})
+
+test('a walk that needs the env restarted gets it restarted by the fleet, not parked', async () => {
+  const { root, pidFile } = await walkEnvRepo('s')
+  const r = runFleet(root, ['s'], { s: ['READY-PENDING', 'BLOCK:walk env needs a restart — a new dependency', 'built', 'signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.fleet.features.s.status, 'done', r.fleet.features.s.reason)
+  assert.match(git(root, 'log', '--format=%s', 'main'), /walk env restarted by the fleet/)
+  assert.equal(alive(Number(readFileSync(pidFile, 'utf8'))), false, 'the restarted env is gone afterwards')
 })
 
 test('a start that exits at once parks promptly', () => {
@@ -765,13 +798,25 @@ test('a merge your uncommitted changes would clobber parks; the next run merges 
   writeFileSync(join(root, 'docs/features/a/SPEC.md'), 'my local edit\n') // the ship writes SPEC.md
   const first = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — clears when that is fixed; re-run the fleet/)
+  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — your uncommitted changes are in the way; commit or stash them and re-run the fleet/)
   assert.equal(readFileSync(join(root, 'docs/features/a/SPEC.md'), 'utf8'), 'my local edit\n', 'your change is untouched')
   unlinkSync(join(root, 'docs/features/a/SPEC.md'))
   const second = runFleet(root, [], { a: HAPPY })
   assert.equal(second.status, 0, second.stderr)
   assert.equal(second.fleet.features.a.status, 'done')
   assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+})
+
+test('a feature that ships after the human switched branches still lands on the target', () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, '.stub/switch.sh'), `git -C ${root} switch -q -c elsewhere\n`)
+  // Switch the human's checkout away while the ship run is underway.
+  const r = runFleet(root, ['a'], { a: [...HAPPY.slice(0, -1), 'SWITCH-THEN-SHIP'] })
+  assert.equal(r.fleet.features.a.status, 'done', r.fleet.features.a.reason)
+  assert.equal(git(root, 'branch', '--show-current'), 'elsewhere', 'the checkout is left where the human put it')
+  assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\): agent-verified, not human-tested/)
+  assert.match(git(root, 'show', 'main:docs/features/a/SPEC.md'), /SHIPPED/)
+  assert.equal(git(root, 'rev-list', '--parents', '-n', '1', 'main').split(' ').length, 3, 'a two-parent merge commit')
 })
 
 test('a fleet with unfinished work refuses to run from another branch', () => {
