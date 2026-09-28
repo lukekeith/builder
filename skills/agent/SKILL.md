@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the branch you ran it from, after an agent walk, an agent sign-off and verify — or parked with the reason a human is needed. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open) that is not parked; one multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written.
+description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the branch you ran it from, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open) that is not parked; one multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written.
 ---
 
 # `/builder:agent` — pick the work, let agents finish it
@@ -11,7 +11,9 @@ The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it pr
 worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
 sign-off** in place of yours, then verify, the ship commit and a **merge into the branch you're on
 now** — one merge commit per feature, so the whole batch lands in one place for you to test — and
-nothing that waits on a question. "Done" means **merged**, or **parked with a reason**. Nothing is
+nothing that waits on a question. "Done" means **merged**. A feature parks only when its spec leaves
+a product decision open (or the config reserves a step to you) — a merge conflict, a red gate or a
+failed walk is work the agents do, not a reason to stop. Nothing is
 pushed. Every record says the feature was agent-verified, not human-tested. Resolve `<builder>` per
 [REFERENCE](../resume/REFERENCE.md) §The scripts.
 

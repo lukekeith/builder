@@ -473,8 +473,7 @@ for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
 
 // ---- one claude run ------------------------------------------------------------------------
-function runClaude(wt, feature, lane, n) {
-  const prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`
+function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
@@ -586,26 +585,30 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
 /**
- * Merge a shipped feature into the target, here, and clear its worktree and branch. Synchronous, so
- * two features never merge at once. `--no-ff` keeps one merge commit per feature — easy to find, and
- * `git revert -m 1` takes a feature back out. A refusal (your uncommitted changes overlap, or the
- * target moved into a conflict) parks the feature; the next fleet run retries the merge.
+ * Merge a shipped feature into the target and clear its worktree and branch. The branch is brought
+ * up to the target first (an agent resolves any conflict), so the merge into the target is only
+ * this feature's changes and cannot conflict. `--no-ff` keeps one merge commit per feature — easy to
+ * find, and `git revert -m 1` takes a feature back out. One merge at a time: the walk lane and the
+ * pool both land, and a second merge must see the first one's commit.
  */
+let landing = Promise.resolve()
 function land(feature) {
+  const run = landing.then(() => landNow(feature))
+  landing = run.catch(() => {})
+  return run
+}
+
+async function landNow(feature) {
   const f = fleet.features[feature]
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
-  const merged = () => tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) !== null
-  if (!merged()) {
-    const here = tryGit(['branch', '--show-current'])
-    if (here !== TARGET) return park(f, `shipped, but this checkout is on ${here ?? 'a detached HEAD'}, not ${TARGET} — switch back and re-run the fleet to merge it`)
-    try {
-      execFileSync('git', ['merge', '--no-ff', '--no-edit', '-m', `merge(${feature}): agent-verified, not human-tested`, f.branch], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    } catch (e) {
-      tryGit(['merge', '--abort'])
-      const why = String(e.stderr || e.stdout || e.message).split('\n').find((l) => l.trim()) ?? 'git merge failed'
-      return park(f, `shipped, but merging into ${TARGET} failed: ${why.trim()} — clears when that is fixed; re-run the fleet to merge it`)
+  if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
+    if (f.worktree && existsSync(f.worktree)) {
+      const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
+      if (why) return park(f, why)
     }
+    const why = mergeIntoTarget(feature, f.branch)
+    if (why) return park(f, why)
   }
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
   // The worktree held nothing but this branch; a tracked change there would be lost, so only a
@@ -621,12 +624,42 @@ function land(feature) {
   return 'done'
 }
 
+/**
+ * The `--no-ff` merge of a branch that already carries the target. Checked out here → `git merge`,
+ * so the working tree moves with it. Checked out nowhere (the human switched away mid-run) → the
+ * merge commit is written straight onto the target ref: its tree is the branch's own tree, because
+ * the branch already holds everything the target does. Null when it went in; else the reason, which
+ * is only ever the human's own uncommitted work in the way.
+ */
+function mergeIntoTarget(feature, branch) {
+  const message = `merge(${feature}): agent-verified, not human-tested`
+  const here = tryGit(['branch', '--show-current'])
+  if (here === TARGET) {
+    try {
+      execFileSync('git', ['merge', '--no-ff', '--no-edit', '-m', message, branch], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      return null
+    } catch (e) {
+      tryGit(['merge', '--abort'])
+      const why = String(e.stderr || e.stdout || e.message).split('\n').find((l) => l.trim()) ?? 'git merge failed'
+      return `shipped, but merging into ${TARGET} failed: ${why.trim()} — your uncommitted changes are in the way; commit or stash them and re-run the fleet to merge it`
+    }
+  }
+  const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
+  if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')} — re-run the fleet from there to merge it`
+  const old = tryGit(['rev-parse', `refs/heads/${TARGET}`])
+  if (!old || tryGit(['merge-base', '--is-ancestor', old, branch]) === null) return `shipped, but ${branch} does not carry ${TARGET} — re-run the fleet to merge it`
+  const commit = tryGit(['commit-tree', `${branch}^{tree}`, '-p', old, '-p', branch, '-m', message])
+  if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return `shipped, but writing the merge onto ${TARGET} failed — re-run the fleet to merge it`
+  addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
+  return null
+}
+
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
   save()
   return 'parked'
 }
-const RUNNING = { build: 'building', walk: 'walking', ship: 'shipping' }
+const RUNNING = { build: 'building', walk: 'walking', ship: 'shipping', land: 'shipping' }
 
 /** Run a feature's lane until it hands off, finishes, parks or fails. Returns the outcome — for a
  *  handoff, the lane it goes to next. */
@@ -668,7 +701,7 @@ async function drive(feature, lane) {
       save()
       return d.to
     }
-    if (d.action === 'done') return land(feature)
+    if (d.action === 'done') return await land(feature)
     Object.assign(f, d.action === 'fail' ? { status: 'failed', reason: `${d.reason} — see ${log}` } : { status: 'parked', reason: d.reason })
     save()
     return f.status
@@ -767,6 +800,42 @@ function killStartSync(f) {
   delete f.startPgid
 }
 
+const RESTART = /^walk env needs a restart/
+
+/** Drop a `blocked:` line the fleet itself can clear, committed so the next run reads it gone. */
+function clearBlocked(wt, feature) {
+  const p = join(wt, specOf(feature), 'MANIFEST.md')
+  if (!existsSync(p)) return
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/^blocked:.*$/m, 'blocked: none'))
+  tryGit(['commit', '-qm', `chore(${feature}): walk env restarted by the fleet`, '--', join(specOf(feature), 'MANIFEST.md')], wt)
+}
+
+/** Reset, then start and smoke the walk env. Null when it is up; else what failed. */
+async function bringUpWalkEnv(feature) {
+  const f = fleet.features[feature]
+  if (!hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
+  // `smoke` without `start` has nothing to probe — ignored, as the spec says.
+  if (AW.start && !(await startWalkEnv(feature))) return `walk env didn't come up — see ${f.startLog}`
+  return null
+}
+
+/** One headless run told what failed and asked to fix its cause in the branch. */
+async function fixWalkEnv(feature, why) {
+  const f = fleet.features[feature]
+  f.runs = (f.runs ?? 0) + 1
+  save()
+  const prompt =
+    `The builder fleet could not bring up the walk env for this worktree — the feature at --path ${specOf(feature)} on branch ${f.branch} — because ${why}. ` +
+    `Find the cause and fix it in this branch — code, a migration, a dependency, a stale install${AW.sync ? ` (agent_walk.sync is \`${AW.sync.replaceAll('{feature}', feature)}\`)` : ''}. ` +
+    `The fleet runs ${AW.reset ? `reset \`${AW.reset}\`, then ` : ''}start \`${AW.start ?? '(none)'}\`${AW.smoke ? ` and polls smoke \`${AW.smoke}\`` : ''} with this run's environment; you may run them yourself to check, ` +
+    `but stop every process you started before you finish, and kill nothing you did not start — other worktrees share this machine. ` +
+    `Commit the fix. Do not edit .claude/builder.md or the feature's MANIFEST.md. If the cause is outside this repo (a port another program holds, a service that is down), change nothing and say so in your last message. ` +
+    `Never ask a question and run nothing in the background — nobody is there to answer, and this run ends when your last turn does.`
+  const { log } = await runClaude(f.worktree, feature, 'walk', f.runs, prompt)
+  f.log = log
+  save()
+}
+
 /** The manifest states at which the walk lane merges the target in before starting the env: before
  *  walk readiness (it re-smokes the merged code) and before verify (it re-gates it). Never at
  *  `built` with the walk still owed — a merge there would void the readiness the walk needs, and
@@ -780,21 +849,27 @@ async function walkOne(feature) {
   try {
     const text = readManifest(f.worktree, feature)
     if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
-      const why = syncTarget(f.worktree, 'what other features merged', feature)
+      const why = await syncTarget(f.worktree, 'what other features merged', feature)
       if (why) return park(f, why)
     }
-    if (!hook(AW.reset, f.worktree, feature)) {
-      Object.assign(f, { status: 'parked', reason: `agent_walk.reset failed: ${AW.reset}` })
+    for (let restarts = 0; ; restarts++) {
+      // A walk env that won't come up gets one agent run to find and fix the cause, then one more try.
+      for (let attempt = 0; ; attempt++) {
+        const why = await bringUpWalkEnv(feature)
+        if (!why) break
+        await killStart(f)
+        if (attempt === 1) return park(f, `${why} — an agent run could not fix it; clears when the walk env starts`)
+        await fixWalkEnv(feature, why)
+      }
+      const outcome = await drive(feature, 'walk')
+      // Walk readiness met a change the running env can't pick up (REFERENCE §Walk readiness): the
+      // fleet owns the env, so it clears the line, restarts it, and the walk goes on.
+      if (outcome !== 'parked' || !RESTART.test(f.reason ?? '') || restarts === 2) return outcome
+      clearBlocked(f.worktree, feature)
+      await killStart(f)
+      Object.assign(f, { status: 'walking', reason: null })
       save()
-      return 'parked'
     }
-    // `smoke` without `start` has nothing to probe — ignored, as the spec says.
-    if (AW.start && !(await startWalkEnv(feature))) {
-      Object.assign(f, { status: 'parked', reason: `walk env didn't come up — see ${f.startLog}` })
-      save()
-      return 'parked'
-    }
-    return await drive(feature, 'walk')
   } finally {
     await killStart(f)
     if (!hook(AW.stop, f.worktree, feature)) {
@@ -805,7 +880,7 @@ async function walkOne(feature) {
 }
 
 // ---- queue everything ----------------------------------------------------------------------
-const pool = [] // { feature, lane: 'build' | 'ship' } — the parallel workers' queue
+const pool = [] // { feature, lane: 'build' | 'ship' | 'land' } — the parallel workers' queue
 const walkQueue = []
 const pendingDeps = (f) => (f.waitsOn ?? []).filter((d) => fleet.features[d]?.status !== 'done')
 
@@ -830,18 +905,14 @@ function enqueue(feature) {
     save()
     return
   }
-  if (released && !fresh) {
-    const why = syncBase(f.worktree)
-    if (why) {
-      Object.assign(f, { status: 'parked', reason: why })
-      return
-    }
-  }
+  // Its dependencies' code, merged now so the worktree starts from it. A conflict is left to the
+  // lane, whose own sync hands it to an agent.
+  if (released && !fresh) mergeTargetQuietly(f.worktree)
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf)
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
-  else if (text == null && shippedPr(readSpec(f.worktree, feature))) land(feature) // shipped, the merge still owed
+  else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' }) // shipped, the merge still owed
   else if (lane === 'done') Object.assign(f, { status: 'done', pr: mf.pr ?? null, reason: null })
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
@@ -853,15 +924,21 @@ function enqueue(feature) {
  * the feature builds, walks and verifies on it, and the ship step's own merge finds nothing new.
  * Measured before this existed: a walk env started at the pre-merge code parked a signed-off
  * feature for a whole fleet cycle, and every ship re-ran every app's gates on a tree that had
- * just moved. Only a clean tree is merged (a manual-commit app may have work staged); a conflict
- * is a reason to park. Returns null when the worktree is at the target, or the merge went in.
+ * just moved. Only a clean tree is merged (a manual-commit app may have work staged). A conflict is
+ * never a reason to stop: an agent run resolves it (resolveMerge), and only a conflict two runs
+ * could not resolve parks. Returns null when the worktree is at the target, or the merge went in.
  */
-function syncTarget(wt, why = "its dependencies' code", feature = null) {
+async function syncTarget(wt, why = "its dependencies' code", feature = null) {
   if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return null
   if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return null // not ours to merge over
   if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) === null) {
-    tryGit(['merge', '--abort'], wt)
-    return `merging ${TARGET} (${why}) conflicted — clears when a human merges it into the branch`
+    const conflicted = tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) !== null
+    const log = conflicted && feature ? await resolveMerge(feature, wt, why) : null
+    if (log !== true) {
+      tryGit(['merge', '--abort'], wt)
+      if (!conflicted) return `merging ${TARGET} (${why}) failed before any conflict — clears when git merge ${TARGET} runs in ${wt}`
+      return `merging ${TARGET} (${why}) conflicted and two agent runs could not resolve it${log ? ` — see ${log}` : ''}; clears when the merge is committed in the branch`
+    }
   }
   // New commits came in: a package or a migration may have come with them, and the worktree's
   // install and test database were made before it. agent_walk.sync brings them up to date.
@@ -879,7 +956,53 @@ function syncTarget(wt, why = "its dependencies' code", feature = null) {
   }
   return null
 }
-const syncBase = (wt) => syncTarget(wt)
+
+/** The target merged in with no agent: on a conflict, back out and leave it to the lane's sync. */
+function mergeTargetQuietly(wt) {
+  if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return
+  if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return
+  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) === null) tryGit(['merge', '--abort'], wt)
+}
+
+const RESOLVE_ATTEMPTS = 2
+const mergeDone = (wt) =>
+  tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null &&
+  tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null &&
+  tryGit(['diff', '--name-only', '--diff-filter=U'], wt) === ''
+
+/**
+ * Hand a conflicted merge of the target to a headless run: it resolves every file keeping both
+ * sides, runs the gates of the apps it touched, and commits the merge. The other side is code that
+ * already merged, and this side a spec the human approved — both are settled, so resolving them
+ * together is work, not a question for the human. True when the merge is committed; else the last
+ * run's log. A run that backed the merge out gets it started again for the next.
+ */
+async function resolveMerge(feature, wt, why) {
+  const f = fleet.features[feature]
+  const scripts = dirname(fileURLToPath(import.meta.url))
+  let log = null
+  for (let attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++) {
+    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null && tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) !== null) return true
+    const files = (tryGit(['diff', '--name-only', '--diff-filter=U'], wt) ?? '').split('\n').filter(Boolean)
+    f.runs = (f.runs ?? 0) + 1
+    f.reason = `resolving a conflict with ${TARGET} in ${files.length} file(s)`
+    save()
+    const prompt =
+      `A merge of ${TARGET} into this branch (${f.branch}) stopped on conflicts in: ${files.join(', ')}. ` +
+      `${TARGET} is the branch the builder fleet lands on; it carries ${why}, already merged and verified. This branch carries the feature at --path ${specOf(feature)} — being built unattended to a spec the human approved. ` +
+      `Resolve every conflict so BOTH sides keep working: read this feature's SPEC.md (and PLAN.md if it is there) and \`git log -p MERGE_HEAD --not HEAD -- <file>\` for what the other side changed and why; keep both behaviours, and never drop one side to make a conflict go away. ` +
+      `Where the two sides really do disagree, choose what keeps the other feature's shipped behaviour and still meets this spec, and write that ruling into the merge commit message. ` +
+      `Then run the fast gates of every app whose files you changed — \`node ${scripts}/job.mjs start merge-gates -- node ${scripts}/gate.mjs <app>…\`, then \`node ${scripts}/job.mjs wait merge-gates\` in the foreground, again while it prints "still running", until it prints an exit code — and fix whatever is red. ` +
+      `Finish with \`git add\` and \`git commit\` so the merge commit keeps both parents. Never \`git merge --abort\` or reset, never ask a question, and run nothing in the background — nobody is there to answer, and this run ends when your last turn does.`
+    const res = await runClaude(wt, feature, 'build', f.runs, prompt)
+    log = res.log
+    f.log = log
+    f.reason = null
+    save()
+    if (mergeDone(wt)) return true
+  }
+  return log
+}
 
 /** A dependency shipped: queue every child that was waiting only on what has now merged. */
 function release() {
@@ -1009,8 +1132,12 @@ async function poolWorker() {
       inFlight++
       // Every pool run starts on the latest target, so a build integrates other features' merges
       // as they land instead of meeting them all at ship.
-      const why = syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
-      const outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
+      let outcome
+      if (lane === 'land') outcome = await land(feature)
+      else {
+        const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
+        outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
+      }
       inFlight--
       route(feature, outcome)
       wakeAll()

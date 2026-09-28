@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the branch it was run from; anything that would ask a question takes its recommendation or parks the feature with a reason. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
+description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the branch it was run from; anything that would ask a question takes its recommendation; merge conflicts, red gates, failed walks and a dev env that won't start are worked by agents, and a feature parks only on a decision its spec leaves open. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
 ---
 
 # `/builder:fleet` — many specs, no one watching
@@ -12,7 +12,8 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 
 **What it will do, per spec:** a worktree at `<agent_walk.worktrees>/<feature>` on a new branch
 `builder/<feature>` (or the branch it is already underway on); `claude -p "/builder:resume --path <spec> --agent-walk"` runs until the feature
-is **shipped** or **parked** (resume §`--agent-walk`, §Ship in agent mode). Then the fleet **merges
+is **shipped** (resume §`--agent-walk`, §Ship in agent mode) — or, only when its spec leaves a
+product decision open or the config reserves a step to the human, **parked** with that decision named. Then the fleet **merges
 it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
 agent-verified, not human-tested` — and removes its worktree and `builder/` branch. Everything lands
 on that one branch, so you test the whole batch in one place. It **never pushes and never opens a
@@ -28,7 +29,12 @@ the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one featur
 worktree is brought up to the target first**: before each build- or ship-lane run, and before the
 walk env starts (at walk readiness and at verify — never between readiness and the walk), the fleet
 merges the target branch into the worktree, so a feature builds on what the others have landed and
-the ship step's own merge finds nothing new. A conflict there parks the feature. When that merge brings
+the ship step's own merge finds nothing new. **A conflict there goes to an agent**: the merge is left
+in progress and a run of its own resolves it — both sides kept, the touched apps' gates green, the
+merge committed — and the feature carries on; only a conflict two such runs could not resolve parks.
+Before merging a shipped feature into the target the fleet brings the target into its branch the
+same way, so the merge into the target never conflicts, and it lands even if you have switched this
+checkout to another branch meanwhile (the merge commit is written straight onto the target). When that merge brings
 new commits, `agent_walk.sync` runs in the worktree — the install and the test-DB migration a merged-in
 package or migration needs (without it, a walk env once failed on a package the merge had just added).
 **Builds run in parallel safely when each worktree has its own test database**: `agent_walk.worktree_env`
@@ -101,7 +107,9 @@ and stop; the rest of this section is the launch of a NEW fleet.
 
 When the config's `agent_walk.start` is set, each walk in the walk lane gets its own dev env: the
 fleet starts it fresh after `reset`, polls `smoke` until it's up, and always stops it after the
-walk ends — for any reason, including a park — before running `stop`.
+walk ends — for any reason, including a park — before running `stop`. An env that won't come up gets
+one agent run to find and fix the cause in the branch, then one more try; readiness that needs the
+env restarted gets it restarted by the fleet.
 
 A run is killed only when it goes **quiet** — 30 minutes with no output
 (`FLEET_IDLE_TIMEOUT_MS`), with a 6-hour backstop (`FLEET_RUN_TIMEOUT_MS`) — so a long build that is
@@ -120,8 +128,10 @@ Reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not 
 
 - **done** — merged into this branch: `git log --merges` lists them. Test the result here; push
   when you're happy. `git revert -m 1 <merge>` takes one back out.
-- **parked** — the reason; delete the `blocked:` line in the worktree's manifest once it's settled, and
-  re-run `/builder:fleet` — it resumes, and retries only what you cleared.
+- **parked** — the decision the spec left open (or the human step the config reserves); answer it in
+  the SPEC, delete the `blocked:` line in the worktree's manifest, and re-run `/builder:fleet` — it
+  resumes, and retries only what you cleared. A park that names anything else — a conflict, a gate, a
+  walk — is a fleet bug worth reporting.
 - **failed** — the log path.
 
 ~~~

@@ -52,8 +52,8 @@ second plugin to install. If a step says it cannot find the config, that file is
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
 | Running one step by hand | `/builder:brainstorm` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch** or parked with a reason |
-| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** or parked with a reason. Needs the config's `agent_walk:` block |
+| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch**; one parks only when its spec leaves a decision open |
+| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
 | **Wanting the newest builder** | `/builder:update` — refreshes the plugin install, says what changed, and names any older install shadowing it in this repo. `--check` only reports. Not in a vendored copy |
 | **A repo that won't take an outside plugin** | `/builder:vendor` — a local copy in the repo naming nothing outside it; run it again to update. `--check` proves it clean |
@@ -142,8 +142,8 @@ Otherwise the pipeline keeps working instead of stopping to ask. **`--auto`** ta
 answer at each decision gate and runs until the walk script is printed — **the walk is its terminal
 state**, and no flag passes the PR lock or commits in a manual-commit app.
 
-**`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, parks what only you can
-settle, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT
+**`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, works every conflict, red gate
+and failed walk through to done, parks only on a decision your spec left open, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT
 SIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the branch you ran it
 from** — locally, one merge commit per feature; it never pushes or opens a PR.
 Your `/builder:signoff` over it takes the feature back into the human flow.

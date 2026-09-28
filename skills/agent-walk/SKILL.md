@@ -32,8 +32,14 @@ so agent mode can take the feature to merged with every record saying it is not 
 
 `<WS>` is `"$(<builder>/scripts/workspace <feature>)"` — re-resolve it inline in every command
 (REFERENCE §The scripts). The round is one more than the highest existing `<WS>/agent-walk/round-*`.
-**Round 3 would start → park instead** (resume §`--agent-walk`):
-`blocked: "agent walk failed twice — <the items still failing> — clears when a human walks it or the fixes land"`.
+A failed round is work, not a stop: its items become fixes, `/builder:resume` works them and routes
+back here (resume §`--agent-walk`: agent mode builds to done). **From round 3 on**, the dispatch for
+each item that failed in the round before also names
+[`systematic-debugging`](../systematic-debugging/SKILL.md) — the fix that was tried didn't hold, so the next one starts from the cause. Only
+**round 6 would start → park instead**, the items that failed five rounds running named:
+`blocked: "agent walk failed five rounds — <the items still failing> — clears when a human walks it or the fixes land"`.
+An item that fails because the SPEC never said what it should do is not a fix to retry: rule what
+the spec most plausibly means, fix to that, and say so in the hand-off.
 
 ## 2. Dispatch the walker
 
@@ -88,7 +94,7 @@ The verdict, the round, the counts (pass · fail · unverifiable), and where the
 ~~~
 📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: /builder:verify --path <folder> · or say go
 📍 <feature>: agent walk round <n> — <k> fixes owed — next: /builder:resume --path <folder> · or say go
-📍 <feature>: ⛔ parked — agent walk failed twice — next: a human walk, then /builder:signoff --path <folder>
+📍 <feature>: ⛔ parked — agent walk failed five rounds — next: a human walk, then /builder:signoff --path <folder>
 ~~~
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never

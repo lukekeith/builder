@@ -263,18 +263,31 @@ a reviewer whose verdict is never read, a feature the fleet then parks for "no p
   pick this up when …", or "still running". Work that cannot finish in this run ends at a committed
   manifest the next run resumes from.
 
+🔴 **Agent mode builds to done. It does not park on work.** A spec the human approved and handed
+to agents has no reason to stop short of merged: a merge conflict, a red gate, a failing agent walk,
+a plan that came out large, a dev env that won't start — each of those is work, and the run does it.
+A park is reserved for **a product decision the spec leaves open that no ruling can responsibly
+settle** — which means the spec was not finished — and for the few steps the config reserves to the
+human (below). "It's a big call", "the human might want to review this", "a lot of decisions were
+auto-ruled" are never reasons: rule, record the ruling where the hand-off lists it, and keep going.
+
 Every point that would ask resolves one of two ways:
 
-- **Take the recommendation** — when it is local and reversible.
-- **Park** — write `blocked: "<reason> — clears when <what>"` and `next: /builder:resume --path
-  <folder>` to the manifest, commit `chore(<ticket-or-feature>): <feature> — parked: <reason>`, print
-  the footer, and **end the run**.
+- **Take the recommendation** — the default, and the answer for anything local and reversible,
+  which after a local-only merge is nearly everything: the human tests the result and changes what
+  they don't like.
+- **Park** — only for the cases above. Write `blocked: "<reason> — clears when <what>"` and `next:
+  /builder:resume --path <folder>` to the manifest, commit `chore(<ticket-or-feature>): <feature> —
+  parked: <reason>`, print the footer, and **end the run**. The reason names the decision the spec
+  is missing, in one line the human can answer.
 
 | Pause | Under `--agent-walk` |
 |---|---|
 | Decisions gate · go-ahead · prototype gap · audit code defect | as `--auto`: the recommendation, recorded `auto (recommended)`. 🔴 **A go-ahead is never a reason to park**, however many decisions were auto-ruled on the way to it: handing the feature to agents was the go-ahead. A run that wrote `blocked: "no human go-ahead …"` misread this table |
-| An open scope question · a plan that wants to split | park — the spec needs a human |
-| An audit `blocked:` finding | park, citing it |
+| A plan that wants to split | build it whole — record `Ruling: built as one feature under --agent-walk — <the split it wanted>` (plan §Writing the plan's dials). Never a park |
+| An open scope question the spec can't answer, and no ruling can settle without guessing at what the product should be | park — the spec needs a human. A question a reasonable reading of the SPEC settles is a ruling, not this |
+| An audit `blocked:` finding | park, citing it — it is a spec defect (a released contract it would break, a promise it can't keep) |
+| A merge conflict · a red gate · a failed agent walk · a dev env that won't come up · a stalled step | work it — never a park. The fleet hands conflicts and env failures to a run of their own (fleet §What it will do) |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
@@ -293,7 +306,8 @@ and ends the run.
 **Agent mode's job is a feature merged into the target branch.** A run that stops short of that
 without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
 write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
-`commit: manual` app, or deploy. Each of those parks instead, or is left to the human.
+`commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
+left to the human — only `commit: manual` and `hold:` stop the feature, and they park.
 
 ## The picker (no `--path`, no text)
 
@@ -370,9 +384,12 @@ runs without a question; a step that can't finish **parks** (`blocked:` + commit
      <every in-scope app>` (through `job.mjs`). The runner re-runs only the apps whose inputs the
      merge changed and quotes the rest. Red → each failure a `- [ ] <app>: … (target sync)` under
      `## Fixes`, fixed per §Working `## Fixes`, gates green, then on.
-   - Conflicts → resolve them when the resolution is mechanical (both sides additive, a lockfile to
-     regenerate, imports) and run `gate.mjs` for the in-scope apps; otherwise `git merge --abort` and
-     park `"conflict with <into> in <files> — clears when a human resolves it"`.
+   - Conflicts → **resolve them, always.** The other side is features that already merged, this side
+     a spec the human approved; both are settled, so the job is code that does both. Read this SPEC
+     and `git log -p MERGE_HEAD --not HEAD -- <file>` for each file, keep both behaviours, and where
+     they truly disagree keep the merged feature's behaviour working while still meeting this spec —
+     a ruling in the merge commit message. Then `gate.mjs` for the in-scope apps, fixes until green,
+     and commit the merge. Never `git merge --abort` to park.
 3. **Ship.** `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) — the SHIPPED
    header naming `<into>`, `MANIFEST.md` removed, the workspace removed, a program child's line set
    to `shipped` — one commit.
