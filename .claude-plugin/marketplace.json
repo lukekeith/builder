@@ -7,7 +7,7 @@
     {
       "name": "builder",
       "source": ".",
-      "description": "Sizes the work, specs it, audits it once, builds it one app per phase through its own subagent task loop, stops for a human walk, then verifies and ships. Reads every project fact from one host file, .claude/builder.md. No dependencies.",
+      "description": "Explores an idea with you (brainstorm) or verifies a written spec against the code (intake), sizes the confirmed concept, writes the spec, audits it once, builds it one app per phase through its own subagent task loop, stops for a human walk, then verifies and ships. Reads every project fact from one host file, .claude/builder.md. No dependencies.",
       "category": "workflow"
     }
   ]
