@@ -190,7 +190,7 @@ const flakyOf = (list) => {
 /**
  * The optional `agent_walk:` block — what an unattended /builder:fleet run needs. Absent, not a
  * map, or still carrying a template `<placeholder>` → null, and `--agent-walk` refuses. `parallel`
- * defaults to 3; `worktrees` is resolved by the fleet (default: a sibling of the repo).
+ * defaults to 3; `keep_logs` — days a landed feature's archived logs are kept — defaults to 30, and 0 keeps them; `worktrees` is resolved by the fleet (default: a sibling of the repo).
  *
  * `copy`, `setup`, `env`, `start` and `smoke` prepare an isolated dev env per worktree: `copy`
  * brings along untracked files a fresh checkout wouldn't have, `setup` runs once, `env` is passed
@@ -227,6 +227,7 @@ const agentWalkOf = (block) => {
     worktreeEnv: typeof block.worktree_env === 'string' ? parseEnvPairs(block.worktree_env, 'agent_walk.worktree_env') : {},
     start: block.start ?? null,
     smoke: block.smoke ?? null,
+    keepLogs: Number.isInteger(block.keep_logs) && block.keep_logs >= 0 ? block.keep_logs : 30,
   }
 }
 
