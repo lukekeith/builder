@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -103,8 +103,9 @@ test('saveFleet writes fleet.json atomically, STATUS.md, and the .builder ignore
   assert.equal(existsSync(join(fleetDir(root), 'fleet.json.tmp')), false)
   assert.equal(readFileSync(join(root, '.builder/.gitignore'), 'utf8'), '*\n')
   const status = readFileSync(join(fleetDir(root), 'STATUS.md'), 'utf8')
-  assert.match(status, /2 feature\(s\): 1 done · 1 parked|2 feature\(s\): 1 parked · 1 done/)
-  assert.ok(status.indexOf('| a |') < status.indexOf('| b |'), 'rows sorted by feature')
+  assert.match(status, /# builder fleet — 1 feature\(s\): 1 parked/)
+  assert.match(status, /^1 archived · --status --archived for the latest 20$/m, 'a done row is counted, not listed')
+  assert.doesNotMatch(status, /\| a \|/)
   assert.match(status, /x \\\| y/, 'pipes escaped')
   assert.match(status, /- No agent_walk.reset/)
 })
@@ -126,11 +127,11 @@ test('renderStatus keeps only informative columns, names the target and the work
     },
     notes: ['a note'],
   })
-  assert.match(out, /^# builder fleet — 2 feature\(s\): 1 building · 1 done\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n/)
+  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
   assert.match(out, /\| Feature \| Status \| Runs \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
   assert.match(out, /\| a \| building \| 2 \| — \| yes \|/)
-  assert.match(out, /\| b \| done \| 3 \| PR #7 \| — \|/)
+  assert.doesNotMatch(out, /\| b \|/)
   assert.match(out, /- a note$/m)
 })
 
@@ -206,13 +207,93 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     },
     progress
   )
-  assert.match(out, /^# builder fleet — 2 feature\(s\): 1 building · 1 done · ▓▓▓▓▓▓▓░░░ 72%\n/)
+  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
   assert.match(out, /\| Feature \| Status \| Progress \| Runs \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| yes \|/)
-  assert.match(out, /\| b \| done \| ▓▓▓▓▓▓▓▓▓▓ 100% · merged \| 3 \| — \| — \|/)
+  assert.doesNotMatch(out, /\| b \|/)
 })
 
 test('renderStatus without a progress reader keeps the old columns', () => {
   const out = renderStatus({ features: { a: { status: 'queued', runs: 0 } } })
   assert.doesNotMatch(out, /Progress|%/)
+})
+
+// ---- the archive: what landed leaves fleet.json ----------------------------------------------
+
+const row = (feature, merged = 'abc1234') => ({ feature, branch: `builder/${feature}`, target: 'main', merged, pr: null, runs: 3, runsThisTime: 3, landedAt: '2026-09-29T10:00:00.000Z' })
+
+test('appendArchive appends one line per landing and skips a repeat of the same landing', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  assert.equal(appendArchive(root, row('a')), true)
+  assert.equal(appendArchive(root, row('a')), false, 'a fleet killed before saving re-archives the same landing')
+  assert.equal(appendArchive(root, row('a', 'def5678')), true, 'the same name landing again later is a new line')
+  assert.deepEqual(tailArchive(root, 10).map((r) => [r.feature, r.merged]), [['a', 'abc1234'], ['a', 'def5678']])
+})
+
+test('tailArchive returns the last N rows, oldest first, reading backwards in chunks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  mkdirSync(fleetDir(root), { recursive: true })
+  for (let i = 0; i < 300; i++) appendFileSync(join(fleetDir(root), 'archive.jsonl'), JSON.stringify(row(`fé${i}`)) + '\n')
+  assert.deepEqual(tailArchive(root, 3, 37).map((r) => r.feature), ['fé297', 'fé298', 'fé299'])
+  assert.equal(tailArchive(root, 1000, 37).length, 300)
+  assert.deepEqual(tailArchive(mkdtempSync(join(tmpdir(), 'fc-')), 5), [])
+})
+
+test('archiveLogs moves exactly this feature’s logs — not those of a feature whose name it prefixes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  const logs = join(fleetDir(root), 'logs')
+  mkdirSync(logs, { recursive: true })
+  for (const n of ['a-01.log', 'a-01.jsonl', 'a-12.log', 'a-setup.log', 'a-start.log', 'a-sync.log', 'a-b-01.log', 'baseline.log']) writeFileSync(join(logs, n), 'x')
+  assert.equal(archiveLogs(root, 'a'), null)
+  for (const n of ['a-01.log', 'a-01.jsonl', 'a-12.log', 'a-setup.log', 'a-start.log', 'a-sync.log']) assert.ok(existsSync(join(logs, '_archive', 'a', n)), n)
+  assert.ok(existsSync(join(logs, 'a-b-01.log')))
+  assert.ok(existsSync(join(logs, 'baseline.log')))
+  assert.equal(archiveLogs(root, 'nothing-here'), null)
+})
+
+test('pruneArchivedLogs removes archived logs older than the window; 0 keeps them', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  const base = join(fleetDir(root), 'logs', '_archive')
+  for (const n of ['old', 'new']) {
+    mkdirSync(join(base, n), { recursive: true })
+    writeFileSync(join(base, n, `${n}-01.log`), 'x')
+  }
+  const now = Date.now()
+  const old = new Date(now - 3 * 86400000)
+  utimesSync(join(base, 'old'), old, old)
+  assert.equal(pruneArchivedLogs(root, 0, now), 0)
+  assert.ok(existsSync(join(base, 'old')))
+  assert.equal(pruneArchivedLogs(root, 1, now), 1)
+  assert.equal(existsSync(join(base, 'old')), false)
+  assert.ok(existsSync(join(base, 'new')))
+  assert.equal(pruneArchivedLogs(mkdtempSync(join(tmpdir(), 'fc-')), 30, now), 0, 'no logs dir is not an error')
+})
+
+test('ago', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  assert.equal(ago('2026-09-29T11:59:30Z', now), 'just now')
+  assert.equal(ago('2026-09-29T11:15:00Z', now), '45m ago')
+  assert.equal(ago('2026-09-29T02:00:00Z', now), '10h ago')
+  assert.equal(ago('2026-09-25T12:00:00Z', now), '4d ago')
+  assert.equal(ago('nonsense', now), 'unknown')
+})
+
+test('renderStatus names the archive with the last landing', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const out = renderStatus({ target: 'main', archived: 412, features: {} }, null, { feature: 'auth-refresh', landedAt: '2026-09-29T10:00:00Z' }, now)
+  assert.match(out, /^# builder fleet — 0 feature\(s\): none\n/)
+  assert.match(out, /^412 archived \(last: auth-refresh, 2h ago\) · --status --archived for the latest 20$/m)
+  assert.match(out, /^Nothing in flight\.$/m)
+  assert.doesNotMatch(out, /\| Feature \|/)
+})
+
+test('renderArchived lists the latest landings newest first', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
+  assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
+  assert.match(out, /\| Feature \| Merged \| PR \| Landed \|/)
+  assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
+  assert.match(out, /\| b \| fff0000 \| #9 \| 1h ago \|/)
+  assert.match(out, /\| a \| abc1234 \| — \| 2h ago \|/)
+  assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
