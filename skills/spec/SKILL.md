@@ -45,12 +45,15 @@ Pushback amends the record's tree first, then the section. Under `--auto` presen
 ## 2. Write the files
 
 **`SPEC.md`** per REFERENCE §SPEC.md. md writes the sections its work touches — **§Idea, §Apps and
-§Contract are never skipped**; lg writes them all. Every settled or confirmed branch becomes a
-§Decisions row: an implementable ruling, its why in one line, the rejected option and why it lost —
-copy the §Decisions comment block verbatim. A `contradicted` or `unverifiable` row still unresolved when spec runs (possible after "that's
-enough") becomes an OPEN §Decisions row that states the contradiction and its recommendation; it
-blocks the go-ahead like any OPEN row. Assumed branches the user never contested are rulings
-too, marked `(assumed at brainstorm)` in Who/date. **An OPEN branch that reaches spec becomes an
+§Contract are never skipped**; lg writes them all. Every settled branch — a choice — becomes a
+§Decisions row: an implementable ruling, its why in one line, the rejected option and why it lost,
+and the Tree row's Who / date as its Who/date (an `auto (recommended) YYYY-MM-DD` stays exactly
+that) — copy the §Decisions comment block verbatim. A `confirmed` row from intake is a fact, not a
+choice: it goes to §Idea's how it fits today, or to §Findings & risks when it constrains the build —
+never to §Decisions. A `contradicted` or `unverifiable` row still unresolved when spec runs
+(possible after "that's enough") becomes an OPEN §Decisions row that states the contradiction and
+its recommendation; it blocks the go-ahead like any OPEN row. Assumed branches the user never
+contested are rulings too, marked `(assumed at brainstorm)` in Who/date. **An OPEN branch that reaches spec becomes an
 OPEN §Decisions row carrying its recommendation** — it blocks the go-ahead. Verify that every
 component the per-app sections name exists NOW and that its interface fits; a missing one is a
 **(new)** row, and say plainly that approving the spec approves building it. Target ≤ 350 lines.
@@ -63,9 +66,10 @@ and each gap's disposition. Gaps dispositioned "write it into the SPEC" become `
 §Decisions rulings or §Findings rows; "out of scope" ones become §Out of scope lines with the
 decider. The manifest's design key carries `<ref>`.
 
-**`MANIFEST.md`** per REFERENCE §MANIFEST.md: `size`, `state: spec`, `next:`, `head`, `ticket` (the record's `input: ticket <id>` when present, otherwise `none`),
-`branch`, `pr: none`, **`apps:`** (the plus-joined in-scope apps), **`contract: open`** (or `none`
-when no producer change), `hold: none`, `go-ahead`/`walk`/`verify: none`, the design key, `auto:`.
+**`MANIFEST.md`** per REFERENCE §MANIFEST.md: `size`, `state: spec`, `next:`, `head`, `ticket`
+(the record's `ticket:` header line, else its `input: ticket <id>`, else `none`), `branch`,
+`pr: none`, **`apps:`** (the plus-joined in-scope apps), **`contract: open`** (or `none` when no
+producer change), `hold: none`, `go-ahead`/`walk`/`verify: none`, the design key, `auto:`.
 (A revision keeps the manifest it has and changes only what the amendment moves.)
 
 **When the record says `sized xl`** write `PROGRAM.md` per REFERENCE §PROGRAM.md instead — the children, their order
@@ -84,7 +88,8 @@ Fix every FAIL; resolve every WARN or say why it stands. **Self-review** with fr
 scan; internal consistency (does §Testing cover every interface §Contract declares? does every ✅ in
 §Apps have its section? does every "In your words" quote link to a real D#?); ambiguity — a ruling a
 stranger could implement two ways is not written yet. Commit `docs(<ticket-or-feature>): design
-<feature>` (scope from the record's `input: ticket <id>`, otherwise the feature name), set the record's `status: handed-off`.
+<feature>` (scope from the manifest's `ticket`, otherwise the feature name), set the record's
+`status: handed-off`.
 
 Say what was written and where; **lead with the §Apps row**; list the OPEN decisions with their
 recommendations; in prototype mode add the gap tally in its three buckets — fixed in the design · written into the SPEC · out of scope — and name which items are not yet built. Then:

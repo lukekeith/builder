@@ -16,7 +16,8 @@ the header, so keep it exactly this shape:
 # <feature> — brainstorm
 status: exploring | confirmed | sized <xs|sm|md|lg|xl> | parked | handed-off
 source: brainstorm | intake
-input: abstract idea | directed request | brief | spec | ticket <id> | design ref <ref>
+input: abstract idea | directed request | brief | spec <path|url|pasted> | brief <path|url|pasted> | ticket <id> | design ref <ref>
+ticket: <id>
 updated: <ISO 8601 timestamp>
 settled: <n> of <m>
 contradicted: <n>
@@ -31,8 +32,8 @@ Assumed (not yet confirmed): …
 Explained on request: <topic> — <what was found>
 
 ## Tree
-| # | Branch | Depends on | Status | Ruling | Why | Rejected (and why) | Evidence |
-|---|---|---|---|---|---|---|---|
+| # | Branch | Depends on | Status | Ruling | Who / date | Why | Rejected (and why) | Evidence |
+|---|---|---|---|---|---|---|---|---|
 Frontier: <branch ids ready to ask>
 Waiting on facts: <branch id> — <what a sub-agent is checking>
 
@@ -43,7 +44,12 @@ Chosen: <approach> — <trade-offs> · Rejected: <approach> — <why it lost>
 <size> — evidence: <apps, contract, surfaces, tasks it implies>
 ```
 
-`contradicted:` is written by intake only; brainstorm omits the line.
+`contradicted:` is written by intake only; brainstorm omits the line. `ticket:` is optional —
+written when the run has `--ticket <id>` or the input is a ticket, omitted otherwise. `input:` names
+where the conversation started: brainstorm writes its kind; intake writes the source it verifies —
+the file path or URL, or `pasted` — so a resumed intake re-opens that source. A Tree row's *Who /
+date* says who ruled it and when: the user and the date, `(assumed at brainstorm)`, or
+`auto (recommended) YYYY-MM-DD`.
 
 **Tree statuses:** `open` (no answer yet) · `settled` (the user ruled) · `assumed` (recon answered it;
 stated to the user, not yet contested) · `stated` (intake: the document says so, not yet checked) ·
@@ -53,9 +59,10 @@ something else — evidence required) · `unverifiable` (needs running code or a
 **Resuming a record** (`--path`): `exploring` or `parked` → say what is settled and what is open,
 then the next round; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
 hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
-stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC → nothing to
-resume — say where the work went; with a live SPEC → a new revision (brainstorm's §Where to start
-step 4).
+stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC,
+MANIFEST or PROGRAM → nothing to resume — say where the work went (built in chat, stopped at
+understanding, or a spec committed on another branch) and offer a new name for new work; with one →
+a new revision (brainstorm's §Where to start step 4).
 
 🔴 **Every settled row keeps its Why, and every rejected option its reason.** `/builder:spec` writes
 §Idea and the §Decisions rows from these columns; a row without them becomes a thin spec.
@@ -106,7 +113,8 @@ offer three ways on:
   one-page summary of Intent, How it works today and the Tree — and commit it
   `docs(<feature>): notes`; `list-features` reads it as analysis, and a later brainstorm resumes from
   the record.
-- **Stop at understanding** → leave the record as it is and say so. Nothing is written to the repo.
+- **Stop at understanding** → set `status: handed-off` and say so: the conversation is complete,
+  and the record stays on disk as the reference. Nothing is written to the repo.
 
 ## Size and the small path
 
@@ -135,6 +143,9 @@ recs" (settle the frontier on the recommendations, recorded as the user's ruling
 (jump to §Confirm, listing what is still open as assumed).
 
 **Under `--auto`**: play the intent back as `(assumed)`; every round settles on its recommendations,
-recorded `auto (recommended) YYYY-MM-DD` in the Ruling cell; the recommended approach is chosen;
-§Confirm and §Size proceed without waiting. The human reads the assumptions and every auto ruling at
-the go-ahead.
+each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
+chosen; §Confirm proceeds without waiting and takes **Build it**. §Size accepts the size as classified
+— no lg split offer; a split worth making is recorded under *Size* as a recommendation. xs and sm take
+the one approval as the recommendation, recorded the same way. md and above run
+`/builder:spec --path <registry>/<feature> --auto` in the same turn. The human reads the assumptions
+and every auto ruling at the go-ahead.

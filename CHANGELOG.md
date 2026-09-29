@@ -16,6 +16,8 @@ agree — see [RELEASING.md](RELEASING.md).
   is now `/builder:intake --<design.flag> <ref>`.
 - **Spec writing moved to the new `/builder:spec`**, which reads the conversation's workspace record
   (`.builder/<feature>/brainstorm.md`). md/lg/xl brainstorms hand off to it.
+- **`--size` is retired** — the size is announced after the concept is confirmed, and you override
+  it there.
 
 **New:**
 - `/builder:intake <doc | ticket | design ref>` verifies a worked-out input claim by claim —

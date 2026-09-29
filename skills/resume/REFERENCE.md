@@ -103,7 +103,8 @@ cannot.
 
 ## The classifier
 
-Checked before any question is asked, from recon; announced with the evidence.
+Run on the confirmed concept, from recon and the settled tree; the size is announced with its
+evidence.
 
 1. Does the flow being changed already exist to read? **No → at least md.**
 2. A new model, schema change, endpoint, permission or contract change? **Any → at least md.**

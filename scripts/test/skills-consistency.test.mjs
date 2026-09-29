@@ -134,3 +134,30 @@ test('every status value is handled somewhere, and every section cited in CONVER
   }
   assert.ok(cited >= 9, `found ${cited} CONVERSATION citations`)
 })
+
+test('the classifier runs on the confirmed concept, and --auto carries a confirmed concept on to /builder:spec', () => {
+  const r = read('skills/resume/REFERENCE.md')
+  const cls = r.slice(r.indexOf('## The classifier'), r.indexOf('1. Does the flow'))
+  assert.doesNotMatch(cls, /before any question/)
+  assert.match(cls, /confirmed concept/)
+  const c = read('skills/brainstorm/CONVERSATION.md')
+  const auto = c.slice(c.indexOf('## Steering and --auto'))
+  assert.match(auto, /Build it/)
+  assert.match(auto, /\/builder:spec[^\n]*--auto/)
+})
+
+test('no picker offers a conversation in progress except resume, brainstorm and spec', () => {
+  // A `layout: brainstorm` row has no spec: revise and agent say they leave them out; every other
+  // picker filters on a manifest state, which a conversation has none of.
+  for (const p of ['skills/revise/SKILL.md', 'skills/agent/SKILL.md']) assert.match(read(p), /`layout: brainstorm`/, p)
+  const allowed = new Set(['resume', 'brainstorm', 'spec', 'revise', 'agent'])
+  for (const dir of readdirSync(join(ROOT, 'skills'))) {
+    const p = `skills/${dir}/SKILL.md`
+    if (allowed.has(dir) || !existsSync(join(ROOT, p))) continue
+    const s = read(p).replace(/\s+/g, ' ')
+    for (const m of s.matchAll(/list-features\.mjs --json/g)) {
+      const around = s.slice(m.index, m.index + 200)
+      assert.match(around, /only the folders|manifest|manifests at|state:/, `${p}: its picker filters on a manifest`)
+    }
+  }
+})

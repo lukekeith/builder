@@ -60,10 +60,15 @@ from its header) and stop.
 
 **No registry folder, but a `.builder/<feature>/brainstorm.md`** → a design conversation in progress
 (its header: `status`, `source`). `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off`
-→ nothing to resume: an xs/sm finished in chat, or a spec committed on another branch (`git log
---all --oneline -- <registry>/<feature>` finds it) — say which, and stop; any other status →
+→ nothing to resume: an xs/sm finished in chat, a conversation stopped at understanding, or a spec
+committed on another branch (`git log --all --oneline -- <registry>/<feature>` finds it) — say
+which, and stop; any other status →
 `/builder:intake --path <folder>` when the header says `source: intake`, otherwise
 `/builder:brainstorm --path <folder>`. Run it and stop.
+
+**A feature folder (a SPEC, MANIFEST or PROGRAM) that also has a `.builder/<feature>/brainstorm.md`
+whose status is not `handed-off`** → a revision conversation is open, and it comes before the manifest's next step: run
+`/builder:brainstorm --path <folder>` and stop.
 
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its
