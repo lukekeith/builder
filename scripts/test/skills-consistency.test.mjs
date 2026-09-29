@@ -82,3 +82,30 @@ test('no skill routes a design ref to brainstorm; resume knows the record; help 
   const sizeDocs = readdirSync(join(ROOT, 'skills')).map((d) => `skills/${d}/SKILL.md`).filter((p) => existsSync(join(ROOT, p)))
   for (const p of [...sizeDocs, 'skills/resume/REFERENCE.md', 'README.md']) assert.doesNotMatch(read(p), /--size\b/, p)
 })
+
+test('every status value is handled somewhere, and every section cited in CONVERSATION.md exists', () => {
+  const skills = ['brainstorm/SKILL.md', 'brainstorm/CONVERSATION.md', 'intake/SKILL.md', 'spec/SKILL.md', 'resume/SKILL.md'].map((p) => read(`skills/${p}`)).join('\n')
+  for (const s of ['exploring', 'confirmed', 'sized', 'parked', 'handed-off']) assert.match(skills, new RegExp(`\\b${s}\\b`), s)
+  // Real headings only: the record template's fenced `## Intent … ## Size` are not sections of the file.
+  const conv = read('skills/brainstorm/CONVERSATION.md').replace(/```[\s\S]*?```/g, '')
+  const headings = conv.match(/^## .+$/gm).map((h) => h.slice(3).trim())
+  // A citation is a chain — `CONVERSATION §Approaches, §Confirm and §Size and the small path` — and a
+  // section name may itself contain " and", so each link must START with a real heading (longest wins).
+  let cited = 0
+  for (const p of ['brainstorm/SKILL.md', 'intake/SKILL.md']) {
+    const text = read(`skills/${p}`).replace(/\s+/g, ' ')
+    for (const m of text.matchAll(/CONVERSATION §/g)) {
+      let rest = text.slice(m.index + m[0].length)
+      for (;;) {
+        const h = headings.filter((x) => rest.startsWith(x) && !/[A-Za-z]/.test(rest[x.length] ?? '')).sort((a, b) => b.length - a.length)[0]
+        assert.ok(h, `${p} cites CONVERSATION §${rest.slice(0, 40)}`)
+        cited++
+        rest = rest.slice(h.length)
+        const link = /^(?:,| and|, and) §/.exec(rest)
+        if (!link) break
+        rest = rest.slice(link[0].length)
+      }
+    }
+  }
+  assert.ok(cited >= 9, `found ${cited} CONVERSATION citations`)
+})

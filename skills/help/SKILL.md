@@ -5,7 +5,7 @@ description: Help card for the /builder:* pipeline — explains how work is size
 
 # `/builder:help` — how the `/builder:*` pipeline works
 
-`/builder:brainstorm --help` and `/builder:resume --help` render this same card; `--help` on any
+`/builder:brainstorm --help`, `/builder:intake --help`, `/builder:spec --help` and `/builder:resume --help` render this same card; `--help` on any
 other family skill prints that skill's own invocation line and flags, then stops.
 
 Render the parts relevant to what was asked. The family's SKILL.md files and
