@@ -90,3 +90,15 @@ test('the feature cell may be a link or code span', () => {
   })
   assert.deepEqual(waitsOn(root, REG, 'c'), [{ name: 'a', state: 'planned' }])
 })
+
+test('a dependency that lives only in the archive is met — child or registry feature', () => {
+  const root = registry({
+    children: { api: 'building', c: 'spec' },
+    deps: { c: 'api, lib' },
+    folders: {
+      '_archive/api': { 'SPEC.md': '# api — spec\n> ✅ SHIPPED 2026-09-01 — PR #1\n' },
+      '_archive/lib': { 'SPEC.md': '# lib — spec\n> ✅ SHIPPED 2026-08-01 — PR #0\n' },
+    },
+  })
+  assert.deepEqual(waitsOn(root, REG, 'c'), [])
+})
