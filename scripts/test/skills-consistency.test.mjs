@@ -35,3 +35,13 @@ test('brainstorm is the exploration conversation: no REFERENCE load, no design f
   assert.match(b, /\/builder:spec/)
   assert.ok(b.indexOf('## Intent') < b.indexOf('## Size'), 'intent comes before sizing')
 })
+
+test('intake verifies claims, owns prototype mode, and shares the record', () => {
+  const i = read('skills/intake/SKILL.md')
+  assert.match(i, /^name: intake$/m)
+  assert.match(i, /CONVERSATION\.md/)
+  for (const s of ['confirmed', 'contradicted', 'unverifiable', 'stated']) assert.match(i, new RegExp(`\\b${s}\\b`))
+  assert.match(i, /SCOPE-SELECTION\.md/)
+  assert.match(i, /source: intake/)
+  assert.match(i, /\/builder:spec/)
+})
