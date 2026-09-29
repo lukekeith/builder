@@ -96,8 +96,8 @@ cannot.
 | Size | Looks like | Typical files | Design artifact | Audit | Plan | Execution | Human gates |
 |---|---|---|---|---|---|---|---|
 | **xs** | a copy change, a colour, a prop default, a one-line guard | 1–2 | one sentence in chat | — | — | main context | approve the sentence |
-| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view | 2–10 | short design in chat, after a grill of ≤3 questions | — | — | main context | approve the design · a look at the running app before the PR |
-| **md** | add an endpoint + its screen, add a capability to an existing feature, port one screen to a new pattern | 10–40 | `SPEC.md`, short: overview · apps · decisions · contract · testing; per-app sections only where touched (~120 lines) | 1 pass, single agent | `PLAN.md`, 2–4 phases | the task loop | decisions · go-ahead · the walk |
+| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view | 2–10 | short design in chat, once the concept is confirmed in the conversation | — | — | main context | approve the design · a look at the running app before the PR |
+| **md** | add an endpoint + its screen, add a capability to an existing feature, port one screen to a new pattern | 10–40 | `SPEC.md`, short: idea · apps · decisions · contract · testing; per-app sections only where touched (~120 lines) | 1 pass, single agent | `PLAN.md`, 2–4 phases | the task loop | decisions · go-ahead · the walk |
 | **lg** | a new feature: a model + endpoints + screens in each consumer | 40–150 | full `SPEC.md` | 1 pass, parallel agents | `PLAN.md`, 4–7 phases | the task loop | the same three |
 | **xl** | a new area across several subsystems | 150+ | `PROGRAM.md`: the children, their order, the decisions they share; each child runs as its own md/lg | per child | per child | per child | one program go-ahead, then per child |
 
@@ -142,7 +142,7 @@ mid-task. When in doubt, the heavier size.
 | `--into <branch>` | agent mode's target: the branch the fleet was run from, which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
-| *free text after the flags* | the work itself: `/builder:brainstorm --size sm move the save button into the header` |
+| *free text after the flags* | the work itself: `/builder:brainstorm move the save button into the header` |
 
 **Parsing convention:** flags first, each as `--key value` (bare for a boolean), free text after them
 is the work. A skill **ignores any flag it does not use and never errors on one**, so a family flag
@@ -283,8 +283,8 @@ its own — its children carry theirs), and add one `child: <name> — <state>` 
 
 ## SPEC.md
 
-Sections in this order; md writes only the ones its work touches, lg writes them all. **§Apps and
-§Contract are never skipped** in a multi-app repo — they are what makes a cross-app change safe.
+Sections in this order; md writes only the ones its work touches (**§Idea, §Apps and §Contract are never skipped**), lg writes them all. In a multi-app repo §Apps and
+§Contract are what make a cross-app change safe.
 
 ```markdown
 # <feature> — spec

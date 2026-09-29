@@ -9,7 +9,7 @@ Invocation: **`/builder:prototype [--<design.flag> <ref>] <what the flow is>`**.
 [REFERENCE](../resume/REFERENCE.md) §Flags.
 
 **This command exists only when `.claude/builder.md` has a `design:` block.** Without one there is no
-design pipeline to route into: say so in one line, and point at `/builder:brainstorm`, which designs
+design pipeline to route into: say so in one line, and point at `/builder:intake`, which verifies
 from a conversation instead.
 
 🔴 **This skill writes nothing.** The design system belongs to the commands the config's
@@ -20,7 +20,7 @@ what a faithful spec of the design tool needs.
 
 ## Why the bar is this high
 
-In prototype mode the design **is** the requirements: `/builder:brainstorm --<flag> <ref>` does not
+In prototype mode the design **is** the requirements: `/builder:intake --<flag> <ref>` does not
 interview generically — it reads the in-scope contracts, compares them against the codebase, and
 writes the SPEC from what remains. **A state nobody designed is a capability the build will not
 ship.** An open question nobody dispositioned is a mid-build surprise. A contract specced from an
@@ -72,7 +72,7 @@ These are the classes that recur everywhere, and every one of them has cost a re
 
 ## Adding to a design already in the pipeline
 
-A contract or render changed after `/builder:brainstorm --<flag> <ref>` has run **invalidates only the
+A contract or render changed after `/builder:intake --<flag> <ref>` has run **invalidates only the
 steps that read it** — the design step's gap list, `/builder:align`'s field map, and the audit's
 coverage and render items. Say exactly that in the hand-off, naming the items touched, so the next
 `/builder:resume --path <folder>` re-checks those scoped instead of redoing the flow. `<folder>` is

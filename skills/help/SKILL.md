@@ -13,10 +13,13 @@ Render the parts relevant to what was asked. The family's SKILL.md files and
 
 ## The idea in one paragraph
 
-**One command builds anything, and most of it never reaches a doc.** `/builder:brainstorm` sizes the
-request first (REFERENCE §Sizes): **xs and sm** are designed and built in chat and write nothing
-under `docs/`; **md and lg** earn one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the
-pipeline below; **xl** becomes a `PROGRAM.md` whose children each run it. A finished, specced design
+**Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea
+with you — your intent played back, how the code works today, questions in rounds, approaches — and
+`/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is
+confirmed it is sized (REFERENCE §Sizes): **xs and sm** are designed and built in chat and write
+nothing under `docs/`; **md and lg** go to `/builder:spec`, which writes one `SPEC.md` (opening with
+the idea, in prose) plus a ~12-line `MANIFEST.md` and runs the pipeline below; **xl** becomes a
+`PROGRAM.md` whose children each run it. A finished, specced design
 can be the requirements instead of an interview. A spec is audited against the codebase **once**
 before any code, then built **one app per phase, the producer before its consumers**, with that
 app's gates at every phase close, then 🔒 **walked by you**: your sign-off condenses the folder and
@@ -44,14 +47,14 @@ second plugin to install. If a step says it cannot find the config, that file is
 | **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |
 | **Wanting a view of everything in progress** | `/builder:status` — one table: what each feature is, the step last done, the step next, and the command to paste to pick it up |
 | **Any time — "where are things / what's next?"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |
-| **Wanting something built, unsure how big it is** | `/builder:brainstorm <what you want>` — it recons, announces a size with its evidence, and takes the matching path. The normal way in |
-| Sure it's a small change inside one app | `/builder:brainstorm --size sm <what you want>` — recon, ≤3 questions, a design you approve in chat, then built. No docs |
-| Sure it's a new feature | `/builder:brainstorm --size md <what you want>` (`--size lg` for a big one) — it designs, writes `SPEC.md` + `MANIFEST.md`, hands on to `/builder:resume` |
-| Building from a design that is already specced | `/builder:brainstorm --<design.flag> <ref> <what the work is>` — the contracts are the requirements. The flag's name comes from your config |
+| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. The normal way in |
+| **A spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code (confirmed · contradicted · unverifiable), finds the gaps, asks only about those |
+| Building from a design that is already specced | `/builder:intake --<design.flag> <ref>` — the contracts are the requirements. The flag's name comes from your config |
+| A confirmed concept to write up | `/builder:spec --path <folder>` — normally reached by brainstorm's or intake's hand-off |
 | Wondering whether a design is ready to build from | `/builder:check --<design.flag> <ref>` — the pre-flight; it writes nothing |
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
-| Running one step by hand | `/builder:brainstorm` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
+| Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
 | **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch**; one parks only when its spec leaves a decision open |
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |

@@ -22,7 +22,7 @@ AskUserQuestion** over the in-flight features. Never ask "which feature?" as an 
 - A settled ruling → proceed. **Do not re-litigate it** — a pause whose only answer is "continue" is
   noise.
 - A question, a conflict, or more than one defensible answer → run `/builder:brainstorm`'s
-  conversation first, come back with the ruling.
+  conversation first, come back with the ruling, then `/builder:spec` if the spec has no go-ahead yet.
 - The user is reporting a **problem, not a solution** → this is a debugging job, and
   [`systematic-debugging`](../systematic-debugging/SKILL.md) is how it is done: find the root cause
   before proposing any fix. Report what you found, then ask. 🔴 A revision that changes code to make

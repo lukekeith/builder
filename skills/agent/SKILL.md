@@ -23,7 +23,8 @@ pushed. Every record says the feature was agent-verified, not human-tested. Reso
 node <builder>/scripts/list-features.mjs --json
 ```
 
-Archived (shipped) features are never offered — they are not in that list.
+Archived (shipped) features are never offered — they are not in that list. Neither are rows with
+`layout: brainstorm` (conversations in progress): they have no spec to build.
 
 A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, and its `manifest.state` is one of `spec aligned audited planned building built
 signed-off verified` (an open `pr` is fine — agents take it on to merged). No config `agent_walk:` block → stop here and name `/builder:init --update`.
@@ -34,7 +35,7 @@ means one is: then a row `.builder/fleet/fleet.json` lists with a status other t
 parked and failed rows stay offerable — picking one retries it. Picks join the running fleet's queue
 (§3) instead of starting a second one.
 
-Nothing offerable → say so, and name `/builder:brainstorm` for writing a spec. Parked rows are listed
+Nothing offerable → say so, and name `/builder:brainstorm` (an idea) or `/builder:intake` (a written spec). Parked rows are listed
 underneath as a count with their reasons, so it's clear why they're missing. A program child whose
 `waitsOn` isn't empty is offered with `after <deps>` in its description: picked together with its
 dependencies, the fleet runs the chain in order in one run; picked without them, the dry-run refuses
