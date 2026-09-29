@@ -477,7 +477,7 @@ The config's `design:` block names four things: the **flag**, a **resolver** com
    surfaces); component coverage; conventions (the config's design section); a *light* read of what
    the design persists — the full trace is the align step's.
 4. **Walk the gap list** — deduplicated across the set (one gap, N sites), ordered by blast radius,
-   one gap per turn, recommendation first, the three options below.
+   asked in `/builder:intake`'s rounds, recommendation first, the three options below — a "fix it in the design" disposition ends the round, and the contract is re-read before the next.
 5. **Write** SPEC (+ §Prototype, §Replaced surfaces) and the manifest from what remains.
 
 Then **align** — the conditional step between design and audit: every persisted field traced from

@@ -44,4 +44,5 @@ test('intake verifies claims, owns prototype mode, and shares the record', () =>
   assert.match(i, /SCOPE-SELECTION\.md/)
   assert.match(i, /source: intake/)
   assert.match(i, /\/builder:spec/)
+  for (const re of [/DONE check/, /never REFERENCE wholesale/, /replaces §1–§3/, /§Prototype seams/]) assert.match(i, re)
 })
