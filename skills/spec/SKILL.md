@@ -14,6 +14,12 @@ Invocation: **`/builder:spec [--path <folder>] [--auto] [--help]`**.
 §Size) with a live `SPEC.md` and no `go-ahead:` in its manifest. Otherwise say in one line what is
 missing and name `/builder:brainstorm` or `/builder:intake`, and stop.
 
+**Where things go.** `--path <registry>/<feature>` names the feature; the record is
+`.builder/<feature>/brainstorm.md` and the output folder is `<registry>/<feature>/`, created if new.
+Without `--path`: if exactly one record is at `sized md|lg|xl`, use it; otherwise run
+`node <builder>/scripts/list-features.mjs --json` and offer the rows whose state starts with `sized`
+in one AskUserQuestion.
+
 **Revision:** amend the existing SPEC rather than writing a new one. Keep the existing §Decisions
 rows — supersede a row in place with a date, never delete one (REFERENCE's rule) — and add rows for
 the newly settled branches.
@@ -41,7 +47,9 @@ Pushback amends the record's tree first, then the section. Under `--auto` presen
 **`SPEC.md`** per REFERENCE §SPEC.md. md writes the sections its work touches — **§Idea, §Apps and
 §Contract are never skipped**; lg writes them all. Every settled or confirmed branch becomes a
 §Decisions row: an implementable ruling, its why in one line, the rejected option and why it lost —
-copy the §Decisions comment block verbatim. Assumed branches the user never contested are rulings
+copy the §Decisions comment block verbatim. A `contradicted` or `unverifiable` row still unresolved when spec runs (possible after "that's
+enough") becomes an OPEN §Decisions row that states the contradiction and its recommendation; it
+blocks the go-ahead like any OPEN row. Assumed branches the user never contested are rulings
 too, marked `(assumed at brainstorm)` in Who/date. **An OPEN branch that reaches spec becomes an
 OPEN §Decisions row carrying its recommendation** — it blocks the go-ahead. Verify that every
 component the per-app sections name exists NOW and that its interface fits; a missing one is a
@@ -55,14 +63,14 @@ and each gap's disposition. Gaps dispositioned "write it into the SPEC" become `
 §Decisions rulings or §Findings rows; "out of scope" ones become §Out of scope lines with the
 decider. The manifest's design key carries `<ref>`.
 
-**`MANIFEST.md`** per REFERENCE §MANIFEST.md: `size`, `state: spec`, `next:`, `head`, `ticket`,
+**`MANIFEST.md`** per REFERENCE §MANIFEST.md: `size`, `state: spec`, `next:`, `head`, `ticket` (the record's `input: ticket <id>` when present, otherwise `none`),
 `branch`, `pr: none`, **`apps:`** (the plus-joined in-scope apps), **`contract: open`** (or `none`
 when no producer change), `hold: none`, `go-ahead`/`walk`/`verify: none`, the design key, `auto:`.
 (A revision keeps the manifest it has and changes only what the amendment moves.)
 
-**`--size xl`** writes `PROGRAM.md` per REFERENCE §PROGRAM.md instead — the children, their order
+**When the record says `sized xl`** write `PROGRAM.md` per REFERENCE §PROGRAM.md instead — the children, their order
 (🔴 ordered by the contract), the decisions they share — plus a program manifest; take the one program
-go-ahead and stop.
+go-ahead, then continue to §3.
 
 ## 3. Prove it, commit, hand on
 
@@ -70,14 +78,16 @@ go-ahead and stop.
 node <builder>/scripts/check-obligations.mjs <folder>
 ```
 
+(At xl skip this: the script checks a SPEC.md, not a PROGRAM.md — self-review the PROGRAM instead.)
+
 Fix every FAIL; resolve every WARN or say why it stands. **Self-review** with fresh eyes: placeholder
 scan; internal consistency (does §Testing cover every interface §Contract declares? does every ✅ in
 §Apps have its section? does every "In your words" quote link to a real D#?); ambiguity — a ruling a
 stranger could implement two ways is not written yet. Commit `docs(<ticket-or-feature>): design
-<feature>`, set the record's `status: handed-off`.
+<feature>` (scope from the record's `input: ticket <id>`, otherwise the feature name), set the record's `status: handed-off`.
 
 Say what was written and where; **lead with the §Apps row**; list the OPEN decisions with their
-recommendations; in prototype mode add the gap tally. Then:
+recommendations; in prototype mode add the gap tally in its three buckets — fixed in the design · written into the SPEC · out of scope — and name which items are not yet built. Then:
 
 ```
 📍 <feature>: designed (<size>, <apps>) — next: /builder:resume --path <registry>/<feature> · or say go
