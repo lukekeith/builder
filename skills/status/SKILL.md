@@ -31,7 +31,7 @@ No `.claude/builder.md` → the script says so; relay it and name **`/builder:in
 ## 2. Show it
 
 Print the script's output **verbatim, as markdown** — the table, then any branch-switch and
-needs-attention lines under it. Don't re-sort it, re-word the steps, or summarise it into prose: the
+needs-attention lines under it, and the 📦 archived-count line when there is one. Don't re-sort it, re-word the steps, or summarise it into prose: the
 user copies commands straight out of the last column.
 
 Then, at most one line of your own, and only when it earns its place:

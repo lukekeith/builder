@@ -23,6 +23,8 @@ pushed. Every record says the feature was agent-verified, not human-tested. Reso
 node <builder>/scripts/list-features.mjs --json
 ```
 
+Archived (shipped) features are never offered — they are not in that list.
+
 A row is offered when `done` is false, its `manifest.blocked` is unset or `none`, and its `manifest.state` is one of `spec aligned audited planned building built
 signed-off verified` (an open `pr` is fine — agents take it on to merged). No config `agent_walk:` block → stop here and name `/builder:init --update`.
 

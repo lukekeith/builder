@@ -63,6 +63,10 @@ the build the bar climbs with `Task N: complete` ledger lines against the plan's
 Half the bar is not half the wall-clock: the walk lane is one at a time and a task takes as long as it
 takes. If asked how long is left, say that.
 
+A feature that landed is not a row: it is counted in the line under the heading
+(`412 archived (last: …) · --status --archived for the latest 20`). `node <builder>/scripts/fleet.mjs
+--status --archived [N]` lists the latest N landings — relay it the same way when asked what merged.
+
 ## 2. Always dry-run first
 
 ```bash
@@ -126,8 +130,10 @@ must outlive this session goes in a terminal instead:
 Reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
-- **done** — merged into this branch: `git log --merges` lists them. Test the result here; push
-  when you're happy. `git revert -m 1 <merge>` takes one back out.
+- **done** — merged into this branch, and archived: the row leaves the table for
+  `.builder/fleet/archive.jsonl`, the spec folder is under `<registry>/_archive/`, and its logs under
+  `.builder/fleet/logs/_archive/` (kept `agent_walk.keep_logs` days, 30 by default). `git log --merges`
+  lists them. Test the result here; push when you're happy. `git revert -m 1 <merge>` takes one back out.
 - **parked** — the decision the spec left open (or the human step the config reserves); answer it in
   the SPEC, delete the `blocked:` line in the worktree's manifest, and re-run `/builder:fleet` — it
   resumes, and retries only what you cleared. A park that names anything else — a conflict, a gate, a

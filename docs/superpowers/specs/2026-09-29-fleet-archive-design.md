@@ -103,7 +103,7 @@ whose status is SHIPPED converts straight into `_archive/`.
 `landNow`, after a successful merge, replaces `Object.assign(f, { status: 'done', … })` with, in order:
 
 1. `appendArchive(root, row)` — one JSON line to `.builder/fleet/archive.jsonl`:
-   `{ feature, branch, target, merged, pr, runs, landedAt }` (`landedAt` ISO-8601). Gitignored with
+   `{ feature, branch, target, merged, pr, runs, runsThisTime, landedAt }` (`landedAt` ISO-8601). Gitignored with
    the rest of `.builder/`. Single writer (the fleet process; `land()` already serializes landings).
    **Idempotent:** skips the append when one of the file's last 50 lines has the same `feature` and
    `merged`.

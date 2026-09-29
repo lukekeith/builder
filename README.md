@@ -115,6 +115,7 @@ plugins/builder/
   scripts/
     config.mjs               parses .claude/builder.md — the one thing that knows your project
     list-features.mjs        every feature and its next command; the picker's data source and /builder:status
+    registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/; --sweep archives old shipped ones
     check-obligations.mjs    the cross-section gate on a SPEC.md
     gate.mjs                 runs an app's gate block or the deep set; flaky re-runs, @delta baselines,
                              and a memo that quotes a green run whose inputs haven't changed

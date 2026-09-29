@@ -224,6 +224,10 @@ explicit command the config's §Companion skills names.
   PROGRAM.md     xl only: the children, order, shared decisions.
   MANIFEST.md    tier: program · per-child states.
 
+<registry>/_archive/<feature>/       shipped: moved here by /builder:ship in the ship commit. Only the
+  SPEC.md (PROGRAM.md for a program)  condensed SPEC. Never a row, never read by a routine step;
+                                     `list-features.mjs --archived` lists it.
+
 .builder/<feature>/                  git-ignored; `<builder>/scripts/workspace <feature>` prints it
   progress.md                        the ledger: phase closes, gate runs, rulings, env notes
   walk.md                            the walk script, written when the last phase signs
@@ -659,7 +663,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 |---|---|
 | **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md`; write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
 | **agent sign-off** (AGENT-PASS in agent mode, written by `/builder:agent-walk`) | the same condense; the line is `> 🤖 AGENT SIGNED OFF <date> — <sha> · agent walk round <n> · not human-tested · evidence: …` |
-| **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; commit on the PR branch |
+| **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch |
 
 **State detection, binding on every skill in the family:**
 

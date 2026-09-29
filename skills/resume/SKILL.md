@@ -53,6 +53,10 @@ line and spot-verify that line against the artifact it names. `--path` may point
 `SPEC.md` or its `PROGRAM.md`. **Free text alongside `--path` is a change to an existing feature**,
 not a new design: it takes the table's last row.
 
+**`--path` names a folder that is gone, and `<registry>/_archive/<name>/` exists** → it shipped. Say in
+one line `<name> shipped <date> — archived at <registry>/_archive/<name>; nothing to resume` (the date
+from its header) and stop.
+
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its
 `next:` column.
@@ -98,6 +102,8 @@ reads and leaves every existing doc where it is.
 
 Follow **REFERENCE §Condense, *Legacy layouts*** — the four-step recipe there is the procedure, cited
 rather than restated so a fix lands in one place.
+
+A legacy folder whose status is SHIPPED is not converted: `git mv` it into `<registry>/_archive/`.
 
 🔴 **Two things that recipe insists on, because getting them wrong is expensive:** do not rewrite or
 delete the existing docs, and **do not translate a prior pipeline's "verified" into a sign-off**.
