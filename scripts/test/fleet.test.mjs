@@ -178,6 +178,19 @@ test('--parallel must be a positive integer', () => {
   assert.equal(r.status, 2)
 })
 
+test('--archived must be a positive integer, and implies --status', () => {
+  const root = makeRepo(['a'])
+  for (const bad of ['-3', '0', 'x']) {
+    const r = runFleet(root, ['--status', '--archived', bad], {})
+    assert.equal(r.status, 2, bad)
+    assert.match(r.stderr, /--archived must be a positive integer/)
+  }
+  const r = runFleet(root, ['--archived', '5'], {})
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /No feature has landed from this fleet yet\./)
+  assert.doesNotMatch(r.stderr, /Name the specs/)
+})
+
 test('walk lane runs one feature at a time', () => {
   const root = makeRepo(['w1', 'w2', 'w3'])
   const slow = ['READY-PENDING', 'SLOW:built', 'SLOW:verified', 'SHIP']
@@ -1006,13 +1019,13 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   writeFileSync(join(root, '.builder/fleet/logs/old-b-01.log'), 'another feature')
   writeFileSync(
     join(root, '.builder/fleet/fleet.json'),
-    JSON.stringify({ target: 'main', features: { old: { status: 'done', runs: 5, branch: 'builder/old', worktree: null, pr: '#9', reason: null, merged: 'abc1234' } } })
+    JSON.stringify({ target: 'release', features: { old: { status: 'done', runs: 5, branch: 'builder/old', worktree: null, pr: '#9', reason: null, merged: 'abc1234' } } })
   )
   const r = runFleet(root, [], {})
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'main', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })

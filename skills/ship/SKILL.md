@@ -80,6 +80,12 @@ commit lands. Without `--agent-walk` and `--into`, refuse in one line: nobody ha
 human either hands it back to agents (`/builder:fleet <feature>`) or tests it and runs
 `/builder:signoff --path <folder>`.
 
+⛔ **Archive collision check, before step 1.** If `<registry>/_archive/<feature>` already exists — or,
+when this ship will flip the program header (this is the program's last child),
+`<registry>/_archive/<program>` — stop before touching anything and name the collision: a second
+folder of that name would make "has it shipped?" answer for the wrong feature, and a stop after the
+header flip would leave a half-shipped tree.
+
 1. **Flip the header's first line** to, exactly:
 
    ```markdown
@@ -107,9 +113,7 @@ human either hands it back to agents (`/builder:fleet <feature>`) or tests it an
 5. **Archive the folder** — `git mv <registry>/<feature> <registry>/_archive/<feature>`, in this same
    commit, so it reaches the target exactly when `SHIPPED` does (the PR's merge, or the fleet's). A
    program whose header step 4 just flipped moves too: `git mv <registry>/<program>
-   <registry>/_archive/<program>`. ⛔ If `<registry>/_archive/<feature>` already exists, stop before
-   committing and name the collision — a second folder of that name would make "has it shipped?"
-   answer for the wrong feature. Nothing routine reads the archive; `list-features.mjs --archived`
+   <registry>/_archive/<program>`. The collision was ruled out before step 1. Nothing routine reads the archive; `list-features.mjs --archived`
    lists it.
 
 Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
@@ -131,7 +135,8 @@ naming the carrying PR; its ship moment is the same header flip citing that PR, 
 Invoked on an old folder that is finished, write the header into whichever file carries its status, in
 place, keeping that file's own form — because that marker is what `list-features.mjs` reads as DONE
 for a legacy layout. Steps whose file is absent (no `MANIFEST.md`, no workspace) are skipped and
-**named as skipped**, not treated as an error.
+**named as skipped**, not treated as an error. Step 5 (archive the folder with `git mv` into
+`<registry>/_archive/`) applies to it too, after its status header is written.
 
 🔴 **Do not delete the old folder's docs.** The temptation is to collapse thousands of lines, and this
 pipeline's first principle would endorse it — but a legacy folder's analysis was written by a

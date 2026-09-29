@@ -85,6 +85,22 @@ test('--sweep moves every shipped folder and shipped program into _archive, stag
   assert.equal(git(root, 'log', '--oneline').split('\n').length, 1, 'nothing committed')
 })
 
+test('--sweep archives legacy README-shipped folders, but not shipped-ready or in-flight ones', () => {
+  const root = repo({
+    'hdr/README.md': '# hdr\n> ✅ **SHIPPED** 2026-08-01 — PR #4\n',
+    'status/README.md': '# status\n**Status:** SHIPPED 2026-08-02\n',
+    'bold/README.md': '# bold\n**Status: SHIPPED — PR #9**\n',
+    'ready/README.md': '# ready\n**Status:** Shipped-ready, waiting on QA\n',
+    'later/README.md': '# later\n**Status:** building; SHIPPED soon\n',
+  })
+  assert.equal(isShippedFolder(join(root, REG, 'hdr')), true)
+  const r = sweepCli(root)
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /Moved 3 shipped folder\(s\)/)
+  for (const n of ['hdr', 'status', 'bold']) assert.ok(existsSync(join(root, REG, '_archive', n, 'README.md')), n)
+  for (const n of ['ready', 'later']) assert.ok(existsSync(join(root, REG, n, 'README.md')), n)
+})
+
 test('--sweep refuses on uncommitted registry changes and moves nothing', () => {
   const root = repo({ 'done/SPEC.md': '# done — spec\n> ✅ SHIPPED 2026-09-01 — PR #1\n' })
   writeFileSync(join(root, REG, 'done/notes.md'), 'wip\n')
