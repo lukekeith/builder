@@ -1254,7 +1254,7 @@ test('every status value is handled somewhere, and every section cited in CONVER
 - [ ] **Step 2: Run it** — `node --test scripts/test/skills-consistency.test.mjs`. Fix any citation that names a section CONVERSATION.md does not have (edit the citing skill, not the test).
 
 - [ ] **Step 3: Read-through** — read `skills/brainstorm/SKILL.md`, `skills/brainstorm/CONVERSATION.md`, `skills/intake/SKILL.md`, `skills/spec/SKILL.md`, the edited parts of `skills/resume/SKILL.md` and `skills/help/SKILL.md` end to end, checking:
-  - who loads REFERENCE (spec yes; brainstorm never; intake only §Prototype mode, and CONVERSATION §Size reads only §Sizes and §The classifier);
+  - who loads REFERENCE (spec yes; brainstorm never; intake only §Prototype mode, and CONVERSATION §Size reads only §Sizes, §The classifier and §Walk readiness);
   - prototype mode is described in exactly one skill (intake) and cited by REFERENCE §Prototype mode;
   - every hand-off footer names a command that exists;
   - `--keep`, `--auto`, `--path`, `--help` behave the same in brainstorm and intake.

@@ -2,7 +2,7 @@
 
 Both skills run the same conversation machinery and write the same record; they differ in where the
 tree comes from (brainstorm: the user's intent; intake: a document's claims). This file is that
-machinery. It is short on purpose: nothing here loads REFERENCE — the conversation comes first, and
+machinery. It is short on purpose: nothing here loads REFERENCE wholesale — the conversation comes first, and
 the spec formats belong to `/builder:spec`.
 
 ## The record
@@ -19,7 +19,7 @@ source: brainstorm | intake
 input: abstract idea | directed request | brief | spec | ticket <id> | design ref <ref>
 updated: <ISO 8601 timestamp>
 settled: <n> of <m>
-contradicted: <n>                       ← intake only
+contradicted: <n>
 
 ## Intent
 Outcome · who it's for · what success looks like — each marked "(assumed)" until the user confirms it.
@@ -42,6 +42,8 @@ Chosen: <approach> — <trade-offs> · Rejected: <approach> — <why it lost>
 ## Size
 <size> — evidence: <apps, contract, surfaces, tasks it implies>
 ```
+
+`contradicted:` is written by intake only; brainstorm omits the line.
 
 **Tree statuses:** `open` (no answer yet) · `settled` (the user ruled) · `assumed` (recon answered it;
 stated to the user, not yet contested) · `stated` (intake: the document says so, not yet checked) ·
@@ -102,7 +104,7 @@ offer three ways on:
 ## Size and the small path
 
 Size the **confirmed concept**, not the first request: REFERENCE §Sizes and §The classifier are the
-rules — read just those two sections. Announce the size with its evidence; the user confirms or
+rules — read just those two sections. (The conversation reads exactly three REFERENCE sections: §Sizes and §The classifier here, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
 overrides; lg is offered a split before anything else. Record it: `status: sized <size>`.
 
 - **md · lg · xl** → hand off: `📍 <feature>: concept confirmed (<size>) — next: /builder:spec --path <registry>/<feature> · or say go`.
