@@ -24,3 +24,14 @@ test('REFERENCE §SPEC.md opens with §Idea and keeps rulings operational', () =
   assert.match(spec, /why the rejected option lost/)
   assert.match(spec, /NEVER quote the user's prompt as the ruling/)
 })
+
+test('brainstorm is the exploration conversation: no REFERENCE load, no design flag, sizing after confirm', () => {
+  const b = read('skills/brainstorm/SKILL.md')
+  assert.match(b, /^name: brainstorm$/m)
+  assert.match(b, /CONVERSATION\.md/)
+  assert.doesNotMatch(b, /Load REFERENCE/)
+  assert.doesNotMatch(b, /Phase 1P|Prototype mode|design\.resolver/)
+  assert.match(b, /\/builder:intake/)
+  assert.match(b, /\/builder:spec/)
+  assert.ok(b.indexOf('## Intent') < b.indexOf('## Size'), 'intent comes before sizing')
+})
