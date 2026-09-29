@@ -442,7 +442,7 @@ for (const d of draftRows(ROOT, CFG.registry)) {
 
 const archivedCount = archivedNames().length
 if (!rows.length && !archivedCount) {
-  console.error(`Nothing under ${CFG.registry} — start one with ${PLAN_CMD} --size md <what you want>.`)
+  console.error(`Nothing under ${CFG.registry} — start one with ${PLAN_CMD} <what you want>.`)
   process.exit(asJson || asStatus ? 0 : 1)
 }
 
@@ -503,7 +503,7 @@ const shown = rows.filter((r) => includeDone || !r.done)
 const doneRows = rows.filter((r) => r.done)
 
 if (!shown.length && !doneRows.length) {
-  console.log(`No features in flight${archivedCount ? ` (${archivedCount} shipped, archived)` : ''}. Start one with ${PLAN_CMD} --size md <what you want>.`)
+  console.log(`No features in flight${archivedCount ? ` (${archivedCount} shipped, archived)` : ''}. Start one with ${PLAN_CMD} <what you want>.`)
   process.exit(0)
 }
 
