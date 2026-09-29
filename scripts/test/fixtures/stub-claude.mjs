@@ -3,7 +3,7 @@
 // steps; each call applies the next one to the manifest in cwd and logs start/end to calls.log.
 //   <state>         set state:        READY-PENDING  state: building + ready: pending
 //   BLOCK:<reason>  set blocked:      PR:<#n>        set pr:
-//   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED
+//   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait 150 ms, then <step>
@@ -11,8 +11,8 @@
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
 // The fleet's conflict and walk-env prompts are handled first — see below.
-import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 
 const prompt = process.argv[process.argv.indexOf('-p') + 1]
@@ -69,7 +69,7 @@ const set = (k, v) => {
 }
 const finish = (code = 0) => {
   try {
-    execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })
+    execFileSync('git', ['add', '-A', '--', dirname(spec)], { stdio: 'ignore' })
     execFileSync('git', ['commit', '-qm', `stub: ${feature} ${step}`], { stdio: 'ignore' })
   } catch {} // nothing to commit
   log(`end ${feature} ${lane} ${Date.now()} into=${/--into (\S+)/.exec(prompt)?.[1] ?? '-'}`)
@@ -107,6 +107,10 @@ else if (step.startsWith('PR:')) set('pr', step.slice(3))
 else if (step === 'SHIP') {
   rmSync(mfPath)
   writeFileSync(join(process.cwd(), spec, 'SPEC.md'), `# ${feature} — spec\n> ✅ SHIPPED 2026-09-26 — merged into main · none · 🤖 agent signed off (round 1), not human-tested\n`)
+  // /builder:ship's last step: the shipped folder moves into the archive, in the ship commit.
+  mkdirSync(join(process.cwd(), dirname(spec), '_archive'), { recursive: true })
+  execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })
+  execFileSync('git', ['mv', spec, join(dirname(spec), '_archive', feature)], { stdio: 'ignore' })
 }
 else if (step === 'READY-PENDING') {
   set('state', 'building')
