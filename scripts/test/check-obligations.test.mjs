@@ -39,3 +39,23 @@ test('a pre-4.0 spec with §Overview and no §Idea raises nothing about §Idea',
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.findings, [])
 })
+
+test('multiple rejected options in a list (terse form) warns once', () => {
+  const r = run(DECISIONS('| D1 | Render | Rejected: one per frame; one per screen. | Luke 2026-09-29 |'))
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(r.findings.map((f) => [f.severity, f.rule, f.id]), [['WARN', 'rejected option gives no reason', 'D1']])
+})
+
+test('Rejected alternative: or Rejected for now: or Rejected here: are matched', () => {
+  for (const prefix of ['Rejected alternative:', 'Rejected for now:', 'Rejected here:']) {
+    const r = run(DECISIONS(`| D1 | Cache | Memoize per request. ${prefix} Redis. | Luke 2026-09-29 |`))
+    assert.equal(r.status, 0, r.stderr)
+    assert.deepEqual(r.findings.map((f) => [f.severity, f.rule, f.id]), [['WARN', 'rejected option gives no reason', 'D1']], prefix)
+  }
+})
+
+test('two rejection clauses in one cell: first bare, second with reason → one WARN', () => {
+  const r = run(DECISIONS('| D1 | Cache | Rejected: Redis. Rejected: a file cache — lost on restart. | Luke 2026-09-29 |'))
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(r.findings.map((f) => [f.severity, f.rule, f.id]), [['WARN', 'rejected option gives no reason', 'D1']])
+})
