@@ -15,15 +15,19 @@
  *   node <plugin>/scripts/fleet.mjs --all [--parallel N]
  *   node <plugin>/scripts/fleet.mjs … --dry-run     # pre-flight and the plan; nothing created
  *   node <plugin>/scripts/fleet.mjs --status        # the last run's table
+ *   node <plugin>/scripts/fleet.mjs --status --archived [N]   # the latest N landings (20)
  *
- * State lives in .builder/fleet/ (fleet.json, STATUS.md, logs/). Re-running resumes.
+ * State lives in .builder/fleet/ (fleet.json, STATUS.md, logs/). Re-running resumes. A feature that
+ * lands leaves fleet.json for archive.jsonl, and its logs move to logs/_archive/<feature>/ (pruned
+ * after agent_walk.keep_logs days); fleet.json holds only work in flight.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived } from './fleet-core.mjs'
+import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
 import { fileURLToPath } from 'node:url'
@@ -41,8 +45,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--dry-run', '--status'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--dry-run', '--status', '--archived'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -61,7 +65,7 @@ if (flag('--parallel')) {
     process.exit(2)
   }
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--parallel')
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -73,7 +77,8 @@ const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.workt
 
 if (flag('--status')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
-  console.log(fleet ? renderStatus(fleet, progressOf) : 'No fleet has run in this repo yet.')
+  if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(opt('--archived')) || 20), fleet?.archived ?? 0))
+  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null) : 'No fleet has run in this repo yet.')
   process.exit(0)
 }
 
@@ -98,22 +103,19 @@ const tryGit = (args, cwd) => {
   }
 }
 const specOf = (feature) => `${CFG.registry}/${feature}`
-const readManifest = (base, feature) => {
-  const p = join(base, specOf(feature), 'MANIFEST.md')
+/** A feature's doc from its live folder, or its archived one once the ship commit moved it there. */
+const readDoc = (base, feature, doc) => {
+  const p = join(specDir(base, CFG.registry, feature), doc)
   return existsSync(p) ? readFileSync(p, 'utf8') : null
 }
-const readSpec = (base, feature) => {
-  const p = join(base, specOf(feature), 'SPEC.md')
-  return existsSync(p) ? readFileSync(p, 'utf8') : null
-}
+const readManifest = (base, feature) => readDoc(base, feature, 'MANIFEST.md')
+const readSpec = (base, feature) => readDoc(base, feature, 'SPEC.md')
 const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
 const nameOf = (a) => basename(a.replace(/\/(MANIFEST|SPEC)\.md$/, '').replace(/\/+$/, ''))
 
 function requested() {
   if (!flag('--all')) return positional.map(nameOf)
-  const reg = join(ROOT, CFG.registry)
-  if (!existsSync(reg)) return []
-  return readdirSync(reg).filter((n) => {
+  return features(ROOT, CFG.registry).filter((n) => {
     const t = readManifest(ROOT, n)
     if (!t) return false
     const mf = parseManifest(t)
@@ -297,6 +299,19 @@ if (fleet.target && fleet.target !== HERE && Object.values(fleet.features).some(
   process.exit(2)
 }
 const TARGET = HERE
+
+/**
+ * Whether a dependency has merged into the target. A row still in fleet.json answers for itself.
+ * An archived row is gone from it: landed by this process (the set), or by an earlier run — then
+ * the target's own tree says so. Asked of the ref, not the working tree, so it holds when the merge
+ * was written onto the target while another branch was checked out.
+ */
+const landed = new Set()
+function landedOn(dep) {
+  const row = fleet.features[dep]
+  if (row) return row.status === 'done'
+  return landed.has(dep) || tryGit(['cat-file', '-e', `${TARGET}:${CFG.registry}/${ARCHIVE}/${dep}`]) !== null
+}
 const asked = requested()
 if (!asked.length && runningPid) {
   console.error(`Another fleet is running in this repo (pid ${runningPid}). Name specs to add them to its queue; /builder:fleet --status shows where it stands.`)
@@ -322,7 +337,7 @@ for (const feature of asked) {
   if (!why && branchOwner.has(branch)) why = `${branchOwner.get(branch)} and ${feature} both resolve to branch ${branch}`
   // A program child builds against its dependencies' merged code. One this run will ship is
   // waited for; one nothing here will ship is a refusal, not a wait that never ends.
-  const waits = why ? [] : waitsOn(ROOT, CFG.registry, feature).filter((d) => fleet.features[d.name]?.status !== 'done')
+  const waits = why ? [] : waitsOn(ROOT, CFG.registry, feature).filter((d) => !landedOn(d.name))
   const outside = waits.filter((d) => !inRun.has(d.name))
   if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
   if (why) refused[feature] = why
@@ -471,6 +486,10 @@ fleet.target = TARGET
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
+// A row a fleet before 3.8 left at `done`, or one killed between its landing and the save that
+// would have archived it, is archived now — appendArchive skips a line already written.
+for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature)
+pruneArchivedLogs(ROOT, AW.keepLogs)
 
 // ---- one claude run ------------------------------------------------------------------------
 function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`) {
@@ -591,6 +610,26 @@ const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
  * find, and `git revert -m 1` takes a feature back out. One merge at a time: the walk lane and the
  * pool both land, and a second merge must see the first one's commit.
  */
+/** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
+function archiveRow(feature) {
+  const f = fleet.features[feature]
+  appendArchive(ROOT, {
+    feature,
+    branch: f.branch,
+    target: fleet.target ?? TARGET,
+    merged: f.merged ?? null,
+    pr: f.pr ?? null,
+    runs: f.runs ?? 0,
+    runsThisTime: f.runsThisTime ?? 0,
+    landedAt: new Date().toISOString(),
+  })
+  delete fleet.features[feature]
+  fleet.archived = (fleet.archived ?? 0) + 1
+  landed.add(feature)
+  const why = archiveLogs(ROOT, feature)
+  if (why) addNote(why)
+}
+
 let landing = Promise.resolve()
 function land(feature) {
   const run = landing.then(() => landNow(feature))
@@ -620,6 +659,7 @@ async function landNow(feature) {
     }
   }
   if (f.worktree) addNote(`${feature} merged; its worktree ${f.worktree} was kept (it has changes) — remove it with git worktree remove`)
+  archiveRow(feature)
   save()
   return 'done'
 }
@@ -882,7 +922,7 @@ async function walkOne(feature) {
 // ---- queue everything ----------------------------------------------------------------------
 const pool = [] // { feature, lane: 'build' | 'ship' | 'land' } — the parallel workers' queue
 const walkQueue = []
-const pendingDeps = (f) => (f.waitsOn ?? []).filter((d) => fleet.features[d]?.status !== 'done')
+const pendingDeps = (f) => (f.waitsOn ?? []).filter((d) => !landedOn(d))
 
 /**
  * Put a feature in the queue its manifest says. A program child still waiting on a dependency
@@ -913,7 +953,10 @@ function enqueue(feature) {
   const lane = text == null ? 'unknown' : laneOf(mf)
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
   else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' }) // shipped, the merge still owed
-  else if (lane === 'done') Object.assign(f, { status: 'done', pr: mf.pr ?? null, reason: null })
+  else if (lane === 'done') {
+    f.pr = mf.pr ?? null
+    archiveRow(feature)
+  }
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
   else Object.assign(f, { status: 'parked', reason: 'MANIFEST.md missing or its state not understood' })
@@ -1052,7 +1095,7 @@ function drainInbox() {
       addNote(`${name} was added while the fleet ran but can't join: ${why}`)
       continue
     }
-    const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => fleet.features[d]?.status !== 'done')
+    const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => !landedOn(d))
     fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, ...(waits.length && { waitsOn: waits }) }
     joining.push(name)
   }
