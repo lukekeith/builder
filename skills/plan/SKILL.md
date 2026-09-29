@@ -180,7 +180,7 @@ approval covers the whole build; no later phase re-asks.
   `chore(<ticket-or-feature>): <feature> — go-ahead`. Under `--auto` the table is presented and the
   run proceeds, recorded as `go-ahead: auto (recommended) YYYY-MM-DD`.
 - **No** → leave `go-ahead: none`; `state: planned` stands. A scope objection routes to
-  `/builder:brainstorm --path <folder>`; a changed requirement or reversed ruling routes to
+  `/builder:brainstorm --path <folder>` (or `/builder:intake` for a document); a changed requirement or reversed ruling routes to
   `/builder:revise --path <folder> <the change>`.
 
 **Nothing here creates a branch, a worktree or a ticket.** Given `--ticket`, check the branch name

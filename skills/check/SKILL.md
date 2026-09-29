@@ -1,6 +1,6 @@
 ---
 name: check
-description: The stateless pre-flight for a design ref — run it repeatedly while a design settles, before it enters /builder:brainstorm. Resolves the ref, reads every in-scope contract, checks it against the project config's design conventions, disposes the open questions, diffs a built item against its frozen design snapshot, lists coverage owed and dead-end affordances, and runs the surface check (which live surfaces the ref replaces and what each side can do that the other can't), returned as one punch list ending READY or NOT READY. Never touches app code, never writes the design; writes nothing but the punch list. Use when the user asks whether a design is ready to build from, what the app does that the design doesn't, or "am I missing anything" before starting a build.
+description: The stateless pre-flight for a design ref — run it repeatedly while a design settles, before it enters /builder:intake. Resolves the ref, reads every in-scope contract, checks it against the project config's design conventions, disposes the open questions, diffs a built item against its frozen design snapshot, lists coverage owed and dead-end affordances, and runs the surface check (which live surfaces the ref replaces and what each side can do that the other can't), returned as one punch list ending READY or NOT READY. Never touches app code, never writes the design; writes nothing but the punch list. Use when the user asks whether a design is ready to build from, what the app does that the design doesn't, or "am I missing anything" before starting a build.
 ---
 
 # `/builder:check` — the pre-flight, run as often as you like
@@ -111,8 +111,7 @@ plainly that its states have never been seen — a risk the build carries, not a
 
 Every action, navigation target and terminal destination the in-scope contracts name: does what it
 points at exist — another designed state, a real route, a real endpoint, a registered link? Flag
-pointers to nowhere, and nothing else. The full journey graph belongs to `builder:brainstorm`
-Phase 1P.
+pointers to nowhere, and nothing else. The full journey graph belongs to `builder:intake`'s prototype mode.
 
 ## 7. The surface check
 
@@ -125,7 +124,7 @@ shapes and fingerprint rule. Two differences here, because this command is state
   live surface does that the design doesn't cover) and `N#` lines (what the design specifies that the
   app can't do), each carrying its owning app and, for an `N#`, its disposition — answer *where does
   this live when the app is closed?* in the same sitting. Their durable home is SPEC §Replaced
-  surfaces, written once by `builder:brainstorm`.
+  surfaces, written once by `builder:spec`.
 - **Fingerprint first when the feature folder has a SPEC with §Replaced surfaces**: re-fingerprint
   each surface (`git log -1 --format=%h -- <path>`); an unchanged sha means the rows are still
   accurate — report and move on. Re-run discovery only when the selection changed or a new surface

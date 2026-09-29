@@ -4,6 +4,30 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.0.0
+
+**Breaking:**
+- `/builder:brainstorm` is now an exploration conversation. It plays back your intent, explains how
+  the code works today, asks in rounds (every ready question, each with a recommendation; facts are
+  looked up, never asked), lays out approaches, and confirms before anything is written. **Sizing
+  happens after the concept is confirmed**, not first; an idea can also be parked or left at
+  understanding.
+- **Prototype mode moved to the new `/builder:intake`.** `/builder:brainstorm --<design.flag> <ref>`
+  is now `/builder:intake --<design.flag> <ref>`.
+- **Spec writing moved to the new `/builder:spec`**, which reads the conversation's workspace record
+  (`.builder/<feature>/brainstorm.md`). md/lg/xl brainstorms hand off to it.
+
+**New:**
+- `/builder:intake <doc | ticket | design ref>` verifies a worked-out input claim by claim —
+  confirmed, contradicted or unverifiable — finds the gaps it never decides, and asks only about
+  those.
+- Every new `SPEC.md` opens with **§Idea**: why, what success looks like, your key rules in your own
+  words (linked to the rulings), the concept, how it fits today, and the approaches considered.
+  Decisions keep one line of why and why the rejected option lost; `check-obligations` warns on a
+  bare rejection. Specs written before 4.0 stay valid.
+- `/builder:status` and `/builder:resume` list conversations in progress (`brainstorming (6/11
+  settled)`, `intake (3 contradicted…)`, `sized md — spec not written`, `parked idea`).
+
 ## 3.8.0
 
 **Finished features are archived, so nothing routine slows down as the count of shipped work grows.**

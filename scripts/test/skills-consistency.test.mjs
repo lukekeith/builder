@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -62,4 +62,21 @@ test('spec needs a sized record, loads REFERENCE, writes §Idea first and hands 
   assert.match(s, /contradicted/)
   assert.match(s, /fixed in the design/)
   assert.doesNotMatch(s, /--size xl/)
+})
+
+test('no skill routes a design ref to brainstorm; resume knows the record; help names the entries', () => {
+  for (const dir of readdirSync(join(ROOT, 'skills'))) {
+    const p = `skills/${dir}/SKILL.md`
+    if (!existsSync(join(ROOT, p))) continue
+    assert.doesNotMatch(read(p), /\/builder:brainstorm --<(design\.)?flag>/, p)
+  }
+  const r = read('skills/resume/SKILL.md')
+  assert.match(r, /brainstorm\.md/)
+  assert.match(r, /\/builder:spec/)
+  assert.match(r, /\/builder:intake/)
+  const h = read('skills/help/SKILL.md')
+  assert.match(h, /\/builder:intake/)
+  assert.match(h, /\/builder:spec/)
+  assert.match(read('.claude-plugin/plugin.json'), /"version": "4\.0\.0"/)
+  assert.match(read('CHANGELOG.md'), /^## 4\.0\.0$/m)
 })

@@ -5,8 +5,10 @@
 Invoked as `/builder:<skill>`. Start with **`/builder:brainstorm <what you want>`**; `/builder:help`
 is the card.
 
-**One command builds anything, and most of it never reaches a doc.** `/builder:brainstorm` sizes the
-request first: **xs/sm** are designed and built in chat writing nothing under `docs/`; **md/lg** earn
+**Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea
+with you — your intent played back, how the code works today, questions in rounds, approaches — and
+`/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is
+confirmed it is sized: **xs/sm** are designed and built in chat writing nothing under `docs/`; **md/lg** earn
 one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the pipeline; **xl** becomes a program
 of children. A spec is audited against the codebase **once** before any code, built **one app per
 phase**, then 🔒 **walked by a human** before the one deep verify pass and a single PR.
@@ -124,6 +126,9 @@ plugins/builder/
     review-package           the diff a reviewer reads in one call
   skills/
     init/SKILL.md            writes .claude/builder.md for a repo
+    brainstorm/SKILL.md      the exploration conversation; CONVERSATION.md is the mechanics it shares with intake
+    intake/SKILL.md          verifies a worked-out spec, ticket or design ref against the code
+    spec/SKILL.md            writes SPEC.md (§Idea first) + MANIFEST.md from the confirmed conversation
     status/SKILL.md          the table of in-progress work, with a paste-able command per row
     update/SKILL.md          takes the newest release of a plugin install (never vendored)
     <13 pipeline skills>/SKILL.md

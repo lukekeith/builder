@@ -19,8 +19,9 @@ your project is (REFERENCE §The project's own rules). No config → say so in o
 **No `--path` and no text → §The picker first**, before Step 1. Never ask "which feature?" as an
 open question, and never guess one from the branch or the session.
 
-**This command never sizes or designs anything.** New work — free text, a `--size`, a design ref with
-no folder behind it — is `/builder:brainstorm`'s: hand it there verbatim, flags included, and stop.
+**This command never sizes or designs anything.** New work is a conversation's: free text or a
+`--size` → `/builder:brainstorm`; a design ref, a ticket or a worked-out document with no folder
+behind it → `/builder:intake`. Hand it there verbatim, flags included, and stop.
 `/builder:resume` picks up a feature that already has a folder: it reads the manifest, names the
 state, runs the next step, and keeps going until a human gate. Formats, gates, house rules and every
 shape a step writes live in [REFERENCE.md](REFERENCE.md) — **this file is the flow, REFERENCE is the
@@ -57,13 +58,18 @@ not a new design: it takes the table's last row.
 one line `<name> shipped <date> — archived at <registry>/_archive/<name>; nothing to resume` (the date
 from its header) and stop.
 
+**No registry folder, but a `.builder/<feature>/brainstorm.md`** → a design conversation in progress
+(its header: `status`, `source`). `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off`
+with no folder → the spec was never committed: `/builder:spec --path <folder>`; anything else →
+`/builder:<source> --path <folder>`. Run it and stop.
+
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its
 `next:` column.
 
 | The manifest says | Next |
 |---|---|
-| SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm --size md <the new thing>` |
+| SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm <the new thing>` |
 | `blocked:` set (anything but `none`) | ⛔ **parked — run no step.** Print the reason and what clears it (REFERENCE §MANIFEST.md). Under `--agent-walk`, end the run: the fleet reads the line |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
@@ -329,6 +335,7 @@ Each row gives `feature`, `path`, `layout`, `state`, `done`, `convert`, `lastDon
 - **Offerable** — `done` false and `manifest.blocked` unset or `none`. Parked rows are listed under
   the question as a count with their reasons, so it's clear why they're missing; `done` rows only as
   a count.
+- Rows with `layout: brainstorm` are conversations in progress; selecting one runs its `command`.
 - **Nothing offerable** → say so, name `/builder:brainstorm <what you want built>`, and stop.
 - **Exactly one** → still ask, with **Not now** as the second option (AskUserQuestion needs two).
   Don't start it unasked.

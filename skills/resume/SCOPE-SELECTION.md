@@ -1,7 +1,7 @@
 # Scope selection — a ref means everything beneath it
 
 **The canonical procedure for deciding WHICH design items a prototype-mode run operates on.**
-`builder:check` and `builder:brainstorm` both follow it verbatim, so the resolution is identical
+`builder:check` and `builder:intake` both follow it verbatim, so the resolution is identical
 whichever one is typed. Every later step inherits the recorded selection rather than re-asking.
 
 It applies only when `.claude/builder.md` carries a `design:` block. That block names the **flag**,
