@@ -8,17 +8,26 @@ import { fileURLToPath } from 'node:url'
 
 const LIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'list-features.mjs')
 
-function repo(manifests, files = {}) {
+function setup(manifests, files = {}) {
   const root = mkdtempSync(join(tmpdir(), 'lf-'))
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root })
   mkdirSync(join(root, '.claude'))
   writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nregistry: docs/features\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
+  mkdirSync(join(root, 'docs/features'), { recursive: true })
   for (const [name, body] of Object.entries(manifests)) {
     mkdirSync(join(root, 'docs/features', name), { recursive: true })
     writeFileSync(join(root, 'docs/features', name, 'MANIFEST.md'), `size: md\nnext: x\n${body}\n`)
   }
-  for (const [path, body] of Object.entries(files)) writeFileSync(join(root, 'docs/features', path), body)
-  const r = spawnSync('node', [LIST, '--json'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
+  for (const [path, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, 'docs/features', path)), { recursive: true })
+    writeFileSync(join(root, 'docs/features', path), body)
+  }
+  return root
+}
+const list = (root, ...args) => spawnSync('node', [LIST, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
+
+function repo(manifests, files = {}) {
+  const r = list(setup(manifests, files), '--json')
   assert.equal(r.status, 0, r.stderr)
   return Object.fromEntries(JSON.parse(r.stdout).features.map((f) => [f.feature, f]))
 }
@@ -58,4 +67,43 @@ test('a program child waiting on an unshipped dependency says so; its dependency
   assert.deepEqual(rows.ui.waitsOn, [{ name: 'api', state: 'building' }])
   assert.equal(rows.ui.nextStep, '⏳ waits on api (building)')
   assert.deepEqual(rows.api.waitsOn, [])
+})
+
+const SHIPPED = (n, date, pr) => `# ${n} — spec\n> ✅ SHIPPED ${date} — PR #${pr} · none\n`
+
+test('archived features are never rows; --status counts them in one line', () => {
+  const root = setup({ live: 'state: building' }, {
+    '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4),
+    '_archive/older/SPEC.md': SHIPPED('older', '2026-08-01', 2),
+  })
+  const json = list(root, '--json')
+  assert.equal(json.status, 0, json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout).features.map((f) => f.feature), ['live'])
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /📦 2 shipped features archived · list-features\.mjs --archived lists them/)
+})
+
+test('--archived lists the archive newest first; --limit caps it', () => {
+  const root = setup({}, {
+    '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4),
+    '_archive/mid/SPEC.md': SHIPPED('mid', '2026-08-15', 3),
+    '_archive/older/SPEC.md': SHIPPED('older', '2026-08-01', 2),
+  })
+  const r = list(root, '--archived', '--limit', '2')
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /3 archived — newest first, showing 2/)
+  assert.match(r.stdout, /\| old \| 2026-09-01 \| #4 \| `docs\/features\/_archive\/old` \|/)
+  assert.ok(r.stdout.indexOf('| old |') < r.stdout.indexOf('| mid |'))
+  assert.doesNotMatch(r.stdout, /\| older \|/)
+  const j = JSON.parse(list(root, '--archived', '--json').stdout)
+  assert.equal(j.total, 3)
+  assert.deepEqual(j.archived.map((a) => a.feature), ['old', 'mid', 'older'])
+})
+
+test('with nothing in flight, --status still says how many shipped', () => {
+  const root = setup({}, { '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4) })
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /Nothing in progress in t — 1 shipped/)
 })

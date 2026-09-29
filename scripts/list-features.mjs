@@ -17,16 +17,21 @@
  * DONE = a SPEC.md header carrying `✅ SHIPPED`, or a README.md header or `**Status:**` line that
  * opens SHIPPED. A DONE feature is never offered as a pipeline target.
  *
+ * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship. Never a row: only --archived reads
+ * inside the archive, and --status counts it with one directory listing.
+ *
  *   node <plugin>/scripts/list-features.mjs               # table
  *   node <plugin>/scripts/list-features.mjs --json        # machine-readable
  *   node <plugin>/scripts/list-features.mjs --check       # resume-safety + size warnings
  *   node <plugin>/scripts/list-features.mjs --all         # include DONE features
  *   node <plugin>/scripts/list-features.mjs --status      # /builder:status — markdown table, most recent first
+ *   node <plugin>/scripts/list-features.mjs --archived    # shipped features in <registry>/_archive/, newest first [--limit N] [--json]
  */
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
+import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 
@@ -50,6 +55,9 @@ const asJson = args.includes('--json')
 const doCheck = args.includes('--check')
 const asStatus = args.includes('--status')
 const includeDone = args.includes('--all') || asJson || doCheck
+const asArchived = args.includes('--archived')
+const limitAt = args.indexOf('--limit')
+const LIMIT = limitAt >= 0 && Number(args[limitAt + 1]) > 0 ? Number(args[limitAt + 1]) : 50
 
 const read = (p) => {
   try {
@@ -277,17 +285,39 @@ const inspect = (root, name) => {
   return out
 }
 
+const ARCHIVE_DIR = join(ROOT, CFG.registry, ARCHIVE)
+/** Names only — one directory listing, nothing inside it read. */
+const archivedNames = () => {
+  try {
+    return readdirSync(ARCHIVE_DIR).filter((n) => !n.startsWith('.'))
+  } catch {
+    return []
+  }
+}
+
+if (asArchived) {
+  const all = archivedNames()
+    .map((name) => {
+      const dir = join(ARCHIVE_DIR, name)
+      const head = (read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? '').slice(0, 800)
+      return { feature: name, shipped: grab(head, /SHIPPED\s+([\d-]+)/), pr: grab(head, /PR\s*(#\d+)/), path: `${CFG.registry}/${ARCHIVE}/${name}` }
+    })
+    .sort((a, b) => (b.shipped ?? '').localeCompare(a.shipped ?? '') || a.feature.localeCompare(b.feature))
+  const shown = all.slice(0, LIMIT)
+  if (asJson) console.log(JSON.stringify({ total: all.length, archived: shown }, null, 2))
+  else if (!all.length) console.log(`Nothing archived under ${CFG.registry}/${ARCHIVE}/ yet.`)
+  else {
+    console.log(`**${CFG.project}** — ${all.length} archived — newest first, showing ${shown.length}\n`)
+    console.log('| Feature | Shipped | PR | Path |')
+    console.log('|---|---|---|---|')
+    for (const a of shown) console.log(`| ${a.feature} | ${a.shipped ?? '—'} | ${a.pr ?? '—'} | \`${a.path}\` |`)
+  }
+  process.exit(0)
+}
+
 let rows = []
 for (const { root, requireManifest } of REGISTRY) {
-  let names = []
-  try {
-    names = readdirSync(join(ROOT, root))
-      .filter((f) => statSync(join(ROOT, root, f)).isDirectory())
-      .sort()
-  } catch {
-    continue
-  }
-  for (const name of names) {
+  for (const name of features(ROOT, root).sort()) {
     if (requireManifest && !existsSync(join(ROOT, root, name, 'MANIFEST.md'))) continue
     rows.push(inspect(root, name))
   }
@@ -396,14 +426,16 @@ for (const r of rows) {
   Object.assign(r, statusOf(r))
 }
 
-if (!rows.length) {
+const archivedCount = archivedNames().length
+if (!rows.length && !archivedCount) {
   console.error(`Nothing under ${CFG.registry} — start one with ${PLAN_CMD} --size md <what you want>.`)
   process.exit(asJson || asStatus ? 0 : 1)
 }
 
 if (asStatus) {
   const open = rows.filter((r) => !r.done).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  const doneCount = rows.length - open.length
+  const liveDone = rows.length - open.length
+  const doneCount = liveDone + archivedCount
   if (!open.length) {
     console.log(`Nothing in progress in ${CFG.project}${doneCount ? ` — ${doneCount} shipped` : ''}. Start one with ${PLAN_CMD} <what you want>.`)
     process.exit(0)
@@ -430,7 +462,8 @@ if (asStatus) {
     console.log('\nNeeds attention:')
     for (const r of flagged) console.log(`- **${r.feature}**: ${r.problems.join('; ')}`)
   }
-  if (doneCount) console.log(`\n🔒 ${doneCount} shipped, not shown.`)
+  if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — \`node <builder>/scripts/registry.mjs --sweep\` archives them.`)
+  if (archivedCount) console.log(`\n📦 ${archivedCount} shipped features archived · list-features.mjs --archived lists them.`)
   process.exit(0)
 }
 
@@ -456,7 +489,7 @@ const shown = rows.filter((r) => includeDone || !r.done)
 const doneRows = rows.filter((r) => r.done)
 
 if (!shown.length && !doneRows.length) {
-  console.log(`No features yet. Start one with ${PLAN_CMD} --size md <what you want>.`)
+  console.log(`No features in flight${archivedCount ? ` (${archivedCount} shipped, archived)` : ''}. Start one with ${PLAN_CMD} --size md <what you want>.`)
   process.exit(0)
 }
 

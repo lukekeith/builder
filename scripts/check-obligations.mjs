@@ -31,9 +31,10 @@
  * Exit 0 = every obligation discharged (or the spec is too early to have them).
  * Exit 1 = at least one dangling obligation. Exit 2 = bad usage / no such feature.
  */
-import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
 import { requireConfig } from './config.mjs'
+import { features } from './registry.mjs'
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -50,15 +51,9 @@ const resolveSuite = (arg) => {
 const args = process.argv.slice(2)
 const asJson = args.includes('--json')
 const suites = args.includes('--all')
-  ? (() => {
-      try {
-        return readdirSync(join(ROOT, REGISTRY_ROOT))
-          .map((d) => join(ROOT, REGISTRY_ROOT, d))
-          .filter((d) => statSync(d).isDirectory() && hasSpec(d))
-      } catch {
-        return []
-      }
-    })()
+  ? features(ROOT, REGISTRY_ROOT)
+      .map((d) => join(ROOT, REGISTRY_ROOT, d))
+      .filter(hasSpec)
   : args.filter((a) => !a.startsWith('--')).map(resolveSuite)
 
 if (!suites.length) {
