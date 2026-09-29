@@ -138,3 +138,24 @@ test('a new SPEC with §Idea instead of §Overview describes itself from its Why
   const f = JSON.parse(list(root, '--json').stdout).features.find((r) => r.feature === 'f')
   assert.equal(f.description, 'Owners need to see which sheets changed since the last issue.')
 })
+
+test('a live feature with a revision conversation still open says to finish it', () => {
+  const root = setup({ f: 'state: audited', g: 'state: audited' }, { 'kept/NOTES.md': '# kept — notes\n\nA parked idea.\n' })
+  draft(root, 'kept', 'status: parked\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 2 of 8')
+  draft(root, 'f', 'status: exploring\nsource: brainstorm\ninput: spec\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 4')
+  draft(root, 'g', 'status: handed-off\nsource: brainstorm\ninput: spec\nupdated: 2026-09-29T10:00:00Z\nsettled: 4 of 4')
+  const rows = Object.fromEntries(JSON.parse(list(root, '--json').stdout).features.map((r) => [r.feature, r]))
+  assert.equal(rows.f.nextStep, 'Finish the revision conversation')
+  assert.equal(rows.f.command, '/builder:brainstorm --path docs/features/f')
+  assert.equal(rows.f.lastDone, 'Audit done')
+  assert.equal(rows.g.nextStep, 'Settle open decisions, then plan')
+  assert.equal(rows.g.command, '/builder:resume --path docs/features/g')
+  assert.notEqual(rows.kept.nextStep, 'Finish the revision conversation', 'a parked idea kept as notes is not a revision')
+})
+
+test('a conversation stopped at understanding (handed-off, no folder) is not listed', () => {
+  const root = setup({ live: 'state: building' })
+  draft(root, 'understood', 'status: handed-off\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 5 of 5')
+  const json = JSON.parse(list(root, '--json').stdout).features
+  assert.deepEqual(json.map((f) => f.feature), ['live'])
+})

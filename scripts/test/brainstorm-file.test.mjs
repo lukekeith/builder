@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readBrainstormHeader, draftRows, BRAINSTORM_FILE } from '../brainstorm-file.mjs'
+import { readBrainstormHeader, draftRows, openRevision, BRAINSTORM_FILE } from '../brainstorm-file.mjs'
 
 const REG = 'docs/features'
 const HEAD = (lines) => `# x — brainstorm\n${lines}\n\n## Intent\nOutcome.\n\n## Tree\n| # | Branch | Depends on | Status |\n| B1 | a | — | settled |\nstatus: handed-off\n`
@@ -72,4 +72,19 @@ test('draftRows: one row per conversation in progress, with its state and comman
 
 test('draftRows with no .builder dir is empty', () => {
   assert.deepEqual(draftRows(mkdtempSync(join(tmpdir(), 'bf-')), REG), [])
+})
+
+test('openRevision: the header of a conversation still open on a feature, null when handed off or missing', () => {
+  const root = ws({
+    '.builder/rev/brainstorm.md': HEAD('status: exploring\nsource: brainstorm\ninput: spec\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 4'),
+    '.builder/gone/brainstorm.md': HEAD('status: handed-off\nsource: brainstorm\ninput: brief\nupdated: 2026-09-29T10:00:00Z\nsettled: 4 of 4'),
+  })
+  assert.equal(openRevision(root, 'rev').status, 'exploring')
+  assert.equal(openRevision(root, 'gone'), null)
+  assert.equal(openRevision(root, 'none'), null)
+})
+
+test('stopping at understanding hands the record off, so it is never listed as in progress', () => {
+  const root = ws({ '.builder/understood/brainstorm.md': HEAD('status: handed-off\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 5 of 5') })
+  assert.deepEqual(draftRows(root, REG), [])
 })
