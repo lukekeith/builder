@@ -20,6 +20,9 @@
  * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship. Never a row: only --archived reads
  * inside the archive, and --status counts it with one directory listing.
  *
+ * DRAFTS = a design conversation in progress with no registry folder yet — `.builder/<f>/brainstorm.md`
+ * (scripts/brainstorm-file.mjs). Listed with their resume command; only the header is read.
+ *
  *   node <plugin>/scripts/list-features.mjs               # table
  *   node <plugin>/scripts/list-features.mjs --json        # machine-readable
  *   node <plugin>/scripts/list-features.mjs --check       # resume-safety + size warnings
@@ -34,6 +37,8 @@ import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
+import { draftRows } from './brainstorm-file.mjs'
+import { ago } from './fleet-core.mjs'
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -336,7 +341,8 @@ const describe = (r) => {
   const dir = join(ROOT, r.path)
   const text = read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? read(join(dir, 'README.md'))
   if (!text) return null
-  const overview = /^##\s+Overview\s*\n+([\s\S]*?)(?=\n##\s|$)/m.exec(text)
+  // A pre-4.0 SPEC opens with §Overview; a 4.0 SPEC opens with §Idea, whose **Why.** says it.
+  const overview = /^##\s+Overview\s*\n+([\s\S]*?)(?=\n##\s|$)/m.exec(text) ?? /^##\s+Idea\s*\n+\*\*Why\.\*\*\s*([\s\S]*?)(?=\n\s*\n|\n##\s|$)/m.exec(text)
   const para = overview?.[1]
     .split('\n')
     .filter((l) => l.trim() && !/^\s*(<!--|>|\||```)/.test(l))
@@ -424,6 +430,14 @@ for (const r of rows) {
   r.branch = r.manifest?.branch ?? null
   r.waitsOn = r.done || r.layout === 'program' ? [] : waitsOn(ROOT, CFG.registry, r.feature)
   Object.assign(r, statusOf(r))
+}
+
+// Conversations with no registry folder yet — added after the enrichment loop, which reads git
+// and the folder, neither of which a draft has.
+for (const d of draftRows(ROOT, CFG.registry)) {
+  d.updatedAt = d.updatedAt ?? new Date(0).toISOString()
+  d.updated = d.updatedAt === new Date(0).toISOString() ? 'unknown' : ago(d.updatedAt)
+  rows.push(d)
 }
 
 const archivedCount = archivedNames().length

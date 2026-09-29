@@ -107,3 +107,34 @@ test('with nothing in flight, --status still says how many shipped', () => {
   assert.equal(st.status, 0, st.stderr)
   assert.match(st.stdout, /Nothing in progress in t — 1 shipped/)
 })
+
+const draft = (root, name, header) => {
+  mkdirSync(join(root, '.builder', name), { recursive: true })
+  writeFileSync(join(root, '.builder', name, 'brainstorm.md'), `# ${name} — brainstorm\n${header}\n\n## Intent\nx\n`)
+}
+
+test('a conversation in progress is listed in --json and --status with its command', () => {
+  const root = setup({ live: 'state: building' })
+  draft(root, 'idea', 'status: exploring\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 2 of 7')
+  const json = JSON.parse(list(root, '--json').stdout).features
+  const idea = json.find((f) => f.feature === 'idea')
+  assert.equal(idea.layout, 'brainstorm')
+  assert.equal(idea.nextStep, 'Continue the brainstorm')
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /\| \*\*idea\*\* \|.*brainstorming \(2\/7 settled\).*`\/builder:brainstorm --path docs\/features\/idea`/)
+})
+
+test('a registry with only a conversation in progress is not "nothing"', () => {
+  const root = setup({})
+  draft(root, 'idea', 'status: exploring\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 0 of 3')
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /1 in progress/)
+})
+
+test('a new SPEC with §Idea instead of §Overview describes itself from its Why', () => {
+  const root = setup({ f: 'state: spec' }, { 'f/SPEC.md': '# f — spec\n\n## Idea\n**Why.** Owners need to see which sheets changed since the last issue. More text.\n\n## Apps\n' })
+  const f = JSON.parse(list(root, '--json').stdout).features.find((r) => r.feature === 'f')
+  assert.equal(f.description, 'Owners need to see which sheets changed since the last issue.')
+})
