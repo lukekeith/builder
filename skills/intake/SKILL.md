@@ -44,7 +44,8 @@ requirement, constraint and non-goal becomes a tree row with status **`stated`**
 document says it. **Tag each row with its kind** at the start of its Branch cell — `decision`,
 `requirement`, `constraint`, `non-goal` or `claim` (a statement about how the code already works) —
 because `/builder:spec` routes a confirmed row by it: the first four are the document's choices and
-become rulings; a claim is a fact about the code. Write the record (`status: exploring`, `source: intake`, and `input:` naming the
+become rulings; a claim is a fact about the code. A row without a kind is incomplete — tag it
+before verifying. Write the record (`status: exploring`, `source: intake`, and `input:` naming the
 source — `spec <path|url|pasted>`, `brief <path|url|pasted>`, `ticket <id>` or `design ref <ref>`),
 then play back the intent in one paragraph, from the document, the author's key rules quoted.
 

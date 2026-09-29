@@ -54,7 +54,9 @@ test("intake's confirmed decisions become rulings; only its claims about the cod
   assert.match(i, /`decision`.*`requirement`.*`constraint`.*`non-goal`.*`claim`/s, 'intake tags each stated row with its kind')
   const s = read('skills/spec/SKILL.md')
   assert.match(s, /`confirmed` `decision`, `requirement`, `constraint` or `non-goal` row[^.]*§Decisions/s)
-  assert.match(s, /`confirmed` `claim`[^.]*§Idea/s)
+  assert.match(s, /`confirmed` `claim`[^.]*§Idea[^.]*never to §Decisions/s)
+  assert.match(s, /`confirmed` row with no kind tag[\s\S]*?OPEN §Decisions row/, 'an untagged row has a defined route')
+  assert.match(i, /A row without a kind is incomplete/)
   assert.doesNotMatch(s, /A `confirmed` row from intake is a fact, not a\s+choice/)
 })
 

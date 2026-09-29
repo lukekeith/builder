@@ -50,10 +50,13 @@ Pushback amends the record's tree first, then the section. Under `--auto` presen
 and the Tree row's Who / date as its Who/date (an `auto (recommended) YYYY-MM-DD` stays exactly
 that) — copy the §Decisions comment block verbatim. Intake tags each row with its kind. A
 `confirmed` `decision`, `requirement`, `constraint` or `non-goal` row is a choice the document made
-and the code agrees with: it becomes a §Decisions row like any settled branch, with the document as
-its Who/date (`<doc name> YYYY-MM-DD`). A `confirmed` `claim` — a fact about how the code already
-works — goes to §Idea's how it fits today, or to §Findings & risks when it constrains the build,
-never to §Decisions. A `contradicted` or `unverifiable` row still unresolved when spec runs
+and the code agrees with: it becomes a §Decisions row like any settled branch, credited to the
+document — Who/date is the record's `input:` source and the date intake confirmed it (the Tree row's
+Who / date). A `confirmed` `claim` — a fact about how the code already works — goes to §Idea's how
+it fits today, or to §Findings & risks when it constrains the build, never to §Decisions. **A
+`confirmed` row with no kind tag** (an older record, or a missed tag): read the document line it
+cites — a choice the document makes is a `decision`, a statement about existing code is a `claim`;
+when it could be either, write an OPEN §Decisions row with your recommendation rather than guess. A `contradicted` or `unverifiable` row still unresolved when spec runs
 (possible after "that's enough") becomes an OPEN §Decisions row that states the contradiction and
 its recommendation; it blocks the go-ahead like any OPEN row. Assumed branches the user never
 contested are rulings too, marked `(assumed at brainstorm)` in Who/date. **An OPEN branch that reaches spec becomes an
