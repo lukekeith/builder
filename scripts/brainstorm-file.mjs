@@ -39,6 +39,14 @@ export function readBrainstormHeader(path) {
   }
 }
 
+/** A conversation still open on a feature: the header of `.builder/<feature>/brainstorm.md` when its
+ *  status is anything but `handed-off`, else null. On a live registry folder that is a revision
+ *  conversation in progress — it comes before the manifest's next step. */
+export function openRevision(root, feature) {
+  const h = readBrainstormHeader(join(root, '.builder', feature, BRAINSTORM_FILE))
+  return h && h.status !== 'handed-off' ? h : null
+}
+
 const frac = (h) => (h.settled ? `${h.settled.n}/${h.settled.m} settled` : 'nothing settled yet')
 
 /** How one header reads in the status table, and the command that picks it up. The status table

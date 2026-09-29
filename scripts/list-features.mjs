@@ -37,7 +37,7 @@ import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { draftRows } from './brainstorm-file.mjs'
+import { draftRows, openRevision } from './brainstorm-file.mjs'
 import { ago } from './fleet-core.mjs'
 
 const CFG = requireConfig()
@@ -430,6 +430,12 @@ for (const r of rows) {
   r.branch = r.manifest?.branch ?? null
   r.waitsOn = r.done || r.layout === 'program' ? [] : waitsOn(ROOT, CFG.registry, r.feature)
   Object.assign(r, statusOf(r))
+  // A revision conversation left open on a live feature comes before the manifest's next step. A
+  // notes-only folder (a parked idea kept with --keep) is not a feature yet, so it has no revision.
+  if (!r.done && ['manifest', 'program', 'condensed'].includes(r.layout) && openRevision(ROOT, r.feature)) {
+    r.nextStep = 'Finish the revision conversation'
+    r.command = `/builder:brainstorm --path ${r.path}`
+  }
 }
 
 // Conversations with no registry folder yet — added after the enrichment loop, which reads git
