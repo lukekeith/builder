@@ -88,7 +88,7 @@ the verification skill's iron law — *no completion claim without fresh verific
 
 ## The sizes
 
-The verdict is announced with its evidence before anything is written, and `--size` forces it. It
+The verdict is announced with its evidence once the concept is confirmed, and you can override it there. It
 **ratchets up only**: complexity found mid-task stops the work and writes the spec then.
 
 **Two things draw the sm/md line, and neither is file count.** A change staying inside existing

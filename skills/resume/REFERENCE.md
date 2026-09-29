@@ -124,7 +124,7 @@ hot-fixed. **The sm/md line is drawn by contracts, not file count**: a change in
 inside existing contracts is sm however many files it brushes; the moment it adds a model, a schema
 row, an endpoint, a permission, a route or a screen, it earns a spec.
 
-**Classification is announced with evidence, overridable, and ratchets up only.** `--size` forces it.
+**Classification is announced with evidence, overridable, and ratchets up only.** The size is announced with its evidence after the conversation confirms the concept; the user confirms or overrides it.
 Hidden complexity found mid-task upgrades: stop, say so, write the spec then. Nothing downgrades
 mid-task. When in doubt, the heavier size.
 
@@ -133,7 +133,6 @@ mid-task. When in doubt, the heavier size.
 | Flag | Meaning |
 |---|---|
 | `--path <dir\|file>` | the feature folder (or its `SPEC.md` / `PROGRAM.md`). Omitted → the picker |
-| `--size xs\|sm\|md\|lg\|xl` | force the size; classification skipped, result still announced |
 | `--ticket <id>` | recorded in the manifest; the commit-message key and PR body; triggers the branch-name check. When the config's `ticket.dossier` names a path, that dossier is read as design input |
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |

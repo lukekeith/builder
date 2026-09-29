@@ -19,8 +19,8 @@ your project is (REFERENCE §The project's own rules). No config → say so in o
 **No `--path` and no text → §The picker first**, before Step 1. Never ask "which feature?" as an
 open question, and never guess one from the branch or the session.
 
-**This command never sizes or designs anything.** New work is a conversation's: free text or a
-`--size` → `/builder:brainstorm`; a design ref, a ticket or a worked-out document with no folder
+**This command never sizes or designs anything.** New work is a conversation's: free text →
+`/builder:brainstorm`; a design ref, a ticket or a worked-out document with no folder
 behind it → `/builder:intake`. Hand it there verbatim, flags included, and stop.
 `/builder:resume` picks up a feature that already has a folder: it reads the manifest, names the
 state, runs the next step, and keeps going until a human gate. Formats, gates, house rules and every
@@ -61,7 +61,8 @@ from its header) and stop.
 **No registry folder, but a `.builder/<feature>/brainstorm.md`** → a design conversation in progress
 (its header: `status`, `source`). `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off`
 with no folder → the spec was never committed: `/builder:spec --path <folder>`; anything else →
-`/builder:<source> --path <folder>`. Run it and stop.
+`/builder:intake --path <folder>` when the header says `source: intake`, otherwise
+`/builder:brainstorm --path <folder>`. Run it and stop.
 
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its
@@ -336,7 +337,7 @@ Each row gives `feature`, `path`, `layout`, `state`, `done`, `convert`, `lastDon
   the question as a count with their reasons, so it's clear why they're missing; `done` rows only as
   a count.
 - Rows with `layout: brainstorm` are conversations in progress; selecting one runs its `command`.
-- **Nothing offerable** → say so, name `/builder:brainstorm <what you want built>`, and stop.
+- **Nothing offerable** → say so, name `/builder:brainstorm <what you want built>` (an idea) or `/builder:intake <doc>` (a written spec), and stop.
 - **Exactly one** → still ask, with **Not now** as the second option (AskUserQuestion needs two).
   Don't start it unasked.
 

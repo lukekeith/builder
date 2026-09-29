@@ -79,4 +79,6 @@ test('no skill routes a design ref to brainstorm; resume knows the record; help 
   assert.match(h, /\/builder:spec/)
   assert.match(read('.claude-plugin/plugin.json'), /"version": "4\.0\.0"/)
   assert.match(read('CHANGELOG.md'), /^## 4\.0\.0$/m)
+  const sizeDocs = readdirSync(join(ROOT, 'skills')).map((d) => `skills/${d}/SKILL.md`).filter((p) => existsSync(join(ROOT, p)))
+  for (const p of [...sizeDocs, 'skills/resume/REFERENCE.md', 'README.md']) assert.doesNotMatch(read(p), /--size\b/, p)
 })
