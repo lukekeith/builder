@@ -58,4 +58,8 @@ test('spec needs a sized record, loads REFERENCE, writes §Idea first and hands 
   assert.match(s, /\/builder:resume --path/)
   assert.match(s, /confirmed/)
   assert.match(s, /OPEN/)
+  assert.match(s, /sized xl/)
+  assert.match(s, /contradicted/)
+  assert.match(s, /fixed in the design/)
+  assert.doesNotMatch(s, /--size xl/)
 })
