@@ -8,11 +8,12 @@
  * condenses the folder, and the child line can lag it. A token that is not a child may name another
  * feature or program in the registry (`glyph-library (shipped)`): met the same way. A parenthetical
  * is a note, not a dependency. A token naming nothing is unmet: a typo holds the child back rather
- * than letting it run.
+ * than letting it run. A dependency moved into `<registry>/_archive/` shipped — met by existence alone, before any read.
  */
-import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseManifest } from './manifest.mjs'
+import { features, isArchived, isShippedFolder } from './registry.mjs'
 
 const read = (p) => {
   try {
@@ -61,12 +62,6 @@ export function parseChildren(text) {
     })
 }
 
-const shippedFolder = (dir) => {
-  for (const doc of ['SPEC.md', 'PROGRAM.md']) if (/✅\s*\*{0,2}SHIPPED/.test((read(join(dir, doc)) ?? '').slice(0, 800))) return true
-  const mf = read(join(dir, 'MANIFEST.md'))
-  return mf != null && parseManifest(mf).state === 'shipped'
-}
-
 /** The state a registry folder's manifest reports, for the "waits on" text. */
 const folderState = (dir) => {
   const mf = read(join(dir, 'MANIFEST.md'))
@@ -76,8 +71,7 @@ const folderState = (dir) => {
 /** The unmet dependencies of `feature`, as [{ name, state }] — [] for a feature in no program. */
 export function waitsOn(root, registry, feature) {
   const reg = join(root, registry)
-  if (!existsSync(reg)) return []
-  for (const prog of readdirSync(reg)) {
+  for (const prog of features(root, registry)) {
     const mfText = read(join(reg, prog, 'MANIFEST.md'))
     if (!mfText) continue
     const mf = parseManifest(mfText)
@@ -99,12 +93,13 @@ export function waitsOn(root, registry, feature) {
       if (!dep) {
         // Not a child — another feature or program in the registry, or nothing at all.
         const dir = join(reg, tok)
+        if (/^[\w.-]+$/.test(tok) && isArchived(root, registry, tok)) continue
         if (/^[\w.-]+$/.test(tok) && existsSync(dir)) {
-          if (!shippedFolder(dir)) out.push({ name: tok, state: folderState(dir) })
+          if (!isShippedFolder(dir)) out.push({ name: tok, state: folderState(dir) })
         } else out.push({ name: tok, state: 'no such child or feature' })
         continue
       }
-      if (states.get(dep) === 'shipped' || shippedFolder(join(reg, dep))) continue
+      if (states.get(dep) === 'shipped' || isArchived(root, registry, dep) || isShippedFolder(join(reg, dep))) continue
       out.push({ name: dep, state: states.get(dep) || 'not started' })
     }
     return out
