@@ -5,8 +5,9 @@ description: Verify a worked-out input against reality before a spec is written 
 
 # `/builder:intake` — the document is the authority; check it against the code
 
-Invocation: **`/builder:intake [--path <folder>] [--<design.flag> <ref>] [--all] [--auto] [--keep]
-[--help] <doc path | ticket id | pasted text>`**. Ignore any flag this step does not use.
+Invocation: **`/builder:intake [--path <folder>] [--ticket <id>] [--<design.flag> <ref>] [--all]
+[--auto] [--keep] [--help] <doc path | ticket id | pasted text>`**. Ignore any flag this step does not
+use.
 
 **`--help` first.** If present, render the `builder:help` card and stop.
 
@@ -22,15 +23,17 @@ paragraph, from the document.
 ## Where to start
 
 - `--path` with a record whose `source: intake` → resume from its `status:` (CONVERSATION §The
-  record). `source: brainstorm` →
-  hand it to `/builder:brainstorm`.
+  record), re-opening the source its `input:` line names. `source: brainstorm` → hand it to
+  `/builder:brainstorm`.
 - The name checks in brainstorm's §Where to start step 4 — the archive refusal, the DONE check and
   the pre-builder-layout hand-off — apply the same way.
-- A live `SPEC.md` under the name → this is a revision: hand it to `/builder:brainstorm --path
-  <folder>`, which owns revision conversations. `--path` to a folder with no `brainstorm.md` and no
-  SPEC → start fresh with that name.
-- **A ticket id** → read it with the config's ticket tooling, and its dossier when `ticket.dossier`
-  names one.
+- A live `SPEC.md`, `MANIFEST.md` or `PROGRAM.md` under the name → existing work: hand it to
+  `/builder:brainstorm --path <folder>`, which owns revision conversations. `--path` to a folder with
+  no `brainstorm.md` and none of those → start fresh with that name.
+- **A ticket id**, as the input or as `--ticket <id>` (REFERENCE §Flags) → write `ticket: <id>`
+  into the record's header; check that the current branch name carries the key and warn once if it
+  does not; read the ticket with the config's ticket tooling when it is the input, and its dossier
+  when `ticket.dossier` names one. Nothing here writes to the ticket system.
 - **A design flag** → prototype mode, below.
 - Name the feature from the document's title; confirm it in the first turn.
 
@@ -38,8 +41,9 @@ paragraph, from the document.
 
 Read the whole input. Every decision, architectural claim ("X already caches per request"),
 requirement, constraint and non-goal becomes a tree row with status **`stated`**, citing where the
-document says it. Write the record (`status: exploring`, `source: intake`, `input: <kind>`), then play
-back the intent in one paragraph, from the document, the author's key rules quoted.
+document says it. Write the record (`status: exploring`, `source: intake`, and `input:` naming the
+source — `spec <path|url|pasted>`, `brief <path|url|pasted>`, `ticket <id>` or `design ref <ref>`),
+then play back the intent in one paragraph, from the document, the author's key rules quoted.
 
 ## 2. Verify
 
@@ -68,9 +72,11 @@ Branches the document never decides but the build will meet become `open` rows:
 ## 4. Report, then ask
 
 Report first, briefly: `14 of 19 claims confirmed · 3 contradicted · 2 unverifiable · 6 gaps` — the
-confirmed ones as a list, not questions. Then CONVERSATION §Rounds on the **contradicted,
-unverifiable and open** rows only: for a contradiction, the question is which side changes — the
-document or the code — with your recommendation.
+confirmed ones as a list, not questions. Write the record's *How it works today* from that
+verification evidence — what the code does where the document meets it, `file:line` as footnotes.
+Then CONVERSATION §Rounds on the **contradicted, unverifiable and open** rows only: for a
+contradiction, the question is which side changes — the document or the code — with your
+recommendation.
 
 ## 5. Confirm, size, hand on
 
@@ -126,3 +132,5 @@ The record carries, so `/builder:spec` can write §Prototype and §Replaced surf
 ```
 📍 <feature>: intake (<k> contradicted, <n>/<m> settled) — resume with /builder:intake --path <registry>/<feature>
 ```
+
+**Continuing:** a bare "go", "yes" or "proceed" after a hand-off footer runs its command yourself.

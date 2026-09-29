@@ -15,7 +15,9 @@ follow-on work is a new feature folder. A folder with no `MANIFEST.md` is not re
 one line, name `/builder:resume --path <folder>` as the conversion, and stop.
 
 **Without `--path`,** run `node <builder>/scripts/list-features.mjs --json` and present **one
-AskUserQuestion** over the in-flight features. Never ask "which feature?" as an open question.
+AskUserQuestion** over the in-flight features — never the rows with `layout: brainstorm`
+(conversations in progress): they have no spec to revise. Never ask "which feature?" as an open
+question.
 
 ## Step 1 — Is the change settled, and is it true?
 
