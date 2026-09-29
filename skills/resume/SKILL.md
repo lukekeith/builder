@@ -59,11 +59,11 @@ one line `<name> shipped <date> — archived at <registry>/_archive/<name>; noth
 from its header) and stop.
 
 **No registry folder, but a `.builder/<feature>/brainstorm.md`** → a design conversation in progress
-(its header: `status`, `source`). `sized md|lg|xl` → `/builder:spec --path <folder>`; anything
-else but `handed-off` → `/builder:intake --path <folder>` when the header says `source: intake`, otherwise
-`/builder:brainstorm --path <folder>`. Run it and stop. `handed-off` with no folder → nothing to
-resume: an xs/sm finished in chat, or a spec committed on another branch (`git log --all --oneline --
-<registry>/<feature>` finds it). Say which, and stop.
+(its header: `status`, `source`). `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off`
+→ nothing to resume: an xs/sm finished in chat, or a spec committed on another branch (`git log
+--all --oneline -- <registry>/<feature>` finds it) — say which, and stop; any other status →
+`/builder:intake --path <folder>` when the header says `source: intake`, otherwise
+`/builder:brainstorm --path <folder>`. Run it and stop.
 
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its

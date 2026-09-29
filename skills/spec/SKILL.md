@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), presents the design section by section for approval with §Idea first (why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered), then writes SPEC.md + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, and hands on to /builder:resume. Also applies a brainstorm or intake revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
+description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), presents the design section by section for approval with §Idea first (why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered), then writes SPEC.md + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, and hands on to /builder:resume. Also applies a brainstorm revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
 ---
 
 # `/builder:spec` — the confirmed concept, written down

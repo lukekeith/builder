@@ -1,8 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { draftRows } from '../brainstorm-file.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
@@ -84,8 +86,31 @@ test('no skill routes a design ref to brainstorm; resume knows the record; help 
 })
 
 test('every status value is handled somewhere, and every section cited in CONVERSATION.md exists', () => {
-  const skills = ['brainstorm/SKILL.md', 'brainstorm/CONVERSATION.md', 'intake/SKILL.md', 'spec/SKILL.md', 'resume/SKILL.md'].map((p) => read(`skills/${p}`)).join('\n')
-  for (const s of ['exploring', 'confirmed', 'sized', 'parked', 'handed-off']) assert.match(skills, new RegExp(`\\b${s}\\b`), s)
+  // The two readers that branch on a record's status: draftRows() (the picker and /builder:status) and
+  // resume Step 1's brainstorm.md rule. exploring and confirmed have no branch of their own in either —
+  // they take the fall-through back to the conversation — so that fall-through is what is asserted.
+  const tmp = mkdtempSync(join(tmpdir(), 'builder-status-'))
+  try {
+    const statuses = { exploring: 'exploring', confirmed: 'confirmed', parked: 'parked', md: 'sized md', sm: 'sized sm', done: 'handed-off' }
+    for (const [name, status] of Object.entries(statuses)) {
+      mkdirSync(join(tmp, '.builder', name), { recursive: true })
+      writeFileSync(join(tmp, '.builder', name, 'brainstorm.md'), `# ${name} — brainstorm\nstatus: ${status}\nsource: brainstorm\nsettled: 1 of 2\n\n## Intent\n`)
+    }
+    const rows = Object.fromEntries(draftRows(tmp, 'docs/features').map((r) => [r.feature, r]))
+    assert.equal(rows.exploring.command, '/builder:brainstorm --path docs/features/exploring', 'exploring')
+    assert.equal(rows.confirmed.command, '/builder:brainstorm --path docs/features/confirmed', 'confirmed')
+    assert.match(rows.parked.state, /^parked/, 'parked')
+    assert.equal(rows.md.command, '/builder:spec --path docs/features/md', 'sized md')
+    assert.equal(rows.sm.command, '/builder:brainstorm --path docs/features/sm', 'sized sm')
+    assert.equal(rows.done, undefined, 'handed-off is skipped')
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+  const r = read('skills/resume/SKILL.md')
+  const rule = r.slice(r.indexOf('**No registry folder, but a `.builder/<feature>/brainstorm.md`**'), r.indexOf('**No `MANIFEST.md`**'))
+  assert.match(rule, /`sized md\|lg\|xl` → `\/builder:spec --path <folder>`/, 'resume: sized md+')
+  assert.match(rule, /`handed-off`\s+→ nothing to resume/, 'resume: handed-off')
+  assert.match(rule, /any other status →/, 'resume: exploring, confirmed, parked, sized xs|sm fall through to the conversation')
   // Real headings only: the record template's fenced `## Intent … ## Size` are not sections of the file.
   const conv = read('skills/brainstorm/CONVERSATION.md').replace(/```[\s\S]*?```/g, '')
   const headings = conv.match(/^## .+$/gm).map((h) => h.slice(3).trim())
