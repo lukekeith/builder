@@ -33,6 +33,7 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     worktreeEnv: {},
     start: null,
     smoke: null,
+    keepLogs: 30,
   })
 })
 
@@ -116,4 +117,12 @@ test('the rest of the config is unaffected', () => {
   const cfg = cfgWith('agent_walk:\n  driver: x\n  claude_args: --a')
   assert.equal(cfg.ok, true)
   assert.deepEqual(cfg.appNames, ['app'])
+})
+
+test('keep_logs: a whole number of days, 0 keeps forever, anything else is the default', () => {
+  const kl = (v) => cfgWith(`agent_walk:\n  driver: x\n  claude_args: --a\n  keep_logs: ${v}`).agentWalk.keepLogs
+  assert.equal(kl(7), 7)
+  assert.equal(kl(0), 0)
+  assert.equal(kl(-1), 30)
+  assert.equal(kl('soon'), 30)
 })

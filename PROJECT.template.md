@@ -66,6 +66,7 @@ agent_walk:
   claude_args: --permission-mode bypassPermissions   # headless runs can't ask; this lets them act in their worktree
   # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
   # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
+  # keep_logs: 30                  # days a merged feature's run logs stay under .builder/fleet/logs/_archive/; 0 keeps them forever
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
   # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
