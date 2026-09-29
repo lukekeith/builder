@@ -35,7 +35,10 @@ confirmed blast radius is exactly the scope statement §Apps needs.
 
 **The folder.** `--path` gives it. Without `--path`, derive a kebab-case name from the free text —
 or, for a design ref with no free text, from the resolved item's name. Then **look for that name
-under the config's `registry:`**. A `SPEC.md` or `MANIFEST.md` there **is** the folder, and the run
+under the config's `registry:`**.
+A folder of that name under `<registry>/_archive/` is a **shipped** feature — refuse the name, say
+when it shipped (its header line), and suggest `<name>-v2`; follow-on work is a new feature whose
+SPEC links the archived one. A `SPEC.md` or `MANIFEST.md` in the live folder **is** the folder, and the run
 becomes the revision conversation below; a folder with **build state but no manifest** is a
 pre-builder layout — hand it to `/builder:resume --path <folder>`, which offers the conversion, and
 stop. Only when the folder holds neither is it new — confirm the derived name as part of the first

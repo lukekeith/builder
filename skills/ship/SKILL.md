@@ -104,6 +104,14 @@ human either hands it back to agents (`/builder:fleet <feature>`) or tests it an
    `child: <name> — shipped`, and when every child reads `shipped`, flip `PROGRAM.md`'s own header the
    same way.
 
+5. **Archive the folder** — `git mv <registry>/<feature> <registry>/_archive/<feature>`, in this same
+   commit, so it reaches the target exactly when `SHIPPED` does (the PR's merge, or the fleet's). A
+   program whose header step 4 just flipped moves too: `git mv <registry>/<program>
+   <registry>/_archive/<program>`. ⛔ If `<registry>/_archive/<feature>` already exists, stop before
+   committing and name the collision — a second folder of that name would make "has it shipped?"
+   answer for the wrong feature. Nothing routine reads the archive; `list-features.mjs --archived`
+   lists it.
+
 Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
 
 🔴 **Shipping does not update the ticket system.** The config's §Companion skills names the command
@@ -115,7 +123,7 @@ feature**. A feature whose code rode someone else's PR records `pr: none` and a 
 naming the carrying PR; its ship moment is the same header flip citing that PR, taken while it is open.
 
 ```
-📍 <feature>: shipped — header flipped, manifest and workspace removed
+📍 <feature>: shipped — header flipped, manifest and workspace removed, archived at <registry>/_archive/<feature>
 ```
 
 ## Standalone use on a folder from an earlier pipeline

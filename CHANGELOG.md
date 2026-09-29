@@ -4,6 +4,23 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 3.8.0
+
+**Finished features are archived, so nothing routine slows down as the count of shipped work grows.**
+
+- **The registry.** `/builder:ship` moves a shipped folder into `<registry>/_archive/<feature>/` in the
+  ship commit (a program follows when its last child ships). `list-features.mjs` — behind
+  `/builder:status`, `/builder:resume` and `/builder:agent` — program dependencies,
+  `check-obligations --all` and `fleet --all` read only in-flight folders; "has X shipped?" is one path
+  check. `list-features.mjs --archived [--limit N]` lists the archive, newest first.
+- **The fleet.** A feature that lands leaves `fleet.json` for `.builder/fleet/archive.jsonl`; its logs
+  move to `logs/_archive/<feature>/` and are pruned after `agent_walk.keep_logs` days (30). `--status`
+  shows work in flight plus one `N archived` line; `--status --archived [N]` lists the latest landings.
+- **Migration.** An existing `fleet.json` archives its `done` rows the first time it loads. Folders
+  that shipped before 3.8 stay where they are until you run `node <builder>/scripts/registry.mjs
+  --sweep` once — it `git mv`s them and leaves the commit to you.
+- `/builder:brainstorm` refuses a feature name that is already archived and suggests `<name>-v2`.
+
 ## 3.7.0
 
 **Agent mode builds to done; it parks only on a decision the spec left open.** A feature handed to

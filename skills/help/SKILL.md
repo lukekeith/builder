@@ -175,6 +175,8 @@ lives in a git-ignored workspace; it is never something you have to read.
   table, then one block per task naming its app, its files and the recipe skill to read first, with
   bite-sized steps carrying the actual code, its test, the command and the commit. SPEC §Plan is only
   the index. Both go at sign-off; `git log` keeps them.
+- **Where did a shipped spec go?** `<registry>/_archive/<name>/SPEC.md` — `/builder:ship` moves it
+  there in the ship commit. `list-features.mjs --archived` lists them, newest first.
 - **Where's the cross-app E2E walk?** Once, in `/builder:verify`, after your sign-off. Never per
   phase: it needs every app up at once, and the phases under it are already covered in seconds.
 - **Does it need other plugins?** No. The execution engine, the plan format and the four craft
