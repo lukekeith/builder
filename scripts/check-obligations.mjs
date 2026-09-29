@@ -277,9 +277,16 @@ for (const dir of suites) {
   for (const line of decisionsText.split('\n')) {
     const id = /^\|\s*`?(D\d+)`?\s*\|/.exec(line)?.[1]
     if (!id) continue
-    for (const [, clause] of line.matchAll(/Rejected:\s*([^|]*)/gi)) {
-      const text = clause.trim().replace(/[.\s]+$/, '')
-      if (!/—|–|\s-\s|[(;:,]|\b(because|since|as|would|so)\b/i.test(text)) {
+    // Split on pipe to extract cells, find the Ruling column (index 3), and split it on Rejected patterns
+    const cells = line.split('|').map((c) => c.trim())
+    if (cells.length < 4) continue
+    const ruling = cells[3]
+    // Split on Rejected pattern to isolate each rejected option as a separate clause
+    const clauses = ruling.split(/Rejected(?:\s+\w+){0,2}:/i)
+    // clauses[0] is text before first Rejected; clauses[1+] are the rejected options
+    for (let i = 1; i < clauses.length; i++) {
+      const text = clauses[i].trim().replace(/[.\s]+$/, '')
+      if (!/—|–|\s-\s|[:(]|\b(because|since|as|would|so)\b/i.test(text)) {
         findings.push({
           severity: 'WARN',
           rule: 'rejected option gives no reason',
