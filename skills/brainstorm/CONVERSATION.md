@@ -50,6 +50,12 @@ stated to the user, not yet contested) · `stated` (intake: the document says so
 `confirmed` (intake: the code agrees — evidence required) · `contradicted` (intake: the code does
 something else — evidence required) · `unverifiable` (needs running code or a person).
 
+**Resuming a record** (`--path`): `exploring` or `parked` → say what is settled and what is open,
+then the next round; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
+hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
+stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` → nothing to resume —
+say where the work went.
+
 🔴 **Every settled row keeps its Why, and every rejected option its reason.** `/builder:spec` writes
 §Idea and the §Decisions rows from these columns; a row without them becomes a thin spec.
 

@@ -23,8 +23,8 @@ known to build.
 
 Take these in order; the first that applies wins.
 
-1. **`--path <folder>` with a `brainstorm.md` in its workspace** → resume: say what is settled and
-   what is open, then ask the next round. A record with `source: intake` belongs to
+1. **`--path <folder>` with a `brainstorm.md` in its workspace** → resume from its `status:`
+   (CONVERSATION §The record). A record with `source: intake` belongs to
    `/builder:intake` — hand it there.
 2. **A design flag, a ticket id, or a pasted or linked document that already decides most of the
    design** → offer the better entry: "This reads like a worked-out spec — want me to verify it

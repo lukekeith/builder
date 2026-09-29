@@ -21,7 +21,8 @@ paragraph, from the document.
 
 ## Where to start
 
-- `--path` with a record whose `source: intake` → resume at the frontier. `source: brainstorm` →
+- `--path` with a record whose `source: intake` → resume from its `status:` (CONVERSATION §The
+  record). `source: brainstorm` →
   hand it to `/builder:brainstorm`.
 - The name checks in brainstorm's §Where to start step 4 — the archive refusal, the DONE check and
   the pre-builder-layout hand-off — apply the same way.
