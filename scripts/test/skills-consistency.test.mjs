@@ -46,3 +46,16 @@ test('intake verifies claims, owns prototype mode, and shares the record', () =>
   assert.match(i, /\/builder:spec/)
   for (const re of [/DONE check/, /never REFERENCE wholesale/, /replaces §1–§3/, /§Prototype seams/]) assert.match(i, re)
 })
+
+test('spec needs a sized record, loads REFERENCE, writes §Idea first and hands off', () => {
+  const s = read('skills/spec/SKILL.md')
+  assert.match(s, /^name: spec$/m)
+  assert.match(s, /status: sized/)
+  assert.match(s, /Load REFERENCE/)
+  assert.match(s, /§Idea/)
+  assert.match(s, /check-obligations\.mjs/)
+  assert.match(s, /handed-off/)
+  assert.match(s, /\/builder:resume --path/)
+  assert.match(s, /confirmed/)
+  assert.match(s, /OPEN/)
+})
