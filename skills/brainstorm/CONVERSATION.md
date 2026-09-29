@@ -53,8 +53,9 @@ something else — evidence required) · `unverifiable` (needs running code or a
 **Resuming a record** (`--path`): `exploring` or `parked` → say what is settled and what is open,
 then the next round; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
 hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
-stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` → nothing to resume —
-say where the work went.
+stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC → nothing to
+resume — say where the work went; with a live SPEC → a new revision (brainstorm's §Where to start
+step 4).
 
 🔴 **Every settled row keeps its Why, and every rejected option its reason.** `/builder:spec` writes
 §Idea and the §Decisions rows from these columns; a row without them becomes a thin spec.

@@ -23,8 +23,9 @@ known to build.
 
 Take these in order; the first that applies wins.
 
-1. **`--path <folder>` with a `brainstorm.md` in its workspace** → resume from its `status:`
-   (CONVERSATION §The record). A record with `source: intake` belongs to
+1. **`--path <folder>` with a `brainstorm.md` in its workspace whose status is not `handed-off`** →
+   resume from its `status:` (CONVERSATION §The record). A `handed-off` record falls through to
+   step 4 — with a live SPEC that is a new revision, which overwrites the record. A record with `source: intake` belongs to
    `/builder:intake` — hand it there.
 2. **A design flag, a ticket id, or a pasted or linked document that already decides most of the
    design** → offer the better entry: "This reads like a worked-out spec — want me to verify it
@@ -43,8 +44,8 @@ Take these in order; the first that applies wins.
    - a live `SPEC.md` → a **revision conversation**: seed the tree from the SPEC — every ruled
      §Decisions row a `settled` branch; a row still `OPEN` an `open` branch that keeps its
      recommendation — then run the rounds on the change and §Confirm, and **skip §Size**. With no
-     `go-ahead:` in the manifest it hands to `/builder:spec --path <folder>`; after a go-ahead, to
-     `/builder:revise --path <folder>`.
+     `go-ahead:` in the manifest it hands to `/builder:spec --path <folder>`; after a go-ahead, set
+     `status: handed-off` and hand to `/builder:revise --path <folder>`.
 5. Otherwise it is new: confirm the derived kebab-case name in the first turn.
 
 ## Intent — the first turn
@@ -89,7 +90,7 @@ CONVERSATION §Rounds, until the frontier is empty. Where the branches come from
 CONVERSATION §Approaches, §Confirm and §Size and the small path, in that order. Sizing happens only
 after the user confirms the understanding and chooses to build. A revision conversation never sizes:
 after §Confirm it hands to `/builder:spec --path <folder>` (no `go-ahead:` yet) or
-`/builder:revise --path <folder>` (after a go-ahead).
+`/builder:revise --path <folder>` (after a go-ahead, with `status: handed-off` set first).
 
 ## Size
 
