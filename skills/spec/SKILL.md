@@ -48,8 +48,11 @@ Pushback amends the record's tree first, then the section. Under `--auto` presen
 §Contract are never skipped**; lg writes them all. Every settled branch — a choice — becomes a
 §Decisions row: an implementable ruling, its why in one line, the rejected option and why it lost,
 and the Tree row's Who / date as its Who/date (an `auto (recommended) YYYY-MM-DD` stays exactly
-that) — copy the §Decisions comment block verbatim. A `confirmed` row from intake is a fact, not a
-choice: it goes to §Idea's how it fits today, or to §Findings & risks when it constrains the build —
+that) — copy the §Decisions comment block verbatim. Intake tags each row with its kind. A
+`confirmed` `decision`, `requirement`, `constraint` or `non-goal` row is a choice the document made
+and the code agrees with: it becomes a §Decisions row like any settled branch, with the document as
+its Who/date (`<doc name> YYYY-MM-DD`). A `confirmed` `claim` — a fact about how the code already
+works — goes to §Idea's how it fits today, or to §Findings & risks when it constrains the build,
 never to §Decisions. A `contradicted` or `unverifiable` row still unresolved when spec runs
 (possible after "that's enough") becomes an OPEN §Decisions row that states the contradiction and
 its recommendation; it blocks the go-ahead like any OPEN row. Assumed branches the user never

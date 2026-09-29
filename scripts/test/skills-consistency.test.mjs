@@ -49,6 +49,15 @@ test('intake verifies claims, owns prototype mode, and shares the record', () =>
   for (const re of [/DONE check/, /never REFERENCE wholesale/, /replaces §1–§3/, /§Prototype seams/]) assert.match(i, re)
 })
 
+test("intake's confirmed decisions become rulings; only its claims about the code leave §Decisions", () => {
+  const i = read('skills/intake/SKILL.md')
+  assert.match(i, /`decision`.*`requirement`.*`constraint`.*`non-goal`.*`claim`/s, 'intake tags each stated row with its kind')
+  const s = read('skills/spec/SKILL.md')
+  assert.match(s, /`confirmed` `decision`, `requirement`, `constraint` or `non-goal` row[^.]*§Decisions/s)
+  assert.match(s, /`confirmed` `claim`[^.]*§Idea/s)
+  assert.doesNotMatch(s, /A `confirmed` row from intake is a fact, not a\s+choice/)
+})
+
 test('spec needs a sized record, loads REFERENCE, writes §Idea first and hands off', () => {
   const s = read('skills/spec/SKILL.md')
   assert.match(s, /^name: spec$/m)
