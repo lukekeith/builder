@@ -12,8 +12,8 @@ erroring on it.
 **`--help` first.** If present, render the `builder:help` card and stop.
 
 **The mechanics live in [CONVERSATION.md](CONVERSATION.md)** — the record, rounds, approaches,
-confirm, size, steering. Read it now. **Do not load REFERENCE**: the conversation comes first, and
-the spec formats belong to `/builder:spec`. Read `.claude/builder.md` for the apps and the house-rule
+confirm, size, steering. Read it now. **Do not load REFERENCE wholesale** — the conversation reads only the three sections CONVERSATION.md
+names, when it reaches them; the spec formats belong to `/builder:spec`. Read `.claude/builder.md` for the apps and the house-rule
 sources only.
 
 **This is a dialogue.** It is done when the user says the understanding is right — not when enough is
@@ -21,24 +21,31 @@ known to build.
 
 ## Where to start
 
-- **`--path <folder>` with a `brainstorm.md` in its workspace** → resume: say what is settled and what
-  is open, then ask the next round. A record with `source: intake` belongs to `/builder:intake` —
-  hand it there.
-- **`--path` or a derived name that exists under `<registry>/_archive/`** → it shipped: refuse the
-  name, say when (its header line), suggest `<name>-v2`.
-- **A live `SPEC.md` in the folder** → a revision conversation: seed the tree from the SPEC (every
-  §Decisions row a `settled` branch), then run the rounds on the change. With no `go-ahead:` yet the
-  result goes to `/builder:spec`; after a go-ahead it goes to `/builder:revise`.
-- **A folder with build state but no manifest** → a pre-builder layout: hand it to
-  `/builder:resume --path <folder>` and stop.
-- **No `--path`, no text** → the picker: `node <builder>/scripts/list-features.mjs --json`, one
-  AskUserQuestion — the in-progress features and conversations (their `state` + `nextStep`), plus
-  **New (describe it)**.
-- **A design flag, a ticket id, or a pasted or linked document that already decides most of the
-  design** → offer the better entry: "This reads like a worked-out spec — want me to verify it
-  against the code with `/builder:intake` instead of exploring from scratch?" On yes, hand it over
-  verbatim. A design flag always goes to intake.
-- Otherwise it is new: derive a kebab-case name from the text and confirm it in the first turn.
+Take these in order; the first that applies wins.
+
+1. **`--path <folder>` with a `brainstorm.md` in its workspace** → resume: say what is settled and
+   what is open, then ask the next round. A record with `source: intake` belongs to
+   `/builder:intake` — hand it there.
+2. **A design flag, a ticket id, or a pasted or linked document that already decides most of the
+   design** → offer the better entry: "This reads like a worked-out spec — want me to verify it
+   against the code with `/builder:intake` instead of exploring from scratch?" On yes, hand it over
+   verbatim. A design flag always goes to intake.
+3. **No `--path`, no text** → the picker: `node <builder>/scripts/list-features.mjs --json`, one
+   AskUserQuestion — the in-progress features and conversations (their `state` + `nextStep`), plus
+   **New (describe it)**.
+4. **Derive the name** (from `--path` or the text) and check it:
+   - exists under `<registry>/_archive/` → it shipped: refuse the name, say when (its header line),
+     suggest `<name>-v2`.
+   - **The DONE check**: a live folder whose SPEC header carries `SHIPPED`, or whose README header
+     opens `SHIPPED` → print the header, run no step, and offer a new feature name for follow-on work.
+   - build state but no manifest → a pre-builder layout: hand it to `/builder:resume --path <folder>`
+     and stop.
+   - a live `SPEC.md` → a **revision conversation**: seed the tree from the SPEC — every ruled
+     §Decisions row a `settled` branch; a row still `OPEN` an `open` branch that keeps its
+     recommendation — then run the rounds on the change and §Confirm, and **skip §Size**. With no
+     `go-ahead:` in the manifest it hands to `/builder:spec --path <folder>`; after a go-ahead, to
+     `/builder:revise --path <folder>`.
+5. Otherwise it is new: confirm the derived kebab-case name in the first turn.
 
 ## Intent — the first turn
 
@@ -80,7 +87,9 @@ CONVERSATION §Rounds, until the frontier is empty. Where the branches come from
 ## Approaches, confirm, size
 
 CONVERSATION §Approaches, §Confirm and §Size and the small path, in that order. Sizing happens only
-after the user confirms the understanding and chooses to build.
+after the user confirms the understanding and chooses to build. A revision conversation never sizes:
+after §Confirm it hands to `/builder:spec --path <folder>` (no `go-ahead:` yet) or
+`/builder:revise --path <folder>` (after a go-ahead).
 
 ## Size
 
