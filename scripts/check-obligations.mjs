@@ -270,6 +270,26 @@ for (const dir of suites) {
     }
   }
 
+  // ── Obligation 5: a rejected option says why it lost ──────────────────────
+  // The reasoning is what a later reader needs to not re-propose it. A WARN, not a FAIL: specs
+  // written before 4.0 recorded bare rejections by rule, and they stay valid.
+  const decisionsText = section(spec, DECISIONS_SECTION)
+  for (const line of decisionsText.split('\n')) {
+    const id = /^\|\s*`?(D\d+)`?\s*\|/.exec(line)?.[1]
+    if (!id) continue
+    for (const [, clause] of line.matchAll(/Rejected:\s*([^|]*)/gi)) {
+      const text = clause.trim().replace(/[.\s]+$/, '')
+      if (!/—|–|\s-\s|[(;:,]|\b(because|since|as|would|so)\b/i.test(text)) {
+        findings.push({
+          severity: 'WARN',
+          rule: 'rejected option gives no reason',
+          id,
+          detail: `${id} rejects "${text}" without saying why. One line of why is what stops it being re-proposed.`,
+        })
+      }
+    }
+  }
+
   results.push({ feature, findings })
 }
 
