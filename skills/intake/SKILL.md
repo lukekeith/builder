@@ -25,6 +25,9 @@ paragraph, from the document.
   hand it to `/builder:brainstorm`.
 - The name checks in brainstorm's §Where to start step 4 — the archive refusal, the DONE check and
   the pre-builder-layout hand-off — apply the same way.
+- A live `SPEC.md` under the name → this is a revision: hand it to `/builder:brainstorm --path
+  <folder>`, which owns revision conversations. `--path` to a folder with no `brainstorm.md` and no
+  SPEC → start fresh with that name.
 - **A ticket id** → read it with the config's ticket tooling, and its dossier when `ticket.dossier`
   names one.
 - **A design flag** → prototype mode, below.
@@ -46,7 +49,9 @@ verdict that needs judgment). Each row ends as:
 - **`contradicted`** — the code does something else; the Evidence cell says what, with `file:line`.
 - **`unverifiable`** — only running code or a person can say; name which.
 
-Update `contradicted:` in the header as they land.
+Update `contradicted:` in the header as they land. A `contradicted` or `unverifiable` row the user
+rules on becomes `settled`, with the ruling; the header's `contradicted:` counts the contradictions
+still unresolved.
 
 ## 3. Find the gaps
 
@@ -75,6 +80,10 @@ CONVERSATION §Confirm and §Size and the small path. md, lg and xl hand on to `
 **The design is the requirements** (REFERENCE §Prototype mode). Only when the config has a `design:`
 block.
 
+Prototype mode replaces §1–§3: the design's contract facts are the `stated` rows, and the five-axis
+check is their verification — each fact ends `confirmed` or `contradicted` with evidence, and each gap
+is an `open` row. §4 and §5 then run as written, and §5 sizes from the whole resolved set.
+
 1. **Resolve the ref — never from memory** — with the config's `design.resolver`, following
    [`SCOPE-SELECTION.md`](../resume/SCOPE-SELECTION.md). Under `--auto` an ambiguous ref without `--all`
    refuses to start. Echo the resolved scope as a tree, naming what is NOT in scope and which items are
@@ -92,14 +101,24 @@ block.
    invent inline); conventions — the config's §Design source, item by item; a light read of what the
    design persists (the full trace is align's).
 4. **One gap list** across the whole scope — the same defect at eight sites is one gap with its eight
-   sites — ordered by blast radius. Each gap is an `open` row offering REFERENCE §Prototype mode's three
+   sites — ordered by blast radius. Gaps are asked in rounds like any open row, but a gap whose
+   disposition is "fix it in the design" ends that round: the fix is routed to the design's owner and
+   the contract is re-read before the next round. Each gap is an `open` row offering REFERENCE §Prototype mode's three
    options, recommendation marked: fix it in the design (route to the config's `design.owned_by`, then
    re-read the contract), write it into the SPEC, or out of scope. 🔴 **This step never edits the
    design.** Under `--auto` a gap takes its recommended option; "fix it in the design" is recommended
    only for a bounded, mechanical fix.
 
-The resolved scope, the inventory summary and each gap's disposition go in the record, so
-`/builder:spec` can write §Prototype and §Replaced surfaces.
+The record carries, so `/builder:spec` can write §Prototype and §Replaced surfaces:
+
+- the resolved scope;
+- the inventory summary;
+- the axis-1 surface table (REPLACES/ABSORBS/REUSES with fingerprints and each row's owning app,
+  re-verified by fingerprint when a §Replaced surfaces already exists);
+- the `S#` and `N#` rows;
+- the journey edges found MISSING;
+- the persistence read as §Prototype seams;
+- each gap's disposition.
 
 ## Every pause
 
