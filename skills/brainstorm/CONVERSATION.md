@@ -48,8 +48,9 @@ Chosen: <approach> — <trade-offs> · Rejected: <approach> — <why it lost>
 written when the run has `--ticket <id>` or the input is a ticket, omitted otherwise. `input:` names
 where the conversation started: brainstorm writes its kind; intake writes the source it verifies —
 the file path or URL, or `pasted` — so a resumed intake re-opens that source. A Tree row's *Who /
-date* says who ruled it and when: the user and the date, `(assumed at brainstorm)`, or
-`auto (recommended) YYYY-MM-DD`. Intake starts each Branch cell with the row's kind — `decision`,
+date* says who ruled it and when: the user and the date, `(assumed at brainstorm)`,
+`auto (recommended) YYYY-MM-DD`, or — for an intake row the code confirmed — the `input:` source and
+the date it was confirmed. Intake starts each Branch cell with the row's kind — `decision`,
 `requirement`, `constraint`, `non-goal` or `claim` — which is how `/builder:spec` tells a document's
 choices (rulings) from its statements about the code (facts).
 
