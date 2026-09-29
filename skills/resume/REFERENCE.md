@@ -114,7 +114,7 @@ Checked before any question is asked, from recon; announced with the evidence.
 
 A feasibility question ("can we…", "is it possible…") is a **spike, not a build**: say so, answer it
 as a question — read the code, run the experiment, report what you found — and do not wrap it in a
-feature folder. A spike that concludes "yes, and here's how" becomes a `/builder:brainstorm` run
+feature folder. A spike that concludes "yes, and here's how" becomes a `/builder:brainstorm` (or `/builder:intake`) run
 afterwards.
 
 🔴 **In a multi-app repo, rule 4 is the one that bites.** A change that crosses an app boundary is
@@ -290,7 +290,12 @@ Sections in this order; md writes only the ones its work touches, lg writes them
 # <feature> — spec
 > size · ticket · (header line written at sign-off: ✅ SIGNED OFF … / ✅ SHIPPED …)
 
-## Overview
+## Idea                 prose, never a table — written from brainstorm.md by /builder:spec:
+                       **Why.** the outcome and who it's for · **What success looks like.** how a person
+                       will know it works · **In your words.** "<the owner's key rules, verbatim>" → D3, D7
+                       (each quote linked to its ruling) · **The concept.** how it works (mermaid when
+                       several parts move) · **How it fits today.** prose, file:line only as footnotes ·
+                       **Approaches considered.** chosen and why · rejected and why
 ## Apps                 | App | In scope | What changes | Section |   one row per config app, always
 ## Decisions            | # | Decision | Ruling | Who / date |     OPEN rows block the go-ahead
 ## Contract             the interface every consumer codes against — §The contract freeze
@@ -316,7 +321,8 @@ NOT-NULL EDIT rows must appear here. Ordering if the migrations aren't independe
 
 **`## Fixes` is the only section written after sign-off.**
 
-Target ≤ 300 lines; `list-features.mjs --check` warns at 500 — a longer SPEC is usually two features.
+Target ≤ 350 lines; `list-features.mjs --check` warns at 500 — a longer SPEC is usually two features.
+A SPEC written before 4.0.0 opens with `## Overview` instead of `## Idea`; it stays valid as it is.
 
 `check-obligations.mjs` reads §Apps, §Contract, §Schema & API changes, §Findings and §Replaced
 surfaces, and is what turns each into an enforced obligation rather than a habit.
@@ -324,18 +330,19 @@ surfaces, and is what turns each into an enforced obligation rather than a habit
 **The §Decisions comment block, copied into every SPEC verbatim:**
 
 ```markdown
-<!-- The one place rulings live. Record the DECISION, not the conversation: a stated preference
+<!-- The one place rulings live. Record the DECISION — and, in one line, why, and why the rejected option lost. A stated preference
      is the INPUT to a row, not the row. Write each Ruling as something later code can be checked
      against without re-interpretation:
        · positive and specific — "store the full number, mask at render", not "don't truncate"
        · scope named — which apps, screens or endpoints it binds
        · "etc." / "and so on" expanded into the list, or the test for membership stated
-       · the rejected alternative named, when it would otherwise be re-proposed
+       · the rejected alternative named, with the reason it lost (check-obligations warns on a bare one)
        · the enforcement hook, where one exists (lint rule, script, test)
      🔴 NEVER quote the user's prompt as the ruling. Operationalize it: a closed list, a measured
      value, an enumerated set of deviations. A ruling a stranger could implement two ways is not
      written yet.
      Who/date carries the provenance, so the Ruling itself needs no quote marks.
+     The owner's own words go in §Idea "In your words", linked to this row — never in the Ruling.
      OPEN rows block the build go-ahead. Never delete a ruling; supersede it in place with a date. -->
 ```
 
@@ -451,7 +458,7 @@ refuses it.
 
 ## Prototype mode
 
-Entered by the config's design flag. **The design is the requirements** — a finished, specced design
+Entered through `/builder:intake --<design.flag> <ref>`, which runs steps 1–4 below; `/builder:spec` runs step 5. **The design is the requirements** — a finished, specced design
 is read as the spec instead of interviewing for one. It exists only when the config has a `design:`
 block; without one, skip every prototype-mode paragraph in this family.
 
