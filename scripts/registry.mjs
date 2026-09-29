@@ -45,11 +45,19 @@ export function specDir(root, registry, name) {
   return existsSync(archived) ? archived : live
 }
 
-/** A folder that says it shipped: a `✅ SHIPPED` SPEC or PROGRAM header, or `state: shipped`. */
+/** A folder that says it shipped: a `✅ SHIPPED` SPEC or PROGRAM header, `state: shipped`, or — in a
+ *  legacy layout — a README `✅ **SHIPPED**` header or `**Status:**` line that opens with SHIPPED
+ *  (never "shipped-ready"). The same rules list-features.mjs counts as DONE. */
 export function isShippedFolder(dir) {
   for (const doc of ['SPEC.md', 'PROGRAM.md']) if (/✅\s*\*{0,2}SHIPPED/.test((read(join(dir, doc)) ?? '').slice(0, 800))) return true
   const mf = read(join(dir, 'MANIFEST.md'))
-  return mf != null && parseManifest(mf).state === 'shipped'
+  if (mf != null && parseManifest(mf).state === 'shipped') return true
+  const readme = read(join(dir, 'README.md'))
+  if (readme == null) return false
+  if (/✅\s*\*\*SHIPPED/.test(readme.slice(0, 800))) return true
+  const m = readme.match(/\*\*Status:\*\*\s*([^\n]*)/) ?? readme.match(/\*\*Status:\s*([^*\n]*)\*\*/)
+  const status = m ? m[1].replace(/[`*]/g, '').replace(/\s+/g, ' ').trim() : ''
+  return /^SHIPPED\b/i.test(status) && !/^shipped-ready/i.test(status)
 }
 
 /**

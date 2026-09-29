@@ -39,8 +39,9 @@ Already on the latest → say so in one line. Otherwise read `CHANGELOG.md` from
 folder (`claude plugin list --json` → the user-scope `builder@<marketplace>` row's `installPath`) and
 summarise every section newer than `<version>` in a few bullets, **breaking changes first**. A major
 bump can change what `.claude/builder.md` must hold, so name `/builder:init --update` when one does.
-From 3.8.0 a shipped folder lives under `<registry>/_archive/`. When `list-features.mjs --status` ends
-with `🔒 N shipped, not shown — … --sweep …`, name `node <builder>/scripts/registry.mjs --sweep` once:
+From 3.8.0 a shipped folder lives under `<registry>/_archive/`. Run
+`node <builder>/scripts/list-features.mjs --status` and check whether its output includes the
+`🔒 N shipped, not shown` line; if so, name `node <builder>/scripts/registry.mjs --sweep` once:
 it `git mv`s them and leaves the commit to the human.
 
 ## 4. Anything shadowing it here

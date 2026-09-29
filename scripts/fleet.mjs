@@ -65,6 +65,12 @@ if (flag('--parallel')) {
     process.exit(2)
   }
 }
+// `--archived [N]` — N is optional; a value that is there must be a positive integer.
+const archivedVal = flag('--archived') && argv[argv.indexOf('--archived') + 1] !== undefined && !argv[argv.indexOf('--archived') + 1].startsWith('--') ? opt('--archived') : undefined
+if (archivedVal !== undefined && !/^[1-9]\d*$/.test(archivedVal)) {
+  console.error(`--archived must be a positive integer, got '${archivedVal}'. ${USAGE}`)
+  process.exit(2)
+}
 const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
@@ -75,9 +81,9 @@ const DIR = fleetDir(ROOT)
 // state, the plan's tasks and the ledger's completed ones. A few small files per feature.
 const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
 
-if (flag('--status')) {
+if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
-  if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(opt('--archived')) || 20), fleet?.archived ?? 0))
+  if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null) : 'No fleet has run in this repo yet.')
   process.exit(0)
 }
@@ -482,14 +488,16 @@ if (tookOverStaleLock) {
   }
 }
 
+// A row a fleet before 3.8 left at `done`, or one killed between its landing and the save that
+// would have archived it, is archived now — appendArchive skips a line already written. It runs
+// before `fleet.target` moves to this checkout, so the row records the target it landed on.
+for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature)
+pruneArchivedLogs(ROOT, AW.keepLogs)
+
 fleet.target = TARGET
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
-// A row a fleet before 3.8 left at `done`, or one killed between its landing and the save that
-// would have archived it, is archived now — appendArchive skips a line already written.
-for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature)
-pruneArchivedLogs(ROOT, AW.keepLogs)
 
 // ---- one claude run ------------------------------------------------------------------------
 function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`) {
@@ -603,13 +611,6 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
-/**
- * Merge a shipped feature into the target and clear its worktree and branch. The branch is brought
- * up to the target first (an agent resolves any conflict), so the merge into the target is only
- * this feature's changes and cannot conflict. `--no-ff` keeps one merge commit per feature — easy to
- * find, and `git revert -m 1` takes a feature back out. One merge at a time: the walk lane and the
- * pool both land, and a second merge must see the first one's commit.
- */
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature) {
   const f = fleet.features[feature]
@@ -630,6 +631,13 @@ function archiveRow(feature) {
   if (why) addNote(why)
 }
 
+/**
+ * Merge a shipped feature into the target and clear its worktree and branch. The branch is brought
+ * up to the target first (an agent resolves any conflict), so the merge into the target is only
+ * this feature's changes and cannot conflict. `--no-ff` keeps one merge commit per feature — easy to
+ * find, and `git revert -m 1` takes a feature back out. One merge at a time: the walk lane and the
+ * pool both land, and a second merge must see the first one's commit.
+ */
 let landing = Promise.resolve()
 function land(feature) {
   const run = landing.then(() => landNow(feature))
