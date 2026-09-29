@@ -3,10 +3,15 @@
  * `registry:`; /builder:ship moves a shipped one into `<registry>/_archive/<feature>/` in the ship
  * commit, where nothing routine reads it. Listing in-flight work never touches the archive, and
  * "has X shipped?" is one existsSync — the same cost at ten shipped features as at ten thousand.
+ *
+ *   node <plugin>/scripts/registry.mjs --sweep   # one-time: git mv every shipped folder into _archive/
  */
-import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { readdirSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { parseManifest } from './manifest.mjs'
+import { requireConfig } from './config.mjs'
 
 export const ARCHIVE = '_archive'
 
@@ -45,4 +50,54 @@ export function isShippedFolder(dir) {
   for (const doc of ['SPEC.md', 'PROGRAM.md']) if (/✅\s*\*{0,2}SHIPPED/.test((read(join(dir, doc)) ?? '').slice(0, 800))) return true
   const mf = read(join(dir, 'MANIFEST.md'))
   return mf != null && parseManifest(mf).state === 'shipped'
+}
+
+/**
+ * Move every in-flight folder that says it shipped into the archive with `git mv`, leaving the
+ * result staged for the human to commit. Refuses while anything under the registry is uncommitted,
+ * so the move never mixes with work in progress. A name already in the archive is left in place.
+ */
+export function sweep(root, registry) {
+  const dirty = execFileSync('git', ['status', '--porcelain', '--', registry], { cwd: root, encoding: 'utf8' }).trimEnd()
+  if (dirty) return { ok: false, reason: `uncommitted changes under ${registry} — commit or stash them first:\n${dirty}` }
+  const moved = []
+  const collisions = []
+  for (const name of features(root, registry).sort()) {
+    if (!isShippedFolder(join(root, registry, name))) continue
+    if (isArchived(root, registry, name)) {
+      collisions.push(name)
+      continue
+    }
+    mkdirSync(join(root, registry, ARCHIVE), { recursive: true })
+    execFileSync('git', ['mv', join(registry, name), join(registry, ARCHIVE, name)], { cwd: root })
+    moved.push(name)
+  }
+  return { ok: true, moved, collisions }
+}
+
+const invoked = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+})()
+if (invoked) {
+  if (!process.argv.slice(2).includes('--sweep')) {
+    console.error('Usage: registry.mjs --sweep   (moves every shipped folder into <registry>/_archive/, staged)')
+    process.exit(2)
+  }
+  const CFG = requireConfig()
+  const r = sweep(CFG.root, CFG.registry)
+  if (!r.ok) {
+    console.error(r.reason)
+    process.exit(1)
+  }
+  for (const n of r.collisions) console.log(`⚠ ${n} — ${CFG.registry}/${ARCHIVE}/${n} already exists; left in place`)
+  if (!r.moved.length) console.log(`Nothing to archive — no shipped folder outside ${CFG.registry}/${ARCHIVE}/.`)
+  else {
+    console.log(`Moved ${r.moved.length} shipped folder(s) into ${CFG.registry}/${ARCHIVE}/ (staged, not committed):`)
+    for (const n of r.moved) console.log(`  ${n}`)
+    console.log('Commit them: git commit -m "docs: archive shipped features"')
+  }
 }
