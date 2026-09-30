@@ -174,6 +174,19 @@ test('no picker offers a conversation in progress except resume, brainstorm and 
   }
 })
 
+test('brainstorm asks one question at a time, briefed, with a marked recommendation', () => {
+  const c = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(c, /One question per turn, by default/)
+  assert.match(c, /\*\*Why it matters:\*\*/)
+  assert.match(c, /\*\*What it affects:\*\*/)
+  assert.match(c, /\*\*Recommendation:\*\*/)
+  assert.match(c, /` \(Recommended\)` on its label/)
+  assert.match(c, /never add a "something else"\s+option/)
+  assert.match(c, /Several at once, only when they are independent and quick/)
+  assert.doesNotMatch(c, /Ask the whole frontier each round/, 'no batch-dump of the frontier')
+  assert.doesNotMatch(c, /❓ \*\*Q1/, 'no numbered prose questions')
+})
+
 test("brainstorm grounds the user's terms in the code before it plays back or asks", () => {
   const c = read('skills/brainstorm/CONVERSATION.md')
   assert.match(c, /^## Grounding$/m)
@@ -183,8 +196,8 @@ test("brainstorm grounds the user's terms in the code before it plays back or as
   assert.match(c, /The fast pass — seconds, every term/)
   assert.match(c, /Dig — only when 1 and 2 left a term unclear/)
   assert.ok(c.indexOf('The fast pass') < c.indexOf('Explore agent'), 'agents are the last rung, not the first')
-  assert.match(c, /Several candidates.*ask with them named/s)
-  assert.match(c, /The self-check before every round/)
+  assert.match(c, /Several candidates.*ask with them as the options/s)
+  assert.match(c, /The self-check before every question/)
   const b = read('skills/brainstorm/SKILL.md')
   assert.match(b, /Ground it in the code before your first word back/)
   assert.match(b, /Look it up yourself, fast pass first/)

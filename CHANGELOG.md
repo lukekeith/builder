@@ -4,6 +4,18 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.3.1
+
+**Changed:**
+- **`/builder:brainstorm` and `/builder:intake` ask one question at a time.** Each question opens
+  with a short briefing — the question in one sentence, **Why it matters**, **What it affects** and
+  the **Recommendation** with its reasoning — then a picker with 2–4 concrete answers, the
+  recommendation first and labelled `(Recommended)`, each saying what picking it does and what it
+  makes better or worse. *Other* is always there for your own answer. A few quick, independent
+  choices can still come together, as one picker with a tab per question; anything with real
+  trade-offs is asked alone. Approaches use the same picker, with a preview of each. The record is
+  rewritten after every answer.
+
 ## 4.3.0
 
 **New:**
