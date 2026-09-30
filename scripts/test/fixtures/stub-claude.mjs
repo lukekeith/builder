@@ -3,6 +3,7 @@
 // steps; each call applies the next one to the manifest in cwd and logs start/end to calls.log.
 //   <state>         set state:        READY-PENDING  state: building + ready: pending
 //   BLOCK:<reason>  set blocked:      PR:<#n>        set pr:
+//   PARK-HUMAN:<reason> / PARK-RECORD:<reason>  set blocked: and write PARKED.md (kind human-step / stuck)
 //   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
@@ -58,7 +59,7 @@ if (/could not bring up the walk env/.test(prompt)) {
 
 let step = next(feature, 'NOOP')
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {
@@ -102,7 +103,17 @@ if (step === 'SWITCH-THEN-SHIP') {
   execFileSync('sh', [join(S, 'switch.sh')])
   step = 'SHIP'
 }
+// PARK-HUMAN / PARK-RECORD: a park that writes its own PARKED.md, as the skills do — kind human-step, or stuck.
+const record = (reason, kind) =>
+  writeFileSync(join(process.cwd(), spec, 'PARKED.md'), `# ${feature} — parked\nkind: ${kind}\nblocked: "${reason}"\n\n## What is stuck\nwritten by the run\n`)
 if (step.startsWith('BLOCK:')) set('blocked', step.slice(6))
+else if (step.startsWith('PARK-HUMAN:')) {
+  set('blocked', `"${step.slice(11)}"`)
+  record(step.slice(11), 'human-step')
+} else if (step.startsWith('PARK-RECORD:')) {
+  set('blocked', `"${step.slice(12)}"`)
+  record(step.slice(12), 'stuck')
+}
 else if (step.startsWith('PR:')) set('pr', step.slice(3))
 else if (step === 'SHIP') {
   rmSync(mfPath)

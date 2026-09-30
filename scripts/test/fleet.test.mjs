@@ -19,7 +19,9 @@ function makeRepo(features, { reset, stop, lines = [] } = {}) {
   git(root, 'config', 'user.email', 't@t')
   git(root, 'config', 'user.name', 't')
   mkdirSync(join(root, '.claude'))
-  const hooks = [reset && `  reset: ${reset}`, stop && `  stop: ${stop}`, ...lines.map((l) => `  ${l}`)].filter(Boolean).join('\n')
+  // Automatic retries are off unless a test asks for them: most tests assert on the first park.
+  const retries = lines.some((l) => l.startsWith('auto_unpark:')) ? [] : ['auto_unpark: 0']
+  const hooks = [reset && `  reset: ${reset}`, stop && `  stop: ${stop}`, ...[...retries, ...lines].map((l) => `  ${l}`)].filter(Boolean).join('\n')
   writeFileSync(
     join(root, '.claude/builder.md'),
     `---\nproject: fleet-test\nregistry: docs/features\nbase_branch: main\napps:\n  - name: app\n    path: app/\n    role: app\n    commit: auto\n` +
@@ -599,7 +601,7 @@ test('a failing sync parks the feature naming its log; a target already merged r
   laggingBranch(root, 'u')
   const r = runFleet(root, ['u'], { u: HAPPY })
   assert.equal(r.fleet.features.u.status, 'parked')
-  assert.match(r.fleet.features.u.reason, /agent_walk\.sync failed after merging main — see .*u-sync\.log/)
+  assert.match(r.fleet.features.u.reason, /agent_walk\.sync failed after merging main \(see .*u-sync\.log\) — next: make agent_walk\.sync pass/)
   assert.equal(r.calls.length, 0)
   const quiet = makeRepo(['a'], { lines: ['sync: touch synced'] })
   const q = runFleet(quiet, ['a'], { a: ['audited', 'BLOCK:wait'] })
@@ -632,7 +634,7 @@ test('a conflict two agent runs leave unresolved parks, the merge backed out', (
   conflictingBranch(root, 'u')
   const r = runFleet(root, ['u'], { u: HAPPY, 'u:resolve': ['NOOP', 'ABORT'] })
   assert.equal(r.fleet.features.u.status, 'parked')
-  assert.match(r.fleet.features.u.reason, /merging main \(what other features merged\) conflicted and two agent runs could not resolve it — see .*u-02\.log/)
+  assert.match(r.fleet.features.u.reason, /merging main \(what other features merged\) conflicted and two agent runs could not resolve it \(see .*u-02\.log\) — next: finish the merge in .* and commit it, then \/builder:agent$/)
   assert.deepEqual(r.calls, ['resolve u NOOP', 'resolve u ABORT'], 'an aborted merge is started again for the second run; no pipeline run follows')
   const wt = r.fleet.features.u.worktree
   assert.equal(git(wt, 'status', '--porcelain', '--untracked-files=no'), '', 'no half-merged tree is left behind')
@@ -714,7 +716,7 @@ test('a smoke that never passes gets one agent fix run, then parks and skips the
   const { root, pidFile } = await walkEnvRepo('s', { smoke: 'exit 1' })
   const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '1500' })
   assert.equal(r.fleet.features.s.status, 'parked')
-  assert.match(r.fleet.features.s.reason, /^walk env didn't come up — see .*s-start\.log — an agent run could not fix it/)
+  assert.match(r.fleet.features.s.reason, /^the walk env would not start \(walk env didn't come up — see .*s-start\.log\) and an agent run could not fix it — next: run agent_walk\.start in /)
   assert.equal(r.calls.filter((l) => l === 'envfix s NOOP').length, 1, 'one fix run')
   assert.equal(r.calls.filter((l) => l.split(' ')[2] === 'walk').length, 0, 'no walk-lane run')
   const pid = Number(readFileSync(pidFile, 'utf8'))
@@ -812,7 +814,7 @@ test('a child whose dependency parks is parked too, saying why', () => {
   const r = runFleet(root, ['api', 'ui'], { api: ['audited', 'BLOCK:needs a human'] })
   assert.equal(r.fleet.features.api.status, 'parked')
   assert.equal(r.fleet.features.ui.status, 'parked')
-  assert.equal(r.fleet.features.ui.reason, 'waits on api (parked)')
+  assert.equal(r.fleet.features.ui.reason, 'waits on api (parked), which never merged — next: settle api, then pick both in /builder:agent')
   assert.ok(!r.calls.some((l) => l.startsWith('start ui ')), 'ui never ran')
   assert.equal(r.fleet.features.ui.worktree, null, 'no worktree before its dependency ships')
 })
@@ -830,7 +832,7 @@ test('a merge your uncommitted changes would clobber parks; the next run merges 
   writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n') // the ship writes this path
   const first = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — your uncommitted changes are in the way; commit or stash them and re-run the fleet/)
+  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — your uncommitted changes are in the way — next: commit or stash them, then \/builder:fleet/)
   assert.equal(readFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'utf8'), 'my local edit\n', 'your change is untouched')
   unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
   const second = runFleet(root, [], { a: HAPPY })
@@ -972,25 +974,125 @@ test('an inbox left by a fleet that died is drained at the next start', () => {
   assert.equal(existsSync(join(root, '.builder/fleet/inbox/b')), false)
 })
 
-test('a parked feature named again while the fleet runs is re-queued once its block is cleared', async () => {
+test('a parked feature named again while the fleet runs is unparked and re-queued', async () => {
   const root = makeRepo(['a', 'p'])
-  const scenario = { a: ['CHATTY:2500:audited', ...HAPPY.slice(1)], p: ['BLOCK:"needs a human"', ...HAPPY] }
+  const scenario = { a: ['CHATTY:2500:audited', ...HAPPY.slice(1)], p: ['BLOCK:"needs a human — next: /builder:agent"', ...HAPPY] }
   writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
   const fleet = spawn('node', [FLEET, 'a', 'p', '--parallel', '2'], { cwd: root, stdio: 'ignore', env: ENV(root, { FLEET_INBOX_POLL_MS: '100' }) })
   const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
   const fj = () => JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
   await until(() => existsSync(join(root, '.builder/fleet/fleet.json')) && fj().features.p?.status === 'parked', 'p never parked')
-  // Clear the block in the worktree as a human would, commit it, then name p again.
-  const wt = fj().features.p.worktree
-  const mf = join(wt, 'docs/features/p/MANIFEST.md')
-  writeFileSync(mf, readFileSync(mf, 'utf8').replace(/^blocked:.*\n/m, ''))
-  git(wt, 'commit', '-qam', 'unblock p')
+  // Named again with its block still set: the running fleet clears it and retries.
   const add = runFleet(root, ['p'], scenario)
   assert.equal(add.status, 0, add.stderr)
   assert.match(add.stdout, /↳ p — re-queued for the running fleet/)
   assert.equal(await exited, 0)
   assert.equal(fj().features.p, undefined)
   assert.ok(archiveOf(root).p)
+  assert.match(git(root, 'log', '--format=%s', 'main'), /^chore\(p\): unparked for a fleet retry — was: needs a human — next: \/builder:agent$/m)
+  assert.match(readFileSync(join(root, '.stub/calls.log'), 'utf8'), /^start p build .*prior=yes/m, 'the run after the unpark is told why it parked')
+})
+
+test('naming a parked feature again unparks it: the block is cleared in a commit and the next run is told why', () => {
+  const root = makeRepo(['a'])
+  const scenario = { a: ['audited', 'BLOCK:plan wants to split — next: /builder:agent', 'planned', 'READY-PENDING', 'verified', 'SHIP'] }
+  const first = runFleet(root, ['a'], scenario)
+  assert.equal(first.fleet.features.a.status, 'parked')
+  const dry = runFleet(root, ['a', '--dry-run'], scenario)
+  assert.match(dry.stdout, /↻ a — unparks and retries — it was parked: plan wants to split/)
+  const second = runFleet(root, ['a'], scenario)
+  assert.equal(second.status, 0, second.stderr)
+  assertLanded(second, 'a')
+  assert.match(git(root, 'log', '--format=%s', 'main'), /^chore\(a\): unparked for a fleet retry — was: plan wants to split — next: \/builder:agent$/m)
+  const starts = second.calls.filter((l) => l.startsWith('start'))
+  assert.match(starts[2], /prior=yes/, 'the first run after the unpark carries the old reason')
+  assert.match(starts[0], /prior=-/, 'the first fleet run had nothing to carry')
+})
+
+test('a spec blocked where it was written is admitted when named, and unparked in its worktree', () => {
+  const root = makeRepo(['b'])
+  const mf = join(root, 'docs/features/b/MANIFEST.md')
+  writeFileSync(mf, `${readFileSync(mf, 'utf8')}blocked: "agent walk failed twice — the items still failing — clears when a human walks it"\n`)
+  git(root, 'commit', '-qam', 'b parked by an older builder')
+  const dry = runFleet(root, ['b', '--dry-run'], { b: HAPPY })
+  assert.match(dry.stdout, /✓ b → builder\/b — unparks it — it was parked: agent walk failed twice/)
+  const r = runFleet(root, ['b'], { b: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'b')
+})
+
+test('a parked feature not named stays parked', () => {
+  const root = makeRepo(['a', 'b'])
+  const first = runFleet(root, ['a', 'b'], { a: ['BLOCK:x — next: y'], b: ['BLOCK:x — next: y'] })
+  assert.equal(first.fleet.features.a.status, 'parked')
+  const second = runFleet(root, ['b'], { a: ['BLOCK:x — next: y'], b: ['BLOCK:x — next: y', 'audited', 'planned', 'READY-PENDING', 'verified', 'SHIP'] })
+  assert.equal(second.fleet.features.a.status, 'parked', 'a was not named')
+  assertLanded(second, 'b')
+})
+
+test('unparking starts the agent walk round cap over: rounds walked before it are recorded as history', () => {
+  const root = makeRepo(['w'])
+  const scenario = { w: ['READY-PENDING', 'BLOCK:agent walk failed five rounds — next: a human walk', 'BLOCK:still failing — next: a human walk'] }
+  const first = runFleet(root, ['w'], scenario)
+  const wt = first.fleet.features.w.worktree
+  for (const n of [1, 2, 5]) mkdirSync(join(wt, `.builder/w/agent-walk/round-${n}`), { recursive: true })
+  const second = runFleet(root, ['w'], scenario)
+  assert.equal(second.fleet.features.w.status, 'parked')
+  assert.equal(readFileSync(join(wt, '.builder/w/agent-walk/unparked-after'), 'utf8'), '5\n')
+})
+
+// ---- the park record and automatic retries -----------------------------------------------
+
+const wtFile = (r, feature, name) => join(r.fleet.features[feature].worktree, 'docs/features', feature, name)
+
+test('a park is retried automatically, up to agent_walk.auto_unpark times in one fleet run', () => {
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 1'] })
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:plan wants to split — next: /builder:agent', 'planned', 'READY-PENDING', 'verified', 'SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  const log = git(root, 'log', '--format=%s', 'main')
+  assert.match(log, /^chore\(a\): unparked for a fleet retry — was: plan wants to split/m)
+  assert.match(r.calls.filter((l) => l.startsWith('start'))[2], /prior=yes/)
+})
+
+test('an automatic retry stops at the cap and the feature stays parked with the newest reason', () => {
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 1'] })
+  const r = runFleet(root, ['a'], { a: ['BLOCK:first — next: x', 'BLOCK:second — next: y'] })
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.equal(r.fleet.features.a.reason, 'second — next: y')
+  assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 2)
+})
+
+test('a human-step park is never retried automatically', () => {
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 2'] })
+  const r = runFleet(root, ['a'], { a: ['PARK-HUMAN:the web app commits by hand — next: commit phase 2, then /builder:agent', 'audited'] })
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 1)
+})
+
+test('the fleet writes a park record when the parking run left none; an unpark adds to its history', () => {
+  const root = makeRepo(['a'])
+  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:the pane opens on a struck preview — next: a human walk'] })
+  const rec = readFileSync(wtFile(first, 'a', 'PARKED.md'), 'utf8')
+  assert.match(rec, /^# a — parked$/m)
+  assert.match(rec, /^kind: stuck$/m)
+  assert.match(rec, /^blocked: "the pane opens on a struck preview — next: a human walk"$/m)
+  assert.match(rec, /^## What is stuck\nthe pane opens on a struck preview$/m)
+  assert.match(rec, /^## Evidence\n- the run that parked it: .*a-02\.log/m)
+  assert.match(rec, /^## Recommended next step\na human walk$/m)
+  assert.match(rec, /^## History\n- \d{4}-\d{2}-\d{2} parked — the pane opens on a struck preview$/m)
+  assert.equal(git(first.fleet.features.a.worktree, 'status', '--porcelain', '--', 'docs'), '', 'the record is committed')
+  const second = runFleet(root, ['a'], { a: ['audited', 'BLOCK:the pane opens on a struck preview — next: a human walk', 'BLOCK:still the pane — next: a human walk'] })
+  const again = readFileSync(wtFile(second, 'a', 'PARKED.md'), 'utf8')
+  assert.match(again, /unparked by a person — named to \/builder:agent or \/builder:fleet/)
+  assert.match(again, /^blocked: "still the pane — next: a human walk"$/m, 'the second park rewrote the record')
+  assert.match(again, /parked — the pane opens on a struck preview[\s\S]*parked — still the pane/, 'history kept growing')
+})
+
+test('a park record the parking run wrote itself is kept as written', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a'], { a: ['PARK-RECORD:the pane default — next: a human walk'] })
+  assert.match(readFileSync(wtFile(r, 'a', 'PARKED.md'), 'utf8'), /written by the run/)
 })
 
 test('a feature already in the archive is refused as shipped', () => {

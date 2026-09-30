@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -77,7 +77,7 @@ test('a first run with no progress runs again; a second in a row parks', () => {
 
 test('the run cap parks', () => {
   const d = decide({ ...base, runs: 12, manifestText: mf('state: planned') })
-  assert.deepEqual(d, { action: 'park', reason: 'run cap (12) reached' })
+  assert.deepEqual(d, { action: 'park', reason: 'run cap (12) reached while still making progress — next: /builder:agent to retry with a fresh cap' })
 })
 
 test('progress under the cap runs again', () => {
@@ -296,4 +296,27 @@ test('renderArchived lists the latest landings newest first', () => {
   assert.match(out, /\| b \| fff0000 \| #9 \| 1h ago \|/)
   assert.match(out, /\| a \| abc1234 \| — \| 2h ago \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
+})
+
+test('parkParts splits a park into why and next; an old "clears when" reads as the next step', () => {
+  assert.deepEqual(parkParts('the pane opens on a struck preview — next: /builder:agent'), { why: 'the pane opens on a struck preview', next: '/builder:agent' })
+  assert.deepEqual(parkParts('a — b — next: c'), { why: 'a — b', next: 'c' }, 'the last next: wins')
+  assert.deepEqual(parkParts('plan wants to split — clears when you split it'), { why: 'plan wants to split', next: 'clears when you split it' })
+  assert.deepEqual(parkParts('run cap (12) reached'), { why: 'run cap (12) reached', next: null })
+  assert.deepEqual(parkParts(null), { why: '', next: null })
+})
+
+test('renderStatus lists each parked feature with why and the recommended next step', () => {
+  const out = renderStatus({
+    features: {
+      p: { status: 'parked', runs: 3, worktree: '/w/p', reason: 'the walk keeps failing on the pane default — next: a human walk, then /builder:signoff --path docs/features/p' },
+      q: { status: 'parked', runs: 1, worktree: '/w/q', reason: 'run cap (12) reached' },
+      r: { status: 'building', runs: 1, worktree: '/w/r', reason: null },
+    },
+  })
+  assert.match(out, /\| p \| parked \| 3 \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
+  assert.match(out, /^## Parked$/m)
+  assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
+  assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
+  assert.doesNotMatch(out.slice(out.indexOf('## Parked')), /\*\*r\*\*/)
 })

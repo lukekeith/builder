@@ -182,8 +182,9 @@ the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agen
   going. Not a park.
 - **a commit in a `commit: manual` app** (from the start of its phase) and **a plan so broken that
   every path forward is a guess at what the product should be** — these park: write
-  `blocked: "<stop class> — clears when <what>"` to the manifest in the same ledger line and manifest
-  commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
+  `blocked: "<the stop class, and what it stopped on, in plain words> — next: <step>"` (REFERENCE §How a park reads) to the manifest, and `<folder>/PARKED.md` (REFERENCE §The park
+  record; `kind: human-step` for a `commit: manual` app, `decision` for a broken plan), in the same
+  ledger line and manifest commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
   **end the run**. A plan that is merely wrong in places is not this: rule, fix the task, go on.
 
 Never ask.

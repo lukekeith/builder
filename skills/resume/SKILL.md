@@ -77,7 +77,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | The manifest says | Next |
 |---|---|
 | SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm <the new thing>` |
-| `blocked:` set (anything but `none`) | ⛔ **parked — run no step.** Print the reason and what clears it (REFERENCE §MANIFEST.md). Under `--agent-walk`, end the run: the fleet reads the line |
+| `blocked:` set (anything but `none`) | ⛔ **parked.** Show why and the recommended next step — from `<folder>/PARKED.md` when there is one (*What is stuck*, *Recommended next step*, and the last *History* line), else the line split per REFERENCE §How a park reads. Then **offer to unpark**, one AskUserQuestion: **Unpark and dig in (Recommended)** — set `blocked: none`, append `unparked by <you> YYYY-MM-DD` to the record's History, commit `chore(<feature>): unparked — was: <the line>`, then start from *Where to dig* with [`systematic-debugging`](../systematic-debugging/SKILL.md) before anything else, and carry on to the manifest's step; or **Leave it parked**. A `kind: human-step` park recommends its human step instead. Under `--agent-walk`, end the run: the fleet reads the line, and retries it itself |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
 | **a `SPEC.md` with no manifest** | half-written, or a half-finished conversion. Write the missing manifest from what the SPEC records, then re-enter this table |
@@ -295,10 +295,20 @@ Every point that would ask resolves one of two ways:
 - **Take the recommendation** — the default, and the answer for anything local and reversible,
   which after a local-only merge is nearly everything: the human tests the result and changes what
   they don't like.
-- **Park** — only for the cases above. Write `blocked: "<reason> — clears when <what>"` and `next:
-  /builder:resume --path <folder>` to the manifest, commit `chore(<ticket-or-feature>): <feature> —
-  parked: <reason>`, print the footer, and **end the run**. The reason names the decision the spec
-  is missing, in one line the human can answer.
+- **Park** — only for the cases above. Write `blocked: "<why> — next: <step>"` (REFERENCE §How a park reads) and `next:
+  /builder:resume --path <folder>` to the manifest, **and `<folder>/PARKED.md`** (REFERENCE §The park
+  record — everything a cold reader needs to dig: what is stuck, what was tried, the evidence quoted,
+  where to dig), commit both `chore(<ticket-or-feature>): <feature> — parked: <reason>`, print the
+  footer, and **end the run**. The reason names the decision the spec is missing, in one line the
+  human can answer.
+- **A run started after an unpark** — the fleet's prompt says the feature *was parked before* and
+  quotes the old line. **Read `<folder>/PARKED.md` first**: it is the investigation so far. Treat it
+  as a lead, not a verdict — find out whether its cause still holds in the code and the spec as they
+  are now (a newer builder may not stop there at all, a fix may have landed since, a ruling may now
+  settle it). Start from *Where to dig*, find the root cause before trying the same fix again
+  ([`systematic-debugging`](../systematic-debugging/SKILL.md)), and add what you try under *What was
+  tried*. Park again only if it still stands — the line written fresh to REFERENCE §How a park reads
+  and the record's sections rewritten with what this attempt learned, never copied back.
 
 | Pause | Under `--agent-walk` |
 |---|---|
@@ -339,9 +349,9 @@ node <builder>/scripts/list-features.mjs --json
 Each row gives `feature`, `path`, `layout`, `state`, `done`, `convert`, `lastDone`, `nextStep`,
 `updatedAt`, `branch`, plus `manifest` or `children`.
 
-- **Offerable** — `done` false and `manifest.blocked` unset or `none`. Parked rows are listed under
-  the question as a count with their reasons, so it's clear why they're missing; `done` rows only as
-  a count.
+- **Offerable** — `done` false. A parked row (`manifest.blocked` set) is offered too, its
+  description `parked — <why>`; picking it goes to Step 1's parked row, which offers to unpark it.
+  `done` rows only as a count.
 - Rows with `layout: brainstorm` are conversations in progress; selecting one runs its `command`.
 - **Nothing offerable** → say so, name `/builder:brainstorm <what you want built>` (an idea) or `/builder:intake <doc>` (a written spec), and stop.
 - **Exactly one** → still ask, with **Not now** as the second option (AskUserQuestion needs two).

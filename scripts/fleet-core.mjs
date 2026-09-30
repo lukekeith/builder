@@ -28,6 +28,19 @@ export function laneOf(mf) {
   return 'unknown'
 }
 
+/**
+ * A park reason as `{ why, next }` — REFERENCE §How a park reads: `<why> — next: <step>`. The last
+ * ` — next: ` splits it. A line written before that rule said `— clears when <what>`, which is its
+ * next step. No next step → null; the caller supplies the retry.
+ */
+export function parkParts(reason) {
+  const s = unquote(reason).trim()
+  const m = /^([\s\S]*)\s—\s(?:next:\s*([\s\S]*)|(clears when\s[\s\S]*))$/.exec(s)
+  if (!m) return { why: s, next: null }
+  return { why: m[1].trim(), next: (m[2] ?? m[3]).trim() || null }
+}
+export const RETRY_NEXT = '/builder:agent — naming it again unparks it and retries'
+
 /** The PR a SHIPPED SPEC header names ('#12'), or null when the header is not SHIPPED. `/builder:ship`
  *  removes MANIFEST.md, so after the ship commit this header is the only record. */
 export function shippedPr(specText) {
@@ -37,7 +50,7 @@ export function shippedPr(specText) {
 }
 
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
-export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed }) {
+export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>' }) {
   // Shipped is done however the run ended — one that timed out after the ship commit must not be
   // retried into a second one.
   const shipped = manifestText == null ? shippedPr(specText) : null
@@ -48,15 +61,15 @@ export function decide({ lane, manifestText, specText = null, exit, failures, st
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
     return failures >= 1 ? { action: 'fail', reason: `run ${what} twice` } : { action: 'retry' }
   }
-  if (mf == null) return { action: 'park', reason: 'MANIFEST.md missing after the run' }
+  if (mf == null) return { action: 'park', reason: 'MANIFEST.md was gone after the run — next: /builder:status to see where the feature stands' }
   const next = laneOf(mf)
   if (next === 'blocked') return { action: 'park', reason: unquote(mf.blocked) }
-  if (next === 'unknown') return { action: 'park', reason: `manifest state '${mf.state ?? ''}' is not one the fleet knows` }
+  if (next === 'unknown') return { action: 'park', reason: `manifest state '${mf.state ?? ''}' is not one the fleet knows — next: /builder:resume --path ${folder} to set it right` }
   if (next !== lane) return { action: 'handoff', to: next }
   // One stall is often a run that ended mid-step (a turn that stopped to wait); the next run
   // resumes from the ledger. Two in a row is a real stall.
-  if (!progressed) return stalls >= 1 ? { action: 'park', reason: 'no progress — two runs in a row changed neither MANIFEST.md nor HEAD' } : { action: 'stalled' }
-  if (runs >= cap) return { action: 'park', reason: `run cap (${cap}) reached` }
+  if (!progressed) return stalls >= 1 ? { action: 'park', reason: "no progress — two runs in a row changed neither MANIFEST.md nor HEAD — next: /builder:agent to retry; the last run's log says where it stopped" } : { action: 'stalled' }
+  if (runs >= cap) return { action: 'park', reason: `run cap (${cap}) reached while still making progress — next: /builder:agent to retry with a fresh cap` }
   return { action: 'again' }
 }
 
@@ -271,9 +284,19 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
     const col = prog ? ' Progress |' : ''
     lines.push('', `| Feature | Status |${col} Runs | Reason | Worktree |`, `|---|---|${prog ? '---|' : ''}---|---|---|`)
     for (const [name, f] of rows) {
-      const reason = f.pr && f.pr !== 'shipped' ? `${f.reason ? `${f.reason} · ` : ''}PR ${f.pr}` : f.reason
+      // A parked row's cell is its why; the next step is listed under ## Parked, where it has room.
+      const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
+      const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       lines.push(`| ${cell(name)} | ${cell(f.status)} |${p} ${f.runs ?? 0} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+    }
+  }
+  const parked = rows.filter(([, f]) => f.status === 'parked')
+  if (parked.length) {
+    lines.push('', '## Parked', '')
+    for (const [name, f] of parked) {
+      const { why, next } = parkParts(f.reason)
+      lines.push(`- **${name}** — ${why || 'no reason recorded'}`, `  next: ${next ?? RETRY_NEXT}`)
     }
   }
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))

@@ -260,7 +260,7 @@ verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
 <design.flag>: <the resolved ref and its set> | none   # prototype mode; key named by the config
 auto: on YYYY-MM-DD | off
-blocked: none | "<reason> — clears when <what>"       # parked by an unattended run; resume runs nothing while it is set
+blocked: none | "<why> — next: <step>"                # parked by an unattended run — §How a park reads; resume runs nothing while it is set
 agent-walk: on YYYY-MM-DD | off                        # --agent-walk, recorded so a cold session keeps it
 ```
 
@@ -275,11 +275,82 @@ A single-app repo writes `contract: none` and the freeze machinery stays quiet.
 
 **`blocked:` is not `hold:`.** `hold:` is a human parking a finished PR on purpose; `blocked:` is an
 unattended run that could not go on without a human — a scope question, a manual-commit app, a
-migration the config says a human applies, two failed agent walks. While it is set, `/builder:resume`
-prints it and runs nothing. The human resolves what it names and deletes the line.
+migration the config says a human applies, five failed agent walk rounds. While it is set,
+`/builder:resume` prints it and runs nothing. The human resolves what it names and deletes the line —
+or names the feature to `/builder:agent` or `/builder:fleet`, which **always unparks it**: the fleet
+sets the line to `none` in a commit (`chore(<feature>): unparked for a fleet retry — was: <the old
+line>`) and tells the first run what the park said, whatever parked it and whichever builder version
+wrote it. Builder, the code or the spec may have changed since; the run looks again, and parks again
+only if the cause still stands.
 
 **Program variant:** replace `size:` with `tier: program`, drop `state:` (a program has no state of
 its own — its children carry theirs), and add one `child: <name> — <state>` line per child.
+
+### How a park reads
+
+One line, `"<why> — next: <step>"`, written for someone who has not opened the spec — it is all
+`/builder:status`, the fleet table and `/builder:agent` show:
+
+- **why** — what is stuck, in plain words about the product's behaviour or the decision that is
+  missing: "the component pane still opens on a struck preview when that preview is named `default`",
+  not "D6 pane default on C-027". A decision, finding or row number goes in brackets *after* the
+  words, never in place of them. No commit shas and no round-by-round history — those are in
+  `git log` and the evidence folder, and a park that retells them hides the one thing that matters.
+- **next** — the ONE step you recommend, as a command to paste or a concrete action:
+  `answer D4 in SPEC §Decisions, then /builder:agent` · `a human walk, then /builder:signoff --path
+  <folder>` · `/builder:agent — a retry, now that <what changed>`. Never "unpark", never
+  "clears when …", never a list of alternatives.
+- Under 250 characters. A park that needs more has not found its cause yet — the rest goes in the
+  park record.
+
+### The park record
+
+The line is the headline; **`<folder>/PARKED.md` is the investigation**, committed beside the
+manifest in the same commit as the line, so it travels with the branch to the human, to every later
+`/builder:resume` and `/builder:agent` run, and to a fresh session that knows nothing. Written for a
+reader who must pick up the dig cold:
+
+```markdown
+# <feature> — parked
+parked: YYYY-MM-DD <sha> · by <the step: agent-walk round 5 | build phase 3 | resume | the fleet>
+kind: stuck | decision | human-step
+blocked: "<the manifest line, verbatim>"
+
+## What is stuck
+<the behaviour or the missing decision in plain words — what should happen, what happens instead, and
+since when; a decision code only in brackets after the words>
+
+## What was tried
+- <attempt> — <what happened> (<commit sha | agent walk round n>)
+
+## Evidence
+- <path> — <what it shows>, with the lines that matter QUOTED here: the evidence under `.builder/` is
+  git-ignored and does not travel with the branch
+
+## Where to dig
+- <file:line | SPEC row, its text quoted | test> — <why it is suspect>
+- Not yet ruled out: <hypotheses nobody has tested>
+
+## Recommended next step
+<the line's next step, and why it beats the alternatives: <the others, one line each>>
+
+## History
+- YYYY-MM-DD parked — <why> · YYYY-MM-DD unparked by <who> · …
+```
+
+- **`kind:`** — `stuck`: work that didn't converge (a walk that keeps failing, a gate, an env);
+  `decision`: the spec leaves a product decision open; `human-step`: the config reserves the step to
+  a person (a `commit: manual` app, `apply_mode: human`, your uncommitted changes in the way of a
+  merge). The fleet retries `stuck` and `decision` parks on its own (`agent_walk.auto_unpark`); a
+  `human-step` park waits for the person.
+- **A park that happens again rewrites the sections** with what the new attempt learned, and keeps
+  `## History` growing — never a copy of the last record.
+- **Unparking** appends a History line and leaves the rest: the next run starts from *Where to dig*,
+  looks for the root cause before trying the same fix again
+  ([`systematic-debugging`](../systematic-debugging/SKILL.md)), and adds what it tries under
+  *What was tried*.
+- **Condense removes it** — `git rm <folder>/PARKED.md` at sign-off (§Condense): the feature got past
+  it, and `git log -- <folder>/PARKED.md` keeps every version.
 
 ## SPEC.md
 
@@ -573,6 +644,21 @@ remembering. A red result is never quoted — red always runs again. Measured be
 server suite ran about fourteen times per feature and test execution was 60% of a fleet's wall-clock;
 most of those runs re-proved a tree nothing had touched.
 
+**The deep set runs what the branch can reach, not everything.** A deep line marked
+`@scoped <glob>` runs only the tests in that glob the branch reaches (`scripts/impact.mjs`): what it
+changed; the code reading a schema field it **removed, renamed or retyped** under any spelling
+(`issueDate` / `issue_date`), so another feature built on that column is tested with this one — an
+added field has no readers yet; everything importing either, seen through barrel re-exports to the
+module that provides each name (type-only imports excluded — the typecheck owns types); files that
+load one by name (a harness page's `<script src>`, a spec's `goto('/harness.html')`); and tests an
+earlier feature changed in the same commit as a file in the impact, which is how a UI spec is tied to
+the screen it covers. A change the graph can't see past — a file beside the tests nothing loads, a
+runner config, a lockfile — runs the whole suite, and `gate.mjs --whole` forces it. A scoped `@delta`
+line with failures in its subset is judged on the whole suite, so a known-red test can't hide a new
+one. The selection, with why for each test, is written to `.builder/gates/impact.md`: verify's
+evidence. Measured before it: the deep set ran the whole UI suite and every phase gate — eleven
+minutes — at every build end and again at every verify after a walk fix.
+
 **Implementers do not run the suite.** Their prompt limits them to the tests of the code they change
 plus the type-check; the phase close runs the block once, on the committed tree.
 
@@ -668,7 +754,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 
 | Moment | What happens |
 |---|---|
-| **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md`; write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
+| **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md` (and `PARKED.md` when there is one); write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
 | **agent sign-off** (AGENT-PASS in agent mode, written by `/builder:agent-walk`) | the same condense; the line is `> 🤖 AGENT SIGNED OFF <date> — <sha> · agent walk round <n> · not human-tested · evidence: …` |
 | **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch |
 

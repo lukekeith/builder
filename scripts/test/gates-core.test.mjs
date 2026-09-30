@@ -288,3 +288,80 @@ test('gate.mjs creates .builder/gates before the first command, so a gate line c
   assert.equal(r.status, 0, r.stdout)
   assert.equal(readFileSync(join(root, '.builder/gates/hi.log'), 'utf8'), 'hi\n')
 })
+
+test('parseGates reads @scoped <glob> off a line, and keeps the rest of the note', () => {
+  const g = parseGates('## Quality gates\n\n### Deep set\n\n```\nnpx playwright test {tests}   # the UI suite @scoped apps/web/test/e2e/**/*.spec.ts @delta\nnpm run gate:8   # MCP and installer @scoped packages/mcp/**\n```\n')
+  assert.deepEqual(g.deep[0], { cmd: 'npx playwright test {tests}', note: 'the UI suite', delta: true, knownRed: false, scope: 'apps/web/test/e2e/**/*.spec.ts' })
+  assert.equal(g.deep[1].scope, 'packages/mcp/**')
+})
+
+test('runGateSet: a @scoped line runs the tests the impact reaches, skips when none, runs whole when it must', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-scope-'))
+  const scopes = {
+    'e2e/**': { mode: 'some', tests: ['e2e/a.spec.ts', "e2e/it's.spec.ts"], why: {}, reason: null },
+    'unit/**': { mode: 'none', tests: [], why: {}, reason: 'nothing this branch touches reaches these tests' },
+    'all/**': { mode: 'whole', tests: [], why: {}, reason: 'all/harness.html changed' },
+    'pkg/**': { mode: 'some', tests: ['pkg/x.ts'], why: {}, reason: null },
+  }
+  const r = runGateSet(
+    [
+      { cmd: 'echo RUN {tests}', note: '', delta: false, knownRed: false, scope: 'e2e/**' },
+      { cmd: 'echo UNIT {tests}', note: '', delta: false, knownRed: false, scope: 'unit/**' },
+      { cmd: 'echo ALL {tests}', note: '', delta: false, knownRed: false, scope: 'all/**' },
+      { cmd: 'echo PKG', note: '', delta: false, knownRed: false, scope: 'pkg/**' },
+    ],
+    { cwd: dir, logDir: join(dir, 'logs'), scope: (glob) => scopes[glob] }
+  )
+  assert.equal(r.exit, 0)
+  assert.match(r.lines.join('\n'), /✓ echo RUN 'e2e\/a\.spec\.ts' 'e2e\/it'\\''s\.spec\.ts'/)
+  assert.match(r.lines.join('\n'), /~ echo UNIT \{tests\} — nothing this branch touches reaches these tests; not run/)
+  assert.match(r.lines.join('\n'), /the whole suite — all\/harness\.html changed[\s\S]*✓ echo ALL \(/)
+  assert.match(r.lines.join('\n'), /✓ echo PKG \(/, 'a line with no {tests} runs whole when the impact reaches its glob')
+})
+
+test('runGateSet: a @scoped @delta line with failures in the subset is judged on the whole suite against its baseline', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-scope-'))
+  // The subset prints 2 (a known-red spec is in it); the whole suite prints 5, which is the baseline.
+  const gate = { cmd: 'if [ -n "{tests}" ]; then echo 2; else echo 5; fi', note: '', delta: true, knownRed: false, scope: 'e2e/**' }
+  const run = (baseline) =>
+    runGateSet([gate], { cwd: dir, logDir: join(dir, 'logs'), baseline, scope: () => ({ mode: 'some', tests: ['e2e/a.spec.ts'], why: {}, reason: null }) })
+  const ok = run({ [gate.cmd]: 5 })
+  assert.equal(ok.exit, 0, ok.lines.join('\n'))
+  assert.match(ok.lines.join('\n'), /2 in the subset — re-running the whole suite to judge it against the baseline/)
+  assert.match(ok.lines.join('\n'), /→ 5 \(baseline 5/)
+  const zero = runGateSet([{ ...gate, cmd: 'true {tests}; echo 0' }], { cwd: dir, logDir: join(dir, 'logs'), baseline: { 'true {tests}; echo 0': 5 }, scope: () => ({ mode: 'some', tests: ['e2e/a.spec.ts'], why: {}, reason: null }) })
+  assert.doesNotMatch(zero.lines.join('\n'), /re-running the whole suite/, 'a clean subset needs no whole run')
+})
+
+test('gate.mjs --deep scopes a @scoped line to what the branch reaches, writes the impact report, and --whole runs it all', () => {
+  const root = configured('### server — fast\n\n```\ntrue   # x\n```\n\n### Deep set\n\n```\necho RAN {tests}   # the UI suite @scoped apps/web/test/**/*.spec.ts\n```\n')
+  mkdirSync(join(root, 'apps/web/src'), { recursive: true })
+  mkdirSync(join(root, 'apps/web/test'), { recursive: true })
+  writeFileSync(join(root, 'apps/web/src/a.ts'), 'export const a = 1\n')
+  writeFileSync(join(root, 'apps/web/src/b.ts'), 'export const b = 1\n')
+  writeFileSync(join(root, 'apps/web/test/a.spec.ts'), "import { a } from '../src/a'\n")
+  writeFileSync(join(root, 'apps/web/test/b.spec.ts'), "import { b } from '../src/b'\n")
+  for (const f of ['apps/web/src/a.ts', 'apps/web/src/b.ts', 'apps/web/test/a.spec.ts', 'apps/web/test/b.spec.ts']) {
+    git(root, 'add', f)
+    git(root, 'commit', '-qm', `add ${f}`)
+  }
+  git(root, 'switch', '-q', '-c', 'feat')
+  writeFileSync(join(root, 'apps/web/src/a.ts'), 'export const a = 2\n')
+  git(root, 'commit', '-qam', 'a changes')
+  const r = run(root, '--deep')
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /1 test file\(s\) this branch reaches/)
+  assert.match(r.stdout, /✓ echo RAN 'apps\/web\/test\/a\.spec\.ts' \(/)
+  const report = readFileSync(join(root, '.builder/gates/impact.md'), 'utf8')
+  assert.match(report, /apps\/web\/test\/a\.spec\.ts — reaches apps\/web\/src\/a\.ts/)
+  const whole = run(root, '--deep', '--whole', '--force')
+  assert.match(whole.stdout, /✓ echo RAN \(/)
+  // Nothing on the branch reaches the suite → the line is reported and not run.
+  git(root, 'switch', '-q', '-c', 'feat2', 'main')
+  writeFileSync(join(root, 'README.md'), 'docs\n')
+  git(root, 'add', 'README.md')
+  git(root, 'commit', '-qm', 'docs only')
+  const none = run(root, '--deep')
+  assert.equal(none.status, 0, none.stderr)
+  assert.match(none.stdout, /~ echo RAN \{tests\} — nothing this branch touches reaches these tests; not run/)
+})

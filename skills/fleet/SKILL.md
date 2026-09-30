@@ -22,8 +22,16 @@ A re-run must start from the same branch while any of the fleet's features are u
 **Specs named while a fleet is running join its queue** — the same command, no flag: admission is
 checked as at a launch, each admitted spec is dropped in `.builder/fleet/inbox/`, and the running fleet
 picks it up the moment a lane frees (it polls every 15 s, so a spec added while every lane is busy
-never waits for a run to end). `--parallel` is the running fleet's; adding never raises it. A parked
-feature named again is retried, once its `blocked:` line is cleared in its worktree.
+never waits for a run to end). `--parallel` is the running fleet's; adding never raises it. **A
+parked feature named again is unparked and retried** — whatever parked it: the fleet sets `blocked:`
+to `none` in a commit, `chore(<feature>): unparked for a fleet retry — was: <the old line>`, and the
+first run is told what the park said so it can check whether the cause still holds. A spec whose
+manifest is blocked where it was written is admitted the same way (the dry run says `unparks it`).
+A parked feature you did not name stays parked — except that **the fleet retries every park on its
+own**, `agent_walk.auto_unpark` times per fleet run (2 by default): it unparks the feature and hands
+its park record (REFERENCE §The park record — `<folder>/PARKED.md`, which the fleet writes when the
+parking run didn't) to a fresh run that digs from *Where to dig*. A `kind: human-step` park — your
+uncommitted changes in the way, a `commit: manual` app — waits for you.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
 the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time. **Every
 worktree is brought up to the target first**: before each build- or ship-lane run, and before the
@@ -54,7 +62,8 @@ waiters too, naming it.
 
 `node <builder>/scripts/fleet.mjs --status` — reply with its contents **as markdown, never inside a
 code fence**: the heading line, then the table as a markdown table (the terminal renders it; fenced,
-it shows as raw pipes), then any notes as bullets. Change no cell. Then stop.
+it shows as raw pipes), then the `## Parked` list if there is one — each parked feature with its why
+and its `next:` step — then any notes as bullets. Change no cell. Then stop.
 
 The table is rendered live: its `Progress` column reads each feature's manifest, plan and ledger from
 its worktree at that moment, and the heading's bar is the mean across the rows. It measures **steps,
@@ -134,10 +143,13 @@ Reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not 
   `.builder/fleet/archive.jsonl`, the spec folder is under `<registry>/_archive/`, and its logs under
   `.builder/fleet/logs/_archive/` (kept `agent_walk.keep_logs` days, 30 by default). `git log --merges`
   lists them. Test the result here; push when you're happy. `git revert -m 1 <merge>` takes one back out.
-- **parked** — the decision the spec left open (or the human step the config reserves); answer it in
-  the SPEC, delete the `blocked:` line in the worktree's manifest, and re-run `/builder:fleet` — it
-  resumes, and retries only what you cleared. A park that names anything else — a conflict, a gate, a
-  walk — is a fleet bug worth reporting.
+- **parked** — the fleet already retried it `agent_walk.auto_unpark` times. STATUS.md's `## Parked`
+  list gives each one's why and its recommended `next:` step, and `<folder>/PARKED.md` in its
+  worktree has the investigation — what was tried, the evidence, where to dig; relay the why and the
+  next step, and point at the record. Naming it again (`/builder:agent`, or `/builder:fleet <feature>`) unparks and retries
+  it — answer what it asks in the SPEC first when the next step says so. A park whose why is not a
+  decision the spec left open or a step the config reserves — a conflict, a gate, a walk — is work
+  the agents should have done; retrying it is the right next step.
 - **failed** — the log path.
 
 ~~~

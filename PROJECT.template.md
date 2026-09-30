@@ -67,6 +67,7 @@ agent_walk:
   # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
   # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
   # keep_logs: 30                  # days a merged feature's run logs stay under .builder/fleet/logs/_archive/; 0 keeps them forever
+  # auto_unpark: 2                 # times one fleet run unparks a feature on its own and has an agent dig into the park record; a human-step park always waits for you; 0 turns it off
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
   # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
@@ -113,6 +114,18 @@ nothing has touched. Two markers go at the end of a line's comment:
 - `@delta` — the command prints a number (a type-error count, say) that must not
   exceed the base branch's, measured by `gate.mjs --baseline` (the fleet does
   this at start). No count is typed into this file to go stale.
+- `@scoped <glob>` — run only the tests in `<glob>` this branch can reach: what
+  it changed, code reading a schema field it changed, and everything that
+  imports or loads either (`scripts/impact.mjs`). Put `{tests}` where the file
+  list goes; a line without it runs whole when the branch reaches its glob at
+  all, and is skipped when it doesn't. A change the graph can't see past (a
+  file beside the tests nothing loads, a runner config, a lockfile) runs the
+  whole suite. An e2e suite that takes minutes should always be scoped.
+
+🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
+`gate:all` that re-runs the typecheck, the unit suites and the e2e suite again
+multiplies the slowest step of every feature. List the checks only the deep set
+makes, one per line, each `@scoped` to what it proves.
 
 ### <app> — fast
 
@@ -124,7 +137,8 @@ nothing has touched. Two markers go at the end of a line's comment:
 ### Deep set (verify only)
 
 ```
-<command>          # what it proves, and why the fast sets don't
+npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts
+<command>          # what it proves, and why the fast sets don't @scoped <the paths it covers>
 ```
 
 ## Walk readiness

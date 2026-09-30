@@ -2,7 +2,7 @@
 
 Both skills run the same conversation machinery and write the same record; they differ in where the
 tree comes from (brainstorm: the user's intent; intake: a document's claims). This file is that
-machinery. It is short on purpose: nothing here loads REFERENCE wholesale — the conversation comes first, and
+machinery (intake's claims are grounded the same way — §Grounding). It is short on purpose: nothing here loads REFERENCE wholesale — the conversation comes first, and
 the spec formats belong to `/builder:spec`.
 
 ## The record
@@ -70,6 +70,41 @@ a new revision (brainstorm's §Where to start step 4).
 🔴 **Every settled row keeps its Why, and every rejected option its reason.** `/builder:spec` writes
 §Idea and the §Decisions rows from these columns; a row without them becomes a thin spec.
 
+## Grounding
+
+A question is the last resort — and a lookup is cheap, so it comes first. Before the first playback,
+and before any question enters a round, look the user's terms up **yourself, inline, one rung at a
+time**, stopping at the first rung that answers it:
+
+1. **The fast pass — seconds, every term.** One `git grep` over the repo for every spelling of every
+   term at once — case-insensitive, separators optional, so `issue date`, `issue_date`, `issueDate`,
+   `IssueDate`, `ISSUE_DATE` and `issue-date` are one pattern:
+   `git grep -n -i -E 'issue[ _-]?date|owner[ _-]?view' -- ':!*.lock' | head -60`. Read the hits that
+   decide it — the schema line, the label, the route. The user's word is often the *label*, not the
+   identifier. One clear meaning → done, and most terms end here.
+2. **Follow it — a minute, only the terms that matter to the change.** Where the value is written and
+   every place it is read (grep the identifier the fast pass found), the features and screens using it
+   (the registry's specs, live and `_archive/`), and when it arrived (`git log -S <identifier>
+   --oneline | head`). Enough to say what a change to it would ripple into — a report, an export, a
+   released client, existing rows.
+3. **Dig — only when 1 and 2 left a term unclear.** Nothing matched, or matches that don't explain
+   it: an Explore agent (`sonnet`) searches wider — synonyms, the domain behind the word, docs,
+   tests. Only the branches that hang on that term wait for it; the rest of the conversation goes on.
+
+**Then, and only then, ask — and only what the code cannot answer:**
+
+- **One clear meaning** → state it with its evidence and carry on (`assumed`, listed at §Confirm).
+- **Several candidates** → ask with them named — "`Certificate.issue_date` (the PDF header) or
+  `Invoice.issuedAt` (billing)?" — recommendation first. Never an open "what do you mean by …".
+- **Nothing, after rung 3** → say where you looked, then ask.
+- **A choice about what the product *should* do** — intent, priority, taste, a rule the code doesn't
+  encode yet — is the user's, and is always a question.
+
+🔴 **The self-check before every round:** a question that uses one of the user's terms you have not
+located in the code, or asks for a fact about how the system works today, is not ready — it goes back
+up the ladder. Asking the user to define a word that is in their own codebase is the failure this
+section exists to stop.
+
 ## Rounds
 
 - **Ask the whole frontier each round**: every `open` branch whose prerequisites are settled. A
@@ -84,9 +119,10 @@ a new revision (brainstorm's §Where to start step 4).
 
   A round made only of quick closed choices (which app, yes/no, one of three names) goes through
   AskUserQuestion instead, recommendation first and marked.
-- **Facts are never the user's job.** A question the code can answer goes to a sub-agent (Explore,
-  `sonnet`); only the branches downstream of that lookup wait — ask the rest of the frontier now, and
-  record the lookup under *Waiting on facts*.
+- **Facts are never the user's job** (§Grounding). A question the code can answer goes up the
+  ladder — your own fast grep first, an Explore agent (`sonnet`) only for what that leaves unclear;
+  only the branches downstream of a lookup still running wait — ask the rest of the frontier now, and
+  record it under *Waiting on facts*.
 - **Say what recon settled, never decide it silently**: `Assumed B5: reuse Toaster — AppShell already
   mounts it (app/shell.tsx:40). Say if not.` An assumption the user doesn't contest stays `assumed`
   and is listed again at §Confirm.

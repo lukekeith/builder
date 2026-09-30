@@ -103,9 +103,12 @@ a visual diff, and a renamed element changes what the walk does.
    config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself. A set the runner
    **quotes** — its inputs byte-identical to a green run it recorded, at a sha it names — counts as
    run: that is REFERENCE §Quality gates' rule, and the quoted line with its sha is the evidence the
-   verdict cites. A set it runs, it runs whole. Never run the config's commands by hand beside it,
-   and never re-run a red gate yourself to see whether it is "really" red — the runner already
-   applied the flake rule; a `✗` is a finding.
+   verdict cites. A `@scoped` deep line runs only the tests this branch can reach
+   (REFERENCE §Quality gates — the mechanism): cite `.builder/gates/impact.md` for which ran and why,
+   and name the other features it pulled in. Never run the config's commands by hand beside it,
+   never widen a scoped run "to be safe" (`--whole` is for when the impact report is plainly wrong,
+   and says why), and never re-run a red gate yourself to see whether it is "really" red — the
+   runner already applied the flake rule; a `✗` is a finding.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly
    deferred with a named decider; Data plans executed. 🔴 **And the migration re-applies on a clean
    database** — one that only works against your local state is a production incident waiting.
@@ -137,7 +140,9 @@ a visual diff, and a renamed element changes what the walk does.
 11. **Spec-parity spot-check** (`opus` judgment, not grep) — trace the spec's 3–4 most load-bearing
     behaviours (permission gates, tenancy scoping, state rules, offline behaviour, routing) in the
     shipped code with `file:line`. This catches a feature that passes every gate while doing something
-    the spec didn't say.
+    the spec didn't say. **When the impact report lists code of another feature** — it reads a schema
+    field this one changed — spot-check that feature's one behaviour on that field too, and stop
+    there: the rest of the codebase is not this verify's to re-prove.
 
 **Prototype mode adds 12 and 13.**
 

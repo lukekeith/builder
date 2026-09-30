@@ -36,8 +36,16 @@ A failed round is work, not a stop: its items become fixes, `/builder:resume` wo
 back here (resume §`--agent-walk`: agent mode builds to done). **From round 3 on**, the dispatch for
 each item that failed in the round before also names
 [`systematic-debugging`](../systematic-debugging/SKILL.md) — the fix that was tried didn't hold, so the next one starts from the cause. Only
-**round 6 would start → park instead**, the items that failed five rounds running named:
-`blocked: "agent walk failed five rounds — <the items still failing> — clears when a human walks it or the fixes land"`.
+when **five rounds in a row have failed since the last unpark** does the next one park instead. The
+fleet writes `<WS>/agent-walk/unparked-after` (the highest round number at that moment) when it
+unparks a feature; rounds up to that number are history and don't count — a feature named again
+always gets five fresh rounds. The park is written to REFERENCE §How a park reads:
+`blocked: "the agent walk failed five rounds running on <what still fails, as behaviour, in plain words> — next: a human walk, then /builder:signoff --path <folder>"`,
+with `<folder>/PARKED.md` in the same commit (REFERENCE §The park record, `kind: stuck`): each item
+still failing with its *expected* and *saw* from every round it failed, quoted from the reports; the
+fix each round tried and its commit; the evidence paths; and *Where to dig* — the code the failing
+behaviour runs through, and what the five rounds have ruled out. A human or a later run starts the
+dig from there.
 An item that fails because the SPEC never said what it should do is not a fix to retry: rule what
 the spec most plausibly means, fix to that, and say so in the hand-off.
 
@@ -94,7 +102,7 @@ The verdict, the round, the counts (pass · fail · unverifiable), and where the
 ~~~
 📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: /builder:verify --path <folder> · or say go
 📍 <feature>: agent walk round <n> — <k> fixes owed — next: /builder:resume --path <folder> · or say go
-📍 <feature>: ⛔ parked — agent walk failed five rounds — next: a human walk, then /builder:signoff --path <folder>
+📍 <feature>: ⛔ parked — the agent walk failed five rounds running on <what still fails> — next: a human walk, then /builder:signoff --path <folder> · or /builder:agent for five more rounds
 ~~~
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
