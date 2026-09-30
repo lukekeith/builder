@@ -46,7 +46,9 @@ walk keeps **both** the §Plan index and `PLAN.md`.
    table and `git log`; `git show <sign-off sha>^:<folder>/PLAN.md` prints it back when wanted. A
    folder with a manifest but **no `PLAN.md`** — a converted folder whose plan is its existing phase
    docs — skips the `git rm` and says so in one line. 🔴 **Never delete a converted folder's existing
-   docs**: they were not written by this pipeline and the human may still want them.
+   docs**: they were not written by this pipeline and the human may still want them. A
+   **`PARKED.md`** goes in the same `git rm`: the feature got past its park, and `git log --
+   <folder>/PARKED.md` keeps every version.
 
 3. **Read the state back**: `node <builder>/scripts/list-features.mjs` shows the feature as
    `signed-off` with the manifest's `next:` — not DONE. Commit with the sign-off write as one commit,

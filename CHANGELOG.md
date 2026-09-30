@@ -4,6 +4,56 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.1.0
+
+**Changed:**
+- **Naming a parked feature always unparks it.** `/builder:agent` now offers parked features, and
+  picking one (or `/builder:fleet <feature>`) retries it whatever parked it and whichever builder
+  version wrote the park: the fleet sets `blocked:` to `none` in a commit quoting the old line, and
+  tells the first run what the park said so it checks whether the cause still holds. Before, the
+  fleet read the `blocked:` line back and parked the feature again before any agent ran. A spec
+  blocked where it was written is admitted the same way. A parked feature you did not name stays
+  parked.
+- **The agent walk's five-round cap starts over at an unpark**, so a retried feature gets five
+  fresh rounds instead of parking at once.
+- **Every park leaves a record: `<folder>/PARKED.md`**, committed with the `blocked:` line (REFERENCE
+  §The park record). It holds what is stuck, what was tried, the evidence with the key lines quoted
+  (the evidence folders don't travel with the branch), where to dig, the recommended next step and a
+  history. Agent-walk, build and resume write it when they park; the fleet writes one when the
+  parking run didn't. Every retry reads it first and starts from *Where to dig*. `/builder:resume` on a
+  parked feature shows it and offers **Unpark and dig in**, and sign-off removes it.
+- **The fleet retries parks on its own**: `agent_walk.auto_unpark` (default 2, 0 turns it off) per
+  park per fleet run, each a fresh run handed the record. A `kind: human-step` park (your
+  uncommitted changes, a `commit: manual` app) waits for you.
+- **The deep set runs only what the branch can reach.** A gate line marked `@scoped <glob>` runs just
+  the tests in that glob the branch reaches (the new `scripts/impact.mjs`), with `{tests}` marking
+  where the file list goes. "Reaches" covers:
+  - what the branch changed;
+  - code reading a schema field it removed, renamed or retyped, under any spelling;
+  - anything importing either, seen through barrel re-exports (type-only imports excluded);
+  - pages and specs that load one of those files by name;
+  - tests another feature changed in the same commit as that code.
+
+  A change it can't trace (a file beside the tests that nothing loads, a runner config, a lockfile)
+  runs the whole suite, and so does `gate.mjs --whole`. Why each test was picked is written to
+  `.builder/gates/impact.md`, which verify cites. PROJECT.template now warns against a deep-set
+  wrapper that re-runs the fast sets.
+- **Brainstorm grounds your words in the code before it says anything back** (CONVERSATION
+  §Grounding), a rung at a time, stopping at the first that answers. First, seconds: one grep for
+  every spelling of every term, done by the session itself. Second, only the terms that matter:
+  where the value is written and read, and which features use it. Last, only for a term still
+  unclear: an Explore agent that searches wider, while the rest of the conversation goes on. Its
+  first playback says what each term turned out to be. It asks you only for choices
+  about what the product should do, or to pick between candidates it names, and never to define a
+  word that is in your codebase.
+- The inbox race is fixed: a feature added to a running fleet could be queued twice when a second
+  add landed mid-drain.
+- **A park reads as `<why> — next: <step>`** (REFERENCE §How a park reads): the stuck behaviour in
+  plain words, not bare decision codes, commit shas or round-by-round history, plus the one step to
+  take. The fleet's own parks follow it, `--status` adds a `## Parked` list giving each parked
+  feature's why and next step, and `/builder:agent` shows both before it asks. An older
+  `— clears when …` line still reads as its next step.
+
 ## 4.0.0
 
 **Breaking:**

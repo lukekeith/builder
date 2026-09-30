@@ -7,6 +7,7 @@
  *   node <plugin>/scripts/gate.mjs --deep [<app>…]    # the deep set (plus any named apps' fast sets)
  *   node <plugin>/scripts/gate.mjs --all              # every app's fast set
  *   node <plugin>/scripts/gate.mjs … --force          # run even when the memo says unchanged
+ *   node <plugin>/scripts/gate.mjs … --whole          # run every @scoped line over its whole suite
  *   node <plugin>/scripts/gate.mjs --baseline         # measure every @delta gate here and record it
  *
  * Exit 0 = every set green (run or quoted). 1 = a gate is red. 2 = usage / unknown app.
@@ -19,6 +20,12 @@
  *                                                                 fleet at start; else measured on
  *                                                                 first sight)
  *   <command>                       # inherited debt @known-red — run and reported, never counted
+ *   <runner> {tests}   # … @scoped <glob>        — only the tests in <glob> this branch can reach
+ *                                                 (impact.mjs: what it changed, the code reading a
+ *                                                 schema field it changed, everything importing or
+ *                                                 loading either); none → reported, not run; a
+ *                                                 change the graph can't see past → the whole suite.
+ *                                                 Written to .builder/gates/impact.md, with why.
  *   <runner> <app path>/<path>/<file>.test.ts   — a `<…>` placeholder means "the test files this
  *                                                 branch changed under the app" (vs base_branch);
  *                                                 none changed → reported, not run, not red
@@ -34,9 +41,11 @@
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { requireConfig } from './config.mjs'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import { parseGates, inputLines, inputsHash, isDirty, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline } from './gates-core.mjs'
+import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
-const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force]'
+const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole]'
 const argv = process.argv.slice(2)
 const flag = (f) => argv.includes(f)
 const names = argv.filter((a) => !a.startsWith('--'))
@@ -44,7 +53,7 @@ if (flag('--help') || flag('-h')) {
   console.log(USAGE)
   process.exit(0)
 }
-for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
+for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
 
 function die(msg, code = 2) {
   console.error(msg)
@@ -66,7 +75,8 @@ if (flag('--baseline')) {
   }
   const values = {}
   deltas.forEach((g, i) => {
-    const r = runCommand(g.cmd, { cwd: ROOT, logFile: join(ROOT, '.builder', 'gates', 'baseline-logs', `${String(i + 1).padStart(2, '0')}.log`) })
+    // A @scoped line's baseline is its whole suite.
+    const r = runCommand(g.cmd.replace(/\s*\{tests\}/g, ''), { cwd: ROOT, logFile: join(ROOT, '.builder', 'gates', 'baseline-logs', `${String(i + 1).padStart(2, '0')}.log`) })
     values[g.cmd] = lastInt(r.stdout)
     console.log(`${values[g.cmd] == null ? '✗' : '✓'} ${g.cmd} → ${values[g.cmd] ?? 'no number'}`)
   })
@@ -83,6 +93,23 @@ for (const n of wanted) {
 }
 if (flag('--deep') && !GATES.deep.length) die('no "### Deep set" block under ## Quality gates in .claude/builder.md')
 
+/**
+ * The branch's impact, measured once and only when a @scoped line runs — and written, with every
+ * scoped glob's selection and why, to .builder/gates/impact.md: the evidence verify cites.
+ */
+let impact = null
+const scopedGlobs = [...new Set([...Object.values(GATES.fast).flat(), ...GATES.deep].map((g) => g.scope).filter(Boolean))]
+const scope = flag('--whole')
+  ? null
+  : (glob) => {
+      if (!impact) {
+        impact = impactOf(ROOT, { baseBranch: CFG.baseBranch })
+        mkdirSync(join(ROOT, '.builder', 'gates'), { recursive: true })
+        writeFileSync(join(ROOT, '.builder', 'gates', 'impact.md'), renderImpact(impact, scopedGlobs))
+      }
+      return scopeTests(impact, glob)
+    }
+
 const dirty = isDirty(ROOT)
 const sha = head()
 const registry = CFG.registry
@@ -93,6 +120,8 @@ const sets = [
   ...wanted.map((n) => ({ key: `fast-${n}`, label: `${n} — fast`, gates: GATES.fast[n], exclude: [registry, ...CFG.apps.filter((a) => a.name !== n).map((a) => a.path)], expand: { root: ROOT, appPath: appPath(n), baseBranch: CFG.baseBranch } })),
   ...(flag('--deep') ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
 ]
+// A --whole run and a scoped one prove different things on the same tree: each quotes only its own.
+if (flag('--whole')) for (const set of sets) if (set.gates.some((g) => g.scope)) set.key += '-whole'
 
 for (const set of sets) {
   const hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
@@ -106,7 +135,7 @@ for (const set of sets) {
   console.log(`▶ ${set.label} at ${sha}${dirty ? ' (tree has uncommitted changes — result not memoised)' : ''}`)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()
-  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: CFG.flaky, baseline, expand: set.expand, log: (l) => console.log(`   ${l}`) })
+  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: CFG.flaky, baseline, expand: set.expand, scope, log: (l) => console.log(`   ${l}`) })
   if (Object.keys(r.newBaselines).length) {
     baseline = { ...baseline, ...r.newBaselines }
     writeBaseline(MAIN, baseline, sha)

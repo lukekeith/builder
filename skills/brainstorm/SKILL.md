@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: The exploration conversation — start here with an idea, a request or a question about how something should work. Plays back what you intend, explains how the code works today in plain words, then asks in rounds only what is still open (every question ready to ask, each with a recommendation; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
+description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explains how the code works today in plain words, then asks in rounds only what is still open (every question ready to ask, each with a recommendation; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
 ---
 
 # `/builder:brainstorm` — understand it together, then decide what to build
@@ -70,13 +70,25 @@ Take these in order; the first that applies wins.
 ## Intent — the first turn
 
 1. **Read the input** and name what it is: an abstract idea, a directed request, or a brief.
-2. **Map it into the tree** (CONVERSATION §The record): the branches the input already settles and
-   the ones it leaves open. Say the depth plainly: "Your brief settles 9 of 12 decisions — 3 open" or
-   "This is an open idea — I'll explore it with you."
-3. **Play back the intent**: the outcome, who it is for, what success looks like — what the user said
-   kept apart from what you assume, the user's key rules quoted in their words. Ask what is wrong.
-4. **Start recon in parallel** (Explore agents, `sonnet`, one per app the idea plausibly touches) —
-   it never holds up this turn.
+2. **🔴 Ground it in the code before your first word back** — CONVERSATION §Grounding. Every term
+   in the input that could name something in the system — a field, an entity, a screen, a status, a
+   report column, a feature ("issue date", "the owner view", "a correction") — is a lookup, not a
+   question. **Look it up yourself, fast pass first**: one grep for every spelling of every term, then
+   read the few hits that matter. That takes seconds and settles most terms; only a term it leaves
+   unclear goes deeper. A user who says "look up issue date" and gets back questions about what an
+   issue date is has been failed — `issue_date` was one grep away.
+3. **Map it into the tree** (CONVERSATION §The record): the branches the input already settles, the
+   ones grounding settled (`assumed`, with evidence), and the ones still open. Say the depth plainly:
+   "Your brief settles 9 of 12 decisions — 3 open" or "This is an open idea — I'll explore it with you."
+4. **Play back the intent, grounded**: the outcome, who it is for, what success looks like — what the
+   user said kept apart from what you assume, the user's key rules quoted in their words — and **what
+   each of their terms turned out to be**: "*issue date* is `Certificate.issue_date` — set when the
+   cert is generated (`certs/generate.ts:88`), shown on the PDF header and the cert list, read by the
+   expiry report." The user corrects a finding; they never explain their own product to you. Ask
+   what is wrong.
+5. **Recon of the wider area carries on in parallel** (Explore agents, `sonnet`, one per app the
+   idea plausibly touches) — how the neighbouring parts work, for *How it works today*. It never holds
+   up this turn.
 
 Write the record (`status: exploring`, `source: brainstorm`). The intent stays `(assumed)` until the
 user confirms or corrects it.

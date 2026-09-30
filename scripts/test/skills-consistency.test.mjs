@@ -172,3 +172,22 @@ test('no picker offers a conversation in progress except resume, brainstorm and 
     }
   }
 })
+
+test("brainstorm grounds the user's terms in the code before it plays back or asks", () => {
+  const c = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(c, /^## Grounding$/m)
+  assert.match(c, /A question is the last resort/)
+  assert.match(c, /issue_date.*issueDate.*IssueDate/s, 'every spelling is searched')
+  assert.match(c, /one rung at a\s+time/)
+  assert.match(c, /The fast pass — seconds, every term/)
+  assert.match(c, /Dig — only when 1 and 2 left a term unclear/)
+  assert.ok(c.indexOf('The fast pass') < c.indexOf('Explore agent'), 'agents are the last rung, not the first')
+  assert.match(c, /Several candidates.*ask with them named/s)
+  assert.match(c, /The self-check before every round/)
+  const b = read('skills/brainstorm/SKILL.md')
+  assert.match(b, /Ground it in the code before your first word back/)
+  assert.match(b, /Look it up yourself, fast pass first/)
+  assert.doesNotMatch(b, /\*\*wait for them\*\*/, 'grounding never blocks on agents')
+  assert.ok(b.indexOf('Ground it in the code') < b.indexOf('Play back the intent'), 'grounding comes before the playback')
+  assert.doesNotMatch(b, /Start recon in parallel[^\n]*\n[^\n]*it never holds up this turn/, 'grounding is not the non-blocking recon')
+})

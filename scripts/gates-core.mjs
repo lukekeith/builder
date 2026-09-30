@@ -19,7 +19,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 
 const COMMENT = /\s{2,}#(.*)$|\s+#\s(.*)$/
 
-/** One gate line: `<command>   # <what it proves> [@delta] [@known-red]`. */
+/** One gate line: `<command>   # <what it proves> [@delta] [@known-red] [@scoped <glob>]`. */
 const parseLine = (raw) => {
   const line = raw.trimEnd()
   if (!line.trim() || /^\s*#/.test(line)) return null
@@ -27,11 +27,13 @@ const parseLine = (raw) => {
   const cmd = (m ? line.slice(0, m.index) : line).trim()
   const note = (m ? (m[1] ?? m[2] ?? '') : '').trim()
   if (!cmd) return null
+  const scope = /@scoped\s+(\S+)/.exec(note)?.[1]
   return {
     cmd,
-    note: note.replace(/@delta|@known-red/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
+    ...(scope && { scope }),
   }
 }
 
@@ -185,12 +187,34 @@ export function expandPlaceholders(cmd, { root, appPath, baseBranch }) {
   return cmd.replace(/\S*<[^>]+>\S*/g, changed.join(' ')).replace(/\s{2,}/g, ' ')
 }
 
+const shq = (p) => `'${p.replace(/'/g, `'\\''`)}'`
+
+/**
+ * A `@scoped <glob>` line for this branch's impact (impact.mjs): `{tests}` becomes the test files the
+ * impact reaches — or nothing, for the whole suite — and a line with no `{tests}` runs whole when
+ * the impact reaches its glob at all. `{ cmd, whole, say }`, or `{ skip }` when nothing reaches it.
+ * With no `scope` (a baseline run) every scoped line is the whole suite.
+ */
+function scopeLine(g, scope) {
+  const whole = g.cmd.replace(/\s*\{tests\}/g, '')
+  if (!scope) return { cmd: whole, whole }
+  const s = scope(g.scope)
+  if (s.mode === 'none') return { skip: `~ ${g.cmd} — ${s.reason}; not run` }
+  if (s.mode === 'whole' || !g.cmd.includes('{tests}')) return { cmd: whole, whole, say: `  ${g.cmd} → the whole suite — ${s.reason ?? `this branch reaches ${s.tests.length} file(s) under ${g.scope}`}` }
+  // `cd <dir> && …` runs from <dir>: the files are named relative to it, and only files under it count.
+  const cd = /^cd\s+(\S+)\s*&&\s*/.exec(g.cmd)
+  const dir = cd ? cd[1].replace(/^\.\//, '').replace(/\/+$/, '') : ''
+  const tests = s.tests.filter((t) => !dir || t.startsWith(`${dir}/`)).map((t) => (dir ? t.slice(dir.length + 1) : t))
+  if (!tests.length) return { skip: `~ ${g.cmd} — nothing this branch touches reaches the tests under ${dir}; not run` }
+  return { cmd: g.cmd.replace('{tests}', tests.map(shq).join(' ')), whole, subset: true, say: `  ${g.cmd} → ${tests.length} test file(s) this branch reaches (the impact report says why each)` }
+}
+
 /**
  * Run a gate set. `flaky` is the config's list — `{ match, rerun? }` — and `baseline` maps a @delta
  * command to the count it must not exceed (null when unknown: the first measurement then becomes the
  * baseline, and the line says so). Returns `{ exit, lines }`; `log` gets each line as it happens.
  */
-export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, log = () => {} }) {
+export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, log = () => {} }) {
   const lines = []
   const say = (s) => {
     lines.push(s)
@@ -210,18 +234,38 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       say(`  ${g0.cmd} → ${cmd}`)
       g = { ...g0, cmd }
     }
-    const r = runCommand(g.cmd, { cwd, env, logFile })
+    let scoped = null
+    if (g0.scope) {
+      scoped = scopeLine(g0, scope)
+      if (scoped.skip) {
+        say(scoped.skip)
+        return
+      }
+      if (scoped.say) say(scoped.say)
+      g = { ...g0, cmd: scoped.cmd }
+    }
+    let r = runCommand(g.cmd, { cwd, env, logFile })
     const tail = (n) => r.output.trim().split('\n').slice(-n).join('\n    ')
     if (g.delta) {
-      const value = lastInt(r.stdout)
+      let value = lastInt(r.stdout)
+      // A subset's count can't be held against a whole-suite baseline: a known-red test in the subset
+      // looks like a regression, and a new failure could hide under the baseline. A clean subset is
+      // clean; any failure in it is judged on the whole suite.
+      if (scoped?.subset && value !== null && value > 0) {
+        say(`  ${value} in the subset — re-running the whole suite to judge it against the baseline`)
+        r = runCommand(scoped.whole, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-whole.log') : null })
+        g = { ...g0, cmd: scoped.whole }
+        value = lastInt(r.stdout)
+      }
       if (value === null) {
         red++
         say(`✗ ${g.cmd} — @delta but printed no number (${fmt(r.ms)})\n    ${tail(5)}`)
         return
       }
-      const base = baseline[g.cmd]
+      const key = g0.scope ? g0.cmd : g.cmd // a scoped line's baseline is the whole suite, under the line as written
+      const base = baseline[key]
       if (base == null) {
-        newBaselines[g.cmd] = value
+        newBaselines[key] = value
         say(`✓ ${g.cmd} → ${value} (no baseline yet — this measurement is now the baseline, ${fmt(r.ms)})`)
       } else if (value <= base) say(`✓ ${g.cmd} → ${value} (baseline ${base}, ${fmt(r.ms)})`)
       else {

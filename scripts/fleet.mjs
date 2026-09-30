@@ -25,8 +25,8 @@ import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
-import { parseManifest } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived } from './fleet-core.mjs'
+import { parseManifest, isSet } from './manifest.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -117,6 +117,8 @@ const readDoc = (base, feature, doc) => {
 const readManifest = (base, feature) => readDoc(base, feature, 'MANIFEST.md')
 const readSpec = (base, feature) => readDoc(base, feature, 'SPEC.md')
 const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
+/** Who unparked a feature, as its park record's History says it. */
+const BY_PERSON = 'a person — named to /builder:agent or /builder:fleet'
 const nameOf = (a) => basename(a.replace(/\/(MANIFEST|SPEC)\.md$/, '').replace(/\/+$/, ''))
 
 function requested() {
@@ -150,8 +152,8 @@ function preflight(feature) {
   if (tryGit(['ls-files', '--error-unmatch', `${spec}/MANIFEST.md`]) === null) return `${spec} is not committed — commit it so the worktree gets it`
   if (tryGit(['diff', '--quiet', 'HEAD', '--', spec]) === null) return `${spec} has uncommitted changes — commit them first`
   const mf = parseManifest(text)
-  const lane = laneOf(mf)
-  if (lane === 'blocked') return `${spec} is blocked: ${unquote(mf.blocked)}`
+  // A blocked spec is admitted: naming it is the human asking for a retry (see unpark).
+  const lane = laneOf({ ...mf, blocked: 'none' })
   if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
   const branch = branchOf(feature, mf)
@@ -370,11 +372,22 @@ if (flag('--dry-run')) {
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
   if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
-  for (const f of fresh)
-    console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, parseManifest(readManifest(ROOT, f)))}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}`)
+  for (const f of fresh) {
+    const mf = parseManifest(readManifest(ROOT, f))
+    const unparks = isSet(mf.blocked) ? ` — unparks it — it was parked: ${parkParts(mf.blocked).why}` : ''
+    console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, mf)}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}${unparks}`)
+  }
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
+  const retried = (f, row) => asked.includes(f) && ['parked', 'failed'].includes(row.status)
+  const was = (row) => `it was ${row.status}: ${parkParts(row.reason).why || 'no reason recorded'}`
   for (const [f, row] of Object.entries(fleet.features))
-    console.log(`  ↻ ${f} — ${runningPid ? (requeue.includes(f) ? `re-queued (${row.status})` : `already in the running fleet (${row.status})`) : `resuming (${row.status})`}`)
+    console.log(
+      `  ↻ ${f} — ${
+        runningPid
+          ? requeue.includes(f) ? `re-queued, unparked — ${was(row)}` : `already in the running fleet (${row.status})`
+          : retried(f, row) ? `unparks and retries — ${was(row)}` : `resuming (${row.status})`
+      }`
+    )
   process.exit(0)
 }
 
@@ -497,10 +510,25 @@ pruneArchivedLogs(ROOT, AW.keepLogs)
 fleet.target = TARGET
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
-  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, ...(after[f] && { waitsOn: after[f] }) }
+  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, unpark: true, ...(after[f] && { waitsOn: after[f] }) }
+// Naming a parked or failed feature is asking for a retry, whatever stopped it: enqueue unparks it.
+for (const f of asked) if (['parked', 'failed'].includes(fleet.features[f]?.status)) markUnpark(fleet.features[f])
 
 // ---- one claude run ------------------------------------------------------------------------
-function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}`) {
+/**
+ * What a run is told when its feature was unparked: the old line, as a lead to check, not a verdict
+ * (resume §Agent mode — a run started after an unpark).
+ */
+const priorPark = (f) =>
+  f.lastPark
+    ? `\n\nThis feature was parked before and has been unparked for a fresh attempt. The park said: "${f.lastPark}". ` +
+      'Read its PARKED.md (beside MANIFEST.md) first when there is one: it is the investigation so far. ' +
+      'Builder, the code or the spec may have changed since it was written. Check whether its cause still holds; start from its Where to dig, ' +
+      'find the root cause before trying the same fix again, record what you try, and carry on. ' +
+      'Park again only if it still stands, with the line and the record rewritten per REFERENCE §How a park reads and §The park record.'
+    : ''
+
+function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}${priorPark(fleet.features[feature])}`) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
@@ -689,21 +717,22 @@ function mergeIntoTarget(feature, branch) {
     } catch (e) {
       tryGit(['merge', '--abort'])
       const why = String(e.stderr || e.stdout || e.message).split('\n').find((l) => l.trim()) ?? 'git merge failed'
-      return `shipped, but merging into ${TARGET} failed: ${why.trim()} — your uncommitted changes are in the way; commit or stash them and re-run the fleet to merge it`
+      return `shipped, but merging into ${TARGET} failed: ${why.trim()} — your uncommitted changes are in the way — next: commit or stash them, then /builder:fleet to merge it`
     }
   }
   const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
-  if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')} — re-run the fleet from there to merge it`
+  if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')}, so it can't be merged from here — next: /builder:fleet from that checkout to merge it`
   const old = tryGit(['rev-parse', `refs/heads/${TARGET}`])
-  if (!old || tryGit(['merge-base', '--is-ancestor', old, branch]) === null) return `shipped, but ${branch} does not carry ${TARGET} — re-run the fleet to merge it`
+  if (!old || tryGit(['merge-base', '--is-ancestor', old, branch]) === null) return `shipped, but ${branch} does not carry ${TARGET} — next: /builder:fleet to bring it up to date and merge it`
   const commit = tryGit(['commit-tree', `${branch}^{tree}`, '-p', old, '-p', branch, '-m', message])
-  if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return `shipped, but writing the merge onto ${TARGET} failed — re-run the fleet to merge it`
+  if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return `shipped, but writing the merge onto ${TARGET} failed — next: /builder:fleet to merge it`
   addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
   return null
 }
 
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
+  delete f.lastPark // superseded — the new reason is the one to act on
   save()
   return 'parked'
 }
@@ -732,6 +761,7 @@ async function drive(feature, lane) {
       runs: f.runsThisTime,
       cap: RUN_CAP,
       progressed: snapshot(f.worktree, feature) !== before,
+      folder: specOf(feature),
     })
     if (d.action === 'retry') {
       failures++
@@ -750,7 +780,8 @@ async function drive(feature, lane) {
       return d.to
     }
     if (d.action === 'done') return await land(feature)
-    Object.assign(f, d.action === 'fail' ? { status: 'failed', reason: `${d.reason} — see ${log}` } : { status: 'parked', reason: d.reason })
+    Object.assign(f, d.action === 'fail' ? { status: 'failed', reason: `${d.reason} — see ${log} — next: /builder:agent to retry` } : { status: 'parked', reason: d.reason })
+    delete f.lastPark
     save()
     return f.status
   }
@@ -906,7 +937,7 @@ async function walkOne(feature) {
         const why = await bringUpWalkEnv(feature)
         if (!why) break
         await killStart(f)
-        if (attempt === 1) return park(f, `${why} — an agent run could not fix it; clears when the walk env starts`)
+        if (attempt === 1) return park(f, `the walk env would not start (${why}) and an agent run could not fix it — next: run agent_walk.start in ${f.worktree} and fix what it prints, then /builder:agent`)
         await fixWalkEnv(feature, why)
       }
       const outcome = await drive(feature, 'walk')
@@ -956,6 +987,7 @@ function enqueue(feature) {
   // Its dependencies' code, merged now so the worktree starts from it. A conflict is left to the
   // lane, whose own sync hands it to an agent.
   if (released && !fresh) mergeTargetQuietly(f.worktree)
+  if (f.unpark) unpark(feature)
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf)
@@ -967,7 +999,132 @@ function enqueue(feature) {
   }
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
   else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
-  else Object.assign(f, { status: 'parked', reason: 'MANIFEST.md missing or its state not understood' })
+  else Object.assign(f, { status: 'parked', reason: `MANIFEST.md is missing or its state is not one the fleet knows — next: /builder:resume --path ${specOf(feature)} to set it right` })
+}
+
+// ---- the park record (REFERENCE §The park record) -------------------------------------------
+const today = () => new Date().toISOString().slice(0, 10)
+/** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in /
+
+/** `- <date> <what>` at the end of the record's History, which is always its last section. */
+function appendHistory(path, what) {
+  const text = readFileSync(path, 'utf8').trimEnd()
+  writeFileSync(path, `${/^## History$/m.test(text) ? text : `${text}\n\n## History`}\n- ${today()} ${what}\n`)
+}
+
+/** The record's `kind:`, or what the reason implies when there is no record. */
+function parkKind(feature) {
+  const f = fleet.features[feature]
+  const p = f.worktree && join(f.worktree, specOf(feature), 'PARKED.md')
+  const kind = p && existsSync(p) ? /^kind:\s*(\S+)/m.exec(readFileSync(p, 'utf8'))?.[1] : null
+  return kind ?? (HUMAN_STEP.test(f.reason ?? '') ? 'human-step' : 'stuck')
+}
+
+/**
+ * Make sure a parked feature has a park record that matches its park. A run that parked it wrote
+ * one (the skills do) → kept as written. None, or one left from an earlier park → the fleet writes
+ * what it knows: the reason split into why and next, the log of the run that parked it with its
+ * last lines quoted (logs live outside the worktree), and the history carried over. Committed, so
+ * it travels with the branch.
+ */
+function ensureParkRecord(feature) {
+  const f = fleet.features[feature]
+  const folder = f.worktree && join(f.worktree, specOf(feature))
+  if (!folder || !existsSync(join(folder, 'MANIFEST.md')) || !f.reason) return
+  const p = join(folder, 'PARKED.md')
+  const old = existsSync(p) ? readFileSync(p, 'utf8') : ''
+  if (old && unquote(/^blocked:\s*(.*)$/m.exec(old)?.[1]) === f.reason) return
+  const { why, next } = parkParts(f.reason)
+  const history = /^## History\n([\s\S]*)$/m.exec(old)?.[1]?.trimEnd()
+  const tail = f.log && existsSync(f.log) ? readFileSync(f.log, 'utf8').trim().split('\n').slice(-25).join('\n') : ''
+  const kind = HUMAN_STEP.test(f.reason) ? 'human-step' : 'stuck'
+  const text = [
+    `# ${feature} — parked`,
+    `parked: ${today()} ${tryGit(['rev-parse', '--short', 'HEAD'], f.worktree) ?? ''} · by the fleet (the run that parked it wrote no record)`,
+    `kind: ${kind}`,
+    `blocked: "${f.reason}"`,
+    '',
+    '## What is stuck',
+    why,
+    '',
+    '## What was tried',
+    `- ${f.runs ?? 0} fleet run(s) in all — \`git log --oneline -- ${specOf(feature)}\` lists what each changed`,
+    '',
+    '## Evidence',
+    ...(f.log ? [`- the run that parked it: ${f.log} — its last lines:`, '', '```', tail, '```'] : ['- no run log']),
+    ...(f.startLog ? [`- the walk env's start log: ${f.startLog}`] : []),
+    '',
+    '## Where to dig',
+    "- start from the run's last lines above and the evidence it names; nothing has been ruled out yet",
+    '',
+    '## Recommended next step',
+    next ?? '/builder:agent — naming it again unparks it and retries',
+    '',
+    '## History',
+    ...(history ? [history] : []),
+    `- ${today()} parked — ${why}`,
+    '',
+  ].join('\n')
+  writeFileSync(p, text)
+  const rel = join(specOf(feature), 'PARKED.md')
+  tryGit(['add', '--', rel], f.worktree)
+  tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
+}
+
+/**
+ * agent_walk.auto_unpark: a park gets an agent run to dig into its record, up to that many times per
+ * fleet run — every park but a human-step one, which only a person can clear. The walk env's own
+ * restart line is not a park the fleet retries this way (walkOne restarts it). True when requeued.
+ */
+function autoRetry(feature) {
+  const f = fleet.features[feature]
+  if (f?.status !== 'parked' || RESTART.test(f.reason ?? '')) return false
+  if ((f.autoUnparks ?? 0) >= AW.autoUnpark || parkKind(feature) === 'human-step') return false
+  f.autoUnparks = (f.autoUnparks ?? 0) + 1
+  markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${AW.autoUnpark}`)
+  enqueue(feature)
+  save()
+  return true
+}
+
+/** A parked or failed row to retry: remember what stopped it, and unpark it at its next enqueue. */
+function markUnpark(f, by = BY_PERSON) {
+  if (f.reason) f.lastPark = f.reason
+  f.unpark = by
+}
+
+/**
+ * Unpark a feature someone named again — ALWAYS, whatever parked it and whichever builder version
+ * wrote the line: builder, the code or the spec may have changed since, and the run is told what the
+ * park said so it can check (priorPark). `blocked:` goes to `none` in a commit that quotes the old
+ * line, so the history keeps it. The agent walk's round cap starts over: `unparked-after` holds the
+ * highest round walked so far, and agent-walk counts only the rounds after it.
+ */
+function unpark(feature) {
+  const f = fleet.features[feature]
+  const by = f.unpark === true ? BY_PERSON : f.unpark
+  delete f.unpark
+  const rel = join(specOf(feature), 'MANIFEST.md')
+  const p = join(f.worktree, rel)
+  const text = existsSync(p) ? readFileSync(p, 'utf8') : null
+  const blocked = text == null ? null : parseManifest(text).blocked
+  if (isSet(blocked)) f.lastPark = unquote(blocked)
+  if (!f.lastPark) return
+  const paths = []
+  if (isSet(blocked)) {
+    writeFileSync(p, text.replace(/^blocked:.*$/m, 'blocked: none'))
+    paths.push(rel)
+  }
+  const record = join(specOf(feature), 'PARKED.md')
+  if (existsSync(join(f.worktree, record))) {
+    appendHistory(join(f.worktree, record), `unparked by ${by}`)
+    paths.push(record)
+  }
+  if (paths.length) tryGit(['commit', '-qm', `chore(${feature}): unparked for a fleet retry — was: ${f.lastPark}`, '--', ...paths], f.worktree)
+  const walks = join(f.worktree, '.builder', feature, 'agent-walk')
+  const rounds = existsSync(walks) ? readdirSync(walks).map((n) => Number(/^round-(\d+)$/.exec(n)?.[1])).filter(Boolean) : []
+  if (rounds.length) writeFileSync(join(walks, 'unparked-after'), `${Math.max(...rounds)}\n`)
 }
 
 /**
@@ -987,8 +1144,8 @@ async function syncTarget(wt, why = "its dependencies' code", feature = null) {
     const log = conflicted && feature ? await resolveMerge(feature, wt, why) : null
     if (log !== true) {
       tryGit(['merge', '--abort'], wt)
-      if (!conflicted) return `merging ${TARGET} (${why}) failed before any conflict — clears when git merge ${TARGET} runs in ${wt}`
-      return `merging ${TARGET} (${why}) conflicted and two agent runs could not resolve it${log ? ` — see ${log}` : ''}; clears when the merge is committed in the branch`
+      if (!conflicted) return `merging ${TARGET} (${why}) failed before any conflict — next: run git merge ${TARGET} in ${wt} and clear what stops it, then /builder:agent`
+      return `merging ${TARGET} (${why}) conflicted and two agent runs could not resolve it${log ? ` (see ${log})` : ''} — next: finish the merge in ${wt} and commit it, then /builder:agent`
     }
   }
   // New commits came in: a package or a migration may have come with them, and the worktree's
@@ -1000,7 +1157,7 @@ async function syncTarget(wt, why = "its dependencies' code", feature = null) {
     try {
       execSync(AW.sync.replaceAll('{feature}', feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
     } catch {
-      return `agent_walk.sync failed after merging ${TARGET} — see ${log}; clears when it passes`
+      return `agent_walk.sync failed after merging ${TARGET} (see ${log}) — next: make agent_walk.sync pass in ${wt}, then /builder:agent`
     } finally {
       closeSync(fd)
     }
@@ -1064,6 +1221,7 @@ function release() {
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
+  f.autoUnparks = 0 // and a fresh automatic-retry budget
   enqueue(feature)
 }
 
@@ -1085,13 +1243,11 @@ function drainInbox() {
     try {
       meta = JSON.parse(readFileSync(join(INBOX, name), 'utf8'))
     } catch {}
-    try {
-      unlinkSync(join(INBOX, name))
-    } catch {}
     const row = fleet.features[name]
     if (row && !['parked', 'failed'].includes(row.status)) continue // queued or running already
     if (row) {
-      Object.assign(row, { status: 'queued', reason: null, runsThisTime: 0 })
+      markUnpark(row)
+      Object.assign(row, { status: 'queued', reason: null, runsThisTime: 0, autoUnparks: 0 })
       joining.push(name)
       continue
     }
@@ -1104,12 +1260,18 @@ function drainInbox() {
       continue
     }
     const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => !landedOn(d))
-    fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, ...(waits.length && { waitsOn: waits }) }
+    fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, unpark: true, ...(waits.length && { waitsOn: waits }) }
     joining.push(name)
   }
-  // Rows saved before their worktrees are made: a second drop of the same name in that window
-  // reads fleet.json and sees the row.
+  // Rows saved before their worktrees are made, and the drops removed only once the rows are
+  // saved: a second drop of the same name at any moment either finds its file still there
+  // ("already queued") or reads fleet.json and sees the row — never neither, which queued it twice.
   if (joining.length || names.length) save()
+  for (const name of names) {
+    try {
+      unlinkSync(join(INBOX, name))
+    } catch {}
+  }
   for (const name of joining) enqueue(name)
   if (joining.length) save()
   return joining.length > 0
@@ -1168,6 +1330,10 @@ let closing = false // one lane found everything idle — every lane stops, toge
 const idle = () => !pool.length && !walkQueue.length && inFlight === 0
 
 function route(feature, outcome) {
+  if (outcome === 'parked') {
+    ensureParkRecord(feature)
+    if (autoRetry(feature)) return
+  }
   if (outcome === 'walk') walkQueue.push(feature)
   else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
   else if (outcome === 'done') release()
@@ -1242,7 +1408,7 @@ clearInterval(poll)
 // Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
 for (const f of Object.values(fleet.features))
   if (f.status === 'waiting')
-    Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}` })
+    Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}, which never merged — next: settle ${pendingDeps(f).join(', ')}, then pick both in /builder:agent` })
 save()
 unlock()
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))

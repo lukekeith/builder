@@ -34,6 +34,7 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     start: null,
     smoke: null,
     keepLogs: 30,
+    autoUnpark: 2,
   })
 })
 
@@ -125,4 +126,12 @@ test('keep_logs: a whole number of days, 0 keeps forever, anything else is the d
   assert.equal(kl(0), 0)
   assert.equal(kl(-1), 30)
   assert.equal(kl('soon'), 30)
+})
+
+test('auto_unpark: a whole number of retries per park, 0 turns them off, anything else is the default', () => {
+  const au = (v) => cfgWith(`agent_walk:\n  driver: x\n  claude_args: --a\n  auto_unpark: ${v}`).agentWalk.autoUnpark
+  assert.equal(au(0), 0)
+  assert.equal(au(5), 5)
+  assert.equal(au(-1), 2)
+  assert.equal(au('lots'), 2)
 })
