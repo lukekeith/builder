@@ -4,6 +4,26 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.2.0
+
+**New:**
+- **A vendored copy tells you when it's behind.** In a repo carrying its own copy of builder,
+  `/builder:status` and `/builder:resume` now print `⬆️ builder <latest> is available — this repo
+  carries <have>. Run /builder:vendor to update it.` whenever this machine has a newer release. The
+  check reads only the plugin installs and marketplace copies already on disk. `list-features.mjs
+  --json` carries it as a top-level `builder` field.
+
+**Changed:**
+- **`/builder:vendor` refreshes before it copies.** It updates the marketplace and your user-scope
+  install first, so "already up to date" means up to date with the latest release. `--check` does the
+  same refresh without copying, and says whether a newer release is out.
+
+**Fixed:**
+- `/builder:vendor` picked its source by sorting folder paths, so another marketplace's plugin that
+  happened to be called builder could win, and it would stop with an error. It now takes the
+  user-scope `builder` install from `claude plugin list --json`, and only one that includes
+  `scripts/vendor.mjs`.
+
 ## 4.1.1
 
 **Fixed:**

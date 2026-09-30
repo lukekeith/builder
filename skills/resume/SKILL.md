@@ -347,7 +347,10 @@ node <builder>/scripts/list-features.mjs --json
 ```
 
 Each row gives `feature`, `path`, `layout`, `state`, `done`, `convert`, `lastDone`, `nextStep`,
-`updatedAt`, `branch`, plus `manifest` or `children`.
+`updatedAt`, `branch`, plus `manifest` or `children`. **A top-level `builder` field with `behind:
+true`** means this repo runs a vendored copy older than the newest release on this machine: say so
+in one line above the question — `⬆️ builder <latest> is available — this repo carries <have>. Run
+/builder:vendor to update it.` — and carry on; it is never a reason to stop.
 
 - **Offerable** — `done` false. A parked row (`manifest.blocked` set) is offered too, its
   description `parked — <why>`; picking it goes to Step 1's parked row, which offers to unpark it.

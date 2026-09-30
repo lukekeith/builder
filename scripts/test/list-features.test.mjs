@@ -159,3 +159,25 @@ test('a conversation stopped at understanding (handed-off, no folder) is not lis
   const json = JSON.parse(list(root, '--json').stdout).features
   assert.deepEqual(json.map((f) => f.feature), ['live'])
 })
+
+test('a vendored copy behind the newest release on this machine says so in --status and --json', async () => {
+  const { cpSync } = await import('node:fs')
+  const root = setup({ live: 'state: planned' })
+  const copy = join(root, 'plugins/builder')
+  cpSync(join(dirname(LIST)), join(copy, 'scripts'), { recursive: true, filter: (p) => !p.includes(`${join('scripts', 'test')}`) })
+  mkdirSync(join(copy, '.claude-plugin'), { recursive: true })
+  writeFileSync(join(copy, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'builder', version: '4.1.1' }))
+  const config = mkdtempSync(join(tmpdir(), 'lf-config-'))
+  const rel = join(config, 'plugins/cache/m/builder/4.2.0')
+  mkdirSync(join(rel, '.claude-plugin'), { recursive: true })
+  mkdirSync(join(rel, 'scripts'), { recursive: true })
+  writeFileSync(join(rel, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'builder', version: '4.2.0' }))
+  writeFileSync(join(rel, 'scripts/vendor.mjs'), '')
+  const run = (...args) => spawnSync('node', [join(copy, 'scripts/list-features.mjs'), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } })
+  const status = run('--status')
+  assert.equal(status.status, 0, status.stderr)
+  assert.match(status.stdout, /⬆️ builder 4\.2\.0 is available — this repo carries 4\.1\.1\. Run \/builder:vendor to update it\./)
+  assert.deepEqual(JSON.parse(run('--json').stdout).builder, { vendored: true, have: '4.1.1', latest: '4.2.0', behind: true })
+  // Run as a plugin install (not inside the repo), there is no line.
+  assert.doesNotMatch(list(root, '--status').stdout, /⬆️/)
+})
