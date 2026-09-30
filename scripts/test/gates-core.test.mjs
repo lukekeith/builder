@@ -365,3 +365,16 @@ test('gate.mjs --deep scopes a @scoped line to what the branch reaches, writes t
   assert.equal(none.status, 0, none.stderr)
   assert.match(none.stdout, /~ echo RAN \{tests\} — nothing this branch touches reaches these tests; not run/)
 })
+
+test('runGateSet: a scoped subset never becomes a @delta baseline — only a whole-suite count does', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-scope-'))
+  const gate = { cmd: 'true {tests}; echo 0', note: '', delta: true, knownRed: false, scope: 'e2e/**' }
+  const subset = runGateSet([gate], { cwd: dir, logDir: join(dir, 'logs'), baseline: {}, scope: () => ({ mode: 'some', tests: ['x.spec.ts'], why: {}, reason: null }) })
+  assert.equal(subset.exit, 0)
+  assert.deepEqual(subset.newBaselines, {}, 'a clean subset says nothing about the whole suite')
+  assert.match(subset.lines.join('\n'), /no baseline yet — a subset is not recorded as one/)
+  const whole = runGateSet([gate], { cwd: dir, logDir: join(dir, 'logs'), baseline: {} })
+  assert.deepEqual(whole.newBaselines, { 'true {tests}; echo 0': 0 })
+  const escalated = runGateSet([{ ...gate, cmd: 'if [ -n "{tests}" ]; then echo 1; else echo 5; fi' }], { cwd: dir, logDir: join(dir, 'logs'), baseline: {}, scope: () => ({ mode: 'some', tests: ['x.spec.ts'], why: {}, reason: null }) })
+  assert.deepEqual(Object.values(escalated.newBaselines), [5], 'a subset that failed was re-run whole, and that count stands')
+})
