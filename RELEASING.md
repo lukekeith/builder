@@ -1,8 +1,17 @@
 # Releasing
 
 1. **Make the change** and update `CHANGELOG.md`.
-2. **Bump `version`** in `.claude-plugin/plugin.json` (semver: a new rule or skill is a minor; a
-   changed contract a consumer's `.claude/builder.md` must satisfy is a major).
+2. **Bump `version`** in `.claude-plugin/plugin.json`. **Default to a patch** — most releases are
+   one:
+   - **Patch** (`x.y.Z`) — how an existing skill behaves: a new or changed rule, better prompts or
+     question format, a fix, a stricter check, a script improvement, docs.
+   - **Minor** (`x.Y.0`) — a new capability a user reaches for by name: a new skill or command, a
+     new flag, a new optional config key, a substantially new mode (the scale of `/builder:fleet`).
+   - **Major** (`X.0.0`) — **only** when a consumer must act to keep working: a required change to
+     `.claude/builder.md`, or a MANIFEST / record / folder format the new version can no longer
+     read. A redesigned flow that still reads old folders and configs is not a major.
+
+   When unsure between two, take the smaller.
 3. **Validate** — this checks the manifests, and the skills, agents and commands in the tree:
 
    ```bash

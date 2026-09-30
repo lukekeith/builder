@@ -8,7 +8,7 @@ the spec formats belong to `/builder:spec`.
 ## The record
 
 `.builder/<feature>/brainstorm.md` (`<builder>/scripts/workspace <feature>` prints the directory).
-**Rewrite it after every round** — it is how a long conversation survives `/clear`, and it is the only
+**Rewrite it after every answer** — it is how a long conversation survives `/clear`, and it is the only
 thing `/builder:spec` reads. The header is the lines before the first blank line; scripts read only
 the header, so keep it exactly this shape:
 
@@ -60,7 +60,7 @@ stated to the user, not yet contested) · `stated` (intake: the document says so
 something else — evidence required) · `unverifiable` (needs running code or a person).
 
 **Resuming a record** (`--path`): `exploring` or `parked` → say what is settled and what is open,
-then the next round; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
+then the next question; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
 hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
 stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC,
 MANIFEST or PROGRAM → nothing to resume — say where the work went (built in chat, stopped at
@@ -94,40 +94,66 @@ time**, stopping at the first rung that answers it:
 **Then, and only then, ask — and only what the code cannot answer:**
 
 - **One clear meaning** → state it with its evidence and carry on (`assumed`, listed at §Confirm).
-- **Several candidates** → ask with them named — "`Certificate.issue_date` (the PDF header) or
-  `Invoice.issuedAt` (billing)?" — recommendation first. Never an open "what do you mean by …".
+- **Several candidates** → ask with them as the options — `Certificate.issue_date` (the PDF header)
+  (Recommended) · `Invoice.issuedAt` (billing) — in §Rounds' format. Never an open "what do you mean
+  by …".
 - **Nothing, after rung 3** → say where you looked, then ask.
 - **A choice about what the product *should* do** — intent, priority, taste, a rule the code doesn't
   encode yet — is the user's, and is always a question.
 
-🔴 **The self-check before every round:** a question that uses one of the user's terms you have not
+🔴 **The self-check before every question:** a question that uses one of the user's terms you have not
 located in the code, or asks for a fact about how the system works today, is not ready — it goes back
 up the ladder. Asking the user to define a word that is in their own codebase is the failure this
 section exists to stop.
 
 ## Rounds
 
-- **Ask the whole frontier each round**: every `open` branch whose prerequisites are settled. A
-  question whose answer depends on another question still open this round waits for a later round.
-- **Format** — numbered, each with the context a person needs to answer it and a recommendation:
+- **The frontier** is every `open` branch whose prerequisites are settled. A question whose answer
+  depends on another still-open question waits until that one is answered.
+- **🔴 One question per turn, by default** — the frontier question that unblocks the most of the
+  tree goes first. Every question has two parts, in this order:
 
-  ```
-  ❓ **Q1 — <title>**: <the question, with what makes it matter; several paragraphs if needed>
+  1. **The briefing, in chat** — a short heading naming the decision, then what a person needs to
+     choose or to write their own answer:
 
-  ➡️ <your recommendation, and why>
-  ```
+     ```
+     **Q<n> of ~<m> — <the decision, in a few words>**
 
-  A round made only of quick closed choices (which app, yes/no, one of three names) goes through
-  AskUserQuestion instead, recommendation first and marked.
+     <The question in one plain sentence.>
+
+     **Why it matters:** <what depends on it; what goes wrong if it's decided badly or not at all>
+     **What it affects:** <the screens, data, apps, users or later decisions it touches — concrete names from the code>
+     **Recommendation:** <the option and why — the evidence behind it, and what it costs you>
+     ```
+
+  2. **The choice — one AskUserQuestion**, straight after the briefing: `question` restates it in
+     one line; 2–4 options, **your recommendation first with ` (Recommended)` on its label**; each
+     label a concrete answer of 1–5 words (never "Option A", never a restated question); each
+     description says **what picking it does** — what gets built or changes, and what it makes
+     better or worse. The tool adds *Other* for a custom answer, so never add a "something else"
+     option. Options that differ in shape (a layout, a data shape, a message's wording) carry a
+     `preview`.
+
+  Every option must be a real, defensible answer the user could pick — never a filler to reach two.
+  A question with only one defensible answer is not a question: state it as `assumed` (below). A
+  question whose answer is free text (a name, a message's wording) still gets options: your drafted
+  answer (Recommended), one or two real alternatives, and *Other* for theirs.
+- **Several at once, only when they are independent and quick** — two to four closed choices with no
+  answer depending on another (which apps, a name, yes/no on a guard). Then send **one briefing per
+  question** as above (shortened to a line each for *Why* and *Affects*), followed by **one
+  AskUserQuestion carrying all of them** as separate questions — each with its own `header`, options
+  and `(Recommended)` label, never a numbered prose list with the answers written inline. Any question
+  with real trade-offs to weigh is asked alone.
 - **Facts are never the user's job** (§Grounding). A question the code can answer goes up the
   ladder — your own fast grep first, an Explore agent (`sonnet`) only for what that leaves unclear;
-  only the branches downstream of a lookup still running wait — ask the rest of the frontier now, and
-  record it under *Waiting on facts*.
+  only the branches downstream of a lookup still running wait — ask the next frontier question now,
+  and record the lookup under *Waiting on facts*.
 - **Say what recon settled, never decide it silently**: `Assumed B5: reuse Toaster — AppShell already
   mounts it (app/shell.tsx:40). Say if not.` An assumption the user doesn't contest stays `assumed`
   and is listed again at §Confirm.
-- **After each round** recompute the frontier, rewrite the record, and open the next round with one
-  line of progress: `8 of 12 settled — 3 open, 1 waiting on a lookup.`
+- **After each answer** record the ruling with its Why and the options it rejected (and why), recompute
+  the frontier, rewrite the record, and open the next question with one line of progress:
+  `8 of 12 settled — 3 open, 1 waiting on a lookup.`
 - **"Explain X" at any point** — "how does X work", "what would this touch", "show me the data flow" —
   dispatches a sub-agent, and the answer comes back in plain words (a diagram when parts move),
   recorded under *Explained on request*. It is never refused as off-topic: understanding the system
@@ -137,7 +163,8 @@ section exists to stop.
 
 Only when the tree holds a real fork — two or more viable designs that shape the rest of the tree.
 Present 2–3, the recommendation first: what each is, its trade-offs, and **what it makes harder
-later**. The chosen one becomes a settled branch; the others go to *Rejected* with the reason each
+later** — as §Rounds' briefing, then one AskUserQuestion with each approach as an option (the
+recommendation first and marked, a `preview` sketching each). The chosen one becomes a settled branch; the others go to *Rejected* with the reason each
 lost. No fork → no approaches step, and say so in one line.
 
 ## Confirm
@@ -178,10 +205,10 @@ overrides; lg is offered a split before anything else. Record it: `status: sized
 ## Steering and --auto
 
 **The user steers at any time**: "go deeper on X" (open sub-branches under X), "skip that, use your
-recs" (settle the frontier on the recommendations, recorded as the user's ruling), "that's enough"
+recs" (settle every open branch on its recommendation, recorded as the user's ruling), "that's enough"
 (jump to §Confirm, listing what is still open as assumed).
 
-**Under `--auto`**: play the intent back as `(assumed)`; every round settles on its recommendations,
+**Under `--auto`**: play the intent back as `(assumed)`; every question settles on its recommendation (no AskUserQuestion),
 each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
 chosen; §Confirm proceeds without waiting and takes **Build it**. §Size accepts the size as classified
 — no lg split offer; a split worth making is recorded under *Size* as a recommendation. xs and sm take
