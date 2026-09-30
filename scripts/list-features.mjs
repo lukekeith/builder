@@ -39,6 +39,8 @@ import { parseManifest, isSet } from './manifest.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
 import { ago } from './fleet-core.mjs'
+import { newerRelease, newerLine } from './newer.mjs'
+import { fileURLToPath } from 'node:url'
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -447,8 +449,18 @@ for (const d of draftRows(ROOT, CFG.registry)) {
 }
 
 const archivedCount = archivedNames().length
+// A copy vendored into this repo can't know a release came out; say so where the user looks.
+const newer = (() => {
+  try {
+    return newerRelease({ pluginRoot: join(fileURLToPath(import.meta.url), '..', '..'), repoRoot: ROOT })
+  } catch {
+    return null
+  }
+})()
+const NEWER = newerLine(newer)
 if (!rows.length && !archivedCount) {
   console.error(`Nothing under ${CFG.registry} — start one with ${PLAN_CMD} <what you want>.`)
+  if (NEWER) console.log(NEWER)
   process.exit(asJson || asStatus ? 0 : 1)
 }
 
@@ -458,6 +470,7 @@ if (asStatus) {
   const doneCount = liveDone + archivedCount
   if (!open.length) {
     console.log(`Nothing in progress in ${CFG.project}${doneCount ? ` — ${doneCount} shipped` : ''}. Start one with ${PLAN_CMD} <what you want>.`)
+    if (NEWER) console.log(`\n${NEWER}`)
     process.exit(0)
   }
   // A pipe inside a cell would split it into two columns.
@@ -484,11 +497,12 @@ if (asStatus) {
   }
   if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — \`node <builder>/scripts/registry.mjs --sweep\` archives them.`)
   if (archivedCount) console.log(`\n📦 ${archivedCount} shipped features archived · list-features.mjs --archived lists them.`)
+  if (NEWER) console.log(`\n${NEWER}`)
   process.exit(0)
 }
 
 if (asJson) {
-  console.log(JSON.stringify({ features: rows }, null, 2))
+  console.log(JSON.stringify({ features: rows, ...(newer?.vendored && { builder: newer }) }, null, 2))
   process.exit(0)
 }
 
