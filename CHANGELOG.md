@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.3.0
+
+**New:**
+- **`/builder:version`**: which builder this session is running, and whether it's the newest. It
+  reports:
+  - the version this session actually loaded, which a session keeps until `/reload-plugins` or a
+    restart even after a newer one is installed beside it;
+  - where it came from: a user-scope or project-scope install, or the repo's own vendored copy;
+  - what's installed on this machine, and a project-scope install that shadows the user-scope one;
+  - the newest release this machine knows about, with when the marketplace was last refreshed;
+  - a fleet running in this repo on an older version, which keeps that version until it finishes.
+
+  It ends with the one step that brings the session current: `/reload-plugins`, `/builder:update`
+  or `/builder:vendor`. It is read-only and never fetches, and it is included in vendored copies.
+
 ## 4.2.0
 
 **New:**
