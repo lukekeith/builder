@@ -255,6 +255,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
         say(`  ${value} in the subset — re-running the whole suite to judge it against the baseline`)
         r = runCommand(scoped.whole, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-whole.log') : null })
         g = { ...g0, cmd: scoped.whole }
+        scoped = { ...scoped, subset: false } // a whole-suite count now: it can stand as a baseline
         value = lastInt(r.stdout)
       }
       if (value === null) {
@@ -264,7 +265,8 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       }
       const key = g0.scope ? g0.cmd : g.cmd // a scoped line's baseline is the whole suite, under the line as written
       const base = baseline[key]
-      if (base == null) {
+      if (base == null && scoped?.subset) say(`✓ ${g.cmd} → ${value} (no baseline yet — a subset is not recorded as one; gate.mjs --baseline measures the whole suite, ${fmt(r.ms)})`)
+      else if (base == null) {
         newBaselines[key] = value
         say(`✓ ${g.cmd} → ${value} (no baseline yet — this measurement is now the baseline, ${fmt(r.ms)})`)
       } else if (value <= base) say(`✓ ${g.cmd} → ${value} (baseline ${base}, ${fmt(r.ms)})`)

@@ -4,6 +4,14 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.1.1
+
+**Fixed:**
+- A `@scoped @delta` line with no baseline yet no longer records its subset count as one. A clean
+  subset would have set the baseline to 0 and failed every later whole-suite run that has known-red
+  tests. A subset that fails and is re-run whole records that whole-suite count; otherwise the
+  baseline waits for `gate.mjs --baseline`, which the fleet runs at start.
+
 ## 4.1.0
 
 **Changed:**
