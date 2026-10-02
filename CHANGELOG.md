@@ -4,6 +4,25 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.5.0
+
+**New:**
+- **Handoffs offer the agent.** Wherever agents could take the next step — after spec, align, audit,
+  plan, a go-ahead, a stopped or finished build, a sign-off with fixes owed, and verify — the footer
+  is a numbered choice instead of one command:
+
+  ```
+  📍 screen-row-dots: designed (md, server+web) — next:
+     1. resume — continue here, step by step: /builder:resume --path docs/features/screen-row-dots
+     2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/screen-row-dots
+     Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+  ```
+
+  Holds, human-only steps and anything before a spec stay single-line, and so does every footer in
+  a repo whose config has no `agent_walk:` block.
+- **`/builder:agent --path <folder>`** — hand one named feature to agents without the picker: the
+  dry run and the one confirmation, then the fleet.
+
 ## 4.4.1
 
 **Changed:**

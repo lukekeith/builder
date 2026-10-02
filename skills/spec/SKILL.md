@@ -101,5 +101,11 @@ Say what was written and where; **lead with the §Apps row**; list the OPEN deci
 recommendations; in prototype mode add the gap tally in its three buckets — fixed in the design · written into the SPEC · out of scope — and name which items are not yet built. Then:
 
 ```
-📍 <feature>: designed (<size>, <apps>) — next: /builder:resume --path <registry>/<feature> · or say go
+📍 <feature>: designed (<size>, <apps>) — next:
+   1. resume — continue here, step by step: /builder:resume --path <registry>/<feature>
+   2. agent  — hand it to agents to finish and merge: /builder:agent --path <registry>/<feature>
+   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
 ```
+
+The numbered form is REFERENCE §The two-way footer (`../resume/REFERENCE.md`); without a config
+`agent_walk:` block, the single line `📍 … — next: <option 1> · or say go`.

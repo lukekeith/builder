@@ -179,9 +179,17 @@ apps' gates ran, which were quoted from an earlier run, what the contract-parity
 deep checks showed, and whether the cross-app walk ran or was quoted — then:
 
 ```
-📍 <feature>: verify READY (<apps>) — next: /builder:resume --path <folder> (opens the PR) · or say go
 📍 <feature>: verify READY (<apps>) — 🛑 held — <the hold's words>
-📍 <feature>: verify INCOMPLETE — <n> fixes owed — next: /builder:resume --path <folder> · or say go
+```
+
+Otherwise the two-way footer (REFERENCE §The two-way footer) — option 1 `/builder:resume --path
+<folder> (opens the PR)` on READY, `/builder:resume --path <folder>` on INCOMPLETE:
+
+```
+📍 <feature>: verify <READY (<apps>) | INCOMPLETE — <n> fixes owed> — next:
+   1. resume — continue here, step by step: /builder:resume --path <folder>[ (opens the PR)]
+   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
+   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never

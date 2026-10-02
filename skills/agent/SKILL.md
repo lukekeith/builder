@@ -1,11 +1,16 @@
 ---
 name: agent
-description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the branch you ran it from, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did, with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written.
+description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the branch you ran it from, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did, with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written, or answers a two-way handoff footer with "2" or "agent".
 ---
 
 # `/builder:agent` — pick the work, let agents finish it
 
-Invocation: **`/builder:agent`**. No arguments; `--help` prints this line and stops.
+Invocation: **`/builder:agent [--path <folder>]`**. `--help` prints this line and stops.
+
+**`--path <folder>`** — the feature is already chosen (a two-way footer's `2. agent`, REFERENCE §The
+two-way footer): §1 checks that one feature exactly as it checks every row — offerable, or already in
+the running fleet, or why not — §2 is skipped, and §3 runs with it as the one pick. Not offerable →
+say why in one line and stop; never fall back to the picker.
 
 The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it promises holds here: a
 worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
