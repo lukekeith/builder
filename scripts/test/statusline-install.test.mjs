@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -77,4 +77,26 @@ test('status reports on/off and the wrapped command', () => {
   const s = run(dir, 'status').stdout
   assert.match(s, /^builder status line: on/m)
   assert.match(s, /gsd-statusline\.js/)
+})
+
+test('on refuses to save builder\'s own launcher as the previous line, however its path is written', () => {
+  const dir = config()
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: `node "${dir}//builder/statusline.mjs"` } }))
+  const on = run(dir, 'on')
+  assert.equal(on.status, 0, on.stdout + on.stderr)
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'builder', 'statusline.prev.json'), 'utf8')), { statusLine: null })
+})
+
+test('a symlinked settings.json stays a symlink, and its target keeps its mode', () => {
+  const dir = config()
+  const dot = realpathSync(mkdtempSync(join(tmpdir(), 'dot-')))
+  writeFileSync(join(dot, 'settings.json'), JSON.stringify({ statusLine: GSD }))
+  chmodSync(join(dot, 'settings.json'), 0o600)
+  symlinkSync(join(dot, 'settings.json'), join(dir, 'settings.json'))
+  assert.equal(run(dir, 'on').status, 0)
+  assert.ok(lstatSync(join(dir, 'settings.json')).isSymbolicLink(), 'still a symlink')
+  assert.match(JSON.parse(readFileSync(join(dot, 'settings.json'), 'utf8')).statusLine.command, /builder/)
+  assert.equal(statSync(join(dot, 'settings.json')).mode & 0o777, 0o600)
+  assert.equal(run(dir, 'off').status, 0)
+  assert.deepEqual(JSON.parse(readFileSync(join(dot, 'settings.json'), 'utf8')), { statusLine: GSD })
 })
