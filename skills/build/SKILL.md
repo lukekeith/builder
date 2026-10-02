@@ -241,9 +241,21 @@ the smoke exercised), the rulings list, whether the contract froze, any
 staged commits awaiting approval, blockers, the next command, and one footer:
 
 ```
-📍 <feature>: building — phase N/M (<app>), stopped — next: /builder:resume --path <folder> — say go to continue here, or /clear first for a fresh context
 📍 <feature>: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path <folder>
-📍 <feature>: built (<M> phases across <apps>, <T> tasks) — next: 🔒 your walk → /builder:signoff --path <folder>
+```
+
+Stopped mid-build, or built and walkable, the footer is two-way (REFERENCE §The two-way footer):
+
+```
+📍 <feature>: building — phase N/M (<app>), stopped (go continues here; /clear first for a fresh context) — next:
+   1. resume — continue here, step by step: /builder:resume --path <folder>
+   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
+   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+
+📍 <feature>: built (<M> phases across <apps>, <T> tasks) — next:
+   1. resume — 🔒 your walk → /builder:signoff --path <folder>
+   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path <folder>
+   Reply 1 or 2 (or "resume" / "agent")
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
