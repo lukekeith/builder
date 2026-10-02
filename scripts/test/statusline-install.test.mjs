@@ -44,16 +44,20 @@ test('with no previous status line, off removes the key again (and works with no
   assert.deepEqual(settings(none), {})
 })
 
-test('on twice keeps the original saved line; bare toggles', () => {
+test('on twice keeps the original saved line; bare only ever turns it on, --off is needed to turn it off', () => {
   const dir = config({ statusLine: GSD })
   run(dir, 'on')
   const again = run(dir, 'on')
   assert.match(again.stdout, /already on/)
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'builder', 'statusline.prev.json'), 'utf8')), { statusLine: GSD })
-  assert.match(run(dir).stdout, /off/)
+  assert.match(run(dir).stdout, /already on/)
+  assert.match(settings(dir).statusLine.command, /builder/)
+  assert.match(run(dir, '--off').stdout, /off/)
   assert.deepEqual(settings(dir).statusLine, GSD)
   assert.match(run(dir).stdout, /on/)
   assert.match(settings(dir).statusLine.command, /builder/)
+  assert.match(run(dir, '--status').stdout, /^builder status line: on/m)
+  assert.equal(run(dir, 'toggle').status, 1, 'there is no toggle any more')
 })
 
 test('off refuses when the status line is no longer builder\'s; unparseable settings are never written', () => {

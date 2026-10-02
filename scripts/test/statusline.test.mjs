@@ -39,7 +39,7 @@ test('an idle repo, a dir outside any repo, and a repo without a config render n
   assert.equal(render({ cwd: bare, now: NOW, bootTime: BOOT }), '')
 })
 
-test('a live fleet shows done/total, each in-flight feature with its bar and step, parked ones marked', () => {
+test('a live fleet leads with builder and one overall bar, then done/total, each in-flight feature\'s step, parked ones marked', () => {
   const root = repo()
   write(root, '.builder/fleet/lock', String(process.pid))
   write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: {
@@ -47,7 +47,7 @@ test('a live fleet shows done/total, each in-flight feature with its bar and ste
   } }))
   feature(root, 'b', 'building', { tasks: 9, done: 4 })
   const line = render({ cwd: root, now: NOW, bootTime: BOOT })
-  assert.match(line, /^⚙ fleet 1\/4 · b [▓░]{10} build 4\/9 · ⛔ c$/)
+  assert.match(line, /^builder [▓░]{10} \d+% · ⚙ fleet 1\/4 · b build 4\/9 · ⛔ c$/)
 })
 
 test('a fleet whose process is gone shows nothing (stale fleet.json)', () => {
@@ -60,7 +60,7 @@ test('a fleet whose process is gone shows nothing (stale fleet.json)', () => {
 test('an in-chat build shows while its ledger is fresh, and drops off after 5 minutes or once built', () => {
   const root = repo()
   feature(root, 'sheet-order', 'building', { tasks: 6, done: 2 })
-  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'sheet-order build 2/6')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder ▓▓▓░░░░░░░ 33% · sheet-order build 2/6')
   assert.equal(render({ cwd: root, now: NOW + 5 * 60 * 1000 + 1, bootTime: BOOT }), '')
   feature(root, 'sheet-order', 'built', { tasks: 6, done: 6 })
   assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), '')
@@ -73,7 +73,7 @@ test('a running gate and a running job show with elapsed time; dead or finished 
   write(root, '.builder/jobs/old.pid', String(process.pid))
   write(root, '.builder/jobs/old.exit', '0\n')
   write(root, '.builder/jobs/gone.pid', String(DEAD))
-  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'gate deep set ⏱ 3m · job verify ⏱ 45s')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · gate deep set ⏱ 3m · job verify ⏱ 45s')
 })
 
 test('from inside a fleet worktree (.git is a file) it reads the main checkout', () => {
@@ -83,7 +83,7 @@ test('from inside a fleet worktree (.git is a file) it reads the main checkout',
   const wt = join(main, '.claude/worktrees/b')
   write(main, '.claude/worktrees/b/.git', `gitdir: ${join(main, '.git/worktrees/b')}\n`)
   assert.deepEqual(repoRoots(join(wt, 'apps')), { root: wt, main })
-  assert.match(render({ cwd: wt, now: NOW, bootTime: BOOT }), /^⚙ fleet 0\/1 · b /)
+  assert.match(render({ cwd: wt, now: NOW, bootTime: BOOT }), /^builder [▓░]{10} \d+% · ⚙ fleet 0\/1 · b /)
 })
 
 test('fit drops whole trailing items and says how many; elapsed is compact', () => {
@@ -97,13 +97,13 @@ test('the CLI prints the line, and prints nothing (exit 0) on garbage', () => {
   feature(root, 'x', 'building', { tasks: 2, done: 1, ledgerAt: Date.now() })
   const ok = spawnSync('node', [join(SCRIPTS, 'statusline.mjs'), '--cwd', root], { encoding: 'utf8' })
   assert.equal(ok.status, 0)
-  assert.equal(ok.stdout, 'x build 1/2\n')
+  assert.equal(ok.stdout, 'builder ▓▓▓▓░░░░░░ 43% · x build 1/2\n')
   write(root, '.builder/fleet/lock', String(process.pid))
   write(root, '.builder/fleet/fleet.json', '{ not json')
   const bad = spawnSync('node', [join(SCRIPTS, 'statusline.mjs'), '--cwd', root], { encoding: 'utf8' })
   assert.equal(bad.status, 0)
   assert.equal(bad.stderr, '')
-  assert.equal(bad.stdout, 'x build 1/2\n', 'an unreadable fleet.json is no fleet segment, not "fleet 0/0"')
+  assert.equal(bad.stdout, 'builder ▓▓▓▓░░░░░░ 43% · x build 1/2\n', 'an unreadable fleet.json is no fleet segment, not "fleet 0/0"')
 })
 
 test('a lock, marker or job pid file older than the last boot is stale, whatever process has that pid now', () => {
@@ -113,5 +113,5 @@ test('a lock, marker or job pid file older than the last boot is stale, whatever
   write(root, '.builder/gates/running.json', JSON.stringify({ sets: 'deep set', pid: process.pid, startedAt: new Date(NOW - 60000).toISOString() }), NOW - 60000)
   write(root, '.builder/jobs/verify.pid', String(process.pid), NOW - 60000)
   assert.equal(render({ cwd: root, now: NOW, bootTime: NOW - 1000 }), '')
-  assert.match(render({ cwd: root, now: NOW, bootTime: NOW - 120000 }), /^⚙ fleet 0\/1/)
+  assert.match(render({ cwd: root, now: NOW, bootTime: NOW - 120000 }), /^builder [▓░]{10} \d+% · ⚙ fleet 0\/1/)
 })

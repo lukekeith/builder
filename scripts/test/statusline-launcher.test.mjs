@@ -28,12 +28,12 @@ const launch = (config, cwd, ms = '20000,20000') => {
 }
 const cwd = () => realpathSync(mkdtempSync(join(tmpdir(), 'repo-')))
 
-test('prints the previous status line, then builder\'s line, feeding the previous command the same stdin', () => {
+test('prints the previous status line, then builder\'s segment on the same row, feeding the previous command the same stdin', () => {
   const config = setup({ prev: { type: 'command', command: 'node -e "let s=\'\';process.stdin.on(\'data\',d=>s+=d).on(\'end\',()=>console.log(\'GSD \'+JSON.parse(s).workspace.current_dir))"' } })
   const dir = cwd()
   const r = launch(config, dir)
   assert.equal(r.status, 0)
-  assert.equal(r.stdout, `GSD ${dir}\nB ${dir}\n`)
+  assert.equal(r.stdout, `GSD ${dir} │ B ${dir}\n`)
 })
 
 test('no previous status line → builder\'s line alone; a failing one → builder\'s line alone', () => {
@@ -72,14 +72,14 @@ test('the previous command and the renderer run side by side, not one after the 
   const esm = span('SLOW').replace("const fs = require('fs');", "import fs from 'node:fs';")
   const config = setup({ prev: { type: 'command', command: `node -e ${JSON.stringify(span('GSD'))}` }, body: esm })
   const r = launch(config, cwd())
-  assert.equal(r.stdout, 'GSD\nSLOW\n')
+  assert.equal(r.stdout, 'GSD │ SLOW\n')
   const at = (n) => Number(readFileSync(join(marks, n), 'utf8'))
   assert.ok(at('GSD.start') < at('SLOW.end') && at('SLOW.start') < at('GSD.end'), 'the two ran at the same time')
 })
 
 test('a previous status line that prints and then exits non-zero still shows', () => {
   const dir = cwd()
-  assert.equal(launch(setup({ prev: { type: 'command', command: 'echo GSD; exit 1' } }), dir).stdout, `GSD\nB ${dir}\n`)
+  assert.equal(launch(setup({ prev: { type: 'command', command: 'echo GSD; exit 1' } }), dir).stdout, `GSD │ B ${dir}\n`)
 })
 
 test('a hung previous command leaves nothing running behind it once cut off', () => {
@@ -99,7 +99,27 @@ test('a hung previous command leaves nothing running behind it once cut off', ()
 test('the previous command runs marked as nested, and a nested launcher prints nothing — so builder\'s own launcher saved as the previous line cannot recurse', () => {
   const dir = cwd()
   const seen = setup({ prev: { type: 'command', command: 'echo "depth=$BUILDER_STATUSLINE_DEPTH"' } })
-  assert.equal(launch(seen, dir).stdout, `depth=1\nB ${dir}\n`)
+  assert.equal(launch(seen, dir).stdout, `depth=1 │ B ${dir}\n`)
   const nested = spawnSync('node', [join(setup({ prev: { type: 'command', command: 'echo GSD' } }), 'builder', 'statusline.mjs')], { input: '{}', encoding: 'utf8', env: { ...process.env, BUILDER_STATUSLINE_DEPTH: '1' } })
   assert.equal(nested.stdout, '')
+})
+
+test('a multi-line previous status line keeps its rows; builder\'s segment joins the last', () => {
+  const dir = cwd()
+  assert.equal(launch(setup({ prev: { type: 'command', command: 'printf "ONE\\nTWO\\n"' } }), dir).stdout, `ONE\nTWO │ B ${dir}\n`)
+})
+
+test('before the first response (no context percentage) the previous line is handed an empty window; a real one passes through untouched', () => {
+  const config = setup({ prev: { type: 'command', command: 'node -e "let s=\'\';process.stdin.on(\'data\',d=>s+=d).on(\'end\',()=>console.log(\'CTX \'+JSON.parse(s).context_window?.remaining_percentage))"' } })
+  const dir = cwd()
+  const feed = (context_window) => spawnSync('node', [join(config, 'builder', 'statusline.mjs')], { input: JSON.stringify({ workspace: { current_dir: dir }, context_window }), encoding: 'utf8', env: { ...process.env, BUILDER_STATUSLINE_MS: '20000,20000' } }).stdout
+  assert.equal(feed({ remaining_percentage: null, used_percentage: null }), `CTX 100 │ B ${dir}\n`)
+  assert.equal(feed({ remaining_percentage: 79, used_percentage: 21 }), `CTX 79 │ B ${dir}\n`)
+  assert.equal(launch(config, dir).stdout, `CTX undefined │ B ${dir}\n`, 'no context_window at all is left alone')
+})
+
+test('with builder installed and nothing running, the segment still shows: an empty bar marked idle', () => {
+  const dir = cwd()
+  const config = setup({ prev: { type: 'command', command: 'echo GSD' }, body: '' })
+  assert.equal(launch(config, dir).stdout, 'GSD │ builder ░░░░░░░░░░ idle\n')
 })
