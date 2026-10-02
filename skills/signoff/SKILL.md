@@ -115,7 +115,10 @@ writes it: `go-ahead: <name YYYY-MM-DD>`, `head`, `next: /builder:resume --path 
 **never as a sign-off**: no header line, no condense, the PR lock untouched.
 
 ```
-📍 <feature>: go-ahead recorded — next: /builder:resume --path <folder> · or say go
+📍 <feature>: go-ahead recorded — next:
+   1. resume — continue here, step by step: /builder:resume --path <folder>
+   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
+   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
 ```
 
 ## Re-signing
@@ -141,7 +144,7 @@ description, and the SPEC header carries it from then on.
 |---|---|
 | PASS | `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
 | PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder> · or say go` |
-| PROBLEMS / PARTIAL | `📍 <feature>: <n> fixes owed — next: /builder:resume --path <folder> · or say go` |
+| PROBLEMS / PARTIAL | `📍 <feature>: <n> fixes owed — next:` then the two numbered options of REFERENCE §The two-way footer, option 1 `/builder:resume --path <folder>` |
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
 ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.

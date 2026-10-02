@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, ship, and a merge into the branch the fleet was run from. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue").
+description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, ship, and a merge into the branch the fleet was run from. Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue"), or "1" / "resume" on a two-way footer.
 ---
 
 # `/builder:resume` — where a feature stands, and the next step
@@ -473,8 +473,11 @@ released artifact nobody can hot-fix.
    📍 <feature>: <state> — next: <command> · or say go
    ```
 
-   ` · or say go` only where an affirmative can continue it — REFERENCE §Continuing on "go".
-5. **A bare affirmative in reply continues it.** "go", "yes", "proceed" after a footer runs that
+   ` · or say go` only where an affirmative can continue it — REFERENCE §Continuing on "go". Where
+   agents could take the next step instead, the footer is the numbered choice of REFERENCE §The
+   two-way footer — `1. resume` (this command) / `2. agent` (`/builder:agent --path <folder>`).
+5. **A bare affirmative, `1` or `resume` in reply continues it; `2` or `agent` runs
+   `/builder:agent --path <folder>`.** "go", "yes", "proceed" after a footer runs that
    footer's command through the Skill tool, in that turn — never ask the human to paste it. The
    exceptions (signoff, the walk, a human's step, a hold, opening the PR) are REFERENCE §Continuing
    on "go".
