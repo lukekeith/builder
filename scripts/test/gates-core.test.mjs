@@ -378,3 +378,15 @@ test('runGateSet: a scoped subset never becomes a @delta baseline — only a who
   const escalated = runGateSet([{ ...gate, cmd: 'if [ -n "{tests}" ]; then echo 1; else echo 5; fi' }], { cwd: dir, logDir: join(dir, 'logs'), baseline: {}, scope: () => ({ mode: 'some', tests: ['x.spec.ts'], why: {}, reason: null }) })
   assert.deepEqual(Object.values(escalated.newBaselines), [5], 'a subset that failed was re-run whole, and that count stands')
 })
+
+test('gate.mjs marks a running set in .builder/gates/running.json and removes it on exit', () => {
+  const seen = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'seen.txt')
+  const root = configured(`### server — fast\n\n\`\`\`\ncat .builder/gates/running.json >> ${seen}   # x\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  const r = run(root, 'server', '--force')
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const marker = JSON.parse(readFileSync(seen, 'utf8'))
+  assert.equal(marker.sets, 'server — fast')
+  assert.ok(marker.pid > 0)
+  assert.ok(!Number.isNaN(Date.parse(marker.startedAt)))
+  assert.ok(!existsSync(join(root, '.builder/gates/running.json')), 'removed when the gate exits')
+})

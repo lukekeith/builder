@@ -39,9 +39,9 @@
  * quoted. The output says which happened, and at which sha.
  */
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { parseGates, inputLines, inputsHash, isDirty, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
@@ -123,6 +123,14 @@ const sets = [
 // A --whole run and a scoped one prove different things on the same tree: each quotes only its own.
 if (flag('--whole')) for (const set of sets) if (set.gates.some((g) => g.scope)) set.key += '-whole'
 
+// While a set runs, .builder/gates/running.json says so — the status line's "gate … ⏱" reads it.
+const RUNNING = join(ROOT, '.builder', 'gates', 'running.json')
+const markRunning = (label) => {
+  mkdirSync(dirname(RUNNING), { recursive: true })
+  writeFileSync(RUNNING, JSON.stringify({ sets: label, pid: process.pid, startedAt: new Date().toISOString() }) + '\n')
+}
+process.on('exit', () => rmSync(RUNNING, { force: true }))
+
 for (const set of sets) {
   const hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
   const memo = readMemo(ROOT, set.key)
@@ -133,6 +141,7 @@ for (const set of sets) {
     continue
   }
   console.log(`▶ ${set.label} at ${sha}${dirty ? ' (tree has uncommitted changes — result not memoised)' : ''}`)
+  markRunning(set.label)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()
   const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: CFG.flaky, baseline, expand: set.expand, scope, log: (l) => console.log(`   ${l}`) })
