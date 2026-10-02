@@ -8,7 +8,7 @@
 
 **Tech Stack:** Markdown skills (Claude Code plugin); Node ≥ 20 ESM scripts, standard library only; `node --test`.
 
-**Spec:** `docs/superpowers/specs/2026-09-29-brainstorm-intake-spec-design.md`
+**Spec:** `docs/specs/2026-09-29-brainstorm-intake-spec-design.md`
 
 ## Global Constraints
 

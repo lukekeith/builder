@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node ≥18 ESM, `node:test`, no dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-statusline-design.md`
+**Spec:** `docs/specs/2026-10-02-statusline-design.md`
 
 ## Global Constraints
 
