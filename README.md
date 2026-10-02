@@ -205,15 +205,18 @@ about fourteen times.
 
 ## Live progress in the status line
 
-`/builder:statusline` adds one line under your Claude Code status line while builder is working:
+`/builder:statusline` adds builder's progress to the end of your Claude Code status line while
+builder is working — one bar for everything running, then what each part is doing:
 
-    ⚙ fleet 2/4 · cover-sheet ▓▓▓▓▓░░░░░ build 4/9 · sheet-order ▓▓▓▓▓▓▓▓░░ walked · gate deep set ⏱ 3m
+    Opus 5.5 │ my-app ██░░░░░░░░ 21% │ builder ▓▓▓▓▓░░░░░ 52% · ⚙ fleet 2/4 · cover-sheet build 4/9 · gate deep set ⏱ 3m
 
 It shows a running fleet, a build in the chat (while its ledger has moved in the last five minutes)
-and running gates and jobs, refreshes every two seconds, and is blank when nothing runs. A plugin
+and running gates and jobs, refreshes every two seconds, and reads `builder ░░░░░░░░░░ idle` when
+nothing runs. A plugin
 can't set the status line itself, so the skill writes the `statusLine` key of your user settings: it
 points at a small launcher in `<config>/builder/` that runs your previous status line first and finds
-the current builder on every refresh — so updates need no re-run. `/builder:statusline off` puts your
+the current builder on every refresh — so updates need no re-run (a release that changes the launcher
+itself says so; `/builder:statusline` refreshes it). `/builder:statusline --off` puts your
 previous setting back exactly.
 
 ## What it never does

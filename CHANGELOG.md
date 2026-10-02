@@ -4,6 +4,22 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.4.1
+
+**Changed:**
+- **`/builder:statusline` is one row.** Builder's segment now goes at the end of your existing
+  status line, ` │ ` between, as `builder` with one bar of overall progress (the mean of a running
+  fleet's features and any build in the chat), then the details: `… │ builder ▓▓▓▓▓░░░░░ 52% ·
+  ⚙ fleet 2/4 · cover-sheet build 4/9`. Gates and jobs alone show without a bar; with nothing running it reads
+  `builder ░░░░░░░░░░ idle`, so the row always has the same shape. A multi-line
+  previous status line keeps its rows; builder joins the last.
+- **The context meter shows from the first refresh.** Before a session's first reply Claude Code
+  sends no context percentage, and a wrapped line that draws a meter (GSD's) left it out; the
+  launcher now hands it an empty window, so the meter reads 0% instead of vanishing.
+- **`--on`, `--off`, `--status` instead of a toggle.** Bare `/builder:statusline` only ever turns it
+  on (or refreshes the launcher); turning it off takes `--off`. The old bare words still work.
+- The launcher itself changed: run **`/builder:statusline`** once to refresh it.
+
 ## 4.4.0
 
 **New:**
