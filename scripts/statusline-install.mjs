@@ -3,7 +3,9 @@
  * statusline-install — turn builder's status line on or off in the user's Claude Code settings.
  * The only code that edits settings.json; it touches the `statusLine` key and nothing else.
  *
- *   node <plugin>/scripts/statusline-install.mjs [on|off|status|toggle]     # default: toggle
+ *   node <plugin>/scripts/statusline-install.mjs [--on|--off|--status]     # default: --on
+ *
+ * Turning it off always takes --off: a bare run only ever turns it on (or refreshes the launcher).
  *
  * on:  copy the launcher to <config>/builder/statusline.mjs, save the current statusLine (unless it
  *      is already builder's) to <config>/builder/statusline.prev.json, point statusLine at the launcher.
@@ -59,7 +61,7 @@ function on(s) {
   if (s.statusLine && !keep) console.log(`  (the current status line is a builder launcher — not wrapped: ${s.statusLine.command})`)
   writeFileSync(PREV, JSON.stringify({ statusLine: keep }, null, 2) + '\n')
   saveSettings({ ...s, statusLine: OURS })
-  console.log(`builder status line: on — ${keep ? 'your previous status line still shows above it' : 'no previous status line'}. Takes effect on the next refresh.`)
+  console.log(`builder status line: on — ${keep ? 'your previous status line still shows, builder\'s progress after it' : 'no previous status line'}. Takes effect on the next refresh.`)
 }
 
 function off(s) {
@@ -84,10 +86,10 @@ function status(s) {
   if (onNow) console.log(`  here: ${render({ cwd: process.cwd() }) || '(idle — nothing running)'}`)
 }
 
-const verb = process.argv[2] ?? 'toggle'
+// The bare words from before 4.4.1 still work.
+const verb = (process.argv[2] ?? '--on').replace(/^--/, '')
 const s = loadSettings()
 if (verb === 'on') on(s)
 else if (verb === 'off') off(s)
 else if (verb === 'status') status(s)
-else if (verb === 'toggle') (isOurs(s.statusLine) ? off : on)(s)
-else fail(`unknown verb ${verb} — use on, off or status`)
+else fail(`unknown option ${process.argv[2]} — use --on, --off or --status`)

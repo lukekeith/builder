@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * statusline — one line of what builder is running right now in the repo holding --cwd, for
- * Claude Code's status line (through the launcher /builder:statusline installs). Fleet features
- * with their progress, a build in the chat whose ledger moved in the last 5 minutes, and running
- * gates and jobs. Prints nothing when nothing runs — and nothing, exit 0, on any error.
+ * statusline — builder's segment of Claude Code's status line (through the launcher
+ * /builder:statusline installs, which puts it after the previous status line on the same row):
+ * `builder` and one bar of overall progress, then fleet features with their step, a build in the
+ * chat whose ledger moved in the last 5 minutes, and running gates and jobs. Prints nothing when
+ * nothing runs — and nothing, exit 0, on any error.
  *
  *   node <plugin>/scripts/statusline.mjs --cwd <dir> [--width <n>] [--now <ms>]
+ *
+ * `--width` is this segment's budget in columns; whole trailing items drop to fit, `builder` and its bar never.
  *
  * Runs every couple of seconds, so it reads a handful of known files and spawns nothing.
  */
@@ -78,17 +81,20 @@ function fleetItems(main, registry, bootTime) {
   if (!fleet) return null
   const rows = Object.entries(fleet.features ?? {})
   const items = [`⚙ fleet ${rows.filter(([, f]) => f.status === 'done').length}/${rows.length}`]
+  const pcts = []
   for (const [name, f] of rows) {
+    const p = readProgress(f.worktree ?? main, registry, name, f.status)
+    pcts.push(p.pct)
     if (['done', 'queued', 'waiting'].includes(f.status)) continue
     if (f.status === 'parked' || f.status === 'failed') { items.push(`⛔ ${name}`); continue }
-    const p = readProgress(f.worktree ?? main, registry, name, f.status)
-    items.push(`${name} ${progressBar(p.pct).split(' ')[0]} ${p.label}`)
+    items.push(`${name} ${p.label}`)
   }
-  return { items, names: new Set(rows.map(([n]) => n)), worktrees: rows.map(([, f]) => f.worktree).filter(Boolean) }
+  return { items, pcts, names: new Set(rows.map(([n]) => n)), worktrees: rows.map(([, f]) => f.worktree).filter(Boolean) }
 }
 
 function buildItems(main, registry, now, skip) {
   const out = []
+  const pcts = []
   for (const name of list(join(main, '.builder'))) {
     if (skip.has(name)) continue
     const ledger = join(main, '.builder', name, 'progress.md')
@@ -98,8 +104,9 @@ function buildItems(main, registry, now, skip) {
     if (state !== 'planned' && state !== 'building') continue
     const p = featureProgress({ status: 'building', manifestText, planText: read(join(main, registry, name, 'PLAN.md')), ledgerText: read(ledger) })
     out.push(`${name} ${p.label}`)
+    pcts.push(p.pct)
   }
-  return out
+  return { items: out, pcts }
 }
 
 function gateItems(root, now, bootTime) {
@@ -124,12 +131,18 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     if (!cfg.ok) return ''
     const fleet = fleetItems(roots.main, cfg.registry, bootTime)
     const gateRoots = [...new Set([roots.root, roots.main, ...(fleet?.worktrees ?? [])])]
+    const builds = buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set())
     const items = [
       ...(fleet?.items ?? []),
-      ...buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set()),
+      ...builds.items,
       ...gateRoots.flatMap((r) => gateItems(r, now, bootTime)),
     ]
-    return items.length ? fit(items, width) : ''
+    if (!items.length) return ''
+    // One bar for everything with progress — the mean of the fleet's features and in-chat builds.
+    // Gates and jobs alone have none, and get the name without a bar.
+    const pcts = [...(fleet?.pcts ?? []), ...builds.pcts]
+    const head = pcts.length ? `builder ${progressBar(pcts.reduce((a, b) => a + b, 0) / pcts.length)}` : 'builder'
+    return fit([head, ...items], width)
   } catch {
     return ''
   }

@@ -3,7 +3,9 @@
  * The status line command /builder:statusline installs. Copied to <config>/builder/statusline.mjs,
  * so it outlives plugin versions: it imports nothing from the plugin and finds the current builder
  * on every run. It prints the status line the user had before (run with the same stdin), then
- * builder's line under it when something is running. Never prints an error; always exits 0.
+ * builder's segment after it on the same row, ` │ ` between (`builder ░░░░░░░░░░ idle` when nothing
+ * runs). Never
+ * prints an error; always exits 0.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
@@ -70,11 +72,24 @@ try {
   const cwd = session.workspace?.current_dir ?? session.cwd ?? process.cwd()
   const prev = json(join(HERE, 'statusline.prev.json'))?.statusLine?.command
   const script = existsSync(cwd) && statSync(cwd).isDirectory() ? renderer(cwd) : null
-  const [wrapped, line] = await Promise.all([
-    prev ? run('sh', ['-c', prev], { input: stdin, ms: WRAPPED_MS || 1000, env: { ...process.env, BUILDER_STATUSLINE_DEPTH: '1' } }) : '',
-    script ? run(process.execPath, [script, '--cwd', cwd], { ms: RENDER_MS || 1500 }) : '',
+  // Before a session's first response Claude Code sends no context percentage, and a previous line
+  // that draws a context meter (GSD's) leaves it out. Hand it an empty window instead: the meter
+  // shows from the first refresh at 0%, not only once the first reply lands.
+  const ctx = session.context_window
+  const input = ctx !== undefined && ctx?.remaining_percentage == null && ctx?.used_percentage == null && stdin
+    ? JSON.stringify({ ...session, context_window: { ...ctx, used_percentage: 0, remaining_percentage: 100 } })
+    : stdin
+  let [wrapped, line] = await Promise.all([
+    prev ? run('sh', ['-c', prev], { input, ms: WRAPPED_MS || 1000, env: { ...process.env, BUILDER_STATUSLINE_DEPTH: '1' } }) : '',
+    // Sharing the row with the previous line, builder's segment gets a narrower budget.
+    script ? run(process.execPath, [script, '--cwd', cwd, ...(prev ? ['--width', '60'] : [])], { ms: RENDER_MS || 1500 }) : '',
   ])
-  for (const t of [wrapped, line]) if (t) out.push(t)
+  // A multi-line previous status line keeps its rows; builder's segment joins the last one. With
+  // nothing running it is still there, an empty bar marked idle — so the row always reads the same.
+  const rows = wrapped ? wrapped.split('\n') : []
+  if (script && !line) line = `builder ${'░'.repeat(10)} idle`
+  if (line) rows.length ? (rows[rows.length - 1] += ` │ ${line}`) : rows.push(line)
+  out.push(...rows)
 } catch {}
 // Exit once written: a timed-out child may still hold a pipe open, and must not keep this alive.
 if (out.length) process.stdout.write(out.join('\n') + '\n', () => process.exit(0))
