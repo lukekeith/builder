@@ -11,6 +11,7 @@
  */
 import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
+import { uptime } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from './config.mjs'
 import { readProgress, featureProgress, progressBar } from './fleet-core.mjs'
@@ -24,6 +25,10 @@ const readJson = (p) => {
 }
 const list = (d) => {
   try { return readdirSync(d) } catch { return [] }
+}
+/** A pid file written before the last boot names a process that is gone, whatever has that pid now. */
+const current = (p, bootTime) => {
+  try { return statSync(p).mtimeMs >= bootTime } catch { return false }
 }
 const alive = (pid) => {
   if (!(Number(pid) > 0)) return false
@@ -66,8 +71,9 @@ export function fit(items, width) {
   return ''
 }
 
-function fleetItems(main, registry) {
-  if (!alive(read(join(main, '.builder', 'fleet', 'lock')))) return null
+function fleetItems(main, registry, bootTime) {
+  const lock = join(main, '.builder', 'fleet', 'lock')
+  if (!current(lock, bootTime) || !alive(read(lock))) return null
   const fleet = readJson(join(main, '.builder', 'fleet', 'fleet.json'))
   if (!fleet) return null
   const rows = Object.entries(fleet.features ?? {})
@@ -96,31 +102,32 @@ function buildItems(main, registry, now, skip) {
   return out
 }
 
-function gateItems(root, now) {
+function gateItems(root, now, bootTime) {
   const out = []
-  const g = readJson(join(root, '.builder', 'gates', 'running.json'))
-  if (g && alive(g.pid)) out.push(`gate ${g.sets} ⏱ ${elapsed(now - Date.parse(g.startedAt))}`)
+  const marker = join(root, '.builder', 'gates', 'running.json')
+  const g = readJson(marker)
+  if (g && current(marker, bootTime) && alive(g.pid)) out.push(`gate ${g.sets} ⏱ ${elapsed(now - Date.parse(g.startedAt))}`)
   const jobs = join(root, '.builder', 'jobs')
   for (const f of list(jobs).filter((f) => f.endsWith('.pid')).sort()) {
     const name = f.slice(0, -4)
-    if (existsSync(join(jobs, `${name}.exit`)) || !alive(read(join(jobs, f)))) continue
+    if (existsSync(join(jobs, `${name}.exit`)) || !current(join(jobs, f), bootTime) || !alive(read(join(jobs, f)))) continue
     out.push(`job ${name} ⏱ ${elapsed(now - statSync(join(jobs, f)).mtimeMs)}`)
   }
   return out
 }
 
-export function render({ cwd, width = 120, now = Date.now() }) {
+export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now() - uptime() * 1000 }) {
   try {
     const roots = repoRoots(cwd)
     if (!roots) return ''
     const cfg = loadConfig(roots.main)
     if (!cfg.ok) return ''
-    const fleet = fleetItems(roots.main, cfg.registry)
+    const fleet = fleetItems(roots.main, cfg.registry, bootTime)
     const gateRoots = [...new Set([roots.root, roots.main, ...(fleet?.worktrees ?? [])])]
     const items = [
       ...(fleet?.items ?? []),
       ...buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set()),
-      ...gateRoots.flatMap((r) => gateItems(r, now)),
+      ...gateRoots.flatMap((r) => gateItems(r, now, bootTime)),
     ]
     return items.length ? fit(items, width) : ''
   } catch {

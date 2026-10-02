@@ -81,3 +81,25 @@ test('a previous status line that prints and then exits non-zero still shows', (
   const dir = cwd()
   assert.equal(launch(setup({ prev: { type: 'command', command: 'echo GSD; exit 1' } }), dir).stdout, `GSD\nB ${dir}\n`)
 })
+
+test('a hung previous command leaves nothing running behind it once cut off', () => {
+  const marks = mkdtempSync(join(tmpdir(), 'orphan-'))
+  const dir = cwd()
+  const r = launch(setup({ prev: { type: 'command', command: `sleep 30 & echo $! > ${join(marks, 'pid')}; wait` } }), dir, '1000,20000')
+  assert.equal(r.stdout, `B ${dir}\n`)
+  const pid = Number(readFileSync(join(marks, 'pid'), 'utf8'))
+  let alive = true
+  for (let i = 0; i < 20 && alive; i++) {
+    try { process.kill(pid, 0); spawnSync('sleep', ['0.1']) } catch { alive = false }
+  }
+  if (alive) process.kill(pid, 'SIGKILL')
+  assert.equal(alive, false, 'the grandchild sleep was left running')
+})
+
+test('the previous command runs marked as nested, and a nested launcher prints nothing — so builder\'s own launcher saved as the previous line cannot recurse', () => {
+  const dir = cwd()
+  const seen = setup({ prev: { type: 'command', command: 'echo "depth=$BUILDER_STATUSLINE_DEPTH"' } })
+  assert.equal(launch(seen, dir).stdout, `depth=1\nB ${dir}\n`)
+  const nested = spawnSync('node', [join(setup({ prev: { type: 'command', command: 'echo GSD' } }), 'builder', 'statusline.mjs')], { input: '{}', encoding: 'utf8', env: { ...process.env, BUILDER_STATUSLINE_DEPTH: '1' } })
+  assert.equal(nested.stdout, '')
+})

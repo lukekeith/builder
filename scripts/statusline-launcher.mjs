@@ -37,12 +37,16 @@ function renderer(cwd) {
   return pick ? join(pick.installPath, 'scripts', 'statusline.mjs') : null
 }
 
-/** stdout of a command, trailing newlines trimmed; '' when it can't start or outlives `ms`. */
-function run(cmd, args, { input = '', ms }) {
+/** stdout of a command, trailing newlines trimmed; '' when it can't start or outlives `ms`. It runs
+ *  in its own process group, and a timeout kills the whole group — nothing it started is left behind. */
+function run(cmd, args, { input = '', ms, env = process.env }) {
   return new Promise((done) => {
     let text = ''
-    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'] })
-    const timer = setTimeout(() => { child.kill('SIGKILL'); done('') }, ms)
+    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'], detached: true, env })
+    const timer = setTimeout(() => {
+      try { process.kill(-child.pid, 'SIGKILL') } catch {}
+      done('')
+    }, ms)
     child.stdout.on('data', (d) => { text += d })
     child.on('error', () => { clearTimeout(timer); done('') })
     child.on('close', () => { clearTimeout(timer); done(text.replace(/\n+$/, '')) })
@@ -55,6 +59,10 @@ function run(cmd, args, { input = '', ms }) {
 // the longer of the two budgets, never their sum. BUILDER_STATUSLINE_MS="<wrapped>,<renderer>"
 // overrides them (the tests, on a loaded machine).
 const [WRAPPED_MS, RENDER_MS] = (process.env.BUILDER_STATUSLINE_MS ?? '').split(',').map(Number)
+// A launcher started by a launcher's previous command (builder's own, saved as "previous" under
+// another spelling of its path) prints nothing: no recursion, ever.
+if (process.env.BUILDER_STATUSLINE_DEPTH) process.exit(0)
+
 try {
   let stdin = ''
   try { stdin = readFileSync(0, 'utf8') } catch {}
@@ -63,7 +71,7 @@ try {
   const prev = json(join(HERE, 'statusline.prev.json'))?.statusLine?.command
   const script = existsSync(cwd) && statSync(cwd).isDirectory() ? renderer(cwd) : null
   const [wrapped, line] = await Promise.all([
-    prev ? run('sh', ['-c', prev], { input: stdin, ms: WRAPPED_MS || 1000 }) : '',
+    prev ? run('sh', ['-c', prev], { input: stdin, ms: WRAPPED_MS || 1000, env: { ...process.env, BUILDER_STATUSLINE_DEPTH: '1' } }) : '',
     script ? run(process.execPath, [script, '--cwd', cwd], { ms: RENDER_MS || 1500 }) : '',
   ])
   for (const t of [wrapped, line]) if (t) out.push(t)

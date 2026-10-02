@@ -10,7 +10,7 @@
  * off: put the saved statusLine back (remove the key when there was none). Refuses when the current
  *      statusLine is not builder's. <config> is $CLAUDE_CONFIG_DIR, else ~/.claude.
  */
-import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, copyFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, copyFileSync, rmSync, realpathSync, statSync, chmodSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -35,12 +35,18 @@ function loadSettings() {
     fail(`${SETTINGS} is not valid JSON — fix it first; nothing was changed`)
   }
 }
+/** Atomic, onto the real file: a symlinked settings.json (dotfiles) stays a symlink, and keeps its mode. */
 function saveSettings(s) {
   mkdirSync(CONFIG, { recursive: true })
-  writeFileSync(`${SETTINGS}.tmp`, JSON.stringify(s, null, 2) + '\n')
-  renameSync(`${SETTINGS}.tmp`, SETTINGS)
+  const target = existsSync(SETTINGS) ? realpathSync(SETTINGS) : SETTINGS
+  const tmp = `${target}.builder-tmp`
+  writeFileSync(tmp, JSON.stringify(s, null, 2) + '\n')
+  if (existsSync(target)) chmodSync(tmp, statSync(target).mode & 0o777)
+  renameSync(tmp, target)
 }
 const isOurs = (line) => typeof line?.command === 'string' && line.command.includes(LAUNCHER)
+/** Any builder launcher, however its path is spelled — never saved as the line to wrap. */
+const isALauncher = (line) => typeof line?.command === 'string' && /builder[\/\\]statusline\.mjs/.test(line.command)
 const prevLine = () => {
   try { return JSON.parse(readFileSync(PREV, 'utf8')).statusLine ?? null } catch { return null }
 }
@@ -49,9 +55,11 @@ function on(s) {
   mkdirSync(dirname(LAUNCHER), { recursive: true })
   copyFileSync(join(SCRIPTS, 'statusline-launcher.mjs'), LAUNCHER)
   if (isOurs(s.statusLine)) return console.log('builder status line: already on (launcher refreshed)')
-  writeFileSync(PREV, JSON.stringify({ statusLine: s.statusLine ?? null }, null, 2) + '\n')
+  const keep = isALauncher(s.statusLine) ? null : s.statusLine ?? null
+  if (s.statusLine && !keep) console.log(`  (the current status line is a builder launcher — not wrapped: ${s.statusLine.command})`)
+  writeFileSync(PREV, JSON.stringify({ statusLine: keep }, null, 2) + '\n')
   saveSettings({ ...s, statusLine: OURS })
-  console.log(`builder status line: on — ${s.statusLine ? 'your previous status line still shows above it' : 'no previous status line'}. Takes effect on the next refresh.`)
+  console.log(`builder status line: on — ${keep ? 'your previous status line still shows above it' : 'no previous status line'}. Takes effect on the next refresh.`)
 }
 
 function off(s) {
