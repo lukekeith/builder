@@ -4,6 +4,18 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.4.0
+
+**New:**
+- **`/builder:statusline`** — a live line under your Claude Code status line while builder works:
+  a running fleet with each feature's progress, a build in the chat, running gates and jobs. Blank
+  when nothing runs; refreshes every two seconds. `on`, `off`, `status`, or bare to toggle. It
+  writes the `statusLine` key of your user settings, keeps your existing status line showing above
+  it, and `off` restores it exactly. Survives plugin updates without a re-run, and uses a repo's
+  own vendored copy of builder where there is one.
+- **Gate runs leave a marker** — `.builder/gates/running.json` while a set is running, which the
+  status line reads.
+
 ## 4.3.1
 
 **Changed:**

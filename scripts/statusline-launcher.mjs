@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -37,24 +37,37 @@ function renderer(cwd) {
   return pick ? join(pick.installPath, 'scripts', 'statusline.mjs') : null
 }
 
+/** stdout of a command, trailing newlines trimmed; '' when it can't start or outlives `ms`. */
+function run(cmd, args, { input = '', ms }) {
+  return new Promise((done) => {
+    let text = ''
+    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'ignore'] })
+    const timer = setTimeout(() => { child.kill('SIGKILL'); done('') }, ms)
+    child.stdout.on('data', (d) => { text += d })
+    child.on('error', () => { clearTimeout(timer); done('') })
+    child.on('close', () => { clearTimeout(timer); done(text.replace(/\n+$/, '')) })
+    child.stdin.on('error', () => {})
+    child.stdin.end(input)
+  })
+}
+
+// The previous status line and builder's renderer run side by side: a busy machine costs at most
+// the longer of the two budgets, never their sum. BUILDER_STATUSLINE_MS="<wrapped>,<renderer>"
+// overrides them (the tests, on a loaded machine).
+const [WRAPPED_MS, RENDER_MS] = (process.env.BUILDER_STATUSLINE_MS ?? '').split(',').map(Number)
 try {
   let stdin = ''
   try { stdin = readFileSync(0, 'utf8') } catch {}
   const session = (() => { try { return JSON.parse(stdin) } catch { return {} } })()
   const cwd = session.workspace?.current_dir ?? session.cwd ?? process.cwd()
-
   const prev = json(join(HERE, 'statusline.prev.json'))?.statusLine?.command
-  if (prev) {
-    const r = spawnSync('sh', ['-c', prev], { input: stdin, encoding: 'utf8', timeout: 1000 })
-    const text = (r.stdout ?? '').replace(/\n+$/, '')
-    if (text) out.push(text)
-  }
-
   const script = existsSync(cwd) && statSync(cwd).isDirectory() ? renderer(cwd) : null
-  if (script) {
-    const r = spawnSync(process.execPath, [script, '--cwd', cwd], { encoding: 'utf8', timeout: 500 })
-    const line = (r.stdout ?? '').replace(/\n+$/, '')
-    if (line) out.push(line)
-  }
+  const [wrapped, line] = await Promise.all([
+    prev ? run('sh', ['-c', prev], { input: stdin, ms: WRAPPED_MS || 1000 }) : '',
+    script ? run(process.execPath, [script, '--cwd', cwd], { ms: RENDER_MS || 1500 }) : '',
+  ])
+  for (const t of [wrapped, line]) if (t) out.push(t)
 } catch {}
-if (out.length) process.stdout.write(out.join('\n') + '\n')
+// Exit once written: a timed-out child may still hold a pipe open, and must not keep this alive.
+if (out.length) process.stdout.write(out.join('\n') + '\n', () => process.exit(0))
+else process.exit(0)

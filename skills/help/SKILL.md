@@ -59,6 +59,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
 | **Which builder am I on?** | `/builder:version` — the version this session loaded, what's installed, the newest release known here, and the one step that brings it current. Never fetches |
+| **Watch it run** | `/builder:statusline` — toggles a live line under your status line: fleet progress, a build in the chat, running gates. Blank when idle |
 | **Wanting the newest builder** | `/builder:update` — refreshes the plugin install, says what changed, and names any older install shadowing it in this repo. `--check` only reports. Not in a vendored copy |
 | **A repo that won't take an outside plugin** | `/builder:vendor` — a local copy in the repo naming nothing outside it; run it again to update. `--check` proves it clean |
 | Changing something after the spec exists | `/builder:revise --path <folder> <the change>` — post-build the default is a code fix plus at most one doc line |
