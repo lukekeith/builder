@@ -38,6 +38,8 @@ copies (vendor copies `skills/` and `scripts/`).
 - **Config dir**: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. Settings file: `<config>/settings.json`.
   State: `<config>/builder/` — `statusline.mjs` (the launcher) and `statusline.prev.json`.
 - **Builder's setting** is recognised by its command containing `<config>/builder/statusline.mjs`.
+  Any command matching `builder/statusline.mjs` (another spelling of a launcher path) is never saved
+  as the line to wrap — `prev` gets `null`.
 - **`on`**: copy `scripts/statusline-launcher.mjs` → `<config>/builder/statusline.mjs` (overwrite —
   this is also how the launcher itself is upgraded). If the current `statusLine` is not builder's,
   write it verbatim to `statusline.prev.json` as `{ "statusLine": <value or null> }`. Then set
@@ -49,7 +51,8 @@ copies (vendor copies `skills/` and `scripts/`).
   The launcher file stays (harmless; `on` overwrites it).
 - **`status`**: on/off; the wrapped command from `prev`; which builder copy the launcher resolves
   for the cwd; one rendered sample of builder's line for the cwd's repo (or "idle").
-- Settings written atomically (temp file + rename). Unparseable settings → refuse, change nothing.
+- Settings written atomically (temp file + rename) onto the symlink's real target, keeping its mode.
+  Unparseable settings → refuse, change nothing.
 
 ### `scripts/statusline-launcher.mjs` — copied out, kept tiny and stable
 
@@ -57,14 +60,19 @@ Must not depend on anything else in the plugin: it outlives versions.
 
 1. Read stdin (the status line JSON). `cwd` = `workspace.current_dir` ?? `cwd` ?? `process.cwd()`.
 2. **Wrapped line**: if `prev.statusLine.command` exists, run it with the same stdin through `sh -c`,
-   1000 ms timeout; take its stdout (trailing newline trimmed). Failure or timeout → nothing.
+   1000 ms budget, in its own process group (a timeout kills the group — nothing is left running),
+   with `BUILDER_STATUSLINE_DEPTH=1` set; take its stdout whatever the exit code. Timeout → nothing.
+   A launcher that starts with `BUILDER_STATUSLINE_DEPTH` set prints nothing and exits, so a builder
+   launcher saved as the previous line can never recurse.
 3. **Resolve builder** for `cwd`, first hit wins:
    1. a vendored copy: walk up from `cwd` to the repo root; its `.claude-plugin/marketplace.json`
       entry named `builder` → `<root>/<source>/scripts/statusline.mjs`;
    2. `<config>/plugins/installed_plugins.json`: a `builder@*` entry with `scope: project` and
       `projectPath` == that root, else `scope: user` — whose `installPath` holds
       `scripts/statusline.mjs`.
-4. Run it as `node <renderer> --cwd <cwd>`, 500 ms timeout; its stdout is builder's line.
+4. Run it as `node <renderer> --cwd <cwd>`, 1500 ms budget, **alongside** step 2 — a busy machine
+   costs the longer budget, never the sum. `BUILDER_STATUSLINE_MS="<wrapped>,<renderer>"` overrides
+   both (tests). Its stdout is builder's line.
 5. Print the wrapped output, then builder's line on a new line when non-empty. Any exception → print
    whatever was gathered. Never prints an error, never exits non-zero.
 
@@ -90,6 +98,8 @@ nothing.
   in the main root and in each running fleet feature's worktree. Elapsed as `45s`, `3m`, `1h12m`.
 - **Line**: segments joined by ` · ` in the order fleet, builds, gates. Width = `--width` ??
   `$COLUMNS` ?? 120. Over width → drop whole trailing items and append ` +<n> more`.
+- **Stale pids**: a lock, gate marker or job pid file modified before the last boot is ignored,
+  whatever process has that pid now.
 - **Budget**: only `existsSync`/`readFileSync`/`statSync` on known paths; no directory walk beyond
   `.builder/` and `.builder/jobs/` listings. Any throw → print nothing, exit 0.
 
