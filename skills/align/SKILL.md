@@ -125,7 +125,10 @@ days or weeks from buildable. Then **one line per app**: what it owes and why. N
 happen in the design rather than the app, with the command that would make it.
 
 ```
-📍 <feature>: aligned — <n> fields aligned, <m> T# owed (<per-app split>) — next: /builder:resume --path <folder> · or say go
+📍 <feature>: aligned — <n> fields aligned, <m> T# owed (<per-app split>) — next:
+   1. resume — continue here, step by step: /builder:resume --path <folder>
+   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
+   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
