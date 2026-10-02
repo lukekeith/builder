@@ -205,3 +205,12 @@ test("brainstorm grounds the user's terms in the code before it plays back or as
   assert.ok(b.indexOf('Ground it in the code') < b.indexOf('Play back the intent'), 'grounding comes before the playback')
   assert.doesNotMatch(b, /Start recon in parallel[^\n]*\n[^\n]*it never holds up this turn/, 'grounding is not the non-blocking recon')
 })
+
+test('statusline: the skill drives the installer, help names it, and vendored copies carry it', () => {
+  const s = read('skills/statusline/SKILL.md')
+  assert.match(s, /^name: statusline$/m)
+  assert.match(s, /scripts\/statusline-install\.mjs/)
+  assert.match(read('skills/help/SKILL.md'), /\/builder:statusline/)
+  assert.match(read('README.md'), /^## Live progress in the status line$/m)
+  for (const f of ['statusline.mjs', 'statusline-launcher.mjs', 'statusline-install.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
+})
