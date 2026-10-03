@@ -2,7 +2,7 @@
 /**
  * fleet — take a batch of specs through the /builder:* pipeline unattended.
  *
- * Everything lands on ONE branch: the one checked out here when the fleet first ran (its TARGET).
+ * Everything lands on ONE branch, its TARGET: --into, else the config's merge_into (default base_branch).
  * Each spec gets its own worktree and branch (builder/<feature>) cut from the target. A pool of
  * `parallel` workers runs the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared
  * dev environment; the WALK lane takes features one at a time through that environment — walk
@@ -30,6 +30,7 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
+import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
 const RUN_CAP = 12
@@ -45,8 +46,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--detach', '--dry-run', '--status', '--archived'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -71,7 +72,11 @@ if (archivedVal !== undefined && !/^[1-9]\d*$/.test(archivedVal)) {
   console.error(`--archived must be a positive integer, got '${archivedVal}'. ${USAGE}`)
   process.exit(2)
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived'].includes(argv[i - 1]))
+if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
+  console.error(`--into needs a branch name. ${USAGE}`)
+  process.exit(2)
+}
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -267,6 +272,8 @@ function ensureWorktree(feature, branch) {
       save()
     }
     copyInto(wt)
+    // A worktree removed when this feature stopped left its build workspace (ledger, rulings) here.
+    restoreKept(ROOT, wt, feature)
   }
   if (f.setupOwed) {
     runSetup(feature, wt)
@@ -317,19 +324,21 @@ if (flag('--detach') && !flag('--dry-run') && !runningPid) {
 // ---- dry run -------------------------------------------------------------------------------
 const fleet = loadFleet(ROOT)
 /**
- * The branch every finished feature is merged into: the one checked out here when this fleet first
- * ran, kept in fleet.json so a re-run lands on the same one.
+ * The branch every finished feature is merged into: --into for this run, else the config's
+ * merge_into (default base_branch) — never whatever happens to be checked out, which is how work
+ * ended up stranded on a feature branch. Kept in fleet.json; a fleet with unfinished rows keeps its
+ * target until they finish.
  */
-const HERE = tryGit(['branch', '--show-current'])
-if (!HERE) {
-  console.error('This checkout is on a detached HEAD — check out the branch the features should be merged into.')
+const TARGET_FROM = flag('--into') ? '--into' : 'merge_into'
+const TARGET = opt('--into') ?? CFG.mergeInto
+if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === null) {
+  console.error(`The branch to merge into, ${TARGET}, does not exist — create it (git branch ${TARGET}) or set merge_into in .claude/builder.md.`)
   process.exit(2)
 }
-if (fleet.target && fleet.target !== HERE && Object.values(fleet.features).some((f) => f.status !== 'done')) {
-  console.error(`This fleet merges into ${fleet.target}, but ${HERE} is checked out. Switch back to ${fleet.target}, or finish or clear that fleet (.builder/fleet/) first.`)
+if (fleet.target && fleet.target !== TARGET && Object.values(fleet.features).some((f) => f.status !== 'done')) {
+  console.error(`This fleet merges into ${fleet.target}, not ${TARGET} — finish or clear it first, or continue it with --into ${fleet.target}.`)
   process.exit(2)
 }
-const TARGET = HERE
 
 /**
  * Whether a dependency has merged into the target. A row still in fleet.json answers for itself.
@@ -390,7 +399,7 @@ for (let changed = true; changed; ) {
 
 if (flag('--dry-run')) {
   console.log('builder fleet — plan (nothing created)')
-  console.log(`  merges into: ${TARGET} (this checkout) — one merge commit per finished feature; nothing is pushed`)
+  console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
@@ -724,15 +733,19 @@ async function landNow(feature) {
     if (why) return park(f, why)
   }
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
-  // The worktree held nothing but this branch; a tracked change there would be lost, so only a
-  // clean one goes (untracked files — a copied .env, walk evidence — go with it).
-  if (f.worktree && existsSync(f.worktree) && tryGit(['status', '--porcelain', '--untracked-files=no'], f.worktree) === '') {
-    if (tryGit(['worktree', 'remove', '--force', f.worktree]) !== null) {
-      f.worktree = null
-      if (f.branch.startsWith('builder/')) tryGit(['branch', '-d', f.branch])
-    }
+  // Nothing is left behind: test output in the worktree is restored, any other uncommitted change
+  // is stashed by name, the worktree goes, and so does the branch — whoever made it — once it is in
+  // the target (`-d` refuses one that isn't).
+  if (f.worktree) {
+    const r = clearWorktree(ROOT, f.worktree, feature, { keep: false })
+    if (r.stash) addNote(`${feature} merged; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
+    if (r.removed || !existsSync(f.worktree)) f.worktree = null
+    else addNote(`${feature} merged; its worktree ${f.worktree} stays: ${r.why} — /builder:tidy removes it once that's settled`)
   }
-  if (f.worktree) addNote(`${feature} merged; its worktree ${f.worktree} was kept (it has changes) — remove it with git worktree remove`)
+  // `branch -d` judges "merged" against what is checked out here, which need not be the target:
+  // ask the target itself, then delete.
+  if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch && !f.worktree && tryGit(['merge-base', '--is-ancestor', `refs/heads/${f.branch}`, `refs/heads/${TARGET}`]) !== null)
+    tryGit(['branch', '-D', f.branch])
   archiveRow(feature)
   save()
   return 'done'
@@ -1347,7 +1360,7 @@ if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.value
     closeSync(fd)
   }
 }
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE))
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE) && !/ was kept \(it has changes\)/.test(n))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
 if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
@@ -1447,6 +1460,22 @@ clearInterval(poll)
 for (const f of Object.values(fleet.features))
   if (f.status === 'waiting')
     Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}, which never merged — next: settle ${pendingDeps(f).join(', ')}, then pick both in /builder:agent` })
+// An unfinished feature keeps its branch — every finished task is committed there — and loses its
+// worktree; picking it again recreates the worktree from the branch. FLEET_KEEP_STOPPED_WORKTREES=1
+// keeps them, for looking inside one while debugging the fleet itself.
+for (const [feature, f] of Object.entries(fleet.features)) {
+  if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
+  if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
+  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it.
+  if ((f.reason ?? '').includes(f.worktree)) continue
+  const r = clearWorktree(ROOT, f.worktree, feature)
+  if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
+  if (r.removed || !existsSync(f.worktree)) f.worktree = null
+  else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
+}
+// The whole repo, not just this fleet's rows: anything else left lying around is named here too.
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))
+addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))
 save()
 unlock()
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))

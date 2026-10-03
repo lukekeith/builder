@@ -145,6 +145,8 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     project: fm.project ?? 'this project',
     registry: fm.registry ?? 'docs/features',
     baseBranch: fm.base_branch ?? 'main',
+    // Where finished features merge: merge_into, else base_branch. Never the checked-out branch.
+    mergeInto: fm.merge_into ?? fm.base_branch ?? 'main',
     apps,
     appNames: apps.map((a) => a.name),
     producers: apps.filter((a) => a.role === 'producer' || a.role === 'app').map((a) => a.name),

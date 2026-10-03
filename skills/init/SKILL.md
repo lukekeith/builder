@@ -41,6 +41,7 @@ shows it.
 |---|---|
 | `project` | root `package.json` `name`, the README's first heading, the repo directory name — in that order |
 | `base_branch` | `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`), else `main` if it exists, else `master` |
+| `merge_into` | where finished features merge. Leave it out (= `base_branch`) unless the repo has a `develop`/`integration`-style branch besides it — then it's a step-3 question, recommending that branch |
 | `registry` | an existing `docs/features/` or other folder of per-feature `SPEC.md`s; otherwise the template's `docs/features` |
 | `apps` | workspace declarations first — `package.json` `workspaces`, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`, `go.work`, a Cargo `[workspace]`, a Gradle/Maven multi-module build. No workspace → **one app** at the root, `role: app`. Skip packages that are only shared libraries, configs or type packages unless they ship on their own |
 | app `role` | a guess to confirm, never a fact: whatever serves the API or owns the schema → `producer`; web/mobile/desktop clients → `consumer`; scripts, CLIs, internal dashboards → `tool`; a lone app → `app` |
