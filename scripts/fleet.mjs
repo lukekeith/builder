@@ -249,6 +249,20 @@ function runSetup(feature, wt) {
   }
 }
 
+/** Commit the feature folder from ROOT's HEAD into a new worktree whose target lacks it. Throws a setup-style error. */
+function bringSpecIn(feature, wt) {
+  const spec = specOf(feature)
+  if (tryGit(['cat-file', '-e', `refs/heads/${TARGET}:${spec}/MANIFEST.md`]) !== null) return
+  try {
+    const head = git(['rev-parse', 'HEAD'])
+    const from = tryGit(['branch', '--show-current']) || head.slice(0, 7)
+    git(['checkout', head, '--', spec], wt)
+    git(['commit', '-qm', `docs(${feature}): spec and plan from ${from}`], wt)
+  } catch (e) {
+    throw Object.assign(new Error(`could not bring ${spec} into the worktree from ${TARGET}: ${String(e.stderr || e.message).split('\n')[0]}`), { setup: true })
+  }
+}
+
 /**
  * The feature's worktree, created if it isn't there yet. Only a NEW worktree gets `copy` and
  * `setup` — a reused one already has them, and re-running an install on every fleet run is minutes
@@ -272,6 +286,9 @@ function ensureWorktree(feature, branch) {
       f.setupOwed = true
       save()
     }
+    // A spec written on another branch is not on the target, so a worktree cut from the target
+    // has no folder: bring it in from ROOT's HEAD, which preflight proved holds it committed.
+    if (!exists) bringSpecIn(feature, wt)
     copyInto(wt)
     // A worktree removed when this feature stopped left its build workspace (ledger, rulings) here.
     restoreKept(ROOT, wt, feature)
