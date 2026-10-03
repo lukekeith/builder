@@ -124,6 +124,12 @@ export const inputsHash = (lines, gates) =>
 /** True when tracked files have local modifications — a memo cannot describe a dirty tree. */
 export const isDirty = (root) => git(['status', '--porcelain', '--untracked-files=no'], root) !== ''
 
+/** The tracked files with local changes, staged or not — what makes isDirty true. */
+export const dirtyPaths = (root) => git(['diff', '--name-only', 'HEAD'], root).split('\n').filter(Boolean)
+
+/** Paths for one line of output: the first `max`, then how many more. */
+export const fmtPaths = (paths, max = 5) => paths.slice(0, max).join(', ') + (paths.length > max ? ` +${paths.length - max} more` : '')
+
 /** The main checkout's root — this root, unless it is a worktree of another one. */
 export function mainRoot(root) {
   const common = git(['rev-parse', '--git-common-dir'], root)
