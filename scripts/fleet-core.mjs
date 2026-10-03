@@ -368,3 +368,13 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))
   return lines.join('\n') + '\n'
 }
+
+/**
+ * Whether a worktree needs ROOT's HEAD copy of the feature folder committed into it. A NEW branch
+ * (cut from the target) needs it when the target lacks the folder or holds a different one; an
+ * existing branch is left alone unless its worktree has no manifest (an earlier bring-in failed).
+ */
+export function specBringIn({ targetTree, headTree, worktreeHasManifest, isNewBranch }) {
+  if (isNewBranch) return !targetTree || targetTree !== headTree
+  return !worktreeHasManifest
+}

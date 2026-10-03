@@ -90,6 +90,22 @@ test('a spec committed off the target is brought into the worktree', () => {
   assert.equal(r.status, 0, r.stderr + r.stdout)
   assertLanded(r, 'a')
   assert.match(git(root, 'log', 'main', '--oneline'), /spec and plan from work/)
+  assert.match(git(root, 'log', '-p', '--full-history', 'main', '--', 'docs/features/a/MANIFEST.md'), /\+go-ahead: t 2026-10-03/, 'the manifest content came from work')
+})
+
+test('an older copy of the folder on the target is replaced by HEAD\u2019s', () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, 'docs/features/a/OLD.md'), 'only on main\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'old extra file')
+  git(root, 'checkout', '-q', '-b', 'work')
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: t 2026-10-03\nprofile: rush\nnext: x\n')
+  git(root, 'rm', '-q', 'docs/features/a/OLD.md')
+  git(root, 'commit', '-qam', 'plan on work')
+  const r = runFleet(root, ['a'], { a: HAPPY.slice(HAPPY.indexOf('building')) })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assert.equal(assertLanded(r, 'a').profile, 'rush')
+  assert.match(git(root, 'log', 'main', '--oneline'), /spec and plan from work/)
 })
 
 test('a feature with an open PR is taken on to merged, not refused', () => {
