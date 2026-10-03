@@ -4,6 +4,16 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.8.1
+
+**Changed:**
+- **`/builder:spec` shows each section in plain words, not as the file holds it.** It used to paste
+  the raw section and ask whether it was right; the §Contract table in particular gave you nothing to
+  decide. Now each section is a short plain summary, then **What to check**: only the items that
+  change the product or are expensive to undo, such as an agent acting without you, data being
+  overwritten, or a shape a released consumer depends on. If nothing needs your judgement it says so.
+  The full section text is shown only when you ask for it.
+
 ## 4.8.0
 
 **Nothing left behind:**

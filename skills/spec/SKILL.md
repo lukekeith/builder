@@ -40,6 +40,24 @@ In SPEC order, each section scaled to its complexity, asking after each whether 
 3. The per-app sections, §Schema & API changes, §Testing, §Out of scope; in prototype mode §Prototype
    and §Replaced surfaces from the record's intake findings.
 
+**How a section is shown.** Never paste the section as the file will hold it: no tables, field
+lists, types, status codes or length limits. Show each one in three parts:
+
+- **What it says.** Two to four plain sentences about what changes for the user and between the
+  apps. Routine plumbing (a new field, an error code, a limit, a command shown on a page) gets one
+  closing "Also:" line.
+- **What to check.** List only the items where a different answer changes the product or would be
+  expensive to undo: something that acts without the user (an agent closing, merging or deleting),
+  data overwritten or lost, something made visible or irreversible, a shape a released consumer
+  already depends on, a real fork between alternatives. Give each one line saying what happens and
+  what it means for them. If nothing qualifies, say "Nothing here needs your judgement — it follows
+  from what we settled." Never invent an item to fill the list.
+- **The ask.** "Right?" Show the full section text only when they ask for it.
+
+For §Apps and §Contract, say once why the check matters: the contract freezes when the producer's
+build phase closes, and changing it after that means `/builder:revise` and a re-check of every
+consumer.
+
 Pushback amends the record's tree first, then the section. Under `--auto` present and proceed.
 
 ## 2. Write the files
