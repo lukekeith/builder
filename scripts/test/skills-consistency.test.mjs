@@ -244,3 +244,16 @@ test('the fleet launches detached, never as a session background task', () => {
   assert.doesNotMatch(fleet, /Run with the Bash tool's `run_in_background`/)
   assert.match(read('skills/agent/SKILL.md'), /launch detached, `--detach`/)
 })
+
+test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line; help names it; no skill lands on the checked-out branch', () => {
+  const tidy = read('skills/tidy/SKILL.md')
+  assert.match(tidy, /^name: tidy$/m)
+  assert.match(tidy, /scripts\/inventory\.mjs/)
+  assert.match(tidy, /scripts\/tidy\.mjs apply/)
+  assert.match(tidy, /force-delete-branch/)
+  assert.match(read('skills/status/SKILL.md'), /scripts\/inventory\.mjs" --summary/)
+  assert.match(read('skills/help/SKILL.md'), /\/builder:tidy/)
+  for (const f of ['skills/agent/SKILL.md', 'skills/fleet/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/REFERENCE.md', 'skills/help/SKILL.md', 'README.md', 'PROJECT.template.md'])
+    assert.doesNotMatch(read(f), /branch (you ran it from|you're on now|the fleet was run from|it was run from)|into your current branch|merged into this branch/, f)
+  for (const f of ['tidy.mjs', 'inventory.mjs', 'tidy-core.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
+})

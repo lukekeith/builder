@@ -42,7 +42,7 @@ function runFleet(root, args, scenario, env = {}) {
   const r = spawnSync('node', [FLEET, ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, FLEET_KEEP_STOPPED_WORKTREES: '1', STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env },
   })
   const fj = join(root, '.builder/fleet/fleet.json')
   const calls = existsSync(join(root, '.stub/calls.log')) ? readFileSync(join(root, '.stub/calls.log'), 'utf8').trim().split('\n') : []
@@ -100,6 +100,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(existsSync(`${root}-wt/a`), false)
   assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^1 archived \(last: a, just now\)/m)
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^- repo: clean$/m, 'nothing left behind, and the report says so')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/a/a-01.log')), 'its logs moved with it')
   assert.equal(existsSync(join(root, '.builder/fleet/logs/a-01.log')), false)
 })
@@ -310,8 +311,13 @@ test('refusals: uncommitted, already shipped; a feature whose branch is the targ
   const r = runFleet(root, ['a', 'h', 'k', '--dry-run'], {})
   assert.match(r.stdout, /✗ a — .*uncommitted changes/)
   assert.match(r.stdout, /✗ h — .*already shipped/)
-  assert.match(r.stdout, /✓ k → builder\/k/)
-  assert.match(r.stdout, /merges into: feat\/k/)
+  // The target is merge_into (main), so k's own branch is what it builds on — and it is checked out here.
+  assert.match(r.stdout, /✗ k — feat\/k is checked out in this folder/)
+  assert.match(r.stdout, /merges into: main \(merge_into\)/)
+  // A feature whose branch IS the target still gets a fresh builder/ branch.
+  const into = runFleet(root, ['k', '--into', 'feat/k', '--dry-run'], {})
+  assert.match(into.stdout, /✓ k → builder\/k/)
+  assert.match(into.stdout, /merges into: feat\/k \(--into\)/)
 })
 
 test('a feature already underway continues on its own branch, in the lane it is in', () => {
@@ -325,8 +331,52 @@ test('a feature already underway continues on its own branch, in the lane it is 
   assert.equal(r.status, 0, r.stderr)
   assert.equal(assertLanded(r, 'u').branch, 'feat/u')
   assert.match(git(root, 'log', '--oneline', '-1'), /merge\(u\)/)
-  assert.ok(git(root, 'branch', '--list', 'feat/u'), 'a branch the fleet did not create is kept')
+  assert.equal(git(root, 'branch', '--list', 'feat/u'), '', 'a merged branch is deleted, whoever created it')
   assert.equal(r.calls.find((l) => l.startsWith('start')).split(' ')[2], 'walk', 'went straight to the walk lane')
+})
+
+test('a landed feature leaves no worktree and no branch, even with test output rewritten in its worktree', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, 'test-results'))
+  writeFileSync(join(root, 'test-results/.last-run.json'), '{}\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'a tracked test artefact')
+  const r = runFleet(root, ['a'], { a: [...HAPPY.slice(0, -1), 'TOUCH:test-results/.last-run.json:SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
+  assert.equal(git(root, 'stash', 'list'), '', 'test output is restored, not stashed')
+  assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /was kept/)
+})
+
+test('a real uncommitted change in a landed feature\'s worktree is stashed by name, then the worktree goes', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/code.js'), 'one\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'tracked code')
+  const r = runFleet(root, ['a'], { a: [...HAPPY.slice(0, -1), 'TOUCH:app/code.js:SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.match(git(root, 'stash', 'list'), /builder: a leftovers \d{4}-\d{2}-\d{2}/)
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /a merged; uncommitted changes from its worktree are in stash "builder: a leftovers/)
+})
+
+test('a parked feature keeps its branch but not its worktree; picking it again carries on from the branch', () => {
+  const root = makeRepo(['p'])
+  const r = runFleet(root, ['p'], { p: ['audited', 'TOUCH:.builder/p/progress.md:BLOCK:later'] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  assert.ok(existsSync(join(root, '.builder/kept/p/progress.md')), 'the build workspace outlives the worktree')
+  assert.equal(r.fleet.features.p.status, 'parked')
+  assert.equal(r.fleet.features.p.worktree, null)
+  assert.equal(existsSync(`${root}-wt/p`), false, 'the worktree is removed at exit')
+  assert.ok(git(root, 'branch', '--list', 'builder/p'), 'the branch holds the work')
+  const r2 = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later', ...HAPPY.slice(1)] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  assert.equal(r2.status, 0, r2.stderr)
+  assertLanded(r2, 'p')
+  assert.equal(git(root, 'branch', '--list', 'builder/p'), '')
+  assert.equal(existsSync(join(root, '.builder/kept/p')), false, 'handed back to the new worktree')
 })
 
 test('a planned feature joins the build lane where it is', () => {
@@ -898,13 +948,54 @@ test('a feature that ships after the human switched branches still lands on the 
   assert.equal(git(root, 'rev-list', '--parents', '-n', '1', 'main').split(' ').length, 3, 'a two-parent merge commit')
 })
 
-test('a fleet with unfinished work refuses to run from another branch', () => {
+test('a fleet with unfinished work refuses another target, naming the --into that continues it', () => {
   const root = makeRepo(['a'])
   runFleet(root, ['a'], { a: ['audited', 'BLOCK:later'] })
-  git(root, 'switch', '-q', '-c', 'elsewhere')
-  const r = runFleet(root, [], {})
+  git(root, 'branch', 'release')
+  const r = runFleet(root, ['--into', 'release'], {})
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /This fleet merges into main, but elsewhere is checked out/)
+  assert.match(r.stderr, /This fleet merges into main, not release — finish or clear it first, or continue it with --into main/)
+})
+
+test('the fleet lands on merge_into (default base_branch), whatever is checked out', () => {
+  const root = makeRepo(['a'])
+  git(root, 'switch', '-q', '-c', 'elsewhere')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\): agent-verified/)
+  assert.equal(git(root, 'branch', '--show-current'), 'elsewhere', 'the checkout is left alone')
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'elsewhere'), /merge\(a\)/)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '', 'merged into main, so deleted — though main is not checked out')
+})
+
+test('--into names the target for one run; merge_into in the config sets the default', () => {
+  const root = makeRepo(['a', 'b'])
+  git(root, 'branch', 'release')
+  git(root, 'branch', 'develop')
+  const r = runFleet(root, ['a', '--into', 'release'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'release'), /merge\(a\)/)
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '', 'in release, so deleted')
+  // A fresh fleet (the last one finished) picks up merge_into.
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^---\n/, '---\nmerge_into: develop\n'))
+  git(root, 'commit', '-qam', 'merge into develop')
+  const r2 = runFleet(root, ['b'], { b: HAPPY })
+  assert.equal(r2.status, 0, r2.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'develop'), /merge\(b\)/)
+})
+
+test('a detached HEAD can launch a fleet; a missing target refuses with the fix', () => {
+  const root = makeRepo(['a', 'b'])
+  git(root, 'checkout', '-q', '--detach')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+  const bad = runFleet(root, ['b', '--into', 'nope'], { b: HAPPY })
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /The branch to merge into, nope, does not exist — create it \(git branch nope\) or set merge_into in \.claude\/builder\.md/)
 })
 
 test('@delta gates get their baseline measured at fleet start, once per target sha', () => {
@@ -923,7 +1014,7 @@ test('@delta gates get their baseline measured at fleet start, once per target s
   assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /measuring @delta/, 'the baseline note is gone once it is measured')
 })
 
-test('a note about a worktree that no longer exists is dropped on the next run', () => {
+test('an older fleet\'s "worktree was kept" notes give way to the repo line, which names what is still there', () => {
   const root = makeRepo(['a'])
   const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:wait'] })
   mkdirSync(join(root, '.builder/fleet'), { recursive: true })
@@ -932,8 +1023,8 @@ test('a note about a worktree that no longer exists is dropped on the next run',
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify(fj))
   runFleet(root, [], { a: ['BLOCK:wait'] })
   const status = readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8')
-  assert.doesNotMatch(status, /\/nowhere\/x/)
-  assert.match(status, /y merged; its worktree/)
+  assert.doesNotMatch(status, /was kept \(it has changes\)/)
+  assert.match(status, /^- repo: .*→ \/builder:tidy$/m, 'the parked feature is still there, and the repo line says so')
 })
 
 // ---- adding to a running fleet: the inbox ----------------------------------------------------

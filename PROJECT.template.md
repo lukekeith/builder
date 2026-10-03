@@ -14,6 +14,7 @@ registry: docs/features
 
 # The branch a PR targets. No skill ever commits or dispatches on it.
 base_branch: main
+# merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch
 
 # ─── apps ──────────────────────────────────────────────────────────────────
 # The deployable/buildable units of this repo. A single-app repo lists ONE.
@@ -59,7 +60,7 @@ design:
 # ─── unattended runs (optional) ────────────────────────────────────────────
 # /builder:agent and /builder:fleet take specs all the way with no human in the
 # loop: a worktree per spec, an agent walk and agent sign-off instead of yours,
-# verify, ship, and a merge into the branch you ran it from (local; never pushed).
+# verify, ship, and a merge into merge_into (below; default base_branch), local and never pushed.
 # Omit the whole block and --agent-walk / /builder:fleet refuse.
 agent_walk:
   driver: <how the agent drives the UI — e.g. "the Playwright MCP tools (mcp__playwright__*)">
