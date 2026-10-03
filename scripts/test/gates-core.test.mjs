@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { parseGates, inputLines, inputsHash, isDirty, mainRoot, runGateSet, readMemo, expandPlaceholders } from '../gates-core.mjs'
+import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -104,6 +104,17 @@ test('inputLines carves out other apps and the registry, keeps shared code', () 
   commit(root, 'apps/server/a.txt', 'own\n')
   assert.notEqual(server(), h1, 'the app itself invalidates')
   assert.notEqual(inputsHash(inputLines(root, { exclude: ['docs/features', 'apps/web/'] }), [{ cmd: 'x' }]), server(), 'a changed gate command invalidates')
+})
+
+test('dirtyPaths lists modified tracked files, never untracked ones; fmtPaths caps the list', () => {
+  const root = repo()
+  assert.deepEqual(dirtyPaths(root), [])
+  writeFileSync(join(root, 'package.json'), 'changed\n')
+  writeFileSync(join(root, 'scratch.txt'), 'untracked\n')
+  assert.deepEqual(dirtyPaths(root), ['package.json'])
+  git(root, 'checkout', '--', 'package.json')
+  assert.equal(fmtPaths(['a', 'b']), 'a, b')
+  assert.equal(fmtPaths(['a', 'b', 'c', 'd', 'e', 'f', 'g']), 'a, b, c, d, e +2 more')
 })
 
 test('isDirty and mainRoot', () => {
@@ -215,7 +226,13 @@ test('gate.mjs: a red set is never quoted, exits 1, and a dirty tree is not memo
   assert.match(green.stdout, /▶ server/, 'a red memo is not quoted')
   writeFileSync(join(root, 'package.json'), 'dirty\n')
   const dirty = run(root, 'server')
-  assert.match(dirty.stdout, /uncommitted changes — result not memoised/)
+  assert.match(dirty.stdout, /uncommitted: package\.json — not quoted, result not memoised/)
+  // Green and memoised on a clean tree, then dirtied: the quote is refused, and the line says why.
+  git(root, 'checkout', '--', 'package.json')
+  run(root, 'server')
+  writeFileSync(join(root, 'package.json'), 'dirty again\n')
+  const refused = run(root, 'server')
+  assert.match(refused.stdout, /▶ server — fast at \w+ \(uncommitted: package\.json — not quoted, result not memoised\)/)
 })
 
 test('gate.mjs --deep runs the deep block; unknown app and missing block refuse with exit 2', () => {
