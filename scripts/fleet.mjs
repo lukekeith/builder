@@ -84,7 +84,7 @@ const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.workt
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
-  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null) : 'No fleet has run in this repo yet.')
+  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
   process.exit(0)
 }
 
