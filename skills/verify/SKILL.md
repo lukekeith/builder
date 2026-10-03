@@ -109,6 +109,10 @@ a visual diff, and a renamed element changes what the walk does.
    never widen a scoped run "to be safe" (`--whole` is for when the impact report is plainly wrong,
    and says why), and never re-run a red gate yourself to see whether it is "really" red — the
    runner already applied the flake rule; a `✗` is a finding.
+   A line **at or under its baseline** (`→ 7 (baseline 7)`) is green: report it as `<n> = baseline
+   <n>` and move on. Open a failure's log only when the set is red — above its baseline — and then
+   only for the failures above it; the ones already failing on the base branch are not this
+   feature's to explain.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly
    deferred with a named decider; Data plans executed. 🔴 **And the migration re-applies on a clean
    database** — one that only works against your local state is a production incident waiting.
@@ -137,6 +141,15 @@ a visual diff, and a renamed element changes what the walk does.
     walk script, executed live. Can't bring the stack up → **BLOCKED-on-environment**, never READY.
     Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
     SCOPED, and quote the earlier run when the diff didn't earn a new one.
+    **Under `--agent-walk`, the agent walk may already have covered it.** When `walk.md` has a
+    `## Cross-app (verify E2E)` section, read `<WS>/agent-walk/round-<n>/report.md` for the round the `🤖 AGENT SIGNED OFF … round <n>` header names
+    — never simply the latest round — and take `<walk sha>` from its `sha:` line, the code that
+    round walked. Every `E<k>` row `PASS` with evidence, and no code changed since —
+    `git diff --quiet <walk sha> -- . ':!<registry>'` exits 0, which also counts uncommitted edits —
+    → item 10 is **covered by the agent walk**: cite the report path and the sha, marked quoted. A
+    report with no `sha:` line can't be tied to code → item 10 as written. Any `E` row missing or not `PASS`,
+    or code changed since → run **only those steps** live (all of them when code changed), as above.
+    No such section (built before builder 4.6) → item 10 as written. A human walk never covers it.
 11. **Spec-parity spot-check** (`opus` judgment, not grep) — trace the spec's 3–4 most load-bearing
     behaviours (permission gates, tenancy scoping, state rules, offline behaviour, routing) in the
     shipped code with `file:line`. This catches a feature that passes every gate while doing something

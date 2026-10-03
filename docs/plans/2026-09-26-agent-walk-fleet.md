@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node ≥ 18 standard library only (`node:test`, `node:child_process`, `node:fs`), POSIX shell, `git`, `gh`, `claude` CLI. Skills are Markdown.
 
-**Spec:** `docs/superpowers/specs/2026-09-26-agent-walk-fleet-design.md`
+**Spec:** `docs/specs/2026-09-26-agent-walk-fleet-design.md`
 
 ## Global Constraints
 

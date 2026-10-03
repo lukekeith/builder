@@ -47,6 +47,7 @@ shows it.
 | app `released_artifact` | `true` for anything installed on a device rather than deployed: mobile apps, desktop apps, published packages and CLIs |
 | fast gates, per app | that app's `package.json` scripts (`lint`, `typecheck`, `test`, `build`), `Makefile` targets, `justfile`, `Taskfile`, or the language default (`go test ./...`, `cargo test`, `pytest`). Use the command exactly as the repo runs it, including the package manager the lockfile implies (`pnpm`, `yarn`, `bun`, `npm`) |
 | deep gates | e2e suites (`playwright`, `cypress`, `detox`, `e2e` scripts), full builds, and the CI workflow in `.github/workflows/` — CI is the best record of what "passing" means here. Write each e2e runner as `<runner> {tests}   # … @scoped <its spec glob>`, and never a wrapper script that re-runs what the fast sets already run (PROJECT.template §Quality gates) |
+| tracked test output | `git ls-files` for `test-results/`, `playwright-report/`, `coverage/`, `.nyc_output/`, `junit*.xml`. A runner rewrites these on every run, the tree reads dirty, and `gate.mjs` never quotes a dirty tree — so every verify re-runs what the build already ran. List any found in the step 6 report with the fix (`git rm -r --cached <path>` and a `.gitignore` line); never untrack anything yourself |
 | known-red gates | don't run anything to find out; list the gate commands and ask in step 3 |
 | house rules | per-app `CLAUDE.md` / `AGENTS.md`, `docs/architecture*`, `CONTRIBUTING.md` — **point at them**, don't copy them |
 | walk readiness | the migrations directory and the ORM's own commands for **status**, **apply** and **regenerate** against the dev database (`prisma migrate status/deploy/generate`, `drizzle-kit`, `knex migrate:status/latest`, `rails db:migrate:status`, `alembic current/upgrade head`, `manage.py showmigrations/migrate`); the dev **start** command (`dev`, `dev:all`, `docker compose up`); a health endpoint or smoke-tagged test for **smoke**. `apply_mode` is always a step-3 question — recommend `ask` |
@@ -146,6 +147,7 @@ Under 15 lines:
    apps: <name> (<role>, <commit>) · …
    base: <branch> · registry: <dir> · ticket: <system|none> · design: <on|off>
    inferred, check these: <the 2–4 guesses most worth a human glance>
+   tracked test output: <each path, with `git rm -r --cached <path>` + a .gitignore line> | none
 📍 next: /builder:brainstorm <what you want built>
 ```
 
