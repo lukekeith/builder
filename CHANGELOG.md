@@ -4,6 +4,32 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.8.0
+
+**Nothing left behind:**
+
+- **Work lands where you say, not where you happen to be.** New optional `merge_into:` in
+  `.claude/builder.md` (default `base_branch`). Fleets — `/builder:fleet`, `/builder:agent` — merge
+  there whatever is checked out, even from a detached HEAD; `--into <branch>` picks another for one
+  run. (Before, features landed on the branch checked out at launch, which is how d2m's work ended up
+  on a feature branch needing a second merge.)
+- **A fleet cleans up after itself.** A merged feature's worktree and branch are removed — whatever
+  the branch is called — even when a test run rewrote a tracked file in it (`test-results/` and the
+  like are restored); real uncommitted changes are stashed as `builder: <feature> leftovers <date>`,
+  never lost. A parked or failed feature keeps only its branch; its worktree is recreated when it's
+  picked again.
+- **One picture of the repo.** `/builder:status` and every fleet report end with a `repo:` line —
+  `repo: clean`, or `2 merged branches to delete · 1 dead worktree · 1 ready to merge → /builder:tidy`.
+- **New `/builder:tidy`.** Every local branch and worktree against `merge_into`: merged, ready,
+  running, parked (why · next), in progress, unknown, dead. One confirmation deletes what's merged,
+  removes dead worktrees and stopped features' worktrees, and merges what's verified (a branch behind
+  the target goes to the fleet to be brought up to date); every unknown or unfinished branch gets its
+  own question — finish with agents, merge as is, keep, or delete. Never pushes; never drops a stash.
+
+**Changed:** a fleet with unfinished work refuses a different target, naming the `--into` that
+continues it. A feature whose own branch is checked out in your main folder is refused at launch
+(switch away first) rather than given a fresh `builder/` branch.
+
 ## 4.7.0
 
 **New:**

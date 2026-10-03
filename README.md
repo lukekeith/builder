@@ -173,8 +173,8 @@ Write the specs, then hand them over:
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
 at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
 per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it
-verifies, ships, and **merges it into the branch you ran it from** — one merge commit per feature,
-and the worktree removed — so a batch of five specs lands as five merges on one branch for you to
+verifies, ships, and **merges it into the `merge_into` branch** (default `base_branch`, or `--into` for one
+run) — one merge commit per feature, its worktree and branch removed — so a batch of five specs lands as five merges on one branch for you to
 test. Nothing is pushed and no PR is opened. Every feature ends **merged**. Merge conflicts, red
 gates, failed agent walks and a walk env that won't start are work the agents do, not reasons to
 stop; a feature **parks** only when its spec leaves a product decision open, or on a step you reserve
@@ -202,6 +202,16 @@ the test-DB migration) runs after a merge that brought new commits. Gate blocks 
 base branch, and quotes a green run whose inputs have not changed instead of re-running it — the
 measured reason a d2m-sized feature spent 60% of its wall-clock in tests was the same suite running
 about fourteen times.
+
+## Nothing left behind
+
+Finished features merge into one branch — `merge_into` in `.claude/builder.md`, defaulting to
+`base_branch` — whatever you have checked out, and `--into <branch>` picks another for one run.
+A merged feature's worktree and branch are removed; a parked one keeps only its branch, with why and
+the next step. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
+what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
+worktree, one OK for everything safe (delete what's merged, remove dead worktrees, merge what's
+verified), one question each for the rest. It never pushes and never loses uncommitted work.
 
 ## Live progress in the status line
 

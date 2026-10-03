@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the branch it was run from; anything that would ask a question takes its recommendation; merge conflicts, red gates, failed walks and a dev env that won't start are worked by agents, and a feature parks only on a decision its spec leaves open. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
+description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the project's merge_into branch (default base_branch; --into for one run), its worktree and branch then removed; anything that would ask a question takes its recommendation; merge conflicts, red gates, failed walks and a dev env that won't start are worked by agents, and a feature parks only on a decision its spec leaves open. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
 ---
 
 # `/builder:fleet` — many specs, no one watching
@@ -53,7 +53,7 @@ baselines on the target branch at start (`gate.mjs --baseline`, log in `.builder
 
 **A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
 entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree
-until they are merged into this branch, then is branched from it, so it builds on its
+until they are merged into the target, then is branched from it, so it builds on its
 dependencies' merged code. A dependency that isn't in the run and hasn't shipped refuses the child
 (`✗ <child> — waits on <dep> (<state>) — not in this run`); one that parks or fails parks its
 waiters too, naming it.
@@ -97,9 +97,11 @@ was asked for → stop here.
 
 One AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
 worktree root, the permission args (`claude <claude_args>`), and "merges each finished feature
-into <the current branch> here, one merge commit each; nothing is pushed". Mention uncommitted
-changes in this checkout (`git status --short`): the fleet merges into this working tree, and a merge
-that would overwrite one of them parks that feature until it is out of the way.
+into <the target> (merge_into, or --into), one merge commit each; nothing is pushed". When the
+target is checked out here, mention uncommitted changes in this checkout (`git status --short`): the
+fleet merges into this working tree, and a merge that would overwrite one of them parks that feature
+until it is out of the way. When it isn't, the merge is written onto the branch without touching
+your checkout.
 This is the only question the fleet ever asks.
 
 **A fleet is already running** (the dry run said `adds to the running fleet`): the options are **Add
@@ -152,7 +154,7 @@ the `--detach` command that resumes it.
 When asked after the fleet has ended (`--status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
-- **done** — merged into this branch, and archived: the row leaves the table for
+- **done** — merged into the target, its worktree and branch removed, and archived: the row leaves the table for
   `.builder/fleet/archive.jsonl`, the spec folder is under `<registry>/_archive/`, and its logs under
   `.builder/fleet/logs/_archive/` (kept `agent_walk.keep_logs` days, 30 by default). `git log --merges`
   lists them. Test the result here; push when you're happy. `git revert -m 1 <merge>` takes one back out.
