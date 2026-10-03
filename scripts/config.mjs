@@ -14,6 +14,9 @@ import { join } from 'node:path'
 
 export const CONFIG_PATH = '.claude/builder.md'
 
+// Track invalid build_profile_default values we've warned about to dedupe warnings per process
+const warnedBuildProfileDefaults = new Set()
+
 const unquote = (v) => v.replace(/^["'](.*)["']$/, '$1')
 
 const coerce = (v) => {
@@ -152,7 +155,10 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
       const allowed = ['rush', 'standard', 'thorough']
       if (val === null || val === undefined) return null
       if (allowed.includes(val)) return val
-      console.warn(`build_profile_default: "${val}" is not one of ${allowed.join(', ')}; ignoring`)
+      if (!warnedBuildProfileDefaults.has(val)) {
+        warnedBuildProfileDefaults.add(val)
+        console.warn(`build_profile_default: "${val}" is not one of ${allowed.join(', ')}; ignoring`)
+      }
       return null
     })(),
     apps,
