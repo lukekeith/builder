@@ -237,3 +237,10 @@ test('agent mode: build writes the E steps, agent-walk reports them, verify quot
   // init recon names tracked test output.
   assert.match(read('skills/init/SKILL.md'), /test-results\//)
 })
+
+test('the fleet launches detached, never as a session background task', () => {
+  const fleet = read('skills/fleet/SKILL.md')
+  assert.match(fleet, /fleet\.mjs <the same arguments> --detach/)
+  assert.doesNotMatch(fleet, /Run with the Bash tool's `run_in_background`/)
+  assert.match(read('skills/agent/SKILL.md'), /launch detached, `--detach`/)
+})
