@@ -66,6 +66,11 @@ never the build's context: the agent that built it does not grade it. Its brief 
   **Never edit code, never commit, never touch the manifest or the SPEC.**
 - the report: `<WS>/agent-walk/round-<n>/report.md` — a table `# · App · Item · Result · Evidence`,
   then one line: `verdict: PASS` or `verdict: PROBLEMS (<k>)`.
+- the `## Cross-app (verify E2E)` section of `walk.md`, when present, is walked like every other
+  item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes
+  these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.
+- any gate the walker runs: a line at or under its baseline (`→ 7 (baseline 7)`) is green — note
+  the count and move on; never investigate failures that already fail on the base branch.
 
 ## 3. Judge the report
 
