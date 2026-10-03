@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -291,10 +291,12 @@ test('renderArchived lists the latest landings newest first', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
   assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
-  assert.match(out, /\| Feature \| Merged \| PR \| Landed \|/)
+  assert.match(out, /\| Feature \| Profile \| Time \| Tokens \| Merged \| PR \| Landed \|/)
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
-  assert.match(out, /\| b \| fff0000 \| #9 \| 1h ago \|/)
-  assert.match(out, /\| a \| abc1234 \| — \| 2h ago \|/)
+  assert.match(out, /\| b \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
+  assert.match(out, /\| a \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
+  const full = renderArchived([{ ...row('c'), profile: 'rush', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
+  assert.match(full, /\| c \| rush \| 12m \| 2\.1M \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -346,4 +348,17 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
   assert.match(out, /\| a \| building \| 2 \| 42m \| — \| yes \|/)
   assert.match(out, /\| b \| queued \| 0 \| — \| — \| — \|/)
   assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
+})
+
+test('tokensOf reads a result event’s usage; zeros without one', () => {
+  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, costUsd: 0.1 })
+  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, costUsd: 0 })
+})
+
+test('formatTokens: 2.1M, 340k, — when absent', () => {
+  assert.equal(formatTokens(2100000), '2.1M')
+  assert.equal(formatTokens(340000), '340k')
+  assert.equal(formatTokens(950), '950')
+  assert.equal(formatTokens(null), '—')
+  assert.equal(formatTokens(0), '—')
 })
