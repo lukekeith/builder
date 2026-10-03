@@ -42,7 +42,7 @@ function runFleet(root, args, scenario, env = {}) {
   const r = spawnSync('node', [FLEET, ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, FLEET_KEEP_STOPPED_WORKTREES: '1', STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env },
   })
   const fj = join(root, '.builder/fleet/fleet.json')
   const calls = existsSync(join(root, '.stub/calls.log')) ? readFileSync(join(root, '.stub/calls.log'), 'utf8').trim().split('\n') : []
@@ -330,8 +330,50 @@ test('a feature already underway continues on its own branch, in the lane it is 
   assert.equal(r.status, 0, r.stderr)
   assert.equal(assertLanded(r, 'u').branch, 'feat/u')
   assert.match(git(root, 'log', '--oneline', '-1'), /merge\(u\)/)
-  assert.ok(git(root, 'branch', '--list', 'feat/u'), 'a branch the fleet did not create is kept')
+  assert.equal(git(root, 'branch', '--list', 'feat/u'), '', 'a merged branch is deleted, whoever created it')
   assert.equal(r.calls.find((l) => l.startsWith('start')).split(' ')[2], 'walk', 'went straight to the walk lane')
+})
+
+test('a landed feature leaves no worktree and no branch, even with test output rewritten in its worktree', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, 'test-results'))
+  writeFileSync(join(root, 'test-results/.last-run.json'), '{}\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'a tracked test artefact')
+  const r = runFleet(root, ['a'], { a: [...HAPPY.slice(0, -1), 'TOUCH:test-results/.last-run.json:SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
+  assert.equal(git(root, 'stash', 'list'), '', 'test output is restored, not stashed')
+  assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /was kept/)
+})
+
+test('a real uncommitted change in a landed feature\'s worktree is stashed by name, then the worktree goes', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/code.js'), 'one\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'tracked code')
+  const r = runFleet(root, ['a'], { a: [...HAPPY.slice(0, -1), 'TOUCH:app/code.js:SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.match(git(root, 'stash', 'list'), /builder: a leftovers \d{4}-\d{2}-\d{2}/)
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /a merged; uncommitted changes from its worktree are in stash "builder: a leftovers/)
+})
+
+test('a parked feature keeps its branch but not its worktree; picking it again carries on from the branch', () => {
+  const root = makeRepo(['p'])
+  const r = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later'] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  assert.equal(r.fleet.features.p.status, 'parked')
+  assert.equal(r.fleet.features.p.worktree, null)
+  assert.equal(existsSync(`${root}-wt/p`), false, 'the worktree is removed at exit')
+  assert.ok(git(root, 'branch', '--list', 'builder/p'), 'the branch holds the work')
+  const r2 = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later', ...HAPPY.slice(1)] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  assert.equal(r2.status, 0, r2.stderr)
+  assertLanded(r2, 'p')
+  assert.equal(git(root, 'branch', '--list', 'builder/p'), '')
 })
 
 test('a planned feature joins the build lane where it is', () => {
