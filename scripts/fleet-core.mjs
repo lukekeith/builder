@@ -193,6 +193,21 @@ export function ago(iso, now = Date.now()) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+/** Milliseconds as `45s`, `12m`, `1h12m`. */
+export function duration(ms) {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
+}
+
+/** A feature's run timings summed per lane. */
+export function laneTotals(timing) {
+  const out = {}
+  for (const t of timing ?? []) out[t.lane] = (out[t.lane] ?? 0) + t.ms
+  return out
+}
+
 /** `--status --archived [N]`: the latest landings, newest first. */
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
