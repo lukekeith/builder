@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -319,4 +319,10 @@ test('renderStatus lists each parked feature with why and the recommended next s
   assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
   assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
   assert.doesNotMatch(out.slice(out.indexOf('## Parked')), /\*\*r\*\*/)
+})
+
+test('duration is compact; laneTotals sums ms per lane', () => {
+  assert.deepEqual([duration(45000), duration(12 * 60000), duration(72 * 60000)], ['45s', '12m', '1h12m'])
+  assert.deepEqual(laneTotals([{ lane: 'build', ms: 1000 }, { lane: 'walk', ms: 500 }, { lane: 'build', ms: 250 }]), { build: 1250, walk: 500 })
+  assert.deepEqual(laneTotals(undefined), {})
 })
