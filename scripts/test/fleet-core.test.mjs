@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens } from '../fleet-core.mjs'
+import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -362,4 +362,12 @@ test('formatTokens: 2.1M, 340k, — when absent', () => {
   assert.equal(formatTokens(999600), '1.0M')
   assert.equal(formatTokens(null), '—')
   assert.equal(formatTokens(0), '—')
+})
+
+test('specBringIn: a new branch takes HEAD\u2019s folder unless the target already has the same one', () => {
+  assert.equal(specBringIn({ targetTree: null, headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), true, 'the target lacks it')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), true, 'the target holds an older copy')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), false, 'identical')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasManifest: true, isNewBranch: false }), false, 'an existing branch is left alone')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasManifest: false, isNewBranch: false }), true, 'a worktree with no manifest heals')
 })
