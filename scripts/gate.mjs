@@ -42,7 +42,7 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { parseGates, inputLines, inputsHash, isDirty, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline } from './gates-core.mjs'
+import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
 const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole]'
@@ -110,7 +110,8 @@ const scope = flag('--whole')
       return scopeTests(impact, glob)
     }
 
-const dirty = isDirty(ROOT)
+const dirtyList = dirtyPaths(ROOT)
+const dirty = dirtyList.length > 0
 const sha = head()
 const registry = CFG.registry
 let baseline = readBaseline(MAIN)
@@ -140,7 +141,7 @@ for (const set of sets) {
     console.log(`gate ${set.key}: PASS (quoted) · ${sha}`)
     continue
   }
-  console.log(`▶ ${set.label} at ${sha}${dirty ? ' (tree has uncommitted changes — result not memoised)' : ''}`)
+  console.log(`▶ ${set.label} at ${sha}${dirty ? ` (uncommitted: ${fmtPaths(dirtyList)} — not quoted, result not memoised)` : ''}`)
   markRunning(set.label)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()

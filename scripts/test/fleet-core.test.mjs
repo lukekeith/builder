@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts } from '../fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -128,9 +128,9 @@ test('renderStatus keeps only informative columns, names the target and the work
     notes: ['a note'],
   })
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
-  assert.match(out, /\| Feature \| Status \| Runs \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
-  assert.match(out, /\| a \| building \| 2 \| — \| yes \|/)
+  assert.match(out, /\| a \| building \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
   assert.match(out, /- a note$/m)
 })
@@ -208,8 +208,8 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     progress
   )
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
-  assert.match(out, /\| Feature \| Status \| Progress \| Runs \| Reason \| Worktree \|/)
-  assert.match(out, /\| a \| building \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| yes \|/)
+  assert.match(out, /\| Feature \| Status \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
 })
 
@@ -314,9 +314,36 @@ test('renderStatus lists each parked feature with why and the recommended next s
       r: { status: 'building', runs: 1, worktree: '/w/r', reason: null },
     },
   })
-  assert.match(out, /\| p \| parked \| 3 \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
+  assert.match(out, /\| p \| parked \| 3 \| — \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
   assert.match(out, /^## Parked$/m)
   assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
   assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
   assert.doesNotMatch(out.slice(out.indexOf('## Parked')), /\*\*r\*\*/)
+})
+
+test('duration is compact; laneTotals sums ms per lane', () => {
+  assert.deepEqual([duration(45000), duration(12 * 60000), duration(72 * 60000)], ['45s', '12m', '1h12m'])
+  assert.deepEqual(laneTotals([{ lane: 'build', ms: 1000 }, { lane: 'walk', ms: 500 }, { lane: 'build', ms: 250 }]), { build: 1250, walk: 500 })
+  assert.deepEqual(laneTotals(undefined), {})
+})
+
+test('renderStatus adds a Time column, and the mean per lane of recently landed features', () => {
+  const out = renderStatus(
+    {
+      target: 'main',
+      archived: 2,
+      features: {
+        a: { status: 'building', runs: 2, worktree: '/w/a', timing: [{ n: 1, lane: 'build', ms: 30 * 60000, turns: 9 }, { n: 2, lane: 'build', ms: 12 * 60000, turns: 4 }] },
+        b: { status: 'queued', runs: 0, worktree: null },
+      },
+    },
+    null,
+    null,
+    Date.now(),
+    [{ feature: 'x', lanes: { build: 60 * 60000, walk: 30 * 60000 } }, { feature: 'y', lanes: { build: 40 * 60000, walk: 50 * 60000 } }]
+  )
+  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| 2 \| 42m \| — \| yes \|/)
+  assert.match(out, /\| b \| queued \| 0 \| — \| — \| — \|/)
+  assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
 })

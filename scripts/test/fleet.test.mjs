@@ -82,6 +82,10 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(r.status, 0, r.stderr)
   const a = assertLanded(r, 'a')
   assert.equal(a.runs, 8)
+  // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
+  assert.equal(a.timing.length, 8)
+  assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3 })
+  assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
   assert.equal(r.fleet.archived, 1)
   // The stub reports a --no-dev-env run as 'build': the ship lane runs without the dev env too.
@@ -128,11 +132,23 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   assertLanded(r, 't1')
   assert.equal(r.fleet.features.t2.status, 'failed')
   assert.match(r.fleet.features.t2.reason, /timed out twice/)
+  // A run killed by the timeout has no result event: wall-clock ms, turns null.
+  const hung = r.fleet.features.t2.timing
+  assert.equal(hung.length, 2)
+  assert.ok(hung.every((t) => t.turns === null && t.ms >= 400), JSON.stringify(hung))
   const log = readFileSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.log'), 'utf8')
   assert.match(log, /· still working/)
   assert.match(log, /did audited/)
   assert.equal(log.match(/did audited/g).length, 1, 'the result repeating the last assistant text is printed once')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl')))
+})
+
+test('a run that prints more than one result event is timed by the last', () => {
+  const root = makeRepo(['c'])
+  // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
+  const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
+  const c = assertLanded(r, 'c')
+  assert.deepEqual(c.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3 })
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -1127,7 +1143,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })

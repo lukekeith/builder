@@ -214,3 +214,26 @@ test('statusline: the skill drives the installer, help names it, and vendored co
   assert.match(read('README.md'), /^## Live progress in the status line$/m)
   for (const f of ['statusline.mjs', 'statusline-launcher.mjs', 'statusline-install.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
+
+test('agent mode: build writes the E steps, agent-walk reports them, verify quotes them only on unchanged code', () => {
+  const HEAD = '## Cross-app (verify E2E)'
+  const build = read('skills/build/SKILL.md')
+  const walk = read('skills/agent-walk/SKILL.md')
+  const verify = read('skills/verify/SKILL.md')
+  for (const [name, s] of [['build', build], ['agent-walk', walk], ['verify', verify]]) assert.ok(s.includes(HEAD), `${name} names ${HEAD}`)
+  assert.match(build, /Under `--agent-walk`\*\*, append the cross-app walk[\s\S]{0,300}`E1…En`/)
+  assert.match(walk, /`E<k>`/)
+  // Quoted only when no code changed since the agent walk's sha; otherwise only the uncovered steps run live.
+  // Against the working tree, not HEAD: uncommitted edits after the walk count as changed code (I-1).
+  assert.match(verify, /git diff --quiet <walk sha> -- \. ':!<registry>'/)
+  assert.doesNotMatch(verify, /git diff --quiet <walk sha> HEAD/)
+  // The walk sha is the one the passing round recorded, in the round its sign-off names (I-2).
+  assert.match(walk, /first line `sha: <HEAD at walk start>`/)
+  assert.match(verify, /the round the `🤖 AGENT SIGNED OFF … round <n>` header names/)
+  assert.match(verify, /its `sha:` line/)
+  assert.match(verify, /only those steps/)
+  // A gate at or under its baseline is green, in verify and in the walker's brief.
+  for (const s of [verify, walk]) assert.match(s, /at or under its baseline/)
+  // init recon names tracked test output.
+  assert.match(read('skills/init/SKILL.md'), /test-results\//)
+})

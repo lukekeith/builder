@@ -20,7 +20,7 @@ so agent mode can take the feature to merged with every record saying it is not 
 | `agent-walk:` is not `on …` | refuse in one line: this step runs only under `--agent-walk`. A human walk is recorded by `/builder:signoff` |
 | the config has no `agent_walk:` block | refuse; name `/builder:init --update` |
 | `blocked:` set | parked — print it, run nothing |
-| `state: built` · `walk: agent-pass …` (walked before agents signed off) | no new round: go straight to §4 **AGENT-PASS**'s sign-off and condense, citing the round that passed |
+| `state: built` · `walk: agent-pass …` (walked before agents signed off) | no new round: go straight to §4 **AGENT-PASS**'s sign-off and condense, citing the round that passed — keep the manifest's existing `walk:` sha, never HEAD's |
 | `walk:` already set, anything else | nothing to do; hand back to `/builder:resume --path <folder>` |
 | `ready:` is not `yes <sha>` with no code commit since that sha (manifest/doc-only commits don't count) | not walkable yet — hand back to `/builder:resume` (walk readiness comes first) |
 | `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
@@ -64,8 +64,14 @@ never the build's context: the agent that built it does not grade it. Its brief 
   `UNVERIFIABLE`, what it did, what it saw, and its evidence files — screenshots `NN-<slug>.png`,
   console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.
   **Never edit code, never commit, never touch the manifest or the SPEC.**
-- the report: `<WS>/agent-walk/round-<n>/report.md` — a table `# · App · Item · Result · Evidence`,
+- the report: `<WS>/agent-walk/round-<n>/report.md` — first line `sha: <HEAD at walk start>` (the
+  code this round walked; verify ties its quotes to it), then a table `# · App · Item · Result · Evidence`,
   then one line: `verdict: PASS` or `verdict: PROBLEMS (<k>)`.
+- the `## Cross-app (verify E2E)` section of `walk.md`, when present, is walked like every other
+  item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes
+  these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.
+- any gate the walker runs: a line at or under its baseline (`→ 7 (baseline 7)`) is green — note
+  the count and move on; never investigate failures that already fail on the base branch.
 
 ## 3. Judge the report
 
@@ -79,7 +85,7 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 ## 4. Write it
 
 **AGENT-PASS — the agent sign-off**
-- Manifest: `walk: agent-pass YYYY-MM-DD <sha>`, `state: signed-off`, `verify: none`, `head`,
+- Manifest: `walk: agent-pass YYYY-MM-DD <sha>` — `<sha>` from the passing round's `sha:` line —, `state: signed-off`, `verify: none`, `head`,
   `next: /builder:verify --path <folder>`.
 - **Condense** exactly as [`builder:ship`](../ship/SKILL.md) §At sign-off does — the §Plan index cut
   by its heading, `git rm <folder>/PLAN.md` — except the header line written directly under the title

@@ -73,6 +73,7 @@ const finish = (code = 0) => {
     execFileSync('git', ['add', '-A', '--', dirname(spec)], { stdio: 'ignore' })
     execFileSync('git', ['commit', '-qm', `stub: ${feature} ${step}`], { stdio: 'ignore' })
   } catch {} // nothing to commit
+  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: Number(process.env.STUB_DURATION_MS) || 1000, num_turns: 3 }) + '\n')
   log(`end ${feature} ${lane} ${Date.now()} into=${/--into (\S+)/.exec(prompt)?.[1] ?? '-'}`)
   process.exit(code)
 }
@@ -86,7 +87,7 @@ if (step.startsWith('CHATTY:')) {
   }
   // The real CLI's result repeats the last assistant text; the fleet's .log must not print it twice.
   process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: `did ${step}` }] } }) + '\n')
-  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}` }) + '\n')
+  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: 1, num_turns: 1 }) + '\n')
 }
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)

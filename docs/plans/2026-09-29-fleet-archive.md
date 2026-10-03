@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node ≥ 20 ESM, standard library only, `git`; tests with `node --test`.
 
-**Spec:** `docs/superpowers/specs/2026-09-29-fleet-archive-design.md`
+**Spec:** `docs/specs/2026-09-29-fleet-archive-design.md`
 
 ## Global Constraints
 
@@ -1674,7 +1674,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 8: Skills, docs and the 3.8.0 release notes
 
 **Files:**
-- Modify: `skills/ship/SKILL.md`, `skills/brainstorm/SKILL.md`, `skills/resume/SKILL.md`, `skills/resume/REFERENCE.md`, `skills/status/SKILL.md`, `skills/fleet/SKILL.md`, `skills/agent/SKILL.md`, `skills/help/SKILL.md`, `skills/update/SKILL.md`, `README.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json`, `docs/superpowers/specs/2026-09-29-fleet-archive-design.md`
+- Modify: `skills/ship/SKILL.md`, `skills/brainstorm/SKILL.md`, `skills/resume/SKILL.md`, `skills/resume/REFERENCE.md`, `skills/status/SKILL.md`, `skills/fleet/SKILL.md`, `skills/agent/SKILL.md`, `skills/help/SKILL.md`, `skills/update/SKILL.md`, `README.md`, `CHANGELOG.md`, `.claude-plugin/plugin.json`, `docs/specs/2026-09-29-fleet-archive-design.md`
 
 **Interfaces:**
 - Consumes: the behaviour of Tasks 1–7; the names `_archive`, `registry.mjs --sweep`, `list-features.mjs --archived`, `fleet.mjs --status --archived`, `keep_logs`.
@@ -1781,7 +1781,7 @@ it `git mv`s them and leaves the commit to the human.
     registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/; --sweep archives old shipped ones
 ```
 
-`docs/superpowers/specs/2026-09-29-fleet-archive-design.md` §Eviction at landing step 1: the row is `{ feature, branch, target, merged, pr, runs, runsThisTime, landedAt }` (add `runsThisTime`).
+`docs/specs/2026-09-29-fleet-archive-design.md` §Eviction at landing step 1: the row is `{ feature, branch, target, merged, pr, runs, runsThisTime, landedAt }` (add `runsThisTime`).
 
 `.claude-plugin/plugin.json`: `"version": "3.8.0"`. Check `.claude-plugin/marketplace.json` for a version field (`grep -n version .claude-plugin/marketplace.json`); bump it to `3.8.0` if one exists.
 
@@ -1812,7 +1812,7 @@ Run: `node --test 'scripts/test/*.test.mjs'` — Expected: PASS.
 Run: `grep -rn "_archive" skills | wc -l` — Expected: ≥ 8 (every file edited above names it).
 
 ```bash
-git add skills README.md CHANGELOG.md .claude-plugin docs/superpowers/specs/2026-09-29-fleet-archive-design.md
+git add skills README.md CHANGELOG.md .claude-plugin docs/specs/2026-09-29-fleet-archive-design.md
 git commit -m "feat(archive): ship archives the folder; fleet and registry archive documented; 3.8.0
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"

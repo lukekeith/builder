@@ -26,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, create
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -84,7 +84,7 @@ const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.workt
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
-  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null) : 'No fleet has run in this repo yet.')
+  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
   process.exit(0)
 }
 
@@ -535,6 +535,8 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
   return new Promise((done) => {
     const out = createWriteStream(log)
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
+    const t0 = Date.now()
+    let result = null // the last `result` event: { duration_ms, num_turns }
     let settled = false
     let timedOut = false
     const kill = () => {
@@ -552,6 +554,9 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
       raw.end()
       active.delete(child)
       delete fleet.features[feature].pgid
+      // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
+      const timing = fleet.features[feature].timing ?? (fleet.features[feature].timing = [])
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null })
       save()
       try {
         child.stdout.destroy()
@@ -588,7 +593,15 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
       buf += chunk
       const lines = buf.split('\n')
       buf = lines.pop()
-      for (const line of lines) out.write(readable(line, seen))
+      for (const line of lines) {
+        if (line.includes('"type":"result"')) {
+          try {
+            const ev = JSON.parse(line)
+            if (ev.type === 'result') result = ev
+          } catch {}
+        }
+        out.write(readable(line, seen))
+      }
     })
     child.stderr.on('data', (chunk) => {
       clearTimeout(idle)
@@ -650,6 +663,8 @@ function archiveRow(feature) {
     pr: f.pr ?? null,
     runs: f.runs ?? 0,
     runsThisTime: f.runsThisTime ?? 0,
+    timing: f.timing ?? [],
+    lanes: laneTotals(f.timing),
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]

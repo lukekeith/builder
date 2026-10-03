@@ -72,6 +72,11 @@ the build the bar climbs with `Task N: complete` ledger lines against the plan's
 Half the bar is not half the wall-clock: the walk lane is one at a time and a task takes as long as it
 takes. If asked how long is left, say that.
 
+The `Time` column is time spent so far — each run's own duration as Claude reported it, summed — and
+the line under the heading gives the mean per lane for the last five landed features that recorded
+it. For "how long is left", the honest answer is that mean for the lanes the feature hasn't finished,
+offered as an estimate.
+
 A feature that landed is not a row: it is counted in the line under the heading
 (`412 archived (last: …) · --status --archived for the latest 20`). `node <builder>/scripts/fleet.mjs
 --status --archived [N]` lists the latest N landings — relay it the same way when asked what merged.
