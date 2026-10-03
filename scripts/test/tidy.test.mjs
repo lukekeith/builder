@@ -85,3 +85,24 @@ test('merge: a branch carrying the target merges --no-ff and goes; one that does
   assert.match(r.stdout, /→ builder\/s — behind main: the fleet brings it up to date and merges it/)
   assert.match(r.stdout, /^handed: s$/m)
 })
+
+test('C1: tidy refuses a target that does not exist, and deletes nothing', () => {
+  const root = configure(fixture())
+  const plan = tidy(root, 'plan', '--into', 'develop')
+  assert.equal(plan.status, 2)
+  assert.match(plan.stderr, /develop, does not exist/)
+  const del = tidy(root, 'apply', 'delete-branch', 'spike', '--into', 'develop')
+  assert.equal(del.status, 2)
+  assert.ok(git(root, 'branch', '--list', 'spike'), 'spike survives')
+})
+
+test('apply refuses anything the inventory says is running', () => {
+  const root = configure(fixture())
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ features: { run: { status: 'building', branch: 'builder/run' } } }))
+  writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  const r = tidy(root, 'apply', 'force-delete-branch', 'builder/run')
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /✗ builder\/run — running now/)
+  assert.ok(git(root, 'branch', '--list', 'builder/run'))
+})

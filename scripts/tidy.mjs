@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { loadFleet, fleetDir, fleetAlive } from './fleet-core.mjs'
-import { inventory, summaryLine, clearWorktree, worktrees } from './tidy-core.mjs'
+import { inventory, summaryLine, clearWorktree, worktrees, featureOf } from './tidy-core.mjs'
 
 const argv = process.argv.slice(2)
 const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : undefined)
@@ -34,6 +34,10 @@ const tryGit = (args, cwd = ROOT) => {
 }
 const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`
 const items = () => inventory(ROOT, CFG, TARGET, { fleet: existsSync(join(fleetDir(ROOT), 'fleet.json')) ? loadFleet(ROOT) : null, lockAlive: fleetAlive(ROOT) })
+if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === null) {
+  console.error(`The branch to merge into, ${TARGET}, does not exist — create it (git branch ${TARGET}) or set merge_into in .claude/builder.md. Nothing was changed.`)
+  process.exit(2)
+}
 
 const [verb, action, ...rest] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--into')
 
@@ -56,48 +60,61 @@ const no = (name, why) => {
   console.log(`✗ ${name} — ${why}`)
 }
 const exists = (b) => tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${b}`]) !== null
-const ahead = (b) => Number(tryGit(['rev-list', '--count', `${TARGET}..${b}`]) ?? 0)
+const ahead = (b) => {
+  const n = tryGit(['rev-list', '--count', `refs/heads/${TARGET}..refs/heads/${b}`])
+  return n === null ? null : Number(n)
+}
+const inTarget = (b) => tryGit(['merge-base', '--is-ancestor', `refs/heads/${b}`, `refs/heads/${TARGET}`]) !== null
 const wtOf = (b) => worktrees(ROOT).slice(1).find((w) => w.branch === b)
 const mainBranch = () => worktrees(ROOT)[0]?.branch
 const labelOf = (b) => b.replace(/^builder\//, '')
 
-/** The branch's worktree, cleared; a stash is reported. '' when there was none. */
+/** The branch's worktree, cleared. `{ note }` to append to the ✓ line, or `{ why }` when it couldn't go. */
 function dropWorktree(b) {
   const w = wtOf(b)
-  if (!w) return ''
-  const { stash } = clearWorktree(ROOT, w.path, labelOf(b))
-  return stash ? `; uncommitted changes are in stash "${stash}"` : ''
+  if (!w) return { note: '' }
+  // The branch is going (deleted, or merged): its build workspace has nothing left to resume.
+  const r = clearWorktree(ROOT, w.path, labelOf(b), { keep: false })
+  if (!r.removed) return { why: `its worktree ${w.path} stays: ${r.why}` }
+  return { note: [r.stash && `; uncommitted changes are in stash "${r.stash}"`, r.kept && `; its build workspace is kept in ${r.kept}`].filter(Boolean).join('') }
 }
+// Whatever the inventory says is running or checked out is never touched by name.
+const now = Object.fromEntries(items().map((i) => [i.name, i.group]))
+const hands = (name) => (now[name] === 'running' ? 'running now — wait for it, or stop it first' : now[name] === 'current' ? 'checked out in the main checkout — switch away first' : null)
 
 function deleteBranch(b, force) {
   if (!exists(b)) return no(b, 'no such branch')
   if (b === TARGET || b === CFG.baseBranch) return no(b, 'is the branch features merge into')
-  if (b === mainBranch()) return no(b, 'is checked out in the main checkout — switch away first')
+  if (hands(b)) return no(b, hands(b))
   const lost = ahead(b)
-  if (lost && !force) return no(b, `${plural(lost, 'commit')} not in ${TARGET}; delete it only with force-delete-branch`)
+  if (lost === null) return no(b, `git could not compare it with ${TARGET}`)
+  if (!force && (lost || !inTarget(b))) return no(b, `${plural(lost, 'commit')} not in ${TARGET}; delete it only with force-delete-branch`)
   const had = !!wtOf(b)
-  const stash = dropWorktree(b)
+  const w = dropWorktree(b)
+  if (w.why) return no(b, w.why)
   if (tryGit(['branch', '-D', b]) === null) return no(b, 'git refused to delete it')
-  ok(b, lost ? `deleted, with ${plural(lost, 'commit')} that ${lost === 1 ? 'was' : 'were'} not in ${TARGET}${stash}` : `deleted${had ? ' (and its worktree)' : ''}${stash}`)
+  ok(b, lost ? `deleted, with ${plural(lost, 'commit')} that ${lost === 1 ? 'was' : 'were'} not in ${TARGET}${w.note}` : `deleted${had ? ' (and its worktree)' : ''}${w.note}`)
 }
 
 function removeWorktree(name) {
+  if (hands(name)) return no(name, hands(name))
   const w = worktrees(ROOT).slice(1).find((x) => x.path === name || x.branch === name)
   if (!w) {
     tryGit(['worktree', 'prune'])
     return existsSync(name) ? no(name, 'not a worktree of this repo') : ok(name, 'already gone; pruned')
   }
-  const { removed, stash } = clearWorktree(ROOT, w.path, w.branch ? labelOf(w.branch) : 'detached')
-  if (!removed && existsSync(w.path)) return no(name, 'git could not remove it')
-  ok(name, `worktree removed${w.branch ? '' : ' (it was on no branch)'}${stash ? `; uncommitted changes are in stash "${stash}"` : ''}`)
+  const r = clearWorktree(ROOT, w.path, w.branch ? labelOf(w.branch) : 'detached')
+  if (!r.removed && existsSync(w.path)) return no(name, `its worktree stays: ${r.why}`)
+  ok(name, `worktree removed${w.branch ? '' : ' (it was on no branch)'}${r.stash ? `; uncommitted changes are in stash "${r.stash}"` : ''}${r.kept ? `; its build workspace is kept in ${r.kept}` : ''}`)
 }
 
 /** The fleet's merge rule: the target checked out here → git merge (clean tree); checked out nowhere → write the merge onto the ref. */
 function mergeBranch(b) {
   if (!exists(b)) return no(b, 'no such branch')
-  if (!ahead(b)) return deleteBranch(b, false)
-  const feature = tryGit(['cat-file', '-e', `${b}:${CFG.registry}/${labelOf(b)}/MANIFEST.md`]) !== null ? labelOf(b) : null
-  const carries = tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, b]) !== null
+  if (hands(b)) return no(b, hands(b))
+  if (ahead(b) === 0) return deleteBranch(b, false)
+  const feature = featureOf(ROOT, CFG.registry, b)
+  const carries = tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, `refs/heads/${b}`]) !== null
   if (!carries && feature) {
     handed.push(feature)
     return console.log(`→ ${b} — behind ${TARGET}: the fleet brings it up to date and merges it`)
@@ -117,9 +134,9 @@ function mergeBranch(b) {
     const commit = tryGit(['commit-tree', `${b}^{tree}`, '-p', old, '-p', b, '-m', message])
     if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return no(b, `writing the merge onto ${TARGET} failed`)
   }
-  const stash = dropWorktree(b)
-  tryGit(['branch', '-D', b])
-  ok(b, `merged into ${TARGET}${stash}`)
+  const w = dropWorktree(b)
+  if (inTarget(b) && !w.why) tryGit(['branch', '-D', b])
+  ok(b, `merged into ${TARGET}${w.why ? ` — ${w.why}` : w.note}`)
 }
 
 const run = { 'delete-branch': (n) => deleteBranch(n, false), 'force-delete-branch': (n) => deleteBranch(n, true), 'remove-worktree': removeWorktree, merge: mergeBranch }[action]

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, realpathSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -23,9 +23,10 @@ test('clearWorktree restores test output and removes the worktree, no stash', ()
   const root = repo()
   const wt = worktree(root, 'a', 'builder/a')
   writeFileSync(join(wt, 'test-results/.last-run.json'), '{"status":"failed"}\n')
-  writeFileSync(join(wt, 'scratch.png'), 'untracked evidence')
+  mkdirSync(join(wt, 'test-results/run-1'), { recursive: true })
+  writeFileSync(join(wt, 'test-results/run-1/trace.zip'), 'untracked test output')
   const r = clearWorktree(root, wt, 'a')
-  assert.deepEqual(r, { removed: true, stash: null, restored: ['test-results/.last-run.json'] })
+  assert.deepEqual(r, { removed: true, stash: null, restored: ['test-results/.last-run.json'], kept: null, why: null })
   assert.equal(existsSync(wt), false)
   assert.equal(git(root, 'stash', 'list'), '')
 })
@@ -35,7 +36,7 @@ test('clearWorktree stashes a real change by name before removing the worktree',
   const wt = worktree(root, 'b', 'builder/b')
   writeFileSync(join(wt, 'app.js'), 'two\n')
   writeFileSync(join(wt, 'test-results/.last-run.json'), '{"x":1}\n')
-  const r = clearWorktree(root, wt, 'b', new Date('2026-10-03T12:00:00Z'))
+  const r = clearWorktree(root, wt, 'b', { today: new Date('2026-10-03T12:00:00Z') })
   assert.equal(r.removed, true)
   assert.equal(r.stash, 'builder: b leftovers 2026-10-03')
   assert.deepEqual(r.restored, ['test-results/.last-run.json'])
@@ -48,7 +49,7 @@ test('clearWorktree on a path that is already gone prunes and says not removed',
   const root = repo()
   const wt = worktree(root, 'c', 'builder/c')
   execFileSync('rm', ['-rf', wt])
-  assert.deepEqual(clearWorktree(root, wt, 'c'), { removed: false, stash: null, restored: [] })
+  assert.deepEqual(clearWorktree(root, wt, 'c'), { removed: false, stash: null, restored: [], kept: null, why: null })
   assert.doesNotMatch(git(root, 'worktree', 'list'), /wt-c/)
 })
 
@@ -97,4 +98,68 @@ test('summaryLine counts what needs doing, or says the repo is clean', () => {
     'repo: 2 merged branches to delete · 2 dead worktrees · 1 ready to merge · 1 parked · 2 in progress · 1 unknown → /builder:tidy'
   )
   assert.equal(summaryLine([{ group: 'running' }, { group: 'current' }]), 'repo: clean')
+})
+
+// ---- review fixes: nothing uncommitted is lost, nothing unmerged looks merged -------------------
+
+test('C2: clearWorktree stashes untracked files too, not just tracked changes', () => {
+  const root = repo()
+  const wt = `${root}-wt-u`
+  git(root, 'worktree', 'add', '-q', '-b', 'feat/new', wt)
+  writeFileSync(join(wt, 'brand-new.js'), 'mine\n')
+  const r = clearWorktree(root, wt, 'new', { today: new Date('2026-10-03T12:00:00Z') })
+  assert.equal(r.removed, true)
+  assert.equal(r.stash, 'builder: new leftovers 2026-10-03')
+  assert.match(git(root, 'stash', 'show', '--include-untracked', '--name-only', 'stash@{0}'), /brand-new\.js/)
+})
+
+test('C3: clearWorktree keeps the build workspace (.builder/<label>) in the main checkout', () => {
+  const root = repo()
+  const wt = `${root}-wt-k`
+  git(root, 'worktree', 'add', '-q', '-b', 'builder/k', wt)
+  mkdirSync(join(wt, '.builder/k'), { recursive: true })
+  writeFileSync(join(wt, '.builder/k/progress.md'), 'Task 1: complete\nRuling: x\n')
+  const r = clearWorktree(root, wt, 'k')
+  assert.equal(r.removed, true)
+  assert.equal(r.kept, join(root, '.builder/kept/k'))
+  assert.equal(readFileSync(join(root, '.builder/kept/k/progress.md'), 'utf8'), 'Task 1: complete\nRuling: x\n')
+})
+
+test('I2: clearWorktree refuses a worktree mid-merge, and touches nothing in it', () => {
+  const root = repo()
+  const wt = `${root}-wt-m`
+  git(root, 'worktree', 'add', '-q', '-b', 'builder/m', wt)
+  writeFileSync(join(wt, 'app.js'), 'theirs\n')
+  git(wt, 'commit', '-qam', 'm side')
+  writeFileSync(join(root, 'app.js'), 'ours\n')
+  git(root, 'commit', '-qam', 'main side')
+  try { git(wt, 'merge', 'main') } catch {}
+  const r = clearWorktree(root, wt, 'm')
+  assert.equal(r.removed, false)
+  assert.match(r.why, /merge in progress/)
+  assert.ok(existsSync(wt))
+  assert.equal(git(root, 'stash', 'list'), '')
+})
+
+test('C1: an unknown target is refused, never read as "nothing ahead"', () => {
+  const root = fixture()
+  assert.throws(() => inventory(root, CFG, 'develop'), /The branch to merge into, develop, does not exist/)
+})
+
+test('C2: a branch whose worktree holds uncommitted work is asked about, never in the safe batch', () => {
+  const root = fixture()
+  writeFileSync(join(`${root}-wt-old`, 'notes.txt'), 'untracked, mine\n')
+  writeFileSync(join(`${root}-wt-detached`, 'app.js'), 'edited\n')
+  const items = byName(inventory(root, CFG, 'main'))
+  assert.deepEqual([items['feat/old'].group, items['feat/old'].action], ['merged', 'ask'])
+  assert.match(items['feat/old'].why, /uncommitted work in its worktree/)
+  assert.deepEqual([items[`${root}-wt-detached`].group, items[`${root}-wt-detached`].action], ['dead', 'ask'])
+})
+
+test('a tag with a branch\'s name does not confuse the inventory', () => {
+  const root = fixture()
+  git(root, 'tag', 'spike', 'main')
+  const items = byName(inventory(root, CFG, 'main'))
+  assert.equal(items.spike.group, 'unknown')
+  assert.equal(items['heads/spike'], undefined)
 })
