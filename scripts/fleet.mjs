@@ -45,8 +45,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--detach', '--dry-run', '--status', '--archived'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -71,7 +71,11 @@ if (archivedVal !== undefined && !/^[1-9]\d*$/.test(archivedVal)) {
   console.error(`--archived must be a positive integer, got '${archivedVal}'. ${USAGE}`)
   process.exit(2)
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived'].includes(argv[i - 1]))
+if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
+  console.error(`--into needs a branch name. ${USAGE}`)
+  process.exit(2)
+}
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -317,19 +321,21 @@ if (flag('--detach') && !flag('--dry-run') && !runningPid) {
 // ---- dry run -------------------------------------------------------------------------------
 const fleet = loadFleet(ROOT)
 /**
- * The branch every finished feature is merged into: the one checked out here when this fleet first
- * ran, kept in fleet.json so a re-run lands on the same one.
+ * The branch every finished feature is merged into: --into for this run, else the config's
+ * merge_into (default base_branch) — never whatever happens to be checked out, which is how work
+ * ended up stranded on a feature branch. Kept in fleet.json; a fleet with unfinished rows keeps its
+ * target until they finish.
  */
-const HERE = tryGit(['branch', '--show-current'])
-if (!HERE) {
-  console.error('This checkout is on a detached HEAD — check out the branch the features should be merged into.')
+const TARGET_FROM = flag('--into') ? '--into' : 'merge_into'
+const TARGET = opt('--into') ?? CFG.mergeInto
+if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === null) {
+  console.error(`The branch to merge into, ${TARGET}, does not exist — create it (git branch ${TARGET}) or set merge_into in .claude/builder.md.`)
   process.exit(2)
 }
-if (fleet.target && fleet.target !== HERE && Object.values(fleet.features).some((f) => f.status !== 'done')) {
-  console.error(`This fleet merges into ${fleet.target}, but ${HERE} is checked out. Switch back to ${fleet.target}, or finish or clear that fleet (.builder/fleet/) first.`)
+if (fleet.target && fleet.target !== TARGET && Object.values(fleet.features).some((f) => f.status !== 'done')) {
+  console.error(`This fleet merges into ${fleet.target}, not ${TARGET} — finish or clear it first, or continue it with --into ${fleet.target}.`)
   process.exit(2)
 }
-const TARGET = HERE
 
 /**
  * Whether a dependency has merged into the target. A row still in fleet.json answers for itself.
@@ -390,7 +396,7 @@ for (let changed = true; changed; ) {
 
 if (flag('--dry-run')) {
   console.log('builder fleet — plan (nothing created)')
-  console.log(`  merges into: ${TARGET} (this checkout) — one merge commit per finished feature; nothing is pushed`)
+  console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
