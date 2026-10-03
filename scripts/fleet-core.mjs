@@ -372,9 +372,9 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
 /**
  * Whether a worktree needs ROOT's HEAD copy of the feature folder committed into it. A NEW branch
  * (cut from the target) needs it when the target lacks the folder or holds a different one; an
- * existing branch is left alone unless its worktree has no manifest (an earlier bring-in failed).
+ * existing branch is left alone unless its worktree has no spec folder at all (an earlier bring-in failed; a folder with only SPEC.md is a condensed one).
  */
-export function specBringIn({ targetTree, headTree, worktreeHasManifest, isNewBranch }) {
+export function specBringIn({ targetTree, headTree, worktreeHasFolder, isNewBranch }) {
   if (isNewBranch) return !targetTree || targetTree !== headTree
-  return !worktreeHasManifest
+  return !worktreeHasFolder
 }
