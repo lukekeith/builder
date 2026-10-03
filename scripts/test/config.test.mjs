@@ -135,3 +135,25 @@ test('auto_unpark: a whole number of retries per park, 0 turns them off, anythin
   assert.equal(au(-1), 2)
   assert.equal(au('lots'), 2)
 })
+
+test('build_profile_default: no key → null', () => {
+  assert.equal(cfgWith('').buildProfileDefault, null)
+})
+
+test('build_profile_default: rush → "rush"', () => {
+  assert.equal(cfgWith('build_profile_default: rush').buildProfileDefault, 'rush')
+})
+
+test('build_profile_default: standard → "standard"', () => {
+  assert.equal(cfgWith('build_profile_default: standard').buildProfileDefault, 'standard')
+})
+
+test('build_profile_default: thorough → "thorough"', () => {
+  assert.equal(cfgWith('build_profile_default: thorough').buildProfileDefault, 'thorough')
+})
+
+test('build_profile_default: invalid value → null without throwing', () => {
+  const cfg = cfgWith('build_profile_default: fast')
+  assert.equal(cfg.ok, true)
+  assert.equal(cfg.buildProfileDefault, null)
+})
