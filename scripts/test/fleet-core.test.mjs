@@ -365,9 +365,11 @@ test('formatTokens: 2.1M, 340k, — when absent', () => {
 })
 
 test('specBringIn: a new branch takes HEAD\u2019s folder unless the target already has the same one', () => {
-  assert.equal(specBringIn({ targetTree: null, headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), true, 'the target lacks it')
-  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), true, 'the target holds an older copy')
-  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasManifest: true, isNewBranch: true }), false, 'identical')
-  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasManifest: true, isNewBranch: false }), false, 'an existing branch is left alone')
-  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasManifest: false, isNewBranch: false }), true, 'a worktree with no manifest heals')
+  assert.equal(specBringIn({ targetTree: null, headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), true, 'the target lacks it')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), true, 'the target holds an older copy')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), false, 'identical')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'an existing branch is left alone')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasFolder: false, isNewBranch: false }), true, 'a worktree with no spec folder heals')
+  // The caller reports a folder holding only SPEC.md (condensed at sign-off, merge pending) as present.
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'a SPEC.md-only folder is not healed')
 })

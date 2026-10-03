@@ -249,14 +249,14 @@ function runSetup(feature, wt) {
   }
 }
 
+/** The tree hash of a feature's folder at a ref in ROOT, or null. */
+const treeOf = (ref, feature) => tryGit(['rev-parse', '--verify', '--quiet', `${ref}:${specOf(feature)}`])
+
 /**
  * Make the worktree's feature folder exactly ROOT's HEAD copy, and commit it. HEAD is
  * authoritative: it is where the go-ahead was just committed, and the target (merge_into) may
  * hold nothing, or an older copy. Throws a setup-style error.
  */
-/** The tree hash of a feature's folder at a ref in ROOT, or null. */
-const treeOf = (ref, feature) => tryGit(['rev-parse', '--verify', '--quiet', `${ref}:${specOf(feature)}`])
-
 function bringSpecIn(feature, wt) {
   const spec = specOf(feature)
   try {
@@ -298,14 +298,15 @@ function ensureWorktree(feature, branch) {
     }
     // A spec written on another branch is not on the target (or is an older copy there), so a
     // worktree cut from the target needs ROOT's HEAD folder, which preflight proved is committed.
-    if (specBringIn({ targetTree: treeOf(`refs/heads/${TARGET}`, feature), headTree: treeOf('HEAD', feature), worktreeHasManifest: true, isNewBranch: !exists })) bringSpecIn(feature, wt)
+    if (specBringIn({ targetTree: treeOf(`refs/heads/${TARGET}`, feature), headTree: treeOf('HEAD', feature), worktreeHasFolder: true, isNewBranch: !exists })) bringSpecIn(feature, wt)
     copyInto(wt)
     // A worktree removed when this feature stopped left its build workspace (ledger, rulings) here.
     restoreKept(ROOT, wt, feature)
   }
-  else if (readManifest(wt, feature) == null && !shippedPr(readSpec(wt, feature))) {
-    // A bring-in that failed after `worktree add` left a worktree with no folder: heal it.
-    if (specBringIn({ targetTree: null, headTree: null, worktreeHasManifest: false, isNewBranch: false })) bringSpecIn(feature, wt)
+  else if (!existsSync(join(wt, specOf(feature), 'MANIFEST.md')) && !existsSync(join(wt, specOf(feature), 'SPEC.md')) && !shippedPr(readSpec(wt, feature))) {
+    // A bring-in that failed after `worktree add` left a worktree with no folder at all: heal it.
+    // A folder holding only SPEC.md is a condensed one (ship ran, the merge is pending): never touched.
+    if (specBringIn({ targetTree: null, headTree: null, worktreeHasFolder: false, isNewBranch: false })) bringSpecIn(feature, wt)
   }
   if (f.setupOwed) {
     runSetup(feature, wt)
