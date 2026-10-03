@@ -147,6 +147,14 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     baseBranch: fm.base_branch ?? 'main',
     // Where finished features merge: merge_into, else base_branch. Never the checked-out branch.
     mergeInto: fm.merge_into ?? fm.base_branch ?? 'main',
+    buildProfileDefault: (() => {
+      const val = fm.build_profile_default
+      const allowed = ['rush', 'standard', 'thorough']
+      if (val === null || val === undefined) return null
+      if (allowed.includes(val)) return val
+      console.warn(`build_profile_default: "${val}" is not one of ${allowed.join(', ')}; ignoring`)
+      return null
+    })(),
     apps,
     appNames: apps.map((a) => a.name),
     producers: apps.filter((a) => a.role === 'producer' || a.role === 'app').map((a) => a.name),
