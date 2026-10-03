@@ -89,7 +89,7 @@ export function saveFleet(root, fleet, progress = null) {
   const tmp = join(dir, 'fleet.json.tmp')
   writeFileSync(tmp, JSON.stringify(fleet, null, 2) + '\n')
   renameSync(tmp, join(dir, 'fleet.json'))
-  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null))
+  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5)))
 }
 
 // ---- the archive -------------------------------------------------------------------------------
@@ -280,7 +280,7 @@ export function progressBar(pct) {
  * `progress(name, f)` → `{ pct, label }` adds a Progress column and an overall bar (the mean) to the
  * heading; without it the table is as before. A `done` row is archive material — counted in the archived line, never listed.
  */
-export function renderStatus(fleet, progress = null, last = null, now = Date.now()) {
+export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = []) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
   const archived = (fleet.archived ?? 0) + (all.length - rows.length)
@@ -294,16 +294,24 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   const lines = [`# builder fleet — ${rows.length} feature(s): ${summary || 'none'}${overall ? ` · ${overall}` : ''}`]
   if (fleet.target) lines.push('', `merges into **${fleet.target}**${roots.size ? ` · worktrees under ${[...roots].join(', ')}` : ''}`)
   if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · --status --archived for the latest 20`)
+  // The mean time per lane of the recently landed features that recorded it (builder 4.6+).
+  const timed = recent.filter((r) => r.lanes && Object.keys(r.lanes).length)
+  if (timed.length) {
+    const sums = {}
+    for (const r of timed) for (const [lane, ms] of Object.entries(r.lanes)) sums[lane] = (sums[lane] ?? 0) + ms
+    lines.push(`last ${timed.length} landed, mean per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
+  }
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
     const col = prog ? ' Progress |' : ''
-    lines.push('', `| Feature | Status |${col} Runs | Reason | Worktree |`, `|---|---|${prog ? '---|' : ''}---|---|---|`)
+    lines.push('', `| Feature | Status |${col} Runs | Time | Reason | Worktree |`, `|---|---|${prog ? '---|' : ''}---|---|---|---|`)
     for (const [name, f] of rows) {
       // A parked row's cell is its why; the next step is listed under ## Parked, where it has room.
       const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
-      lines.push(`| ${cell(name)} | ${cell(f.status)} |${p} ${f.runs ?? 0} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+      const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
+      lines.push(`| ${cell(name)} | ${cell(f.status)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
   const parked = rows.filter(([, f]) => f.status === 'parked')
