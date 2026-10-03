@@ -112,6 +112,9 @@ test('dirtyPaths lists modified tracked files, never untracked ones; fmtPaths ca
   writeFileSync(join(root, 'package.json'), 'changed\n')
   writeFileSync(join(root, 'scratch.txt'), 'untracked\n')
   assert.deepEqual(dirtyPaths(root), ['package.json'])
+  // An untracked file named HEAD must not make `git diff HEAD` ambiguous (I-3).
+  writeFileSync(join(root, 'HEAD'), 'x\n')
+  assert.deepEqual(dirtyPaths(root), ['package.json'])
   git(root, 'checkout', '--', 'package.json')
   assert.equal(fmtPaths(['a', 'b']), 'a, b')
   assert.equal(fmtPaths(['a', 'b', 'c', 'd', 'e', 'f', 'g']), 'a, b, c, d, e +2 more')
