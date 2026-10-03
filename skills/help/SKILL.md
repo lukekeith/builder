@@ -55,8 +55,9 @@ second plugin to install. If a step says it cannot find the config, that file is
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
 | Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into your current branch**; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent` |
-| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into your current branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
+| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent` |
+| **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |
+| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
 | **Which builder am I on?** | `/builder:version` — the version this session loaded, what's installed, the newest release known here, and the one step that brings it current. Never fetches |
 | **Watch it run** | `/builder:statusline` — adds a `builder` progress bar to your status line: fleet progress, a build in the chat, running gates. `idle` when nothing runs; `--off` removes it |
@@ -149,8 +150,7 @@ state**, and no flag passes the PR lock or commits in a manual-commit app.
 
 **`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, works every conflict, red gate
 and failed walk through to done, parks only on a decision your spec left open, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT
-SIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the branch you ran it
-from** — locally, one merge commit per feature; it never pushes or opens a PR.
+SIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the `merge_into` branch (default `base_branch`; `--into` for one run)** — locally, one merge commit per feature; it never pushes or opens a PR.
 Your `/builder:signoff` over it takes the feature back into the human flow.
 
 ## Resuming

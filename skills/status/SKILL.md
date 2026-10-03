@@ -18,7 +18,11 @@ Resolve the plugin's scripts as [REFERENCE](../resume/REFERENCE.md) §The script
 
 ```bash
 node "$CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs" --status
+node "$CLAUDE_PLUGIN_ROOT/scripts/inventory.mjs" --summary
 ```
+
+The second line is the repo's branches and worktrees in one line — `repo: clean`, or what is left
+over (`2 merged branches to delete · 1 dead worktree · 1 ready to merge → /builder:tidy`).
 
 The script does all of the work — it reads each feature's `MANIFEST.md` (or the condensed SPEC
 header), maps its `state:` to the step last done and the step next, dates it from `git log`, and
@@ -31,7 +35,7 @@ No `.claude/builder.md` → the script says so; relay it and name **`/builder:in
 ## 2. Show it
 
 Print the script's output **verbatim, as markdown** — the table, then any branch-switch and
-needs-attention lines under it, the 📦 archived-count line when there is one, and the ⬆️ line when
+needs-attention lines under it, the 📦 archived-count line when there is one, the `repo:` line, and the ⬆️ line when
 this repo's vendored copy of builder is behind the newest release on this machine. Don't re-sort it, re-word the steps, or summarise it into prose: the
 user copies commands straight out of the last column.
 
