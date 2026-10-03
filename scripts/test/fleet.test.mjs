@@ -463,6 +463,35 @@ test('--status renders the table live, with progress read from each feature', ()
   assert.match(r2.stdout, /\| b \| building \| ▓░░░░░░░░░ 10% · audited \| 1 \|/)
 })
 
+test('--status says when the fleet process is gone with features mid-run, and how to resume', () => {
+  const root = makeRepo(['b', 'c'])
+  // A fleet killed from outside: rows still in flight, no lock.
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: {
+    b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null },
+    c: { status: 'parked', runs: 2, branch: 'builder/c', worktree: null, pr: null, reason: 'a decision' },
+  } }))
+  const r = runFleet(root, ['--status'], {})
+  assert.match(r.stdout, /^⚠ fleet stopped — its process is gone with 1 feature mid-run \(b\)\. Resume: node \S+fleet\.mjs --detach b$/m)
+  // A live lock: no warning.
+  writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  assert.doesNotMatch(runFleet(root, ['--status'], {}).stdout, /fleet stopped/)
+})
+
+test('--detach starts the fleet in its own session and returns at once; the fleet carries on', async () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a', '--detach'], { a: HAPPY.map((s) => `SLOW:${s}`) })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet --status$/m)
+  const pid = Number(/pid (\d+)/.exec(r.stdout)[1])
+  // Its own session: a process-group leader, so the shell or agent that ran the launch can end
+  // without taking the fleet with it.
+  assert.equal(execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' }).trim(), String(pid))
+  // The launch returned before the fleet took its lock: wait for the landing itself.
+  for (let i = 0; i < 600 && !archiveOf(root).a; i++) await new Promise((res) => setTimeout(res, 100))
+  assert.ok(archiveOf(root).a, `a did not land: ${readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8').slice(-800)}`)
+})
+
 test('no agent_walk block refuses with the fix', () => {
   const root = makeRepo(['a'])
   writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')

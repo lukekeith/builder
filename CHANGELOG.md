@@ -4,6 +4,18 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.7.0
+
+**New:**
+- **Fleets outlive the session that launched them.** `fleet.mjs --detach` starts the fleet in its own
+  session (output in `.builder/fleet/fleet.out`) and returns at once; `/builder:fleet` and
+  `/builder:agent` now always launch that way. A fleet started as an agent session's background task
+  — Claude Code's or Codex's — was killed when that session hit its background-task limit (about two
+  hours) or ended, mid-run and with no record of why.
+- **`--status` says when a fleet died.** A fleet whose process is gone with features mid-run shows
+  `⚠ fleet stopped — its process is gone with N features mid-run (…). Resume: node …/fleet.mjs
+  --detach …` under the table, instead of `building` forever.
+
 ## 4.6.0
 
 **Faster agent-run features** — about 15–25 minutes less per feature, nothing weaker:

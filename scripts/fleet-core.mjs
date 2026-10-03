@@ -193,6 +193,30 @@ export function ago(iso, now = Date.now()) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+/** True when `<root>/.builder/fleet/lock` names a live process. */
+export function fleetAlive(root) {
+  let pid = NaN
+  try {
+    pid = Number(readFileSync(join(fleetDir(root), 'lock'), 'utf8'))
+  } catch {
+    return false
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+
+/** The warning for a fleet whose process is gone with rows mid-run — '' when none are. */
+export function stoppedNote(fleet, fleetScript) {
+  const mid = Object.entries(fleet.features ?? {}).filter(([, f]) => !['done', 'parked', 'failed'].includes(f.status)).map(([n]) => n).sort()
+  if (!mid.length) return ''
+  return `⚠ fleet stopped — its process is gone with ${mid.length} feature${mid.length > 1 ? 's' : ''} mid-run (${mid.join(', ')}). Resume: node ${fleetScript} --detach ${mid.join(' ')}`
+}
+
 /** Milliseconds as `45s`, `12m`, `1h12m`. */
 export function duration(ms) {
   const s = Math.max(0, Math.round(ms / 1000))
