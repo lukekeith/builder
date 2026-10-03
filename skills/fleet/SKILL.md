@@ -108,11 +108,17 @@ they start as lanes free — the running fleet's `--parallel` stands.
 
 ## 4. Launch
 
-Run with the Bash tool's `run_in_background`:
+Run it **in the foreground**, with `--detach`:
 
 ```bash
-node <builder>/scripts/fleet.mjs <the same arguments>
+node <builder>/scripts/fleet.mjs <the same arguments> --detach
 ```
+
+It starts the fleet in its own session — output to `.builder/fleet/fleet.out` — prints
+`fleet started detached (pid N)` and returns at once. 🔴 **Never** launch it as a background task of
+this session (the Bash tool's `run_in_background`, or any agent's equivalent): a session's limit on
+background tasks, or the session ending, kills the fleet with it — mid-run, with no record of why.
+Detached, it outlives the session, and nothing is waiting on it here.
 
 **Adding to a running fleet:** run the same command in the foreground — it drops the specs in the
 inbox and returns at once. Print its `↳` / `✗` / `↻` lines, then the footer:
@@ -135,13 +141,15 @@ still working is never cut off. Each run's words go to `.builder/fleet/logs/<fea
 works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets one more run before
 the feature parks.
 
-Then say, in two lines: it's running, `/builder:fleet --status` shows where it stands, and a run that
-must outlive this session goes in a terminal instead:
-`nohup node <absolute builder path>/scripts/fleet.mjs <arguments> > .builder/fleet/fleet.out 2>&1 &`.
+Then say, in two lines: it's running on its own and outlives this session; `/builder:fleet --status`
+shows where it stands (and the `builder` status line, if it's on), and §5's report is what
+`--status` shows once every row has landed, parked or failed — nothing here is notified when it
+ends. A fleet whose process is gone with work mid-run shows `⚠ fleet stopped` under the table, with
+the `--detach` command that resumes it.
 
 ## 5. When it finishes
 
-Reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+When asked after the fleet has ended (`--status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
 - **done** — merged into this branch, and archived: the row leaves the table for
