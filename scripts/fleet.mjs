@@ -25,8 +25,9 @@ import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
+import { planSize, parseProfile } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -588,7 +589,7 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
       delete fleet.features[feature].pgid
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
       const timing = fleet.features[feature].timing ?? (fleet.features[feature].timing = [])
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null })
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null, tokens: tokensOf(result) })
       save()
       try {
         child.stdout.destroy()
@@ -685,8 +686,18 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
-function archiveRow(feature) {
+/** What the estimates need from a landing: the plan's size and the manifest's profile, read while the worktree still exists. */
+function landingFacts(f, feature) {
+  const base = f.worktree && existsSync(f.worktree) ? f.worktree : ROOT
+  const plan = readDoc(base, feature, 'PLAN.md')
+  const mf = readManifest(base, feature)
+  return { size: plan == null ? null : planSize(plan), profile: parseProfile(mf == null ? undefined : parseManifest(mf).profile).preset }
+}
+
+function archiveRow(feature, facts) {
   const f = fleet.features[feature]
+  const { size, profile } = facts ?? landingFacts(f, feature)
+  const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
   appendArchive(ROOT, {
     feature,
     branch: f.branch,
@@ -697,6 +708,10 @@ function archiveRow(feature) {
     runsThisTime: f.runsThisTime ?? 0,
     timing: f.timing ?? [],
     lanes: laneTotals(f.timing),
+    size,
+    profile,
+    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
+    costUsd: sum('costUsd'),
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]
@@ -722,6 +737,7 @@ function land(feature) {
 
 async function landNow(feature) {
   const f = fleet.features[feature]
+  const facts = landingFacts(f, feature) // before the landing removes the worktree
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
@@ -746,7 +762,7 @@ async function landNow(feature) {
   // ask the target itself, then delete.
   if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch && !f.worktree && tryGit(['merge-base', '--is-ancestor', `refs/heads/${f.branch}`, `refs/heads/${TARGET}`]) !== null)
     tryGit(['branch', '-D', f.branch])
-  archiveRow(feature)
+  archiveRow(feature, facts)
   save()
   return 'done'
 }

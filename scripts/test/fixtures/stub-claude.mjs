@@ -74,7 +74,7 @@ const finish = (code = 0) => {
     execFileSync('git', ['add', '-A', '--', dirname(spec)], { stdio: 'ignore' })
     execFileSync('git', ['commit', '-qm', `stub: ${feature} ${step}`], { stdio: 'ignore' })
   } catch {} // nothing to commit
-  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: Number(process.env.STUB_DURATION_MS) || 1000, num_turns: 3 }) + '\n')
+  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: Number(process.env.STUB_DURATION_MS) || 1000, num_turns: 3, usage: { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 500 }, total_cost_usd: 0.05 }) + '\n')
   log(`end ${feature} ${lane} ${Date.now()} into=${/--into (\S+)/.exec(prompt)?.[1] ?? '-'}`)
   process.exit(code)
 }

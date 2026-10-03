@@ -232,12 +232,30 @@ export function laneTotals(timing) {
   return out
 }
 
+/** A `result` event's usage as { input, output, cacheRead, costUsd } — zeros without one. */
+export function tokensOf(ev) {
+  const u = ev?.usage ?? {}
+  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0 }
+}
+
+/** `2.1M`, `340k`, `950`; `—` when absent or zero. */
+export function formatTokens(n) {
+  if (!n) return '—'
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${Math.round(n / 1e3)}k`
+  return String(n)
+}
+
 /** `--status --archived [N]`: the latest landings, newest first. */
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
-  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Merged | PR | Landed |', '|---|---|---|---|']
-  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
+  const time = (r) => {
+    const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
+    return ms ? duration(ms) : null
+  }
+  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Profile | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
+  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(r.profile)} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
   return lines.join('\n') + '\n'
 }
 

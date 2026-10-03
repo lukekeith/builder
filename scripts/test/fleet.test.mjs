@@ -65,6 +65,16 @@ function assertLanded(r, name) {
 
 const HAPPY = ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
 
+test('the archive row carries the plan’s size', () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, 'docs/features/a/PLAN.md'), '# Plan\n\n## Phases\n\n| # | App | Goal |\n|---|---|---|\n| 1 | app | x |\n\n### Task 1: one\n\n### Task 2: two\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'plan')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(assertLanded(r, 'a').size.tasks, 2)
+})
+
 test('a feature with an open PR is taken on to merged, not refused', () => {
   const root = makeRepo(['o'])
   writeFileSync(join(root, 'docs/features/o/MANIFEST.md'), 'size: md\nstate: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc\npr: #5\nbranch: builder/o\nnext: x\n')
@@ -84,9 +94,13 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(a.runs, 8)
   // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
   assert.equal(a.timing.length, 8)
-  assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3 })
+  assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
   assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
+  assert.equal(a.profile, 'thorough', 'the fixture manifest has no profile:')
+  assert.equal(a.size, null, 'the fixture has no PLAN.md')
+  assert.equal(a.tokens.input, 1000 * a.runs)
+  assert.ok(a.costUsd > 0)
   assert.equal(r.fleet.archived, 1)
   // The stub reports a --no-dev-env run as 'build': the ship lane runs without the dev env too.
   const lanes = r.calls.filter((l) => l.startsWith('start')).map((l) => l.split(' ')[2])
@@ -149,7 +163,7 @@ test('a run that prints more than one result event is timed by the last', () => 
   // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
-  assert.deepEqual(c.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3 })
+  assert.deepEqual(c.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -1263,7 +1277,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, profile: 'thorough', tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1276,7 +1290,7 @@ test('--status --archived lists the latest landings', () => {
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
-  assert.match(ar.stdout, /\| [ab] \| [0-9a-f]{7,} \| — \| just now \|/)
+  assert.match(ar.stdout, /\| [ab] \| thorough \| \d+s \| 9k \| [0-9a-f]{7,} \| — \| just now \|/)
   const none = runFleet(makeRepo(['c']), ['--status', '--archived'], {})
   assert.match(none.stdout, /No feature has landed from this fleet yet\./)
 })
