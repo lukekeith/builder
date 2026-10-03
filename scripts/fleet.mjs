@@ -26,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, create
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals } from './fleet-core.mjs'
+import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -45,8 +45,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--dry-run', '--status', '--archived'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--detach', '--dry-run', '--status', '--archived'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -84,7 +84,13 @@ const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.workt
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
-  else console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
+  else {
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
+    // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
+    // rows mid-run and no live lock: say so, with the command that picks them up again.
+    const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
+    if (note) console.log(note)
+  }
   process.exit(0)
 }
 
@@ -290,6 +296,23 @@ function lockHolder() {
   }
 }
 const runningPid = lockHolder()
+
+// --detach: the same fleet, in its own session, output to fleet.out — so it outlives whatever
+// launched it (an agent session's background-task limit, a closed terminal). Adding to a running
+// fleet and a dry run return at once anyway, so they stay in the foreground.
+if (flag('--detach') && !flag('--dry-run') && !runningPid) {
+  mkdirSync(DIR, { recursive: true })
+  const outFd = openSync(join(DIR, 'fleet.out'), 'a')
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv.filter((a) => a !== '--detach')], {
+    cwd: process.cwd(),
+    env: process.env,
+    detached: true, // setsid: a new session and process group
+    stdio: ['ignore', outFd, outFd],
+  })
+  child.unref()
+  console.log(`fleet started detached (pid ${child.pid}) — output in .builder/fleet/fleet.out · /builder:fleet --status`)
+  process.exit(0)
+}
 
 // ---- dry run -------------------------------------------------------------------------------
 const fleet = loadFleet(ROOT)

@@ -83,7 +83,7 @@ node <builder>/scripts/fleet.mjs <picked features> --dry-run
 Print it verbatim. A `✗` pick → say what fixes it (a feature whose branch is checked out in this
 folder: switch branches, or just `/builder:resume` it here). If no pick survives, stop.
 
-Then `/builder:fleet` §3 (the one confirmation), §4 (launch in the background) and §5 (the report
+Then `/builder:fleet` §3 (the one confirmation), §4 (launch detached, `--detach`) and §5 (the report
 when it finishes), with the picks as the arguments.
 
 ~~~
