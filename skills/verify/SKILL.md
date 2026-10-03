@@ -142,11 +142,12 @@ a visual diff, and a renamed element changes what the walk does.
     Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
     SCOPED, and quote the earlier run when the diff didn't earn a new one.
     **Under `--agent-walk`, the agent walk may already have covered it.** When `walk.md` has a
-    `## Cross-app (verify E2E)` section, read the latest round's
-    `.builder/<feature>/agent-walk/round-<n>/report.md`. Every `E<k>` row `PASS` with evidence, and
-    no code changed since the manifest's `walk: agent-pass … <walk sha>` —
-    `git diff --quiet <walk sha> HEAD -- . ':!<registry>'` exits 0 — → item 10 is **covered by the
-    agent walk**: cite the report path and the sha, marked quoted. Any `E` row missing or not `PASS`,
+    `## Cross-app (verify E2E)` section, read `<WS>/agent-walk/round-<n>/report.md` for the round the `🤖 AGENT SIGNED OFF … round <n>` header names
+    — never simply the latest round — and take `<walk sha>` from its `sha:` line, the code that
+    round walked. Every `E<k>` row `PASS` with evidence, and no code changed since —
+    `git diff --quiet <walk sha> -- . ':!<registry>'` exits 0, which also counts uncommitted edits —
+    → item 10 is **covered by the agent walk**: cite the report path and the sha, marked quoted. A
+    report with no `sha:` line can't be tied to code → item 10 as written. Any `E` row missing or not `PASS`,
     or code changed since → run **only those steps** live (all of them when code changed), as above.
     No such section (built before builder 4.6) → item 10 as written. A human walk never covers it.
 11. **Spec-parity spot-check** (`opus` judgment, not grep) — trace the spec's 3–4 most load-bearing

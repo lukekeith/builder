@@ -124,8 +124,10 @@ export const inputsHash = (lines, gates) =>
 /** True when tracked files have local modifications — a memo cannot describe a dirty tree. */
 export const isDirty = (root) => git(['status', '--porcelain', '--untracked-files=no'], root) !== ''
 
-/** The tracked files with local changes, staged or not — what makes isDirty true. */
-export const dirtyPaths = (root) => git(['diff', '--name-only', 'HEAD'], root).split('\n').filter(Boolean)
+/** Tracked files whose working copy differs from HEAD — the files a gate would run on that HEAD's
+ *  memo doesn't describe. (A change staged and then reverted in the worktree is not listed: what runs
+ *  is HEAD's content.) `--` keeps an untracked file named HEAD from making the revision ambiguous. */
+export const dirtyPaths = (root) => git(['diff', '--name-only', 'HEAD', '--'], root).split('\n').filter(Boolean)
 
 /** Paths for one line of output: the first `max`, then how many more. */
 export const fmtPaths = (paths, max = 5) => paths.slice(0, max).join(', ') + (paths.length > max ? ` +${paths.length - max} more` : '')
