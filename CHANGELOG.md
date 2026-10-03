@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.6.0
+
+**Faster agent-run features** — about 15–25 minutes less per feature, nothing weaker:
+
+- **The agent walk covers verify's cross-app E2E walk.** Under the fleet, the build adds the spec's
+  cross-app walk to `walk.md` as steps `E1…En`; the agent walk runs them in the session it already
+  drives, and verify quotes that report instead of driving the app again — only when no code changed
+  since, and only the steps it didn't cover run live. Human-walked features are unchanged.
+- **Failures already failing on the base branch are not re-investigated.** A gate at or under its
+  baseline is green; verify reports the count and moves on.
+- **`gate.mjs` says why it didn't quote:** `uncommitted: test-results/.last-run.json — not quoted`.
+  `/builder:init` now flags tracked test output (`test-results/`, `coverage/`, …), the usual cause.
+- **Time per run.** The fleet records each run's duration and turns; the archive keeps them per lane,
+  and `/builder:fleet --status` shows a Time column and the recent mean per lane.
+
 ## 4.5.0
 
 **New:**
