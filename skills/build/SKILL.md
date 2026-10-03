@@ -219,6 +219,11 @@ Never ask.
    half a sign-off. Per app: where to go, what to do, what to look for **newest-first**, and the local
    facts the human needs — taken from the config's §Environment landmines, plus which surfaces cannot
    work locally. The walk is the human's; no agent signs it.
+   **Under `--agent-walk`**, append the cross-app walk after the per-app sections, so the agent walk
+   runs it in the same live session and verify need not drive the app again (verify item 10):
+   `## Cross-app (verify E2E)`, then SPEC §Testing's walk script as numbered steps `E1…En` — each
+   one line of what to do and one of what to see, in the script's order. Without `--agent-walk`,
+   `walk.md` stays per-app only.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
    **Under `--agent-walk`:** `next: /builder:agent-walk --path <folder>` and keep going into it — the
