@@ -310,8 +310,13 @@ test('refusals: uncommitted, already shipped; a feature whose branch is the targ
   const r = runFleet(root, ['a', 'h', 'k', '--dry-run'], {})
   assert.match(r.stdout, /✗ a — .*uncommitted changes/)
   assert.match(r.stdout, /✗ h — .*already shipped/)
-  assert.match(r.stdout, /✓ k → builder\/k/)
-  assert.match(r.stdout, /merges into: feat\/k/)
+  // The target is merge_into (main), so k's own branch is what it builds on — and it is checked out here.
+  assert.match(r.stdout, /✗ k — feat\/k is checked out in this folder/)
+  assert.match(r.stdout, /merges into: main \(merge_into\)/)
+  // A feature whose branch IS the target still gets a fresh builder/ branch.
+  const into = runFleet(root, ['k', '--into', 'feat/k', '--dry-run'], {})
+  assert.match(into.stdout, /✓ k → builder\/k/)
+  assert.match(into.stdout, /merges into: feat\/k \(--into\)/)
 })
 
 test('a feature already underway continues on its own branch, in the lane it is in', () => {
@@ -898,13 +903,52 @@ test('a feature that ships after the human switched branches still lands on the 
   assert.equal(git(root, 'rev-list', '--parents', '-n', '1', 'main').split(' ').length, 3, 'a two-parent merge commit')
 })
 
-test('a fleet with unfinished work refuses to run from another branch', () => {
+test('a fleet with unfinished work refuses another target, naming the --into that continues it', () => {
   const root = makeRepo(['a'])
   runFleet(root, ['a'], { a: ['audited', 'BLOCK:later'] })
-  git(root, 'switch', '-q', '-c', 'elsewhere')
-  const r = runFleet(root, [], {})
+  git(root, 'branch', 'release')
+  const r = runFleet(root, ['--into', 'release'], {})
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /This fleet merges into main, but elsewhere is checked out/)
+  assert.match(r.stderr, /This fleet merges into main, not release — finish or clear it first, or continue it with --into main/)
+})
+
+test('the fleet lands on merge_into (default base_branch), whatever is checked out', () => {
+  const root = makeRepo(['a'])
+  git(root, 'switch', '-q', '-c', 'elsewhere')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\): agent-verified/)
+  assert.equal(git(root, 'branch', '--show-current'), 'elsewhere', 'the checkout is left alone')
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'elsewhere'), /merge\(a\)/)
+})
+
+test('--into names the target for one run; merge_into in the config sets the default', () => {
+  const root = makeRepo(['a', 'b'])
+  git(root, 'branch', 'release')
+  git(root, 'branch', 'develop')
+  const r = runFleet(root, ['a', '--into', 'release'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'release'), /merge\(a\)/)
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+  // A fresh fleet (the last one finished) picks up merge_into.
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^---\n/, '---\nmerge_into: develop\n'))
+  git(root, 'commit', '-qam', 'merge into develop')
+  const r2 = runFleet(root, ['b'], { b: HAPPY })
+  assert.equal(r2.status, 0, r2.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'develop'), /merge\(b\)/)
+})
+
+test('a detached HEAD can launch a fleet; a missing target refuses with the fix', () => {
+  const root = makeRepo(['a', 'b'])
+  git(root, 'checkout', '-q', '--detach')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+  const bad = runFleet(root, ['b', '--into', 'nope'], { b: HAPPY })
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /The branch to merge into, nope, does not exist — create it \(git branch nope\) or set merge_into in \.claude\/builder\.md/)
 })
 
 test('@delta gates get their baseline measured at fleet start, once per target sha', () => {
