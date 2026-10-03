@@ -30,7 +30,7 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
-import { clearWorktree } from './tidy-core.mjs'
+import { clearWorktree, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
 const RUN_CAP = 12
@@ -1354,7 +1354,7 @@ if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.value
     closeSync(fd)
   }
 }
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE))
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE) && !/ was kept \(it has changes\)/.test(n))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
 if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
@@ -1464,6 +1464,9 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   if (stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${stash}" — git stash list`)
   f.worktree = null
 }
+// The whole repo, not just this fleet's rows: anything else left lying around is named here too.
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))
+addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))
 save()
 unlock()
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))
