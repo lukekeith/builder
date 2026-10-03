@@ -65,11 +65,17 @@ A shared helper `clearWorktree(root, wt, label)` in `tidy-core.mjs`:
 1. Lists the worktree's dirty tracked paths (`dirtyPaths`).
 2. Paths that are all **test output** — `test-results/`, `playwright-report/`, `coverage/`,
    `.nyc_output/`, `junit*.xml`, `.builder/` — are restored (`git checkout -- <paths>`).
-3. Anything else is stashed: `git -C <wt> stash push -m "builder: <label> leftovers <YYYY-MM-DD>"`,
-   and the stash is named in the result.
-4. `git worktree remove --force <wt>`, then `git worktree prune`.
+3. Anything else — tracked changes **and new untracked files** — is stashed:
+   `git stash push --include-untracked -m "builder: <label> leftovers <YYYY-MM-DD>" -- <paths>`, and
+   the stash is named in the result. (Review fix C2: untracked work was being deleted.)
+4. The build workspace `.builder/<label>/` is copied to `<root>/.builder/kept/<label>/` unless the
+   feature is finished or its branch deleted; `ensureWorktree` copies it back. (Review fix C3.)
+5. Refused, touching nothing, when a merge/rebase/cherry-pick is in progress, the worktree is locked,
+   or it has submodules. (Review fix I2.)
+6. `git worktree remove --force <wt>`, then `git worktree prune`.
 
-It returns `{ removed: boolean, stash: string|null }`.
+It returns `{ removed, stash, restored, kept, why }`. The inventory never puts a worktree holding
+uncommitted work in the safe batch, and refuses a target branch that doesn't exist (review fix C1).
 
 - **On landing** (`landNow`): `clearWorktree`, then delete the feature's branch with `git branch -d`
   whatever its name — safe, because `-d` refuses an unmerged branch — unless it is the target or

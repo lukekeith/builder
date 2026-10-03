@@ -2,7 +2,7 @@
 /**
  * fleet — take a batch of specs through the /builder:* pipeline unattended.
  *
- * Everything lands on ONE branch: the one checked out here when the fleet first ran (its TARGET).
+ * Everything lands on ONE branch, its TARGET: --into, else the config's merge_into (default base_branch).
  * Each spec gets its own worktree and branch (builder/<feature>) cut from the target. A pool of
  * `parallel` workers runs the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared
  * dev environment; the WALK lane takes features one at a time through that environment — walk
@@ -30,7 +30,7 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
-import { clearWorktree, inventory, summaryLine } from './tidy-core.mjs'
+import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
 const RUN_CAP = 12
@@ -272,6 +272,8 @@ function ensureWorktree(feature, branch) {
       save()
     }
     copyInto(wt)
+    // A worktree removed when this feature stopped left its build workspace (ledger, rulings) here.
+    restoreKept(ROOT, wt, feature)
   }
   if (f.setupOwed) {
     runSetup(feature, wt)
@@ -735,11 +737,15 @@ async function landNow(feature) {
   // is stashed by name, the worktree goes, and so does the branch — whoever made it — once it is in
   // the target (`-d` refuses one that isn't).
   if (f.worktree) {
-    const { stash } = clearWorktree(ROOT, f.worktree, feature)
-    if (stash) addNote(`${feature} merged; uncommitted changes from its worktree are in stash "${stash}" — git stash list`)
-    f.worktree = null
+    const r = clearWorktree(ROOT, f.worktree, feature, { keep: false })
+    if (r.stash) addNote(`${feature} merged; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
+    if (r.removed || !existsSync(f.worktree)) f.worktree = null
+    else addNote(`${feature} merged; its worktree ${f.worktree} stays: ${r.why} — /builder:tidy removes it once that's settled`)
   }
-  if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch) tryGit(['branch', '-d', f.branch])
+  // `branch -d` judges "merged" against what is checked out here, which need not be the target:
+  // ask the target itself, then delete.
+  if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch && !f.worktree && tryGit(['merge-base', '--is-ancestor', `refs/heads/${f.branch}`, `refs/heads/${TARGET}`]) !== null)
+    tryGit(['branch', '-D', f.branch])
   archiveRow(feature)
   save()
   return 'done'
@@ -1460,9 +1466,12 @@ for (const f of Object.values(fleet.features))
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
   if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
-  const { stash } = clearWorktree(ROOT, f.worktree, feature)
-  if (stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${stash}" — git stash list`)
-  f.worktree = null
+  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it.
+  if ((f.reason ?? '').includes(f.worktree)) continue
+  const r = clearWorktree(ROOT, f.worktree, feature)
+  if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
+  if (r.removed || !existsSync(f.worktree)) f.worktree = null
+  else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
 }
 // The whole repo, not just this fleet's rows: anything else left lying around is named here too.
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))

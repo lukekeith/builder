@@ -92,6 +92,7 @@ if (step.startsWith('CHATTY:')) {
 }
 if (step.startsWith('TOUCH:')) {
   const [, path, ...rest] = step.split(':')
+  mkdirSync(dirname(join(process.cwd(), path)), { recursive: true })
   writeFileSync(join(process.cwd(), path), `touched ${Date.now()}\n`)
   step = rest.join(':')
 }

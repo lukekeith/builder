@@ -366,7 +366,8 @@ test('a real uncommitted change in a landed feature\'s worktree is stashed by na
 
 test('a parked feature keeps its branch but not its worktree; picking it again carries on from the branch', () => {
   const root = makeRepo(['p'])
-  const r = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later'] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  const r = runFleet(root, ['p'], { p: ['audited', 'TOUCH:.builder/p/progress.md:BLOCK:later'] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
+  assert.ok(existsSync(join(root, '.builder/kept/p/progress.md')), 'the build workspace outlives the worktree')
   assert.equal(r.fleet.features.p.status, 'parked')
   assert.equal(r.fleet.features.p.worktree, null)
   assert.equal(existsSync(`${root}-wt/p`), false, 'the worktree is removed at exit')
@@ -375,6 +376,7 @@ test('a parked feature keeps its branch but not its worktree; picking it again c
   assert.equal(r2.status, 0, r2.stderr)
   assertLanded(r2, 'p')
   assert.equal(git(root, 'branch', '--list', 'builder/p'), '')
+  assert.equal(existsSync(join(root, '.builder/kept/p')), false, 'handed back to the new worktree')
 })
 
 test('a planned feature joins the build lane where it is', () => {
@@ -964,6 +966,7 @@ test('the fleet lands on merge_into (default base_branch), whatever is checked o
   assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\): agent-verified/)
   assert.equal(git(root, 'branch', '--show-current'), 'elsewhere', 'the checkout is left alone')
   assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'elsewhere'), /merge\(a\)/)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '', 'merged into main, so deleted — though main is not checked out')
 })
 
 test('--into names the target for one run; merge_into in the config sets the default', () => {
@@ -974,6 +977,7 @@ test('--into names the target for one run; merge_into in the config sets the def
   assert.equal(r.status, 0, r.stderr)
   assert.match(git(root, 'log', '--oneline', '-1', 'release'), /merge\(a\)/)
   assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+  assert.equal(git(root, 'branch', '--list', 'builder/a'), '', 'in release, so deleted')
   // A fresh fleet (the last one finished) picks up merge_into.
   const cfg = join(root, '.claude/builder.md')
   writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^---\n/, '---\nmerge_into: develop\n'))
