@@ -359,6 +359,7 @@ test('formatTokens: 2.1M, 340k, — when absent', () => {
   assert.equal(formatTokens(2100000), '2.1M')
   assert.equal(formatTokens(340000), '340k')
   assert.equal(formatTokens(950), '950')
+  assert.equal(formatTokens(999600), '1.0M')
   assert.equal(formatTokens(null), '—')
   assert.equal(formatTokens(0), '—')
 })

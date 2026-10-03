@@ -65,14 +65,18 @@ function assertLanded(r, name) {
 
 const HAPPY = ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
 
-test('the archive row carries the plan’s size', () => {
+test('the archive row carries the plan’s size and the profile, though the ship removes both files', () => {
   const root = makeRepo(['a'])
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: spec\nprofile: rush\nnext: x\n')
   writeFileSync(join(root, 'docs/features/a/PLAN.md'), '# Plan\n\n## Phases\n\n| # | App | Goal |\n|---|---|---|\n| 1 | app | x |\n\n### Task 1: one\n\n### Task 2: two\n')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'plan')
   const r = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(r.status, 0, r.stderr)
-  assert.equal(assertLanded(r, 'a').size.tasks, 2)
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const a = assertLanded(r, 'a')
+  assert.equal(a.size.tasks, 2)
+  assert.equal(a.profile, 'rush')
+  assert.equal(existsSync(join(root, 'docs/features/_archive/a/PLAN.md')), false, 'the ship removed the plan')
 })
 
 test('a feature with an open PR is taken on to merged, not refused', () => {

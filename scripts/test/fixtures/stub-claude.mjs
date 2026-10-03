@@ -126,6 +126,7 @@ else if (step.startsWith('PR:')) set('pr', step.slice(3))
 else if (step === 'SHIP') {
   rmSync(mfPath)
   writeFileSync(join(process.cwd(), spec, 'SPEC.md'), `# ${feature} — spec\n> ✅ SHIPPED 2026-09-26 — merged into main · none · 🤖 agent signed off (round 1), not human-tested\n`)
+  if (existsSync(join(process.cwd(), spec, 'PLAN.md'))) execFileSync('git', ['rm', '-qf', join(spec, 'PLAN.md')], { stdio: 'ignore' }) // as a real ship does
   // /builder:ship's last step: the shipped folder moves into the archive, in the ship commit.
   mkdirSync(join(process.cwd(), dirname(spec), '_archive'), { recursive: true })
   execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })

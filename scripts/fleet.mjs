@@ -565,6 +565,7 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
+  noteFacts(fleet.features[feature], feature) // the ship run removes the manifest and plan: read them first
   return new Promise((done) => {
     const out = createWriteStream(log)
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
@@ -685,15 +686,29 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
-/** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
-/** What the estimates need from a landing: the plan's size and the manifest's profile, read while the worktree still exists. */
+/**
+ * What the estimates need from a landing: the plan's size and the manifest's profile. /builder:ship
+ * removes both files before the landing, so the fleet notes them on the row (f.facts, kept in
+ * fleet.json) each time it reads a live manifest — the last reading before the ship run wins.
+ * Without a manifest to read, the earlier reading stands; with none at all: size null, 'thorough'.
+ */
+function noteFacts(f, feature) {
+  if (!f.worktree || !existsSync(f.worktree)) return
+  const mf = readManifest(f.worktree, feature)
+  if (mf == null) return
+  const plan = readDoc(f.worktree, feature, 'PLAN.md')
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), profile: parseProfile(parseManifest(mf).profile).preset }
+}
+
 function landingFacts(f, feature) {
+  if (f.facts) return f.facts
   const base = f.worktree && existsSync(f.worktree) ? f.worktree : ROOT
   const plan = readDoc(base, feature, 'PLAN.md')
   const mf = readManifest(base, feature)
   return { size: plan == null ? null : planSize(plan), profile: parseProfile(mf == null ? undefined : parseManifest(mf).profile).preset }
 }
 
+/** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature, facts) {
   const f = fleet.features[feature]
   const { size, profile } = facts ?? landingFacts(f, feature)
@@ -737,7 +752,8 @@ function land(feature) {
 
 async function landNow(feature) {
   const f = fleet.features[feature]
-  const facts = landingFacts(f, feature) // before the landing removes the worktree
+  noteFacts(f, feature)
+  const facts = landingFacts(f, feature)
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {

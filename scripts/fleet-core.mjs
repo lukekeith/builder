@@ -241,7 +241,7 @@ export function tokensOf(ev) {
 /** `2.1M`, `340k`, `950`; `—` when absent or zero. */
 export function formatTokens(n) {
   if (!n) return '—'
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 999500) return `${(n / 1e6).toFixed(1)}M`
   if (n >= 1e3) return `${Math.round(n / 1e3)}k`
   return String(n)
 }
@@ -250,6 +250,7 @@ export function formatTokens(n) {
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
+  // Tokens = input + output; cache reads are left out.
   const time = (r) => {
     const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
     return ms ? duration(ms) : null
