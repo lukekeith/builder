@@ -30,6 +30,7 @@ import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
+import { clearWorktree } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
 const RUN_CAP = 12
@@ -730,15 +731,15 @@ async function landNow(feature) {
     if (why) return park(f, why)
   }
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
-  // The worktree held nothing but this branch; a tracked change there would be lost, so only a
-  // clean one goes (untracked files — a copied .env, walk evidence — go with it).
-  if (f.worktree && existsSync(f.worktree) && tryGit(['status', '--porcelain', '--untracked-files=no'], f.worktree) === '') {
-    if (tryGit(['worktree', 'remove', '--force', f.worktree]) !== null) {
-      f.worktree = null
-      if (f.branch.startsWith('builder/')) tryGit(['branch', '-d', f.branch])
-    }
+  // Nothing is left behind: test output in the worktree is restored, any other uncommitted change
+  // is stashed by name, the worktree goes, and so does the branch — whoever made it — once it is in
+  // the target (`-d` refuses one that isn't).
+  if (f.worktree) {
+    const { stash } = clearWorktree(ROOT, f.worktree, feature)
+    if (stash) addNote(`${feature} merged; uncommitted changes from its worktree are in stash "${stash}" — git stash list`)
+    f.worktree = null
   }
-  if (f.worktree) addNote(`${feature} merged; its worktree ${f.worktree} was kept (it has changes) — remove it with git worktree remove`)
+  if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch) tryGit(['branch', '-d', f.branch])
   archiveRow(feature)
   save()
   return 'done'
@@ -1453,6 +1454,16 @@ clearInterval(poll)
 for (const f of Object.values(fleet.features))
   if (f.status === 'waiting')
     Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}, which never merged — next: settle ${pendingDeps(f).join(', ')}, then pick both in /builder:agent` })
+// An unfinished feature keeps its branch — every finished task is committed there — and loses its
+// worktree; picking it again recreates the worktree from the branch. FLEET_KEEP_STOPPED_WORKTREES=1
+// keeps them, for looking inside one while debugging the fleet itself.
+for (const [feature, f] of Object.entries(fleet.features)) {
+  if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
+  if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
+  const { stash } = clearWorktree(ROOT, f.worktree, feature)
+  if (stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${stash}" — git stash list`)
+  f.worktree = null
+}
 save()
 unlock()
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))

@@ -11,6 +11,7 @@
 //   SWITCH-THEN-SHIP  run .stub/switch.sh (the human switching branches), then SHIP
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
+//   TOUCH:<path>:<step>  rewrite <path> (relative to the worktree) without committing it, then <step>
 // The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -88,6 +89,11 @@ if (step.startsWith('CHATTY:')) {
   // The real CLI's result repeats the last assistant text; the fleet's .log must not print it twice.
   process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: `did ${step}` }] } }) + '\n')
   process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: 1, num_turns: 1 }) + '\n')
+}
+if (step.startsWith('TOUCH:')) {
+  const [, path, ...rest] = step.split(':')
+  writeFileSync(join(process.cwd(), path), `touched ${Date.now()}\n`)
+  step = rest.join(':')
 }
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)
