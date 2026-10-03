@@ -79,6 +79,19 @@ test('the archive row carries the plan’s size and the profile, though the ship
   assert.equal(existsSync(join(root, 'docs/features/_archive/a/PLAN.md')), false, 'the ship removed the plan')
 })
 
+test('a spec committed off the target is brought into the worktree', () => {
+  const root = makeRepo([])
+  git(root, 'checkout', '-q', '-b', 'work')
+  mkdirSync(join(root, 'docs/features/a'), { recursive: true })
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: t 2026-10-03\nnext: x\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'spec on work')
+  const r = runFleet(root, ['a'], { a: HAPPY.slice(HAPPY.indexOf('building')) })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assertLanded(r, 'a')
+  assert.match(git(root, 'log', 'main', '--oneline'), /spec and plan from work/)
+})
+
 test('a feature with an open PR is taken on to merged, not refused', () => {
   const root = makeRepo(['o'])
   writeFileSync(join(root, 'docs/features/o/MANIFEST.md'), 'size: md\nstate: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc\npr: #5\nbranch: builder/o\nnext: x\n')
