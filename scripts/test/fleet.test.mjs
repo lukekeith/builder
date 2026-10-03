@@ -100,6 +100,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(existsSync(`${root}-wt/a`), false)
   assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^1 archived \(last: a, just now\)/m)
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^- repo: clean$/m, 'nothing left behind, and the report says so')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/a/a-01.log')), 'its logs moved with it')
   assert.equal(existsSync(join(root, '.builder/fleet/logs/a-01.log')), false)
 })
@@ -1009,7 +1010,7 @@ test('@delta gates get their baseline measured at fleet start, once per target s
   assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /measuring @delta/, 'the baseline note is gone once it is measured')
 })
 
-test('a note about a worktree that no longer exists is dropped on the next run', () => {
+test('an older fleet\'s "worktree was kept" notes give way to the repo line, which names what is still there', () => {
   const root = makeRepo(['a'])
   const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:wait'] })
   mkdirSync(join(root, '.builder/fleet'), { recursive: true })
@@ -1018,8 +1019,8 @@ test('a note about a worktree that no longer exists is dropped on the next run',
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify(fj))
   runFleet(root, [], { a: ['BLOCK:wait'] })
   const status = readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8')
-  assert.doesNotMatch(status, /\/nowhere\/x/)
-  assert.match(status, /y merged; its worktree/)
+  assert.doesNotMatch(status, /was kept \(it has changes\)/)
+  assert.match(status, /^- repo: .*→ \/builder:tidy$/m, 'the parked feature is still there, and the repo line says so')
 })
 
 // ---- adding to a running fleet: the inbox ----------------------------------------------------
