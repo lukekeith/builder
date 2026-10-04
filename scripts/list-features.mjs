@@ -39,7 +39,7 @@ import { parseManifest, isSet } from './manifest.mjs'
 import { parseProfile, profileLabel } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
-import { ago } from './fleet-core.mjs'
+import { ago, landedRows } from './fleet-core.mjs'
 import { newerRelease, newerLine } from './newer.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -426,6 +426,7 @@ const statusOf = (r) => {
   }
 }
 
+const LANDED = landedRows(ROOT)
 for (const r of rows) {
   r.description = describe(r)
   // The last commit touching the folder is when the pipeline last moved it; mtime is the fallback
@@ -441,6 +442,13 @@ for (const r of rows) {
   if (!r.done && ['manifest', 'program', 'condensed'].includes(r.layout) && openRevision(ROOT, r.feature)) {
     r.nextStep = 'Finish the revision conversation'
     r.command = `/builder:brainstorm --path ${r.path}`
+  }
+  // The fleet landed it on its target, and this checkout still holds the live copy: the manifest's
+  // step is stale. Merging the target brings the shipped spec in (fleet preflight refuses a relaunch).
+  const landed = !r.done && ['manifest', 'condensed'].includes(r.layout) ? LANDED.get(r.feature) ?? null : null
+  if (landed) {
+    const t = landed.target ?? CFG.mergeInto
+    Object.assign(r, { landed: t, nextStep: `Landed on ${t} — merge ${t} into this branch`, command: `git merge ${t}` })
   }
 }
 
