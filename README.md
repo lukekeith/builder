@@ -181,6 +181,23 @@ stop; a feature **parks** only when its spec leaves a product decision open, or 
 to yourself (a `commit: manual` app, a `hold:`, your uncommitted change in the way of the merge). Nothing waits on a question, and nothing runs in the background of a headless run:
 long gates go through `scripts/job.mjs`, and a run is killed only after 30 minutes of silence.
 
+With an `agent_walk:` block, **the plan's go-ahead hands every feature to agents.** It asks
+**How should agents build "<feature>"?**, recommends a profile from the spec, estimates each from
+past landings, and launches the fleet:
+
+| Profile | What runs |
+|---|---|
+| **Rush** | final review and fast gates only; no agent walk — you test it once it lands |
+| **Standard** | every task reviewed, the agent walks the `[risk]` items, full verify |
+| **Thorough** | every task reviewed plus a second reviewer on contract and schema tasks, full agent walk, deep verify with cross-app E2E |
+| **Thorough + you** | Thorough, then your own walk and `/builder:signoff` before it lands |
+
+*Customize* sets the seven levers (testing, review, models, verify, persistence, open choices,
+landing) one by one. **The floors hold under every profile:** each app's fast gates at its phase
+close, the final whole-branch review, and consumer parity when a `released_artifact` consumer is
+affected. `build_profile_default` in the config sets the profile pre-selected when the spec doesn't
+call for Thorough.
+
 Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` offers to add one when
 the config has none. Headless runs need permissions set explicitly (`claude_args`), because nobody is
 there to approve a prompt.

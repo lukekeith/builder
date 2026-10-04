@@ -139,7 +139,17 @@ the repo grows a second app.
 
 1. **Decisions gate** — the OPEN rows in SPEC §Decisions, asked in one message, recommendation first.
 2. **Build go-ahead** — one approval of `PLAN.md`'s `## Phases` table. One artifact, one approval —
-   an approved design is not re-approved as a plan.
+   an approved design is not re-approved as a plan. With an `agent_walk:` block, the go-ahead also
+   asks **How should agents build "<feature>"?** and launches agents on the answer — the build
+   profile, recorded as `profile:` on the manifest:
+   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands.
+   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
+   - **Thorough** — every task reviewed (a second reviewer on contract and schema tasks), full agent
+     walk, deep verify with cross-app E2E.
+   - **Thorough + you** — Thorough, then your own walk and `/builder:signoff` before it lands.
+   - *Customize* sets the seven levers one by one. **The floors hold under every profile:** each
+     app's fast gates at its phase close, the final whole-branch review, and consumer parity when a
+     `released_artifact` consumer is affected.
 3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished
    feature and said, in your own words, that it works. A green gate run or a code review is evidence
    for you, never your sign-off. Spend it with `/builder:signoff`.

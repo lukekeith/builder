@@ -88,6 +88,9 @@ Use the least powerful model that can handle each role.
   `tiny` on its `Recipe:` line (a one-file edit with its test) — the review still happens, at the
   cheapest tier that can read a diff.
 - **Fix-loop escalation (rounds 4–5):** at least one tier above the implementer that got stuck.
+- **`models: economy`** (the build profile) → integration tasks drop to the cheapest tier that can do them.
+- **`models: strong`** → integration tasks and every review run on the most capable model.
+  `default` is this section as written.
 
 🔴 **Always name the model on every dispatch.** An omitted model inherits your session's — often the
 most capable and most expensive — which silently defeats this section.

@@ -22,6 +22,18 @@ per task, written by its implementer** (or staged, where the config says so) —
 phase, and the manifest written **only** at a stop, at the go-ahead when taken here, **at the
 producer's phase close (the contract freeze)**, and when the last phase signs.
 
+**The build profile (under `--agent-walk`).** Read the levers:
+`node <builder>/scripts/profile.mjs --levers <folder>`. The floors in its `floors` hold whatever
+the levers say — each app's fast gates at its phase close and the final whole-branch review always
+run. Without `--agent-walk` the build runs as written here.
+
+- **`review: final`** → no per-task reviewer; the final whole-branch review always runs.
+  **`per-task`** → as written. **`per-task+second`** → also a second reviewer, on the most capable
+  model, on any task touching §Contract or §Schema.
+- **`models`** → EXECUTION.md §Model selection's `economy` / `strong` lines; `default` is as written.
+- **`unruled: park`** → a choice the spec doesn't settle parks the feature (§Stops) instead of taking
+  the recommendation. `recommend` → a ruling, as written.
+
 **The commit key** is `--ticket` when given — and a given `--ticket` is written to the manifest's
 `ticket:` line; absent, the manifest's `ticket:`, and absent that, the feature name.
 
@@ -109,6 +121,10 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
   tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
   pass or fail against a lie. Put the remedy **in the step**, not in the prose.
+- 🔴 **Under `--agent-walk`, after each task's review:** if `.builder/fleet/requests/<feature>.pause`
+  exists, tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
+  manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop. The
+  ledger keeps every finished task.
 
 ## Phase close — the controller's own work
 
@@ -187,6 +203,8 @@ the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agen
   record; `kind: human-step` for a `commit: manual` app, `decision` for a broken plan), in the same
   ledger line and manifest commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
   **end the run**. A plan that is merely wrong in places is not this: rule, fix the task, go on.
+- **Under `unruled: park`**, a choice the spec doesn't settle parks the same way (`kind: decision`),
+  naming the choice — no ruling taken.
 
 Never ask.
 
@@ -225,6 +243,9 @@ Never ask.
    `## Cross-app (verify E2E)`, then SPEC §Testing's walk script as numbered steps `E1…En` — each
    one line of what to do and one of what to see, in the script's order. Without `--agent-walk`,
    `walk.md` stays per-app only.
+   **Tag `[risk]`** on every item touching a §Contract row, an auth or permission path, a
+   load/save/delete path, a notification payload or a deep-link target (verify's re-walk table) — the
+   agent walk under `testing: risky` walks only those.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
    **Under `--agent-walk`:** `next: /builder:agent-walk --path <folder>` and keep going into it — the
