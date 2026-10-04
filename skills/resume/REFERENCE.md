@@ -194,7 +194,8 @@ does-not-continue table above don't carry it.
 
 ## The two-way footer
 
-**Wherever agents could take over the next step, the footer offers it.** A footer about one feature
+**Wherever agents could take over the next step, the footer offers it** — only in a project whose
+config has an `agent_walk:` block. A footer about one feature
 whose `state` is one of `spec aligned audited planned building built signed-off verified` — the
 states `/builder:agent` offers — and that would end in ` · or say go` (or names the walk, which agents
 can do instead of you) is printed as a numbered choice:
@@ -216,8 +217,9 @@ confirmation still ask.
 
 **Not two-way:** a footer under `--agent-walk` (no human reads it); one in the does-not-continue table
 other than the walk — 🛑 held, a human's step, a placeholder, more than one candidate; a footer before
-a spec exists (brainstorm, intake) or after the feature merged; and a config with no `agent_walk:`
-block, where `/builder:agent` would refuse — the single-line footer then, as before.
+a spec exists (brainstorm, intake) or after the feature merged; plan's go-ahead footer, which
+launches the agents itself or, without the block, names `/builder:init --update`; and a config with
+no `agent_walk:` block, where `/builder:agent` would refuse — the single-line footer then, as before.
 
 ## Branch and ticket
 

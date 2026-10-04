@@ -34,6 +34,7 @@ whose state is `planned` or `building`.
 |---|---|
 | there is no `MANIFEST.md` | this step does not run on it. One line, hand back, stop |
 | `state: planned` **and** `go-ahead:` carries a name + date | run |
+| `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:plan --path <folder>` — its go-ahead picks the build profile and launches the fleet. Never take the go-ahead or build it here |
 | `state: planned` **and** `go-ahead: none` | present `PLAN.md`'s `## Phases` table — phase · app · tasks · goal · gates, with the totals and which phase freezes the contract — and take the go-ahead here through `ExitPlanMode`. Yes → write `go-ahead:`, commit, run. No → hand back. ⛔ Never hand back to the plan step for this. Under `--auto` the table is presented and the run proceeds |
 | `state: building` | resume — the ledger is ground truth, not the conversation |
 | §Findings has a `blocked:` row | name the row and its clearer, hand back, stop. A `build-time risk` row is **not** a blocker — it rides into its task's brief |

@@ -5,7 +5,7 @@ description: Turn an audited feature spec into a committed implementation plan a
 
 # `/builder:plan` — the audited spec becomes phases
 
-Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-walk]`**. Flags:
+Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--into <branch>]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
@@ -194,8 +194,8 @@ when it launches. Given `--ticket`, check the branch name carries the key and wa
    `{ preset, signals }`; then `node <builder>/scripts/profile.mjs --estimate <folder> --profile <p>`
    for each of `rush`, `standard`, `thorough` → `{ minutes, tokens, n }`, or `null` with fewer than 3
    comparable landings. The target is the config's `merge_into` (default `base_branch`).
-2. **One AskUserQuestion.** Question: `How should agents build "<feature>"?  → lands on <target>`,
-   then `Recommended: <Preset> — <signals, comma-joined>`. Options **Rush / Standard / Thorough**, the
+2. **One AskUserQuestion call, two questions.** The first:
+   `How should agents build "<feature>"?  → lands on <target>`, then `Recommended: <Preset> — <signals, comma-joined>`. Options **Rush / Standard / Thorough**, the
    recommended one first with ` (Recommended)` on its label. Each description leads with
    `~N min · ~T tokens (n similar features)` — or, with no estimate, its place in the ladder: Rush
    `fastest · fewest tokens`, Standard `faster`, Thorough `full pipeline` — then what the preset
@@ -206,20 +206,25 @@ when it launches. Given `--ticket`, check the branch name carries the key and wa
    - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
    - **Thorough** — the full pipeline: every task reviewed, full agent walk, deep verify with
      cross-app E2E.
-   The tool's own *Other* is **Customize**; an answer naming another branch changes the target.
-3. **Picked Thorough** → a second AskUserQuestion: **Walk it yourself before it lands?** —
-   **No (Recommended)** → `thorough`; **Yes** → `thorough-you` (the fleet parks it for your walk after
-   the agent's, and lands it after your `/builder:signoff`).
+   The tool's own *Other* on this question means only **Customize**.
+   The second, in the same call: **Land on?** — `<merge_into> (Recommended)`, then up to two likely
+   branches: `base_branch` when it differs, and the current branch when it differs from both. The
+   tool's *Other* takes any other branch name.
+3. **Picked Thorough** → one more AskUserQuestion after that call:
+   **Walk it yourself before it lands?** — **No (Recommended)** → `thorough`; **Yes** →
+   `thorough-you` (the fleet parks it for your walk after the agent's, and lands it after your
+   `/builder:signoff`).
 4. **Other (Customize)** → two AskUserQuestion calls over the seven levers, each pre-filled from the
    recommended preset (`profile.mjs --levers` keys): `testing`, `review`, `models`, `verify`; then
    `persist`, `unruled`, `landing`. Written as `profile: custom k=v …`. The floors — fast gates, the
    final review, released-consumer parity — are not levers and hold under every profile.
-5. **The target.** Changed in the answer → `target: <branch>`; otherwise `target: <merge_into>`.
+5. **The target** is the **Land on?** answer: `target: <branch>`.
 6. **Record and launch.** Write `go-ahead: <name YYYY-MM-DD>`, `profile: <preset or custom k=v …>`
    and `target:` to the manifest, commit
    `chore(<ticket-or-feature>): <feature> — go-ahead (<profile>)`, then run
    `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>`. A target that matches a
-   running fleet's joins its queue.
+   running fleet's joins its queue. A branch that doesn't exist → relay the fleet's refusal and ask
+   **Land on?** again.
 7. **A running fleet with a different target refuses.** Relay its message as written, then one
    AskUserQuestion: **Switch this feature to <the running target>** (rewrite `target:`, commit, launch
    again) / **Launch it once that fleet ends** (leave the manifest as written; `/builder:agent --path
@@ -227,7 +232,8 @@ when it launches. Given `--ticket`, check the branch name carries the key and wa
 
 🔴 **`--auto` and `--agent-walk` never ask.** In an `agent_walk:` project they take the
 recommendation and record `go-ahead: auto (recommended) YYYY-MM-DD`, `profile: <recommended>` and
-`target: <merge_into>` in the go-ahead commit. Plain `--auto` then launches the fleet as in step 6;
+`target: <the --into this run was given>` — `<merge_into>` only without `--into` — in the go-ahead
+commit. Plain `--auto` then launches the fleet as in step 6;
 **`--agent-walk` launches nothing** — the fleet is already running it.
 
 ```

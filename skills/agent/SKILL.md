@@ -85,9 +85,9 @@ folder: switch branches, or just `/builder:resume` it here). If no pick survives
 
 Then `/builder:fleet` §3 (the one confirmation), §4 (launch detached, `--detach`) and §5 (the report
 when it finishes), with the picks as the arguments. **A pick whose manifest carries `target:`** (the
-go-ahead wrote it) launches with `--into <target>` — on the dry run too; picks naming different
-targets can't share a run (one target per fleet), so launch those matching the first and name the
-rest to run once it ends.
+go-ahead wrote it) launches with `--into <target>` — on the dry run too; a pick without `target:` counts as `merge_into`.
+Picks with different targets follow the one-target-per-run rule: launch those matching the first and
+name the rest to run once it ends.
 
 ~~~
 📍 agents: <n> feature(s) running — next: /builder:fleet --status
