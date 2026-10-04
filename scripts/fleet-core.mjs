@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, appendF
 import { join } from 'node:path'
 import { parseManifest, isSet } from './manifest.mjs'
 import { ARCHIVE } from './registry.mjs'
+import { profileLabel } from './profile.mjs'
 
 const BUILD_STATES = new Set(['spec', 'aligned', 'audited', 'planned', 'building'])
 const WALK_STATES = new Set(['built', 'signed-off'])
@@ -314,10 +315,6 @@ export function progressBar(pct) {
   return `${'▓'.repeat(n)}${'░'.repeat(10 - n)} ${Math.round(pct)}%`
 }
 
-const PROFILE_NAMES = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
-/** A resolved preset name as the table shows it; no facts yet → `—`, an unknown name → `thorough`. */
-const profileName = (p) => (p ? (PROFILE_NAMES[p] ?? 'thorough') : '—')
-
 /**
  * The table a terminal renders: only columns that carry information. `PR` and `Evidence` are gone —
  * agent mode opens no PR since 3.0, and nothing ever wrote evidence — and the worktree root is said
@@ -358,7 +355,7 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
-      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${profileName(f.facts?.profile)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${profileLabel(f.facts?.profile)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
   const parked = rows.filter(([, f]) => f.status === 'parked')

@@ -20,6 +20,10 @@ export const PRESETS = {
   'thorough-you': { testing: 'full+human', review: 'per-task+second', models: 'strong',  verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
 }
 export const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local','pr-ci'] }
+/** How a resolved preset name reads in a table; one map for every status view. */
+export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
+/** preset → its label; none → `—`, an unknown name → `thorough`. */
+export const profileLabel = (preset) => (preset ? (PROFILE_LABELS[preset] ?? 'thorough') : '—')
 export const FLOORS = { fastGates: true, finalReview: true, releasedParity: true }
 
 const result = (preset, levers, warning) => ({ preset, levers: { ...levers }, floors: { ...FLOORS }, warning })
