@@ -407,3 +407,57 @@ test('landedRow reads the whole archive and returns the last row for a feature',
   assert.deepEqual(landedRow(root, 'a'), { feature: 'a', target: 'main', merged: 'abc' })
   assert.equal(landedRow(root, 'c'), null)
 })
+
+// ---- 4.9.2: migrations that land with a feature reach the dev DB ------------------------------
+import { parseWalkReadiness, landedMigrations } from '../fleet-core.mjs'
+
+const BODY = [
+  '## Quality gates', '', '```', 'x: y', '```', '',
+  '## Walk readiness', '', '```',
+  'migrations: packages/db/prisma/migrations',
+  'status:     npx prisma migrate status   # against the DEV db',
+  'apply:      npm run db:migrate',
+  'apply_mode: agent       # Luke: just run it',
+  'regenerate: npm run db:generate',
+  '```', '', '- prose', '', '## Global constraints', '',
+].join('\n')
+
+test('parseWalkReadiness reads the block under ## Walk readiness, comments dropped', () => {
+  assert.deepEqual(parseWalkReadiness(BODY), {
+    migrations: 'packages/db/prisma/migrations', status: 'npx prisma migrate status', apply: 'npm run db:migrate', apply_mode: 'agent', regenerate: 'npm run db:generate',
+  })
+  assert.deepEqual(parseWalkReadiness('## Other\n'), {})
+  assert.equal(parseWalkReadiness(BODY.replace('apply:      npm run db:migrate', 'apply:      <command>')).apply, undefined, 'a template placeholder is not a command')
+})
+
+test('landedMigrations: nothing landed → nothing to do', () => {
+  assert.deepEqual(landedMigrations({ files: [], readiness: parseWalkReadiness(BODY) }), { action: 'none' })
+})
+
+test('landedMigrations: apply_mode agent and additive → run apply then regenerate', () => {
+  const r = landedMigrations({ files: [{ path: 'm/1/migration.sql', text: 'ALTER TABLE "A" ADD COLUMN "b" TEXT;' }], readiness: parseWalkReadiness(BODY) })
+  assert.deepEqual(r, { action: 'apply', commands: ['npm run db:migrate', 'npm run db:generate'] })
+})
+
+test('landedMigrations: a drop or rewrite is never run, only noted', () => {
+  for (const text of ['DROP TABLE "A";', 'ALTER TABLE "A" DROP COLUMN "b";', 'DELETE FROM "A";', 'TRUNCATE "A";', 'ALTER TABLE "A" RENAME COLUMN "b" TO "c";']) {
+    const r = landedMigrations({ files: [{ path: 'm/1/migration.sql', text }], readiness: parseWalkReadiness(BODY) })
+    assert.equal(r.action, 'note', text)
+    assert.match(r.why, /drops or rewrites data/)
+    assert.match(r.why, /npm run db:migrate/)
+  }
+})
+
+test('landedMigrations: ask, human, or no apply command → a note naming the command', () => {
+  const files = [{ path: 'm/1/migration.sql', text: 'CREATE TABLE "A" ();' }]
+  for (const mode of ['ask', 'human']) {
+    const r = landedMigrations({ files, readiness: { ...parseWalkReadiness(BODY), apply_mode: mode } })
+    assert.equal(r.action, 'note')
+    assert.match(r.why, /1 new migration/)
+    assert.match(r.why, /run `npm run db:migrate`/)
+  }
+  const none = landedMigrations({ files, readiness: { migrations: 'm' } })
+  assert.equal(none.action, 'note')
+  assert.match(none.why, /no `apply:` command/)
+  assert.equal(landedMigrations({ files, readiness: { ...parseWalkReadiness(BODY), apply_mode: undefined } }).action, 'note', 'ask is the default')
+})

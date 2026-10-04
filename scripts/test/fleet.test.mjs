@@ -1501,3 +1501,43 @@ test('a feature waiting for your walk keeps its worktree when the fleet ends', (
   const s = runFleet(other, ['b'], { b: ['audited', 'BLOCK:stuck — next: x'] }, { FLEET_KEEP_STOPPED_WORKTREES: '0' })
   assert.equal(s.fleet.features.b.worktree, null, 'any other park still loses its worktree')
 })
+
+// ---- 4.9.2: migrations a landing brings reach the dev DB this checkout serves ----------------
+function readinessRepo(mode, sql = 'CREATE TABLE "a" ();') {
+  const root = makeRepo(['a'])
+  const cfg = join(root, '.claude/builder.md')
+  const apply = `node -e "require('fs').writeFileSync('applied.txt','yes')"`
+  const regen = `node -e "require('fs').writeFileSync('regenerated.txt','yes')"`
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('---\nbody\n',
+    `---\n\n## Walk readiness\n\n\`\`\`\nmigrations: db/migrations\napply:      ${apply}\napply_mode: ${mode}   # test\nregenerate: ${regen}\n\`\`\`\n`))
+  git(root, 'commit', '-qam', 'readiness')
+  git(root, 'checkout', '-q', '-b', 'builder/a')
+  mkdirSync(join(root, 'db/migrations/001'), { recursive: true })
+  writeFileSync(join(root, 'db/migrations/001/migration.sql'), sql)
+  git(root, 'add', 'db')
+  git(root, 'commit', '-qm', 'a migration')
+  git(root, 'checkout', '-q', 'main')
+  return root
+}
+
+test('a landing that brings a migration applies it here under apply_mode agent, then regenerates', () => {
+  const root = readinessRepo('agent')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assertLanded(r, 'a')
+  assert.ok(existsSync(join(root, 'applied.txt')), 'apply ran in the main checkout')
+  assert.ok(existsSync(join(root, 'regenerated.txt')), 'regenerate ran after it')
+  assert.ok(r.fleet.notes.some((n) => /a: applied 1 new migration to the dev DB here/.test(n)), JSON.stringify(r.fleet.notes))
+})
+
+test('apply_mode ask leaves a note naming the command; a drop is never run under agent', () => {
+  const ask = readinessRepo('ask')
+  const r = runFleet(ask, ['a'], { a: HAPPY })
+  assertLanded(r, 'a')
+  assert.ok(!existsSync(join(ask, 'applied.txt')))
+  assert.ok(r.fleet.notes.some((n) => /⚠ a: 1 new migration landed — the dev DB is behind: run/.test(n)), JSON.stringify(r.fleet.notes))
+  const drop = readinessRepo('agent', 'DROP TABLE "a";')
+  const d = runFleet(drop, ['a'], { a: HAPPY })
+  assertLanded(d, 'a')
+  assert.ok(!existsSync(join(drop, 'applied.txt')))
+  assert.ok(d.fleet.notes.some((n) => /drops or rewrites data, so it was not applied/.test(n)), JSON.stringify(d.fleet.notes))
+})
