@@ -95,14 +95,20 @@ was asked for → stop here.
 
 ## 3. Confirm once
 
-One AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
+**First, the build profile.** Every spec whose manifest has no `profile:` gets the profile questions
+— `/builder:plan` §Picking the profile ahead: the profile per spec (up to four per AskUserQuestion
+call), **Land on?** once for the run, the Thorough follow-up, Customize. Write and commit `profile:`
+and `target:`; the target becomes the run's `--into`. A spec already carrying `profile:` isn't asked
+again. These choices set how the agents work, so they are asked even though the run is unattended.
+
+Then one AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
 worktree root, the permission args (`claude <claude_args>`), and "merges each finished feature
 into <the target> (merge_into, or --into), one merge commit each; nothing is pushed". When the
 target is checked out here, mention uncommitted changes in this checkout (`git status --short`): the
 fleet merges into this working tree, and a merge that would overwrite one of them parks that feature
 until it is out of the way. When it isn't, the merge is written onto the branch without touching
 your checkout.
-This is the only question the fleet ever asks.
+After the profile questions, this is the only question the fleet asks.
 
 **A fleet is already running** (the dry run said `adds to the running fleet`): the options are **Add
 to the running fleet** / **Not now**, and the question says how many specs join the queue and that

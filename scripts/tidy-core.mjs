@@ -182,7 +182,8 @@ export function inventory(root, cfg, target, { fleet = null, lockAlive = false, 
     else if (feature && ((mf.blocked && mf.blocked !== 'none') || ['parked', 'failed'].includes(row?.status))) {
       const reason = mf.blocked && mf.blocked !== 'none' ? unquote(mf.blocked) : row.reason ?? ''
       const cut = reason.lastIndexOf(' — next: ')
-      set('parked', item.worktree ? 'remove-worktree' : 'keep', { why: cut >= 0 ? reason.slice(0, cut) : reason, next: cut >= 0 ? reason.slice(cut + 9) : `/builder:agent --path ${cfg.registry}/${feature}` })
+      // A worktree parked for your walk is where you walk it: the fleet keeps it, and so does tidy.
+      set('parked', item.worktree && !/^waiting for your walk/.test(reason) ? 'remove-worktree' : 'keep', { why: cut >= 0 ? reason.slice(0, cut) : reason, next: cut >= 0 ? reason.slice(cut + 9) : `/builder:agent --path ${cfg.registry}/${feature}` })
     } else if (feature && UNFINISHED.has(mf.state)) set('in-progress', 'ask', { next: `/builder:agent --path ${cfg.registry}/${feature}` })
     else set('unknown', 'ask')
   }

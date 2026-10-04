@@ -73,7 +73,10 @@ whose status is not `handed-off`** → a revision conversation is open, and it c
 **The fleet's copy wins.** Not under `--agent-walk`: when `.builder/fleet/fleet.json` has a row for
 the feature whose `worktree` exists on disk, that worktree's `<registry>/<feature>/MANIFEST.md` is the
 live manifest — the fleet's runs commit there, never in this checkout. Say `reading the fleet's copy
-in <worktree>` in one line, then route on it.
+in <worktree>` in one line, then route on it. **Every write that follows goes there too** — an unpark's
+`blocked: none`, the park record's History line, any manifest or SPEC edit — committed with
+`git -C <worktree>`; this checkout's stale copy is never written. A parked row you unpark there is
+handed back with `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>`.
 
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its

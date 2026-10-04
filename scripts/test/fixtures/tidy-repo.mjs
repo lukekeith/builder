@@ -21,7 +21,7 @@ export function repo() {
   return root
 }
 /** A branch off main carrying one commit; `manifest` (feature → text) is written under the registry. */
-function branch(root, name, { manifest = {}, file } = {}) {
+export function branch(root, name, { manifest = {}, file } = {}) {
   git(root, 'switch', '-q', '-c', name, 'main')
   for (const [f, text] of Object.entries(manifest)) {
     mkdirSync(join(root, 'docs/features', f), { recursive: true })

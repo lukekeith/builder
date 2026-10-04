@@ -186,7 +186,16 @@ offer three ways on:
 
 Size the **confirmed concept**, not the first request: REFERENCE §Sizes and §The classifier are the
 rules — read just those two sections. (The conversation reads exactly three REFERENCE sections: §Sizes and §The classifier here, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
-overrides; lg is offered a split before anything else. Record it: `status: sized <size>`.
+overrides. Record it: `status: sized <size>`.
+
+**Splitting (lg and xl) is one question, and "one spec" is always an option.** Before anything else
+for lg or xl, one AskUserQuestion — §Rounds' format — whose options are:
+- **One spec** — the whole confirmed concept as one lg spec (for xl, say what it costs: one long walk).
+- **<n> value-sized specs** — each named with what the user can do once it alone ships (REFERENCE
+  §The classifier rule 4); never a split by layer, and only when at least two such slices exist.
+- Optionally one other real cut (a different value line), never a finer split of the same layers.
+Recommend the fewest specs whose each slice ships value — usually one or two. The answer decides
+the size: one spec → lg; two or more → xl, its children those slices.
 
 - **md · lg · xl** → hand off: `📍 <feature>: concept confirmed (<size>) — next: /builder:spec --path <registry>/<feature> · or say go`.
 - **xs · sm** — no spec, no folder:
@@ -210,8 +219,8 @@ recs" (settle every open branch on its recommendation, recorded as the user's ru
 
 **Under `--auto`**: play the intent back as `(assumed)`; every question settles on its recommendation (no AskUserQuestion),
 each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
-chosen; §Confirm proceeds without waiting and takes **Build it**. §Size accepts the size as classified
-— no lg split offer; a split worth making is recorded under *Size* as a recommendation. xs and sm take
+chosen; §Confirm proceeds without waiting and takes **Build it**. §Size takes the splitting
+question's recommendation — the fewest specs whose each slice ships value — recorded the same way. xs and sm take
 the one approval as the recommendation, recorded the same way. md and above run
 `/builder:spec --path <registry>/<feature> --auto` in the same turn. The human reads the assumptions
 and every auto ruling at the go-ahead.
