@@ -15,7 +15,12 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 is **shipped** (resume §`--agent-walk`, §Ship in agent mode) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the fleet **merges
 it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
-agent-verified, not human-tested` — and removes its worktree and `builder/` branch. Everything lands
+agent-verified, not human-tested` — and removes its worktree and `builder/` branch. **Migrations
+that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge
+into the branch checked out here the fleet runs the config's §Walk readiness `apply:` then
+`regenerate:` in this checkout when `apply_mode: agent` and every new migration is additive; under
+`ask`/`human`, or for one that drops or rewrites data, it notes the exact command instead. A merge
+written onto a branch checked out nowhere notes it for when you switch. Everything lands
 on that one branch, so you test the whole batch in one place. It **never pushes and never opens a
 PR** — both stay yours — never writes a *human* sign-off, never lifts a `hold:`, and never deploys.
 A re-run must start from the same branch while any of the fleet's features are unfinished.
