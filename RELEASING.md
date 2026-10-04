@@ -39,3 +39,18 @@ claude plugin update builder                      # take the new version (restar
 plugin reads that file from the host repo; if a new version expects a key that an existing config
 doesn't have, every consumer breaks on update. Either keep reading the old shape, or make it a major
 version and say in the changelog exactly what a consumer must add.
+
+## Codex release (Claude-first)
+
+Claude remains the source of new capabilities. Release Claude first as above, then run `$sync` in Codex in this repository. The sync skill migrates changed behavior, verifies it and publishes Codex; `$sync --no-release` stops before publication. It never treats version equality as feature parity.
+
+The reviewed adaptation baseline and package digest live in `codex/upstream.json`. `node codex/scripts/sync.mjs plan --ref main` produces the upstream diff and disposition template. After semantic adaptation and independent review, `finish --ref <pinned-sha> --report <decisions.json>` aligns the version and runs all Codex tests. Commit the verified package, catalog, baseline and evidence and merge locally into main. Then:
+
+```sh
+node codex/scripts/release.mjs --dry-run
+node codex/scripts/release.mjs --publish
+```
+
+The publisher re-runs tests, requires a clean main, rejects source/package drift and colliding tags, packages an installable archive, and atomically pushes main plus `builder-codex--v<version>` to origin before creating the GitHub release. It can resume a partial publication only when the existing tag points to the same HEAD. Never force/reuse a version tag for different content. `--pack` produces only the verified archive in `dist/`.
+
+Codex consumers install `lukekeith/builder` as a marketplace and `builder@builder-codex` as the plugin. Update with `codex plugin marketplace upgrade builder-codex` then `codex plugin add builder@builder-codex`, and start a new session. `$update-local` rolls it out on this machine using the maintainer's project list and protected runtime vendoring. Consumer project configuration remains authoritative. See [codex/README.md](codex/README.md) for installation, sync evidence, runtime exclusions and local rollout.

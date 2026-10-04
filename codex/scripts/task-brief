@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Extract one task's full text from a plan into a file the implementer reads in one call, so the
+# task text never has to be pasted through the controller's context.
+#
+# Usage: task-brief PLAN_FILE TASK_NUMBER OUTFILE
+#
+# OUTFILE is REQUIRED here (upstream defaults it): every feature's plan is named PLAN.md, so a
+# default derived from the plan's basename would collide across features.
+#
+# Vendored from superpowers' subagent-driven-development (MIT, (c) 2025 Jesse Vincent) —
+# see LICENSE-THIRD-PARTY.md.
+set -euo pipefail
+
+if [ $# -ne 3 ]; then
+  echo "usage: task-brief PLAN_FILE TASK_NUMBER OUTFILE" >&2
+  exit 2
+fi
+
+plan=$1
+n=$2
+out=$3
+[ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+mkdir -p "$(dirname "$out")"
+
+# Everything from this task's heading up to the next "Task <n>" heading at any level, or to end of
+# file for the last task. Headings inside fenced code blocks are skipped — which is why a plan must
+# keep nothing between task blocks and nothing after the last one.
+awk -v n="$n" '
+  /^```/ { infence = !infence }
+  !infence && /^#+[ \t]+Task[ \t]+[0-9]+/ {
+    intask = ($0 ~ ("^#+[ \t]+Task[ \t]+" n "([^0-9]|$)"))
+  }
+  intask { print }
+' "$plan" > "$out"
+
+if [ ! -s "$out" ]; then
+  echo "task ${n} not found in ${plan} (no heading matching 'Task ${n}')" >&2
+  exit 3
+fi
+
+echo "wrote ${out}: $(wc -l < "$out" | tr -d ' ') lines"
