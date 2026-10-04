@@ -408,3 +408,26 @@ test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause request
   assert.ok(a > 0 && a < b && b < c, 'in place, then pause, then the worktree')
   assert.match(revise, /`awaiting-ship` or `shipping` too/)
 })
+
+test('4.9.1: agents ask the build profile before launching; a headless go-ahead keeps it', () => {
+  const plan = read('skills/plan/SKILL.md'), agent = read('skills/agent/SKILL.md'), fleet = read('skills/fleet/SKILL.md')
+  assert.match(plan, /### Picking the profile ahead/)
+  assert.match(plan, /keep a `profile:` and\s+`target:` the manifest already carries/)
+  for (const s of [agent, fleet]) {
+    assert.match(s, /§Picking the profile ahead/)
+    assert.match(s, /no\s+`profile:`/)
+  }
+})
+
+test('4.9.1: splits are cut by value and "one spec" is always offered', () => {
+  const ref = read('skills/resume/REFERENCE.md'), conv = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(ref, /A slice is shippable only when it gives the user something they can use on its\s+own/)
+  assert.match(ref, /Children are cut by value, never by layer/)
+  assert.match(conv, /"one spec" is always an option/)
+  assert.match(conv, /\*\*One spec\*\*/)
+  assert.doesNotMatch(conv, /lg is offered a split before anything else/)
+})
+
+test('4.9.1: resume writes to the fleet worktree copy when it routes on it', () => {
+  assert.match(read('skills/resume/SKILL.md'), /Every write that follows goes there too/)
+})

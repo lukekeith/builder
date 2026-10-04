@@ -232,10 +232,23 @@ when it launches. Given `--ticket`, check the branch name carries the key and wa
    again) / **Launch it once that fleet ends** (leave the manifest as written; `/builder:agent --path
    <folder>` then).
 
-🔴 **`--auto` and `--agent-walk` never ask.** In an `agent_walk:` project they take the
-recommendation and record `go-ahead: auto (recommended) YYYY-MM-DD`, `profile: <recommended>` and
-`target: <the --into this run was given>` — `<merge_into>` only without `--into` — in the go-ahead
-commit. Plain `--auto` then launches the fleet as in step 6;
+### Picking the profile ahead — `/builder:agent` and `/builder:fleet`
+
+Agents can take a feature before it is planned, so its go-ahead then runs headless. **Before their
+one confirmation, `/builder:agent` and `/builder:fleet` ask steps 1–5 above for every pick whose
+manifest has no `profile:`** — the profile question once per pick (up to four picks per
+AskUserQuestion call), **Land on?** once for the run (one target per run), the Thorough follow-up
+and Customize as written. A pick with no `PLAN.md` yet has no task count, so `--estimate` returns
+`null` and its options show the ladder words. Write `profile:` and `target:` to each pick's manifest
+— never `go-ahead:`, which the plan still records — and commit
+`chore(<feature>): build profile <profile> → <target>` in this checkout before the dry run. The
+headless go-ahead keeps them (below). A pick that already carries `profile:` is not asked again.
+
+🔴 **`--auto` and `--agent-walk` never ask.** In an `agent_walk:` project they record
+`go-ahead: auto (recommended) YYYY-MM-DD` in the go-ahead commit and **keep a `profile:` and
+`target:` the manifest already carries** — chosen at §Picking the profile ahead. Only when one is
+missing do they write it: `profile: <recommended>`, and `target: <the --into this run was given>` —
+`<merge_into>` only without `--into`. Plain `--auto` then launches the fleet as in step 6;
 **`--agent-walk` launches nothing** — the fleet is already running it.
 
 ```

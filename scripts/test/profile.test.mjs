@@ -178,3 +178,8 @@ test('--recommend names an invalid build_profile_default on stderr and falls bac
   assert.match(r.stderr, /build_profile_default: "speedy" is not one of rush, standard, thorough/)
   assert.equal(JSON.parse(r.stdout).preset, 'standard')
 })
+
+test('estimate: a feature with no plan yet (0 tasks) has no number, never 0 minutes', () => {
+  assert.equal(estimate([row(10), row(10), row(20)], 'standard', 0), null)
+  assert.equal(estimate([row(10), row(10), row(20)], 'standard', undefined), null)
+})
