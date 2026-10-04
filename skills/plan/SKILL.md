@@ -176,21 +176,70 @@ along: the tasks carrying a `build-time risk`, **which phase freezes the contrac
 deferred with a decider. Take **one explicit approval** through plan mode's `ExitPlanMode`. That
 approval covers the whole build; no later phase re-asks.
 
-- **Yes** → write `go-ahead: <name YYYY-MM-DD>` and commit:
-  `chore(<ticket-or-feature>): <feature> — go-ahead`. Under `--auto` the table is presented and the
-  run proceeds, recorded as `go-ahead: auto (recommended) YYYY-MM-DD`.
+- **Yes, and the config has no `agent_walk:` block** → the hand-built path, as before: write
+  `go-ahead: <name YYYY-MM-DD>` and commit: `chore(<ticket-or-feature>): <feature> — go-ahead`.
+  Under `--auto` the table is presented and the run proceeds, recorded as
+  `go-ahead: auto (recommended) YYYY-MM-DD`.
+- **Yes, with an `agent_walk:` block** → §The build profile: agents build it.
 - **No** → leave `go-ahead: none`; `state: planned` stands. A scope objection routes to
   `/builder:brainstorm --path <folder>`; a changed requirement or reversed ruling routes to
   `/builder:revise --path <folder> <the change>`.
 
-**Nothing here creates a branch, a worktree or a ticket.** Given `--ticket`, check the branch name
-carries the key and warn once if not.
+**Nothing here creates a branch, a worktree or a ticket** — the fleet makes the feature's worktree
+when it launches. Given `--ticket`, check the branch name carries the key and warn once if not.
+
+### The build profile (`agent_walk:` set)
+
+1. **Recommend and estimate.** `node <builder>/scripts/profile.mjs --recommend <folder>` →
+   `{ preset, signals }`; then `node <builder>/scripts/profile.mjs --estimate <folder> --profile <p>`
+   for each of `rush`, `standard`, `thorough` → `{ minutes, tokens, n }`, or `null` with fewer than 3
+   comparable landings. The target is the config's `merge_into` (default `base_branch`).
+2. **One AskUserQuestion.** Question: `How should agents build "<feature>"?  → lands on <target>`,
+   then `Recommended: <Preset> — <signals, comma-joined>`. Options **Rush / Standard / Thorough**, the
+   recommended one first with ` (Recommended)` on its label. Each description leads with
+   `~N min · ~T tokens (n similar features)` — or, with no estimate, its place in the ladder: Rush
+   `fastest · fewest tokens`, Standard `faster`, Thorough `full pipeline` — then what the preset
+   skips:
+   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands. When the
+     recommendation is Thorough, add `⚠ This feature has a <signal>: nothing walks it before it
+     lands.` It warns; it never refuses.
+   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
+   - **Thorough** — the full pipeline: every task reviewed, full agent walk, deep verify with
+     cross-app E2E.
+   The tool's own *Other* is **Customize**; an answer naming another branch changes the target.
+3. **Picked Thorough** → a second AskUserQuestion: **Walk it yourself before it lands?** —
+   **No (Recommended)** → `thorough`; **Yes** → `thorough-you` (the fleet parks it for your walk after
+   the agent's, and lands it after your `/builder:signoff`).
+4. **Other (Customize)** → two AskUserQuestion calls over the seven levers, each pre-filled from the
+   recommended preset (`profile.mjs --levers` keys): `testing`, `review`, `models`, `verify`; then
+   `persist`, `unruled`, `landing`. Written as `profile: custom k=v …`. The floors — fast gates, the
+   final review, released-consumer parity — are not levers and hold under every profile.
+5. **The target.** Changed in the answer → `target: <branch>`; otherwise `target: <merge_into>`.
+6. **Record and launch.** Write `go-ahead: <name YYYY-MM-DD>`, `profile: <preset or custom k=v …>`
+   and `target:` to the manifest, commit
+   `chore(<ticket-or-feature>): <feature> — go-ahead (<profile>)`, then run
+   `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>`. A target that matches a
+   running fleet's joins its queue.
+7. **A running fleet with a different target refuses.** Relay its message as written, then one
+   AskUserQuestion: **Switch this feature to <the running target>** (rewrite `target:`, commit, launch
+   again) / **Launch it once that fleet ends** (leave the manifest as written; `/builder:agent --path
+   <folder>` then).
+
+🔴 **`--auto` and `--agent-walk` never ask.** In an `agent_walk:` project they take the
+recommendation and record `go-ahead: auto (recommended) YYYY-MM-DD`, `profile: <recommended>` and
+`target: <merge_into>` in the go-ahead commit. Plain `--auto` then launches the fleet as in step 6;
+**`--agent-walk` launches nothing** — the fleet is already running it.
 
 ```
-📍 <feature>: planned, <n> phases across <apps>, <m> tasks, go-ahead <recorded|none> — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+📍 <feature>: planned, <n> phases across <apps>, <m> tasks, go-ahead <recorded|none> — next: /builder:resume --path <folder> · or say go
+   Agents build features once agent_walk is set up — /builder:init --update adds it.
+```
+
+That is the footer without an `agent_walk:` block, and on **No** — the second line only without the
+block. With it, the go-ahead ends on the fleet's launch line, verbatim, then:
+
+```
+📍 <feature>: go-ahead (<profile>) — agents are building it in its own worktree, landing on <target> — follow it: /builder:status
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never

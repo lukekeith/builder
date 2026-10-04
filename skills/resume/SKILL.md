@@ -89,6 +89,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: audited`, no OPEN row, no `blocked:` row | `/builder:plan --path <folder>` |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
 | `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — run REFERENCE §Walk readiness, then the build's walk script and `state: built`. Don't re-run the final review |
+| `state: planned` with a go-ahead, or `state: building`, **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: `/builder:agent --path <folder>` — it relaunches the fleet on the manifest's `target:`, or says it is already running |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
 | `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk. **Under `--agent-walk`:** `/builder:agent-walk --path <folder>` instead |
@@ -154,7 +155,9 @@ presenting `PLAN.md`'s `## Phases` table — `Phase · App · Tasks · Goal · G
 the path to read the plan at, and anything riding along as a named risk, and takes the approval
 through plan mode's `ExitPlanMode`. A manifest left at `state: planned` with `go-ahead: none` is
 picked up by **`/builder:build`**, which presents that same table itself before its first dispatch.
-**This command never presents a phase table of its own** — one artifact, one approval. A human may
+**This command never presents a phase table of its own** — one artifact, one approval. In a project
+with an `agent_walk:` block the go-ahead also picks the build profile and launches the fleet
+(`/builder:plan` §The build profile). A human may
 also record it by typing `/builder:signoff --path <folder>`, which labels it GO-AHEAD (build) and
 touches neither the SPEC header nor the PR lock.
 
