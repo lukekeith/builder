@@ -270,7 +270,7 @@ test('the go-ahead picks a build profile and launches the fleet; resume routes a
   // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
   assert.doesNotMatch(plan, /2\. agent/)
   const resume = read('skills/resume/SKILL.md')
-  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
+  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
   assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
 })
 
@@ -363,10 +363,48 @@ test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise nev
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*whatever its verdict[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   // Important 3: pause only a live row; a worktree that isn't running is revised there with no pause.
   const revise = read('skills/revise/SKILL.md')
-  assert.match(revise, /`building`, `walking` or `queued`[^\n]*running fleet/)
+  assert.match(revise, /A running fleet holds the row[\s\S]{0,200}`building`, `walking` or `queued`/)
   assert.match(revise, /fleet is stopped[\s\S]{0,200}skip the pause/)
-  assert.match(revise, /Revise in place only when there is\s+no worktree/)
+  assert.match(revise, /Revise in place\s+only when there is\s+no worktree/)
   // design §6: the agent walk checks for a pause request between rounds.
   const walk = read('skills/agent-walk/SKILL.md')
   assert.match(walk, /between rounds[\s\S]{0,200}\.builder\/fleet\/requests\/<feature>\.pause[\s\S]{0,200}revising — next: \/builder:revise --path <folder>/i)
+})
+
+test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause requests are found, old go-aheads build by hand', () => {
+  const resume = read('skills/resume/SKILL.md')
+  const signoff = read('skills/signoff/SKILL.md')
+  const agent = read('skills/agent/SKILL.md')
+  const build = read('skills/build/SKILL.md')
+  const walk = read('skills/agent-walk/SKILL.md')
+  const revise = read('skills/revise/SKILL.md')
+  // C1.1: resume routes on the fleet worktree's manifest when the row has one on disk.
+  assert.match(resume, /`\.builder\/fleet\/fleet\.json` has a row for\s+the feature whose `worktree` exists on disk/)
+  assert.match(resume, /reading the fleet's copy\s+in <worktree>/)
+  // C1.2: the walk row starts the env in the worktree and names the absolute signoff path; signoff works there.
+  const row = resume.split('\n').find((l) => l.startsWith('| `blocked:` reads `waiting for your walk'))
+  assert.match(row, /`agent_walk\.start` run in `<wt>` with `agent_walk\.env`/)
+  assert.match(row, /\/builder:signoff --path <wt>\/<registry>\/<feature>` \(the absolute path\)/)
+  assert.match(signoff, /^## A fleet worktree$/m)
+  assert.match(signoff, /`git -C <worktree> …`/)
+  assert.match(signoff, /migration \*\*status\*\* runs in `<worktree>` with the\s+config's `agent_walk\.env`/)
+  assert.match(signoff, /whatever the verdict, hand it back[\s\S]{0,120}fleet\.mjs <feature> --detach --into <target>/)
+  // C1.3: agent and resume's agent row never unpark a park waiting for your walk.
+  assert.match(agent, /The one exception:\*\* a\s+park whose reason starts `waiting for your walk`[\s\S]{0,200}never unparked here/)
+  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`'))
+  assert.match(agentRow, /`waiting for your walk …` is the walk row above, never this one/)
+  // C1.4: the park's next step stays resume.
+  assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
+  // I5: only a 4.9 go-ahead (profile: or target:) routes to agents; a 4.8 one builds by hand.
+  assert.match(agentRow, /carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/)
+  assert.match(agentRow, /Neither key \(a 4\.8 go-ahead\)/)
+  assert.match(build, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/m)
+  // I2: the pause check reads the fleet dir the fleet exports.
+  for (const s of [build, walk]) assert.match(s, /`\$BUILDER_FLEET_DIR\/requests\/<feature>\.pause`/)
+  // M1: the order of revise's cases.
+  const a = revise.indexOf('**No worktree and no running fleet holding the row**')
+  const b = revise.indexOf('**A running fleet holds the row**')
+  const c = revise.indexOf('**The row has a worktree and is `parked` or `failed`, or the fleet is stopped**')
+  assert.ok(a > 0 && a < b && b < c, 'in place, then pause, then the worktree')
+  assert.match(revise, /`awaiting-ship` or `shipping` too/)
 })

@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the project's merge_into branch (default base_branch) or the --into branch, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did, with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written, or answers a two-way handoff footer with "2" or "agent".
+description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the project's merge_into branch (default base_branch) or the --into branch, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did (the one exception: a feature waiting for your walk goes to /builder:resume), with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written, or answers a two-way handoff footer with "2" or "agent".
 ---
 
 # `/builder:agent` — pick the work, let agents finish it
@@ -36,8 +36,12 @@ planned building built signed-off verified` (an open `pr` is fine — agents tak
 **Parked rows are offered too** — `manifest.blocked` set, or a `.builder/fleet/fleet.json` row
 `parked` or `failed`. Picking one unparks it: the fleet clears `blocked:` in a commit and hands the
 old reason to the first run, which looks again at whether it still holds (REFERENCE §MANIFEST.md —
-the builder, the code or the spec may have changed since it parked). No config `agent_walk:` block
-→ stop here and name `/builder:init --update`.
+the builder, the code or the spec may have changed since it parked). 🔴 **The one exception:** a
+park whose reason starts `waiting for your walk` (the fleet.json row's `reason`, or `blocked:` in the
+fleet's worktree) is never unparked here — it waits for your walk, not for agents. It is not offered;
+name it with `/builder:resume --path <folder>`, its walk row, instead — and with `--path`, route there
+and stop. A row with `landed` set already merged into that branch: not offered — say `merge <landed>
+into this branch`. No config `agent_walk:` block → stop here and name `/builder:init --update`.
 
 **A fleet may already be running.** `.builder/fleet/lock` holding a pid that `kill -0 <pid>` accepts
 means one is: then a row `.builder/fleet/fleet.json` lists with a status other than `parked` or
