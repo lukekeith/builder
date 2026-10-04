@@ -1,0 +1,28 @@
+# Final proof and local delivery
+
+## Walk and sign-off
+
+Prepare the running environment using the selected config's ownership rules. Migrations, ports, databases, local secrets and services must stay isolated from other worktrees when running parallel builds. Green tests against a test database do not prove the dev environment runs the feature. Run the readiness/smoke checks and then exercise SPEC's final integrated acceptance.
+
+When the user reserves a personal walk, present concrete steps and wait for their actual report. "Go" or "tests passed" never becomes human sign-off. Otherwise use authorized agent verification where possible and record **agent-tested, not human-tested**. If UI tools or required real dependencies are unavailable, record incomplete operational proof and its next action. Do not label simulated behavior as live acceptance.
+
+Record each acceptance ID with environment, action, observed result, SHA, and evidence location. A prior agent walk may also establish cross-app acceptance when it exercised those exact acceptance IDs on the same code and relevant environment. Cite its report and label the proof reused; run uncovered scenarios rather than repeat the entire walk. Any affected code, configuration, dependency or external-state change invalidates that proof. This reuse never removes the fresh final integration-candidate checks below. A failed walk creates scoped fixes, followed by review and a re-walk of affected scenarios. Human and agent sign-off provenance remain separate. A hold names the owner's exact reason and required release condition; never clear it merely because checks are green.
+
+## Feature verification
+
+Resolve final-review blockers, complete the required gates and acceptance proof, and commit tracked spec/plan/ledger/handoff evidence under the project's commit policy. Verify the final clean feature HEAD. Run affected app fast gates plus the deep checks they do not already cover. Require fresh execution for live/environment-sensitive proof; memoized checks are labeled reused. Missing required proof prevents verified state.
+
+Record the exact verified feature HEAD via lifecycle checkpoint (persistence.md). Never make unrelated changes after that claim; changes require re-verification.
+
+## Verify the actual merge result
+
+Local delivery targets **the recorded targetBranch**, falling back to originBranch for legacy metadata. It was chosen at start using explicit --into or configured merge_into/base_branch, with the starting branch as the unconfigured fallback. Never infer a new target from the current checkout.
+
+1. Check existing merge authorization, holds/manual policies, and target branch requirements. If the host requires a reviewed PR, prepare the verified result and its review description; do not bypass that rule. User instructions explicitly changing the rule take precedence. Default Builder delivery authorizes a local merge only; no push/PR/publish is implicit.
+2. Run `node <plugin>/scripts/lifecycle.mjs prepare <feature>`. It requires a clean feature at verified HEAD and a clean, idle target checkout if that branch is checked out anywhere, then creates an **integration worktree** from the target's current HEAD and a no-fast-forward merge of the feature. Origin files are untouched during preparation. A dirty target or changed checkout remains protected and produces a concrete recovery action.
+3. Resolve merge conflicts in that integration worktree, following the spec and latest target. Record any consequential decisions; commit the resolved candidate and rerun prepare to record its exact HEAD. When target or feature advances, prepare refreshes the candidate; previous candidate proof is invalidated. Never reset user work or forcibly delete a stale candidate.
+4. In the candidate worktree, run the repository checks required for the assembled changes, with fresh gate runs (`--force`, and `--whole` when dependency scope is uncertain). Exercise final acceptance against the candidate where operational proof is required. Verify both feature and target behavior. If candidate fixes are needed, implement/review them there and rerun checks after the last change. Record candidate proof in runtime/scratch or an external log; a tracked proof edit itself produces a new SHA requiring appropriate checks.
+5. Call `node <plugin>/scripts/lifecycle.mjs deliver <feature> --verified-head <full-candidate-SHA>` only after actual successful candidate proof. The argument asserts evidence; it does not run tests. The helper checks that target, feature, and candidate are unchanged and clean, then fast-forwards a checked-out target or compare-and-swaps the unchecked-out target ref to the verified merge commit. The originating checkout may be on another branch; its files remain untouched. A changed target requires refreshing and re-verifying; never use a force update.
+6. Confirm merged SHA and ancestry and report remaining limitations honestly. Record the landing through history.mjs before cleanup, using measured metrics only when available. Only then optional `cleanup <feature>` removes clean worktrees and deletes branches only after proving their tips are ancestors of the landed target (Git branch -D is used when the starting checkout is on another branch). Durable common metadata and tracked spec/plan/ledger survive. Preserve required logs and evidence before deleting scratch; keep the worktrees when further manual validation or debugging is requested.
+
+No external mutation occurs unless separately requested or already authorized. Publishing/deployment can be a user-defined delivery stage, with its own concrete proof and rollback requirements; it is not built into the default local lifecycle.

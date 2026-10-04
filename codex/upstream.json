@@ -1,0 +1,141 @@
+{
+  "commit": "b34854bea6bfc21681dd289f7093bdecacc6344e",
+  "version": "4.9.1",
+  "packageHash": "f88922300321ce980f6c485f697ef67fb41cf8951eee03a81218020e95518ceb",
+  "decisions": [
+    {
+      "file": ".claude-plugin/plugin.json",
+      "disposition": "adapted",
+      "reason": "Codex adopts 4.9.1 after tested migration; release metadata and runtime differences documented.",
+      "evidence": [
+        "codex/plugin.json",
+        "codex/README.md"
+      ]
+    },
+    {
+      "file": "CHANGELOG.md",
+      "disposition": "adapted",
+      "reason": "Codex adopts 4.9.1 after tested migration; release metadata and runtime differences documented.",
+      "evidence": [
+        "codex/plugin.json",
+        "codex/README.md"
+      ]
+    },
+    {
+      "file": "scripts/profile.mjs",
+      "disposition": "equivalent",
+      "reason": "Codex estimates already return null when PLAN task count is missing/zero; history uses only real comparable usable measurements.",
+      "evidence": [
+        "codex/scripts/profile.mjs",
+        "codex/tests/profile.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/fixtures/tidy-repo.mjs",
+      "disposition": "equivalent",
+      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs",
+        "codex/skills/builder/references/profiles.md"
+      ]
+    },
+    {
+      "file": "scripts/test/profile.test.mjs",
+      "disposition": "equivalent",
+      "reason": "Codex estimates already return null when PLAN task count is missing/zero; history uses only real comparable usable measurements.",
+      "evidence": [
+        "codex/scripts/profile.mjs",
+        "codex/tests/profile.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/skills-consistency.test.mjs",
+      "disposition": "equivalent",
+      "reason": "Claude prose consistency tests map to the tested Codex lifecycle/profile behavior and explicit adapted references; no Claude tool names copied into Codex.",
+      "evidence": [
+        "codex/tests/lifecycle.test.mjs",
+        "codex/tests/profile.test.mjs",
+        "codex/skills/builder/references/profiles.md",
+        "codex/skills/builder/references/discovery.md"
+      ]
+    },
+    {
+      "file": "scripts/test/tidy-core.test.mjs",
+      "disposition": "equivalent",
+      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs",
+        "codex/skills/builder/references/profiles.md"
+      ]
+    },
+    {
+      "file": "scripts/tidy-core.mjs",
+      "disposition": "equivalent",
+      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs",
+        "codex/skills/builder/references/profiles.md"
+      ]
+    },
+    {
+      "file": "skills/agent/SKILL.md",
+      "disposition": "adapted",
+      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "evidence": [
+        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/brainstorm/CONVERSATION.md",
+      "disposition": "adapted",
+      "reason": "Offer One spec and recommend fewest independently usable shipping outcomes; scaffolding and inert layers remain tasks within the usable feature.",
+      "evidence": [
+        "codex/skills/builder/references/discovery.md"
+      ]
+    },
+    {
+      "file": "skills/fleet/SKILL.md",
+      "disposition": "adapted",
+      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "evidence": [
+        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/plan/SKILL.md",
+      "disposition": "adapted",
+      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "evidence": [
+        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/resume/REFERENCE.md",
+      "disposition": "adapted",
+      "reason": "Offer One spec and recommend fewest independently usable shipping outcomes; scaffolding and inert layers remain tasks within the usable feature.",
+      "evidence": [
+        "codex/skills/builder/references/discovery.md"
+      ]
+    },
+    {
+      "file": "skills/resume/SKILL.md",
+      "disposition": "equivalent",
+      "reason": "Codex resume returns recorded live featurePath/worktree and all writes continue there; paused/human-wait identity stays immutable.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/skills/builder/SKILL.md",
+        "codex/tests/lifecycle.test.mjs"
+      ]
+    }
+  ],
+  "verification": "node --test codex/tests/*.test.mjs"
+}
