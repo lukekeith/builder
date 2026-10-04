@@ -181,3 +181,38 @@ test('a vendored copy behind the newest release on this machine says so in --sta
   // Run as a plugin install (not inside the repo), there is no line.
   assert.doesNotMatch(list(root, '--status').stdout, /⬆️/)
 })
+
+test('a feature with a go-ahead reports its build profile; before one, null', () => {
+  const rows = repo({
+    a: 'state: planned\ngo-ahead: x\nprofile: rush',
+    b: 'state: planned\ngo-ahead: x',
+    c: 'state: audited\nprofile: rush',
+    d: 'state: planned\ngo-ahead: x\nprofile: bogus',
+  })
+  assert.equal(rows.a.profile, 'rush')
+  assert.equal(rows.b.profile, 'thorough')
+  assert.equal(rows.c.profile, null)
+  assert.equal(rows.d.profile, 'thorough')
+})
+
+test('--status shows each feature\'s profile, and a dash before a go-ahead', () => {
+  const root = setup({ a: 'state: planned\ngo-ahead: x\nprofile: rush', b: 'state: audited' })
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /\| Feature \| Profile \|/)
+  assert.match(st.stdout, /\| \*\*a\*\* \| rush \|/)
+  assert.match(st.stdout, /\| \*\*b\*\* \| — \|/)
+})
+
+test('a feature the fleet landed elsewhere says to merge its target, not its manifest step', () => {
+  const root = setup({ a: 'state: planned\ngo-ahead: t 2026-10-03', b: 'state: building' })
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/archive.jsonl'), JSON.stringify({ feature: 'a', target: 'release', merged: 'abc1234', landedAt: '2026-10-03T00:00:00Z' }) + '\n')
+  const r = list(root, '--json')
+  assert.equal(r.status, 0, r.stderr)
+  const rows = Object.fromEntries(JSON.parse(r.stdout).features.map((f) => [f.feature, f]))
+  assert.equal(rows.a.nextStep, 'Landed on release — merge release into this branch')
+  assert.equal(rows.a.landed, 'release')
+  assert.equal(rows.b.nextStep, 'Continue the build')
+  assert.equal(rows.b.landed ?? null, null)
+})

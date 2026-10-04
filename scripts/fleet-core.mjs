@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, appendF
 import { join } from 'node:path'
 import { parseManifest, isSet } from './manifest.mjs'
 import { ARCHIVE } from './registry.mjs'
+import { profileLabel } from './profile.mjs'
 
 const BUILD_STATES = new Set(['spec', 'aligned', 'audited', 'planned', 'building'])
 const WALK_STATES = new Set(['built', 'signed-off'])
@@ -81,7 +82,7 @@ export function loadFleet(root) {
 }
 
 /** Atomic: a fleet killed mid-write leaves the previous fleet.json, never half of one. */
-export function saveFleet(root, fleet, progress = null) {
+export function saveFleet(root, fleet, progress = null, profileOf = null) {
   const dir = fleetDir(root)
   mkdirSync(dir, { recursive: true })
   const ignore = join(root, '.builder', '.gitignore')
@@ -89,7 +90,7 @@ export function saveFleet(root, fleet, progress = null) {
   const tmp = join(dir, 'fleet.json.tmp')
   writeFileSync(tmp, JSON.stringify(fleet, null, 2) + '\n')
   renameSync(tmp, join(dir, 'fleet.json'))
-  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5)))
+  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), profileOf))
 }
 
 // ---- the archive -------------------------------------------------------------------------------
@@ -131,6 +132,24 @@ export function tailArchive(root, n, chunk = 64 * 1024) {
     closeSync(fd)
   }
 }
+
+/** Every feature's last archive row, as a Map — the whole file, not a tail: a landing may be old. */
+export function landedRows(root) {
+  const p = join(fleetDir(root), ARCHIVE_LOG)
+  const out = new Map()
+  if (!existsSync(p)) return out
+  for (const l of readFileSync(p, 'utf8').split('\n')) {
+    if (!l.trim()) continue
+    try {
+      const r = JSON.parse(l)
+      if (r?.feature) out.set(r.feature, r)
+    } catch {}
+  }
+  return out
+}
+
+/** The last archive row for `feature`, or null. */
+export const landedRow = (root, feature) => landedRows(root).get(feature) ?? null
 
 /** One line per landing. A repeat of a landing already among the last 50 lines (a fleet killed
  *  between this append and its save re-archives the row on the next load) is skipped. */
@@ -232,12 +251,31 @@ export function laneTotals(timing) {
   return out
 }
 
+/** A `result` event's usage as { input, output, cacheRead, costUsd } — zeros without one. */
+export function tokensOf(ev) {
+  const u = ev?.usage ?? {}
+  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0 }
+}
+
+/** `2.1M`, `340k`, `950`; `—` when absent or zero. */
+export function formatTokens(n) {
+  if (!n) return '—'
+  if (n >= 999500) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${Math.round(n / 1e3)}k`
+  return String(n)
+}
+
 /** `--status --archived [N]`: the latest landings, newest first. */
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
-  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Merged | PR | Landed |', '|---|---|---|---|']
-  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
+  // Tokens = input + output; cache reads are left out.
+  const time = (r) => {
+    const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
+    return ms ? duration(ms) : null
+  }
+  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Profile | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
+  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${profileLabel(r.profile)} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
   return lines.join('\n') + '\n'
 }
 
@@ -302,9 +340,10 @@ export function progressBar(pct) {
  * Wide, always-empty columns were what squeezed `Runs` onto two lines in the CLI's table renderer.
  *
  * `progress(name, f)` → `{ pct, label }` adds a Progress column and an overall bar (the mean) to the
- * heading; without it the table is as before. A `done` row is archive material — counted in the archived line, never listed.
+ * heading; without it the table is as before. `profileOf(name, f)` → a preset name is the Profile
+ * for a row the fleet has noted no facts for yet (the caller reads the manifest). A `done` row is archive material — counted in the archived line, never listed.
  */
-export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = []) {
+export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], profileOf = null) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
   const archived = (fleet.archived ?? 0) + (all.length - rows.length)
@@ -328,14 +367,14 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
     const col = prog ? ' Progress |' : ''
-    lines.push('', `| Feature | Status |${col} Runs | Time | Reason | Worktree |`, `|---|---|${prog ? '---|' : ''}---|---|---|---|`)
+    lines.push('', `| Feature | Status | Profile |${col} Runs | Time | Reason | Worktree |`, `|---|---|---|${prog ? '---|' : ''}---|---|---|---|`)
     for (const [name, f] of rows) {
       // A parked row's cell is its why; the next step is listed under ## Parked, where it has room.
       const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
-      lines.push(`| ${cell(name)} | ${cell(f.status)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${profileLabel(f.facts?.profile ?? profileOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
   const parked = rows.filter(([, f]) => f.status === 'parked')
@@ -348,4 +387,14 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   }
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))
   return lines.join('\n') + '\n'
+}
+
+/**
+ * Whether a worktree needs ROOT's HEAD copy of the feature folder committed into it. A NEW branch
+ * (cut from the target) needs it when the target lacks the folder or holds a different one; an
+ * existing branch is left alone unless its worktree has no spec folder at all (an earlier bring-in failed; a folder with only SPEC.md is a condensed one).
+ */
+export function specBringIn({ targetTree, headTree, worktreeHasFolder, isNewBranch }) {
+  if (isNewBranch) return !targetTree || targetTree !== headTree
+  return !worktreeHasFolder
 }

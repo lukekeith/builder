@@ -55,7 +55,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
 | Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent` |
+| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent`, except the plan go-ahead, which launches agents itself |
 | **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
@@ -139,7 +139,18 @@ the repo grows a second app.
 
 1. **Decisions gate** — the OPEN rows in SPEC §Decisions, asked in one message, recommendation first.
 2. **Build go-ahead** — one approval of `PLAN.md`'s `## Phases` table. One artifact, one approval —
-   an approved design is not re-approved as a plan.
+   an approved design is not re-approved as a plan. With an `agent_walk:` block, the go-ahead also
+   asks **How should agents build "<feature>"?** and launches agents on the answer — the build
+   profile, recorded as `profile:` on the manifest:
+   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands.
+   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
+   - **Thorough** — today's full pipeline: every task reviewed, full agent walk, deep verify with
+     cross-app E2E.
+   - **Thorough + you** — Thorough, then your own walk and `/builder:signoff` before it lands.
+   - *Customize* sets the levers one by one — stronger models and a second reviewer on contract and
+     schema tasks are only there. **The floors hold under every profile:** each
+     app's fast gates at its phase close, the final whole-branch review, and consumer parity when a
+     `released_artifact` consumer is affected.
 3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished
    feature and said, in your own words, that it works. A green gate run or a code review is evidence
    for you, never your sign-off. Spend it with `/builder:signoff`.

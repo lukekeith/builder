@@ -22,6 +22,18 @@ per task, written by its implementer** (or staged, where the config says so) —
 phase, and the manifest written **only** at a stop, at the go-ahead when taken here, **at the
 producer's phase close (the contract freeze)**, and when the last phase signs.
 
+**The build profile (under `--agent-walk`).** Read the levers:
+`node <builder>/scripts/profile.mjs --levers <folder>`. The floors in its `floors` hold whatever
+the levers say — each app's fast gates at its phase close and the final whole-branch review always
+run. Without `--agent-walk` the build runs as written here.
+
+- **`review: final`** → no per-task reviewer; the final whole-branch review always runs.
+  **`per-task`** → as written. **`per-task+second`** → also a second reviewer, on the most capable
+  model, on any task touching §Contract or §Schema.
+- **`models`** → EXECUTION.md §Model selection's `economy` / `strong` lines; `default` is as written.
+- **`unruled: park`** → a choice the spec doesn't settle parks the feature (§Stops) instead of taking
+  the recommendation. `recommend` → a ruling, as written.
+
 **The commit key** is `--ticket` when given — and a given `--ticket` is written to the manifest's
 `ticket:` line; absent, the manifest's `ticket:`, and absent that, the feature name.
 
@@ -33,7 +45,9 @@ whose state is `planned` or `building`.
 | The manifest says | What to do |
 |---|---|
 | there is no `MANIFEST.md` | this step does not run on it. One line, hand back, stop |
+| `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `profile:` or `target:` (a 4.9 go-ahead) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:agent --path <folder>`. Never build it here. Neither key (a 4.8 go-ahead) → the rows below, as before |
 | `state: planned` **and** `go-ahead:` carries a name + date | run |
+| `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:plan --path <folder>` — its go-ahead picks the build profile and launches the fleet. Never take the go-ahead or build it here |
 | `state: planned` **and** `go-ahead: none` | present `PLAN.md`'s `## Phases` table — phase · app · tasks · goal · gates, with the totals and which phase freezes the contract — and take the go-ahead here through `ExitPlanMode`. Yes → write `go-ahead:`, commit, run. No → hand back. ⛔ Never hand back to the plan step for this. Under `--auto` the table is presented and the run proceeds |
 | `state: building` | resume — the ledger is ground truth, not the conversation |
 | §Findings has a `blocked:` row | name the row and its clearer, hand back, stop. A `build-time risk` row is **not** a blocker — it rides into its task's brief |
@@ -108,6 +122,11 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
   tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
   pass or fail against a lie. Put the remedy **in the step**, not in the prose.
+- 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `$BUILDER_FLEET_DIR/requests/<feature>.pause`
+  exists — the fleet sets `BUILDER_FLEET_DIR` to the main checkout's fleet dir, since this run's cwd
+  is its worktree; unset → `.builder/fleet/requests/<feature>.pause` — tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
+  manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop. The
+  ledger keeps every finished task.
 
 ## Phase close — the controller's own work
 
@@ -186,6 +205,8 @@ the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agen
   record; `kind: human-step` for a `commit: manual` app, `decision` for a broken plan), in the same
   ledger line and manifest commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
   **end the run**. A plan that is merely wrong in places is not this: rule, fix the task, go on.
+- **Under `unruled: park`**, a choice the spec doesn't settle parks the same way (`kind: decision`),
+  naming the choice — no ruling taken.
 
 Never ask.
 
@@ -224,6 +245,9 @@ Never ask.
    `## Cross-app (verify E2E)`, then SPEC §Testing's walk script as numbered steps `E1…En` — each
    one line of what to do and one of what to see, in the script's order. Without `--agent-walk`,
    `walk.md` stays per-app only.
+   **Tag `[risk]`** on every item touching a §Contract row, an auth or permission path, a
+   load/save/delete path, a notification payload or a deep-link target (verify's re-walk table) — the
+   agent walk under `testing: risky` walks only those.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
    **Under `--agent-walk`:** `next: /builder:agent-walk --path <folder>` and keep going into it — the

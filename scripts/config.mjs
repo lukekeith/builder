@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const CONFIG_PATH = '.claude/builder.md'
+const BUILD_PROFILE_DEFAULTS = ['rush', 'standard', 'thorough']
 
 const unquote = (v) => v.replace(/^["'](.*)["']$/, '$1')
 
@@ -147,6 +148,10 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     baseBranch: fm.base_branch ?? 'main',
     // Where finished features merge: merge_into, else base_branch. Never the checked-out branch.
     mergeInto: fm.merge_into ?? fm.base_branch ?? 'main',
+    buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
+    // An unusable value, for whoever reports it (profile.mjs --recommend, /builder:init) — never
+    // warned from here: the statusline loads the config on every render, each in a new process.
+    buildProfileDefaultInvalid: fm.build_profile_default == null || BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? null : String(fm.build_profile_default),
     apps,
     appNames: apps.map((a) => a.name),
     producers: apps.filter((a) => a.role === 'producer' || a.role === 'app').map((a) => a.name),

@@ -31,6 +31,22 @@ may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it
 (resume §`--agent-walk`). A verify that ends its turn "waiting on the gates" is lost when the headless
 run exits.
 
+**The build profile (under `--agent-walk`).** Read the levers:
+`node <builder>/scripts/profile.mjs --levers <folder>`. The floors in its `floors` hold whatever
+the levers say — each in-scope app's fast set, and consumer parity when a `released_artifact`
+consumer is affected. Without `--agent-walk`, verify runs as written.
+
+- **`verify: floors`** → each app's fast set (item 3 without `--deep`), plus consumer parity
+  (item 5) when a `released_artifact` consumer is affected. No deep set, no E2E, no pattern sweep —
+  items 1, 2, 4, 6 and 8 still hold; the rest are named as skipped by the profile in the verdict.
+- **`verify: full`** → the checklist as written, with the cross-app E2E (item 10) only on the legs
+  §A re-verify's table names for this feature's diff.
+- **`verify: everything`** → the checklist as written: a feature's first verify, every leg.
+- **`testing: none`** (no walk): item 1 holds on the `🤖 AGENT SIGNED OFF — no walk …` header, and
+  the verdict's first line says nothing walked it. There is no walk report, so when the verify level
+  calls for the cross-app E2E (item 10), verify drives the app for it itself. **`testing: risky`**: item 1 holds on the
+  report's `[risk]` and `E` rows.
+
 🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)
 applied to a feature.** Its iron law governs every line of the verdict: *no completion claim without
 fresh verification evidence.* Every item below is a claim that needs a command behind it, run in this

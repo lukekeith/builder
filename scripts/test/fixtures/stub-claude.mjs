@@ -7,7 +7,7 @@
 //   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
-//   SLOW:<step>     wait 150 ms, then <step>
+//   SLOW:<step>     wait STUB_SLOW_MS (default 150) ms, then <step>
 //   SWITCH-THEN-SHIP  run .stub/switch.sh (the human switching branches), then SHIP
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
@@ -60,7 +60,7 @@ if (/could not bring up the walk env/.test(prompt)) {
 
 let step = next(feature, 'NOOP')
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} fleet_dir=${process.env.BUILDER_FLEET_DIR ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {
@@ -74,7 +74,7 @@ const finish = (code = 0) => {
     execFileSync('git', ['add', '-A', '--', dirname(spec)], { stdio: 'ignore' })
     execFileSync('git', ['commit', '-qm', `stub: ${feature} ${step}`], { stdio: 'ignore' })
   } catch {} // nothing to commit
-  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: Number(process.env.STUB_DURATION_MS) || 1000, num_turns: 3 }) + '\n')
+  process.stdout.write(JSON.stringify({ type: 'result', result: `did ${step}`, duration_ms: Number(process.env.STUB_DURATION_MS) || 1000, num_turns: 3, usage: { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 500 }, total_cost_usd: 0.05 }) + '\n')
   log(`end ${feature} ${lane} ${Date.now()} into=${/--into (\S+)/.exec(prompt)?.[1] ?? '-'}`)
   process.exit(code)
 }
@@ -98,7 +98,7 @@ if (step.startsWith('TOUCH:')) {
 }
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)
-  await new Promise((r) => setTimeout(r, 150))
+  await new Promise((r) => setTimeout(r, Number(process.env.STUB_SLOW_MS) || 150))
 }
 if (step === 'HANG-CHILD') {
   spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
@@ -126,6 +126,7 @@ else if (step.startsWith('PR:')) set('pr', step.slice(3))
 else if (step === 'SHIP') {
   rmSync(mfPath)
   writeFileSync(join(process.cwd(), spec, 'SPEC.md'), `# ${feature} — spec\n> ✅ SHIPPED 2026-09-26 — merged into main · none · 🤖 agent signed off (round 1), not human-tested\n`)
+  if (existsSync(join(process.cwd(), spec, 'PLAN.md'))) execFileSync('git', ['rm', '-qf', join(spec, 'PLAN.md')], { stdio: 'ignore' }) // as a real ship does
   // /builder:ship's last step: the shipped folder moves into the archive, in the ship commit.
   mkdirSync(join(process.cwd(), dirname(spec), '_archive'), { recursive: true })
   execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })

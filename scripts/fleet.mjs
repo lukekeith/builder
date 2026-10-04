@@ -22,11 +22,12 @@
  * after agent_walk.keep_logs days); fleet.json holds only work in flight.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
+import { planSize, parseProfile } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -46,8 +47,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --pause <feature>   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived', '--pause'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -76,26 +77,52 @@ if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
   console.error(`--into needs a branch name. ${USAGE}`)
   process.exit(2)
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into'].includes(argv[i - 1]))
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into', '--pause'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
 const ROOT = CFG.root
 const DIR = fleetDir(ROOT)
 
+// A pause request is a file the fleet checks before each run of that feature (drive): it parks the
+// feature for /builder:revise, which changes its spec in the worktree and names it again.
+const pauseFile = (feature) => join(DIR, 'requests', `${feature}.pause`)
+const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
+
 // Progress is read live from each feature's worktree (or the root before it has one): the manifest's
 // state, the plan's tasks and the ledger's completed ones. A few small files per feature.
 const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
+// The table's Profile before the fleet has noted a row's facts: what its manifest resolves to.
+const profileOf = (feature, f) => {
+  const p = join(specDir(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature), 'MANIFEST.md')
+  return existsSync(p) ? parseProfile(parseManifest(readFileSync(p, 'utf8')).profile).preset : null
+}
 
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
-    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), profileOf) : 'No fleet has run in this repo yet.')
     // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
     if (note) console.log(note)
   }
+  process.exit(0)
+}
+
+if (flag('--pause')) {
+  const name = opt('--pause')
+  if (!name || name.startsWith('--') || name.includes('/') || name.includes('..') || name.includes('\\')) {
+    console.error(`--pause needs a feature name (no slashes). ${USAGE}`)
+    process.exit(2)
+  }
+  const features = existsSync(join(DIR, 'fleet.json')) ? (loadFleet(ROOT).features ?? {}) : {}
+  const row = Object.hasOwn(features, name) ? features[name] : null
+  if (row && row.status !== 'done') {
+    mkdirSync(join(DIR, 'requests'), { recursive: true })
+    writeFileSync(pauseFile(name), `requested ${new Date().toISOString()}\n`)
+    console.log(`pause requested: ${name}${fleetAlive(ROOT) ? '' : ' — no fleet is running; it parks when the fleet next runs it'}`)
+  } else console.log(`${name} isn't in this fleet — nothing to pause`)
   process.exit(0)
 }
 
@@ -166,6 +193,14 @@ function preflight(feature) {
   // A blocked spec is admitted: naming it is the human asking for a retry (see unpark).
   const lane = laneOf({ ...mf, blocked: 'none' })
   if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
+  // Landed already, and this checkout still holds the live copy: a relaunch would build it twice.
+  const prior = landedRow(ROOT, feature)
+  if (prior || tryGit(['cat-file', '-e', `${TARGET}:${CFG.registry}/${ARCHIVE}/${feature}`]) !== null) {
+    const on = prior?.target ?? TARGET
+    return `${feature} already landed on ${on} — merge ${on} into this branch to pick up the shipped spec`
+  }
+  // The go-ahead recorded where it lands (plan §The build profile); a run into another branch isn't it.
+  if (isSet(mf.target) && unquote(mf.target) !== TARGET) return `${feature}'s go-ahead lands it on ${unquote(mf.target)} — run with --into ${unquote(mf.target)}`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
   const branch = branchOf(feature, mf)
   if (tryGit(['branch', '--show-current']) === branch)
@@ -200,6 +235,9 @@ function envFor(feature, lane) {
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
+  // Set after it for the same reason: a run's cwd is its worktree, beside the repo, so the skills'
+  // pause check (`$BUILDER_FLEET_DIR/requests/<feature>.pause`) needs the main checkout's fleet dir.
+  env.BUILDER_FLEET_DIR = DIR
   return env
 }
 
@@ -248,6 +286,30 @@ function runSetup(feature, wt) {
   }
 }
 
+/** The tree hash of a feature's folder at a ref in ROOT, or null. */
+const treeOf = (ref, feature) => tryGit(['rev-parse', '--verify', '--quiet', `${ref}:${specOf(feature)}`])
+
+/**
+ * Make the worktree's feature folder exactly ROOT's HEAD copy, and commit it. HEAD is
+ * authoritative: it is where the go-ahead was just committed, and the target (merge_into) may
+ * hold nothing, or an older copy. Throws a setup-style error.
+ */
+function bringSpecIn(feature, wt) {
+  const spec = specOf(feature)
+  try {
+    const head = git(['rev-parse', 'HEAD'])
+    const from = tryGit(['branch', '--show-current']) || head.slice(0, 7)
+    git(['checkout', head, '--', spec], wt)
+    // Files only the older copy had go, so the folder matches HEAD's.
+    const inHead = new Set(git(['ls-tree', '-r', '--name-only', head, '--', spec]).split('\n'))
+    for (const file of git(['ls-files', '--', spec], wt).split('\n').filter(Boolean))
+      if (!inHead.has(file)) git(['rm', '-q', '-f', '--', file], wt)
+    if (tryGit(['diff', '--cached', '--quiet'], wt) === null) git(['commit', '-qm', `docs(${feature}): spec and plan from ${from}`], wt)
+  } catch (e) {
+    throw Object.assign(new Error(`could not bring ${spec} into the worktree from ${TARGET}: ${String(e.stderr || e.message).split('\n')[0]}`), { setup: true })
+  }
+}
+
 /**
  * The feature's worktree, created if it isn't there yet. Only a NEW worktree gets `copy` and
  * `setup` — a reused one already has them, and re-running an install on every fleet run is minutes
@@ -271,9 +333,17 @@ function ensureWorktree(feature, branch) {
       f.setupOwed = true
       save()
     }
+    // A spec written on another branch is not on the target (or is an older copy there), so a
+    // worktree cut from the target needs ROOT's HEAD folder, which preflight proved is committed.
+    if (specBringIn({ targetTree: treeOf(`refs/heads/${TARGET}`, feature), headTree: treeOf('HEAD', feature), worktreeHasFolder: true, isNewBranch: !exists })) bringSpecIn(feature, wt)
     copyInto(wt)
     // A worktree removed when this feature stopped left its build workspace (ledger, rulings) here.
     restoreKept(ROOT, wt, feature)
+  }
+  else if (!existsSync(join(wt, specOf(feature), 'MANIFEST.md')) && !existsSync(join(wt, specOf(feature), 'SPEC.md')) && !shippedPr(readSpec(wt, feature))) {
+    // A bring-in that failed after `worktree add` left a worktree with no folder at all: heal it.
+    // A folder holding only SPEC.md is a condensed one (ship ran, the merge is pending): never touched.
+    if (specBringIn({ targetTree: null, headTree: null, worktreeHasFolder: false, isNewBranch: false })) bringSpecIn(feature, wt)
   }
   if (f.setupOwed) {
     runSetup(feature, wt)
@@ -488,7 +558,7 @@ const unlock = () => {
   } catch {}
 }
 process.on('exit', unlock)
-const save = () => saveFleet(ROOT, fleet, progressOf)
+const save = () => saveFleet(ROOT, fleet, progressOf, profileOf)
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {
@@ -544,7 +614,11 @@ for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${wh
 for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, unpark: true, ...(after[f] && { waitsOn: after[f] }) }
 // Naming a parked or failed feature is asking for a retry, whatever stopped it: enqueue unparks it.
-for (const f of asked) if (['parked', 'failed'].includes(fleet.features[f]?.status)) markUnpark(fleet.features[f])
+for (const f of asked)
+  if (['parked', 'failed'].includes(fleet.features[f]?.status)) {
+    markUnpark(fleet.features[f])
+    clearPause(f)
+  }
 
 // ---- one claude run ------------------------------------------------------------------------
 /**
@@ -564,6 +638,7 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
+  noteFacts(fleet.features[feature], feature) // the ship run removes the manifest and plan: read them first
   return new Promise((done) => {
     const out = createWriteStream(log)
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
@@ -588,7 +663,7 @@ function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${spec
       delete fleet.features[feature].pgid
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
       const timing = fleet.features[feature].timing ?? (fleet.features[feature].timing = [])
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null })
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null, tokens: tokensOf(result) })
       save()
       try {
         child.stdout.destroy()
@@ -684,9 +759,34 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
+/**
+ * What the estimates need from a landing: the plan's size and the manifest's profile. /builder:ship
+ * removes both files before the landing, so the fleet notes them on the row (f.facts, kept in
+ * fleet.json) each time it reads a live manifest — the last reading before the ship run wins.
+ * Without a manifest to read, the earlier reading stands; with none at all: size null, 'thorough'.
+ */
+function noteFacts(f, feature) {
+  if (!f.worktree || !existsSync(f.worktree)) return
+  const mf = readManifest(f.worktree, feature)
+  if (mf == null) return
+  const plan = readDoc(f.worktree, feature, 'PLAN.md')
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), profile: parseProfile(parseManifest(mf).profile).preset }
+}
+
+function landingFacts(f, feature) {
+  if (f.facts) return f.facts
+  const base = f.worktree && existsSync(f.worktree) ? f.worktree : ROOT
+  const plan = readDoc(base, feature, 'PLAN.md')
+  const mf = readManifest(base, feature)
+  return { size: plan == null ? null : planSize(plan), profile: parseProfile(mf == null ? undefined : parseManifest(mf).profile).preset }
+}
+
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
-function archiveRow(feature) {
+function archiveRow(feature, facts) {
+  clearPause(feature)
   const f = fleet.features[feature]
+  const { size, profile } = facts ?? landingFacts(f, feature)
+  const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
   appendArchive(ROOT, {
     feature,
     branch: f.branch,
@@ -697,6 +797,10 @@ function archiveRow(feature) {
     runsThisTime: f.runsThisTime ?? 0,
     timing: f.timing ?? [],
     lanes: laneTotals(f.timing),
+    size,
+    profile,
+    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
+    costUsd: sum('costUsd'),
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]
@@ -722,6 +826,10 @@ function land(feature) {
 
 async function landNow(feature) {
   const f = fleet.features[feature]
+  // A revision asked for before the merge parks it here: once merged, revise has nothing to change.
+  if (parkIfPaused(f, feature)) return 'parked'
+  noteFacts(f, feature)
+  const facts = landingFacts(f, feature)
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
@@ -746,7 +854,7 @@ async function landNow(feature) {
   // ask the target itself, then delete.
   if (f.branch && f.branch !== TARGET && f.branch !== CFG.baseBranch && !f.worktree && tryGit(['merge-base', '--is-ancestor', `refs/heads/${f.branch}`, `refs/heads/${TARGET}`]) !== null)
     tryGit(['branch', '-D', f.branch])
-  archiveRow(feature)
+  archiveRow(feature, facts)
   save()
   return 'done'
 }
@@ -781,6 +889,13 @@ function mergeIntoTarget(feature, branch) {
   return null
 }
 
+/** A pause request parks the feature at once — before a sync, a walk env or a run. No run counted. */
+function parkIfPaused(f, feature) {
+  if (!existsSync(pauseFile(feature))) return false
+  park(f, `revising — next: /builder:revise --path ${specOf(feature)}`)
+  return true
+}
+
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
   delete f.lastPark // superseded — the new reason is the one to act on
@@ -796,6 +911,8 @@ async function drive(feature, lane) {
   let failures = 0
   let stalls = 0
   for (;;) {
+    // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
+    if (parkIfPaused(f, feature)) return 'parked'
     const before = snapshot(f.worktree, feature)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
     f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
@@ -974,6 +1091,7 @@ const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
 
 async function walkOne(feature) {
   const f = fleet.features[feature]
+  if (parkIfPaused(f, feature)) return 'parked'
   f.status = 'walking'
   save()
   try {
@@ -1056,7 +1174,8 @@ function enqueue(feature) {
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in /
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising/
+const YOUR_WALK = /^waiting for your walk/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
 function appendHistory(path, what) {
@@ -1123,6 +1242,13 @@ function ensureParkRecord(feature) {
   tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
 }
 
+/** agent_walk.auto_unpark, except 0 for a feature whose profile has low persistence (rush). */
+function retryBudget(f, feature) {
+  const live = [f.worktree, ROOT].filter(Boolean).map((b) => readManifest(b, feature)).find(Boolean)
+  const value = live ? parseManifest(live).profile : f.facts?.profile
+  return parseProfile(value).levers.persist === 'low' ? 0 : AW.autoUnpark
+}
+
 /**
  * agent_walk.auto_unpark: a park gets an agent run to dig into its record, up to that many times per
  * fleet run — every park but a human-step one, which only a person can clear. The walk env's own
@@ -1131,9 +1257,9 @@ function ensureParkRecord(feature) {
 function autoRetry(feature) {
   const f = fleet.features[feature]
   if (f?.status !== 'parked' || RESTART.test(f.reason ?? '')) return false
-  if ((f.autoUnparks ?? 0) >= AW.autoUnpark || parkKind(feature) === 'human-step') return false
+  if ((f.autoUnparks ?? 0) >= retryBudget(f, feature) || parkKind(feature) === 'human-step') return false
   f.autoUnparks = (f.autoUnparks ?? 0) + 1
-  markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${AW.autoUnpark}`)
+  markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${retryBudget(f, feature)}`)
   enqueue(feature)
   save()
   return true
@@ -1298,6 +1424,7 @@ function drainInbox() {
     if (row && !['parked', 'failed'].includes(row.status)) continue // queued or running already
     if (row) {
       markUnpark(row)
+      clearPause(name)
       Object.assign(row, { status: 'queued', reason: null, runsThisTime: 0, autoUnparks: 0 })
       joining.push(name)
       continue
@@ -1402,6 +1529,7 @@ async function poolWorker() {
       // as they land instead of meeting them all at ship.
       let outcome
       if (lane === 'land') outcome = await land(feature)
+      else if (parkIfPaused(fleet.features[feature], feature)) outcome = 'parked'
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
         outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
@@ -1466,8 +1594,9 @@ for (const f of Object.values(fleet.features))
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
   if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
-  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it.
-  if ((f.reason ?? '').includes(f.worktree)) continue
+  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it — and so
+  // does one waiting for your walk, which /builder:resume starts in this worktree.
+  if ((f.reason ?? '').includes(f.worktree) || YOUR_WALK.test(f.reason ?? '')) continue
   const r = clearWorktree(ROOT, f.worktree, feature)
   if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
   if (r.removed || !existsSync(f.worktree)) f.worktree = null

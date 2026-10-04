@@ -4,6 +4,54 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.9.0
+
+**Agents build every feature, and you pick how hard they try:**
+
+- **The go-ahead asks how to build, and where to land.** One prompt, two questions. The profile is
+  Rush, Standard or Thorough, with the recommended one first; Customize is under Other. "Land on?"
+  recommends `merge_into`. Picking Thorough asks once more whether you walk the feature yourself
+  before it lands. Rush and Standard trade review and verify depth for speed; **Thorough and
+  Thorough + you are today's pipeline** (default models, every task reviewed, full agent walk, deep
+  verify). Stronger models and a second reviewer on contract and schema tasks are Customize-only.
+- **Agents build every feature in a project with `agent_walk` set.** The go-ahead launches the
+  fleet, so nothing is built by hand there. The fleet never pushes; PR and CI landing is not part
+  of this release.
+- **New optional `build_profile_default` in `.claude/builder.md`** sets the profile the go-ahead
+  recommends. An invalid value is ignored, and named by `/builder:init` and the go-ahead's
+  recommendation (no longer on every status line render).
+- **Estimates come from your own history.** The archive now records plan size, profile, tokens and
+  cost for every landing. Estimates are drawn from it, and show numbers only after three comparable
+  landings. `/builder:status` and the fleet table show each feature's profile.
+- **`/builder:revise` on a feature agents are building pauses it.** It runs `fleet.mjs --pause`,
+  applies the change in the feature's worktree and re-queues it, so a revision no longer races the
+  agents.
+
+**Changed:**
+- **A spec or plan committed on a branch other than the target reaches the feature's worktree.**
+  It is brought in before the build; when the copies differ, HEAD's copy wins. A failed bring-in
+  heals on the next run.
+- **Features approved before 4.9 have no `profile:` and run as Thorough**, which is today's
+  pipeline, so nothing about them changes.
+- **Projects without `agent_walk` build by hand exactly as before.**
+- **Thorough + you is a human step in the fleet.** Your walk waits for you instead of stalling the
+  other features, and each feature keeps its own state. The fleet keeps that feature's worktree,
+  `/builder:resume` reads the fleet's copy there, starts its walk env and gives you the exact
+  `/builder:signoff --path` into it; the sign-off is recorded there and hands the feature back.
+  `/builder:agent` never unparks it.
+- **A feature the fleet already landed can't be launched again from a branch that still holds the
+  live copy.** The fleet refuses it and says to merge the target into your branch, and
+  `/builder:status` shows `Landed on <target> — merge <target> into this branch` instead of its old
+  step. A go-ahead whose `target:` differs from the run's `--into` is refused too, naming the
+  `--into` that runs it.
+- **A revision asked for while a feature waits to merge parks it instead of landing it**, and the
+  pause check finds the request from inside a fleet worktree (`BUILDER_FLEET_DIR`).
+- **Go-aheads from before 4.9 in an `agent_walk` project keep building by hand.** Only a manifest
+  carrying `profile:` or `target:` is routed to the agents.
+- **An ordinary signed-in endpoint no longer makes the recommendation Thorough.** A §Contract row
+  counts only when its Auth cell names a role, permission, owner or scope, or the row deletes
+  something.
+
 ## 4.8.1
 
 **Changed:**

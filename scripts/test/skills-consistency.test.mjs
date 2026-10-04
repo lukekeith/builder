@@ -257,3 +257,154 @@ test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line;
     assert.doesNotMatch(read(f), /branch (you ran it from|you're on now|the fleet was run from|it was run from)|into your current branch|merged into this branch/, f)
   for (const f of ['tidy.mjs', 'inventory.mjs', 'tidy-core.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
+
+test('the go-ahead picks a build profile and launches the fleet; resume routes a go-ahead to the agents', () => {
+  const plan = read('skills/plan/SKILL.md')
+  assert.match(plan, /profile\.mjs --recommend <folder>/)
+  assert.match(plan, /profile\.mjs --estimate <folder> --profile/)
+  assert.match(plan, /fleet\.mjs <feature> --detach --into <target>/)
+  assert.match(plan, /Walk it yourself before it lands/)
+  assert.match(plan, /\/builder:init --update/)
+  assert.match(plan, /profile: custom k=v/)
+  assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<profile>\)/)
+  // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
+  assert.doesNotMatch(plan, /2\. agent/)
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
+  assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
+})
+
+test('agents get the right target, no hand build in agent_walk projects, and the target is its own question', () => {
+  const plan = read('skills/plan/SKILL.md')
+  // I-1: under the fleet, the target is the --into the run was given.
+  assert.match(plan, /^Invocation: [^\n]*\[--into <branch>\]/m)
+  assert.match(plan, /`target: <the --into this run was given>`/)
+  // I-3: the target is a second question in the same call; Other on the profile question is only Customize.
+  assert.match(plan, /\*\*Land on\?\*\*/)
+  assert.match(plan, /`<merge_into> \(Recommended\)`/)
+  assert.match(plan, /Other[^\n]*means only \*\*Customize\*\*/)
+  // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `state: planned` \*\*and\*\* `go-ahead: none` \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:plan --path <folder>/m)
+  assert.match(read('skills/build/SKILL.md'), /`go-ahead: none`[^\n]*`agent_walk:` block[^\n]*\/builder:plan --path <folder>/)
+  // M-5: the agent_walk row comes before the ready: pending row.
+  assert.ok(resume.indexOf('**and** the config has an `agent_walk:` block, **not** under `--agent-walk`') < resume.indexOf('`state: building` **and** `ready: pending`'))
+  // M-4
+  assert.match(read('skills/resume/REFERENCE.md'), /plan's go-ahead footer/)
+  assert.match(read('skills/help/SKILL.md'), /except the plan go-ahead, which launches agents itself/)
+  // M-6
+  assert.match(read('skills/agent/SKILL.md'), /without `target:` counts as `merge_into`/)
+})
+
+test('each lever is applied where the work happens: build, agent-walk, verify, revise, resume, init, status, help', () => {
+  const LEVERS = /node <builder>\/scripts\/profile\.mjs --levers <folder>/
+  const FLOORS = /The\s+floors\s+in\s+its\s+`floors`\s+hold\s+whatever\s+the\s+levers\s+say/
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, LEVERS)
+  assert.match(build, FLOORS)
+  assert.match(build, /final`[^\n]*no per-task reviewer/)
+  assert.match(build, /`per-task\+second`[\s\S]{0,200}§Contract or §Schema/)
+  assert.match(build, /`unruled: park`/)
+  assert.match(build, /\.builder\/fleet\/requests\/<feature>\.pause/)
+  assert.match(build, /revising — next: \/builder:revise --path <folder>/)
+  assert.match(build, /`\[risk\]`/)
+  const exec = read('skills/build/EXECUTION.md')
+  const models = exec.slice(exec.indexOf('## Model selection'), exec.indexOf('## The task loop'))
+  assert.match(models, /economy`[^\n]*integration tasks drop to the cheapest tier/)
+  assert.match(models, /strong`[^\n]*integration tasks and every review run on the most capable model/)
+  const walk = read('skills/agent-walk/SKILL.md')
+  assert.match(walk, LEVERS)
+  assert.match(walk, FLOORS)
+  for (const v of ['none', 'risky', 'full', 'full+human']) assert.ok(walk.includes(`\`testing: ${v}\``), `agent-walk names testing: ${v}`)
+  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(profile: rush\) — not human-tested/)
+  assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
+  assert.match(walk, /`persist: low`[^\n]*1 failed round/)
+  const verify = read('skills/verify/SKILL.md')
+  assert.match(verify, LEVERS)
+  assert.match(verify, FLOORS)
+  assert.match(verify, /`verify: floors`/)
+  assert.match(verify, /consumer parity when[^\n]*`released_artifact`/)
+  const revise = read('skills/revise/SKILL.md')
+  assert.match(revise, /fleet\.mjs --pause <feature>/)
+  assert.match(revise, /every 30 s[^\n]*20 min/)
+  assert.match(revise, /fleet\.mjs <feature> --detach --into <target>/)
+  assert.match(revise, /no worktree[^\n]*in place/i)
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
+  const init = read('skills/init/SKILL.md')
+  assert.match(init, /build_profile_default/)
+  assert.match(read('skills/status/SKILL.md'), /Profile/)
+  for (const f of ['skills/help/SKILL.md', 'README.md']) {
+    const s = read(f)
+    for (const p of ['Rush', 'Standard', 'Thorough', 'Thorough + you']) assert.ok(s.includes(p), `${f} names ${p}`)
+    assert.match(s, /floors/, `${f} names the floors`)
+    assert.match(s, /How should agents build/, `${f} names the go-ahead's profile question`)
+  }
+})
+
+test('with agent_walk set, no skill offers /builder:build as how a user builds', () => {
+  // Task 8 asserts resume's planned-with-go-ahead row names /builder:agent and plan's footer has no `2. agent`;
+  // this widens it to every skill and the README: no line pairs agent_walk with /builder:build unless it says never.
+  const files = [...readdirSync(join(ROOT, 'skills')).map((d) => `skills/${d}/SKILL.md`).filter((f) => existsSync(join(ROOT, f))), 'README.md']
+  for (const f of files)
+    for (const line of read(f).split('\n'))
+      if (/agent_walk/.test(line) && /\/builder:build\b/.test(line) && !/never/i.test(line)) assert.fail(`${f}: ${line}`)
+})
+
+test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise never stall', () => {
+  // Ruling A: no skill or doc describes Thorough as strong models or a second reviewer.
+  for (const f of ['skills/plan/SKILL.md', 'skills/help/SKILL.md', 'README.md', 'skills/init/SKILL.md'])
+    assert.doesNotMatch(read(f), /\*\*Thorough\*\*[^\n]*(second reviewer|strong|most capable)/, f)
+  // Ruling B: pr-ci is not offered anywhere.
+  for (const f of ['skills/plan/SKILL.md', 'skills/verify/SKILL.md', 'skills/help/SKILL.md', 'README.md'])
+    assert.doesNotMatch(read(f), /pr-ci/, f)
+  // Important 2: your walk hands back to the fleet whatever the sign-off's verdict.
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*whatever its verdict[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
+  // Important 3: pause only a live row; a worktree that isn't running is revised there with no pause.
+  const revise = read('skills/revise/SKILL.md')
+  assert.match(revise, /A running fleet holds the row[\s\S]{0,200}`building`, `walking` or `queued`/)
+  assert.match(revise, /fleet is stopped[\s\S]{0,200}skip the pause/)
+  assert.match(revise, /Revise in place\s+only when there is\s+no worktree/)
+  // design §6: the agent walk checks for a pause request between rounds.
+  const walk = read('skills/agent-walk/SKILL.md')
+  assert.match(walk, /between rounds[\s\S]{0,200}\.builder\/fleet\/requests\/<feature>\.pause[\s\S]{0,200}revising — next: \/builder:revise --path <folder>/i)
+})
+
+test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause requests are found, old go-aheads build by hand', () => {
+  const resume = read('skills/resume/SKILL.md')
+  const signoff = read('skills/signoff/SKILL.md')
+  const agent = read('skills/agent/SKILL.md')
+  const build = read('skills/build/SKILL.md')
+  const walk = read('skills/agent-walk/SKILL.md')
+  const revise = read('skills/revise/SKILL.md')
+  // C1.1: resume routes on the fleet worktree's manifest when the row has one on disk.
+  assert.match(resume, /`\.builder\/fleet\/fleet\.json` has a row for\s+the feature whose `worktree` exists on disk/)
+  assert.match(resume, /reading the fleet's copy\s+in <worktree>/)
+  // C1.2: the walk row starts the env in the worktree and names the absolute signoff path; signoff works there.
+  const row = resume.split('\n').find((l) => l.startsWith('| `blocked:` reads `waiting for your walk'))
+  assert.match(row, /`agent_walk\.start` run in `<wt>` with `agent_walk\.env`/)
+  assert.match(row, /\/builder:signoff --path <wt>\/<registry>\/<feature>` \(the absolute path\)/)
+  assert.match(signoff, /^## A fleet worktree$/m)
+  assert.match(signoff, /`git -C <worktree> …`/)
+  assert.match(signoff, /migration \*\*status\*\* runs in `<worktree>` with the\s+config's `agent_walk\.env`/)
+  assert.match(signoff, /whatever the verdict, hand it back[\s\S]{0,120}fleet\.mjs <feature> --detach --into <target>/)
+  // C1.3: agent and resume's agent row never unpark a park waiting for your walk.
+  assert.match(agent, /The one exception:\*\* a\s+park whose reason starts `waiting for your walk`[\s\S]{0,200}never unparked here/)
+  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`'))
+  assert.match(agentRow, /`waiting for your walk …` is the walk row above, never this one/)
+  // C1.4: the park's next step stays resume.
+  assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
+  // I5: only a 4.9 go-ahead (profile: or target:) routes to agents; a 4.8 one builds by hand.
+  assert.match(agentRow, /carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/)
+  assert.match(agentRow, /Neither key \(a 4\.8 go-ahead\)/)
+  assert.match(build, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/m)
+  // I2: the pause check reads the fleet dir the fleet exports.
+  for (const s of [build, walk]) assert.match(s, /`\$BUILDER_FLEET_DIR\/requests\/<feature>\.pause`/)
+  // M1: the order of revise's cases.
+  const a = revise.indexOf('**No worktree and no running fleet holding the row**')
+  const b = revise.indexOf('**A running fleet holds the row**')
+  const c = revise.indexOf('**The row has a worktree and is `parked` or `failed`, or the fleet is stopped**')
+  assert.ok(a > 0 && a < b && b < c, 'in place, then pause, then the worktree')
+  assert.match(revise, /`awaiting-ship` or `shipping` too/)
+})

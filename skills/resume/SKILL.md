@@ -70,6 +70,11 @@ which, and stop; any other status →
 whose status is not `handed-off`** → a revision conversation is open, and it comes before the manifest's next step: run
 `/builder:brainstorm --path <folder>` and stop.
 
+**The fleet's copy wins.** Not under `--agent-walk`: when `.builder/fleet/fleet.json` has a row for
+the feature whose `worktree` exists on disk, that worktree's `<registry>/<feature>/MANIFEST.md` is the
+live manifest — the fleet's runs commit there, never in this checkout. Say `reading the fleet's copy
+in <worktree>` in one line, then route on it.
+
 **No `MANIFEST.md`** → REFERENCE §Condense, *Legacy layouts* decides which of four shapes it is, and
 only one of them converts. `<builder>/scripts/list-features.mjs` marks a convertible row in its
 `next:` column.
@@ -77,6 +82,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | The manifest says | Next |
 |---|---|
 | SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm <the new thing>` |
+| `blocked:` reads `waiting for your walk …` (profile `thorough-you`: the agent walk passed) | your walk, in the fleet's worktree `<wt>` — the row's `worktree` in `.builder/fleet/fleet.json`, kept for you when the fleet ends (gone → `git worktree add <wt> <the row's branch>` first): 1. start `<wt>`'s walk env — `agent_walk.start` run in `<wt>` with `agent_walk.env` ({feature} filled in), as the walk lane does; 2. print `<wt>`'s `walk.md` (`cd <wt> && <builder>/scripts/workspace <feature>`); 3. 🔒 stop, giving the exact command to type: `/builder:signoff --path <wt>/<registry>/<feature>` (the absolute path) — it reads, writes and commits in `<wt>`, and its migration-status check runs with that same `agent_walk.env`; 4. whatever its verdict, `/builder:signoff` hands it back with `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) — run it yourself when it didn't — on PASS the fleet verifies and lands it; on PROBLEMS the agents work the `## Fixes`, re-walk, and park again for your walk. Never unpark it any other way — `/builder:agent` doesn't either. Under `--agent-walk`, end the run |
 | `blocked:` set (anything but `none`) | ⛔ **parked.** Show why and the recommended next step — from `<folder>/PARKED.md` when there is one (*What is stuck*, *Recommended next step*, and the last *History* line), else the line split per REFERENCE §How a park reads. Then **offer to unpark**, one AskUserQuestion: **Unpark and dig in (Recommended)** — set `blocked: none`, append `unparked by <you> YYYY-MM-DD` to the record's History, commit `chore(<feature>): unparked — was: <the line>`, then start from *Where to dig* with [`systematic-debugging`](../systematic-debugging/SKILL.md) before anything else, and carry on to the manifest's step; or **Leave it parked**. A `kind: human-step` park recommends its human step instead. Under `--agent-walk`, end the run: the fleet reads the line, and retries it itself |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
@@ -87,7 +93,9 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: audited` **and** §Decisions has an OPEN row | §The decisions gate |
 | `state: audited` **and** §Findings & risks has a `blocked:` row | ⛔ name each row and the clearer it carries; the plan step refuses until they are gone. A `build-time risk` row is not a blocker |
 | `state: audited`, no OPEN row, no `blocked:` row | `/builder:plan --path <folder>` |
+| `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | `/builder:plan --path <folder>` — its go-ahead picks the build profile and launches the fleet (plan §The build profile); never a hand build |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
+| `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `profile:` or `target:` (only a 4.9 go-ahead writes them) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: `/builder:agent --path <folder>` — it relaunches the fleet on the manifest's `target:`, or says it is already running. A fleet row parked `waiting for your walk …` is the walk row above, never this one. Neither key (a 4.8 go-ahead) → the hand-build rows below, as before |
 | `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — run REFERENCE §Walk readiness, then the build's walk script and `state: built`. Don't re-run the final review |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
@@ -154,7 +162,10 @@ presenting `PLAN.md`'s `## Phases` table — `Phase · App · Tasks · Goal · G
 the path to read the plan at, and anything riding along as a named risk, and takes the approval
 through plan mode's `ExitPlanMode`. A manifest left at `state: planned` with `go-ahead: none` is
 picked up by **`/builder:build`**, which presents that same table itself before its first dispatch.
-**This command never presents a phase table of its own** — one artifact, one approval. A human may
+**This command never presents a phase table of its own** — one artifact, one approval. In a project
+with an `agent_walk:` block (not under `--agent-walk`) the go-ahead is **`/builder:plan`**'s, never
+`/builder:build`'s: a manifest at `planned` with `go-ahead: none` goes to `/builder:plan --path
+<folder>`, whose go-ahead picks the build profile and launches the fleet (§The build profile). A human may
 also record it by typing `/builder:signoff --path <folder>`, which labels it GO-AHEAD (build) and
 touches neither the SPEC header nor the PR lock.
 
