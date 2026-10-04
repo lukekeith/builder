@@ -111,11 +111,12 @@ if (flag('--pause')) {
     console.error(`--pause needs a feature name (no slashes). ${USAGE}`)
     process.exit(2)
   }
-  const row = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT).features?.[name] : null
+  const features = existsSync(join(DIR, 'fleet.json')) ? (loadFleet(ROOT).features ?? {}) : {}
+  const row = Object.hasOwn(features, name) ? features[name] : null
   if (row && row.status !== 'done') {
     mkdirSync(join(DIR, 'requests'), { recursive: true })
     writeFileSync(pauseFile(name), `requested ${new Date().toISOString()}\n`)
-    console.log(`pause requested: ${name}`)
+    console.log(`pause requested: ${name}${fleetAlive(ROOT) ? '' : ' — no fleet is running; it parks when the fleet next runs it'}`)
   } else console.log(`${name} isn't in this fleet — nothing to pause`)
   process.exit(0)
 }
@@ -870,6 +871,13 @@ function mergeIntoTarget(feature, branch) {
   return null
 }
 
+/** A pause request parks the feature at once — before a sync, a walk env or a run. No run counted. */
+function parkIfPaused(f, feature) {
+  if (!existsSync(pauseFile(feature))) return false
+  park(f, `revising — next: /builder:revise --path ${specOf(feature)}`)
+  return true
+}
+
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
   delete f.lastPark // superseded — the new reason is the one to act on
@@ -886,7 +894,7 @@ async function drive(feature, lane) {
   let stalls = 0
   for (;;) {
     // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
-    if (existsSync(pauseFile(feature))) return park(f, `revising — next: /builder:revise --path ${specOf(feature)}`)
+    if (parkIfPaused(f, feature)) return 'parked'
     const before = snapshot(f.worktree, feature)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
     f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
@@ -1065,6 +1073,7 @@ const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
 
 async function walkOne(feature) {
   const f = fleet.features[feature]
+  if (parkIfPaused(f, feature)) return 'parked'
   f.status = 'walking'
   save()
   try {
@@ -1501,6 +1510,7 @@ async function poolWorker() {
       // as they land instead of meeting them all at ship.
       let outcome
       if (lane === 'land') outcome = await land(feature)
+      else if (parkIfPaused(fleet.features[feature], feature)) outcome = 'parked'
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
         outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
