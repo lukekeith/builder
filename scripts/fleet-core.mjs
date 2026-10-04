@@ -314,6 +314,10 @@ export function progressBar(pct) {
   return `${'▓'.repeat(n)}${'░'.repeat(10 - n)} ${Math.round(pct)}%`
 }
 
+const PROFILE_NAMES = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
+/** A resolved preset name as the table shows it; no facts yet → `—`, an unknown name → `thorough`. */
+const profileName = (p) => (p ? (PROFILE_NAMES[p] ?? 'thorough') : '—')
+
 /**
  * The table a terminal renders: only columns that carry information. `PR` and `Evidence` are gone —
  * agent mode opens no PR since 3.0, and nothing ever wrote evidence — and the worktree root is said
@@ -347,14 +351,14 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
     const col = prog ? ' Progress |' : ''
-    lines.push('', `| Feature | Status |${col} Runs | Time | Reason | Worktree |`, `|---|---|${prog ? '---|' : ''}---|---|---|---|`)
+    lines.push('', `| Feature | Status | Profile |${col} Runs | Time | Reason | Worktree |`, `|---|---|---|${prog ? '---|' : ''}---|---|---|---|`)
     for (const [name, f] of rows) {
       // A parked row's cell is its why; the next step is listed under ## Parked, where it has room.
       const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
-      lines.push(`| ${cell(name)} | ${cell(f.status)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${profileName(f.facts?.profile)} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
   const parked = rows.filter(([, f]) => f.status === 'parked')

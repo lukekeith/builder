@@ -128,9 +128,9 @@ test('renderStatus keeps only informative columns, names the target and the work
     notes: ['a note'],
   })
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
-  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
-  assert.match(out, /\| a \| building \| 2 \| — \| — \| yes \|/)
+  assert.match(out, /\| a \| building \| — \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
   assert.match(out, /- a note$/m)
 })
@@ -208,8 +208,8 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     progress
   )
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
-  assert.match(out, /\| Feature \| Status \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
-  assert.match(out, /\| a \| building \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| — \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
 })
 
@@ -316,7 +316,7 @@ test('renderStatus lists each parked feature with why and the recommended next s
       r: { status: 'building', runs: 1, worktree: '/w/r', reason: null },
     },
   })
-  assert.match(out, /\| p \| parked \| 3 \| — \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
+  assert.match(out, /\| p \| parked \| — \| 3 \| — \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
   assert.match(out, /^## Parked$/m)
   assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
   assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
@@ -344,9 +344,9 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
     Date.now(),
     [{ feature: 'x', lanes: { build: 60 * 60000, walk: 30 * 60000 } }, { feature: 'y', lanes: { build: 40 * 60000, walk: 50 * 60000 } }]
   )
-  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
-  assert.match(out, /\| a \| building \| 2 \| 42m \| — \| yes \|/)
-  assert.match(out, /\| b \| queued \| 0 \| — \| — \| — \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| — \| 2 \| 42m \| — \| yes \|/)
+  assert.match(out, /\| b \| queued \| — \| 0 \| — \| — \| — \|/)
   assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
 })
 
@@ -372,4 +372,15 @@ test('specBringIn: a new branch takes HEAD\u2019s folder unless the target alrea
   assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasFolder: false, isNewBranch: false }), true, 'a worktree with no spec folder heals')
   // The caller reports a folder holding only SPEC.md (condensed at sign-off, merge pending) as present.
   assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'a SPEC.md-only folder is not healed')
+})
+
+test('renderStatus shows each feature\'s build profile by display name', () => {
+  const f = (profile) => ({ status: 'building', runs: 1, facts: profile ? { size: 'md', profile } : undefined })
+  const out = renderStatus({ features: { a: f('rush'), b: f('thorough-you'), c: f('custom'), d: f('bogus'), e: f(null) } })
+  assert.match(out, /\| Profile \|/)
+  assert.match(out, /\| a \| building \| rush \|/)
+  assert.match(out, /\| b \| building \| thorough \+ you \|/)
+  assert.match(out, /\| c \| building \| custom \|/)
+  assert.match(out, /\| d \| building \| thorough \|/)
+  assert.match(out, /\| e \| building \| — \|/)
 })
