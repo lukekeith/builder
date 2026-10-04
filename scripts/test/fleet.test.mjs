@@ -1406,3 +1406,30 @@ test('naming a paused feature again deletes the request and carries it to merged
   assert.equal(existsSync(req), false, 'the request is gone')
   assertLanded(r, 'a')
 })
+
+test('a pause filed while the feature heads for the walk lane parks it before reset, start or stop', async () => {
+  const root = makeRepo(['a'], { reset: 'touch reset-ran', stop: 'touch stop-ran', lines: ['start: touch start-ran; sleep 30', 'smoke: test -f start-ran'] })
+  const scenario = { a: ['SLOW:READY-PENDING', 'BLOCK:walked'] }
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
+  const fleet = spawn('node', [FLEET, 'a'], { cwd: root, stdio: 'ignore', env: ENV(root, { STUB_SLOW_MS: '2500', FLEET_KEEP_STOPPED_WORKTREES: '1' }) })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  await until(() => existsSync(join(root, '.stub/calls.log')), 'a never started')
+  const p = runFleet(root, ['--pause', 'a'], scenario)
+  assert.match(p.stdout, /pause requested: a$/m)
+  await exited
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.equal(fj.features.a.status, 'parked')
+  assert.match(fj.features.a.reason, /^revising/)
+  const wt = fj.features.a.worktree
+  for (const f of ['reset-ran', 'start-ran', 'stop-ran']) assert.equal(existsSync(join(wt, f)), false, `${f} never ran`)
+  assert.equal(readFileSync(join(root, '.stub/calls.log'), 'utf8').trim().split('\n').filter((l) => l.startsWith('start')).length, 1, 'one run only')
+})
+
+test('--pause with no fleet running says so; an inherited name is not a feature', () => {
+  const root = makeRepo(['a'])
+  runFleet(root, ['a'], { a: ['audited', 'BLOCK:stuck — next: x'] })
+  const p = runFleet(root, ['--pause', 'a'], {})
+  assert.match(p.stdout, /pause requested: a — no fleet is running; it parks when the fleet next runs it/)
+  const c = runFleet(root, ['--pause', 'constructor'], {})
+  assert.match(c.stdout, /nothing to pause/)
+})
