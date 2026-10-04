@@ -36,9 +36,10 @@ import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
+import { parseProfile, profileLabel } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
-import { ago } from './fleet-core.mjs'
+import { ago, landedRows } from './fleet-core.mjs'
 import { newerRelease, newerLine } from './newer.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -110,6 +111,7 @@ const inspect = (root, name) => {
     path: `${root}/${name}`,
     done: false,
     next: null,
+    profile: null,
     blocked: null,
     state: null,
     source: null,
@@ -126,6 +128,8 @@ const inspect = (root, name) => {
     out.layout = mf.tier === 'program' ? 'program' : 'manifest'
     out.source = 'MANIFEST.md'
     out.next = mf.next ?? null
+    // The resolved preset once the go-ahead is given; a misspelling reads as thorough (its warning is not printed here — the statusline reads this).
+    out.profile = isSet(mf['go-ahead']) ? parseProfile(mf.profile).preset : null
     out.pr = mf.pr && mf.pr !== 'none' ? mf.pr : null
     out.blocked = mf.hold && mf.hold !== 'none' ? `🛑 PR HELD — ${mf.hold}` : null
     if (out.layout === 'program') {
@@ -422,6 +426,7 @@ const statusOf = (r) => {
   }
 }
 
+const LANDED = landedRows(ROOT)
 for (const r of rows) {
   r.description = describe(r)
   // The last commit touching the folder is when the pipeline last moved it; mtime is the fallback
@@ -437,6 +442,13 @@ for (const r of rows) {
   if (!r.done && ['manifest', 'program', 'condensed'].includes(r.layout) && openRevision(ROOT, r.feature)) {
     r.nextStep = 'Finish the revision conversation'
     r.command = `/builder:brainstorm --path ${r.path}`
+  }
+  // The fleet landed it on its target, and this checkout still holds the live copy: the manifest's
+  // step is stale. Merging the target brings the shipped spec in (fleet preflight refuses a relaunch).
+  const landed = !r.done && ['manifest', 'condensed'].includes(r.layout) ? LANDED.get(r.feature) ?? null : null
+  if (landed) {
+    const t = landed.target ?? CFG.mergeInto
+    Object.assign(r, { landed: t, nextStep: `Landed on ${t} — merge ${t} into this branch`, command: `git merge ${t}` })
   }
 }
 
@@ -476,11 +488,11 @@ if (asStatus) {
   // A pipe inside a cell would split it into two columns.
   const cell = (s, n) => clip(String(s ?? '—'), n).replace(/\|/g, '\\|')
   console.log(`**${CFG.project}** — ${open.length} in progress, most recent first\n`)
-  console.log('| # | Feature | What it is | Last done | Next step | Updated | Pick it up |')
-  console.log('|---|---|---|---|---|---|---|')
+  console.log('| # | Feature | Profile | What it is | Last done | Next step | Updated | Pick it up |')
+  console.log('|---|---|---|---|---|---|---|---|')
   open.forEach((r, i) =>
     console.log(
-      `| ${i + 1} | **${cell(r.feature, 40)}** | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
+      `| ${i + 1} | **${cell(r.feature, 40)}** | ${profileLabel(r.profile)} | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
     )
   )
   // The pipeline commits on the feature's branch, so resuming from another one is the usual trap.

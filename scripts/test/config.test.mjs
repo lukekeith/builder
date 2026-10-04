@@ -135,3 +135,41 @@ test('auto_unpark: a whole number of retries per park, 0 turns them off, anythin
   assert.equal(au(-1), 2)
   assert.equal(au('lots'), 2)
 })
+
+test('build_profile_default: no key → null', () => {
+  assert.equal(cfgWith('').buildProfileDefault, null)
+})
+
+test('build_profile_default: rush → "rush"', () => {
+  assert.equal(cfgWith('build_profile_default: rush').buildProfileDefault, 'rush')
+})
+
+test('build_profile_default: standard → "standard"', () => {
+  assert.equal(cfgWith('build_profile_default: standard').buildProfileDefault, 'standard')
+})
+
+test('build_profile_default: thorough → "thorough"', () => {
+  assert.equal(cfgWith('build_profile_default: thorough').buildProfileDefault, 'thorough')
+})
+
+test('build_profile_default: invalid value → null without throwing', () => {
+  const cfg = cfgWith('build_profile_default: fast')
+  assert.equal(cfg.ok, true)
+  assert.equal(cfg.buildProfileDefault, null)
+})
+
+test('build_profile_default: an invalid value is reported, never warned from loadConfig', () => {
+  const warnCalls = []
+  const origWarn = console.warn
+  console.warn = (...args) => warnCalls.push(args.join(' '))
+  try {
+    const cfg = cfgWith('build_profile_default: speedy')
+    assert.equal(cfg.buildProfileDefault, null)
+    assert.equal(cfg.buildProfileDefaultInvalid, 'speedy')
+    assert.equal(warnCalls.length, 0)
+    assert.equal(cfgWith('build_profile_default: rush').buildProfileDefaultInvalid, null)
+    assert.equal(cfgWith('').buildProfileDefaultInvalid, null)
+  } finally {
+    console.warn = origWarn
+  }
+})

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals } from '../fleet-core.mjs'
+import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -128,9 +128,9 @@ test('renderStatus keeps only informative columns, names the target and the work
     notes: ['a note'],
   })
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
-  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
-  assert.match(out, /\| a \| building \| 2 \| — \| — \| yes \|/)
+  assert.match(out, /\| a \| building \| — \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
   assert.match(out, /- a note$/m)
 })
@@ -208,8 +208,8 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     progress
   )
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
-  assert.match(out, /\| Feature \| Status \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
-  assert.match(out, /\| a \| building \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| — \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
 })
 
@@ -291,10 +291,12 @@ test('renderArchived lists the latest landings newest first', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
   assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
-  assert.match(out, /\| Feature \| Merged \| PR \| Landed \|/)
+  assert.match(out, /\| Feature \| Profile \| Time \| Tokens \| Merged \| PR \| Landed \|/)
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
-  assert.match(out, /\| b \| fff0000 \| #9 \| 1h ago \|/)
-  assert.match(out, /\| a \| abc1234 \| — \| 2h ago \|/)
+  assert.match(out, /\| b \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
+  assert.match(out, /\| a \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
+  const full = renderArchived([{ ...row('c'), profile: 'rush', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
+  assert.match(full, /\| c \| rush \| 12m \| 2\.1M \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -314,7 +316,7 @@ test('renderStatus lists each parked feature with why and the recommended next s
       r: { status: 'building', runs: 1, worktree: '/w/r', reason: null },
     },
   })
-  assert.match(out, /\| p \| parked \| 3 \| — \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
+  assert.match(out, /\| p \| parked \| — \| 3 \| — \| the walk keeps failing on the pane default \| yes \|/, 'the table carries only the why')
   assert.match(out, /^## Parked$/m)
   assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
   assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
@@ -342,8 +344,66 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
     Date.now(),
     [{ feature: 'x', lanes: { build: 60 * 60000, walk: 30 * 60000 } }, { feature: 'y', lanes: { build: 40 * 60000, walk: 50 * 60000 } }]
   )
-  assert.match(out, /\| Feature \| Status \| Runs \| Time \| Reason \| Worktree \|/)
-  assert.match(out, /\| a \| building \| 2 \| 42m \| — \| yes \|/)
-  assert.match(out, /\| b \| queued \| 0 \| — \| — \| — \|/)
+  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| a \| building \| — \| 2 \| 42m \| — \| yes \|/)
+  assert.match(out, /\| b \| queued \| — \| 0 \| — \| — \| — \|/)
   assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
+})
+
+test('tokensOf reads a result event’s usage; zeros without one', () => {
+  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, costUsd: 0.1 })
+  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, costUsd: 0 })
+})
+
+test('formatTokens: 2.1M, 340k, — when absent', () => {
+  assert.equal(formatTokens(2100000), '2.1M')
+  assert.equal(formatTokens(340000), '340k')
+  assert.equal(formatTokens(950), '950')
+  assert.equal(formatTokens(999600), '1.0M')
+  assert.equal(formatTokens(null), '—')
+  assert.equal(formatTokens(0), '—')
+})
+
+test('specBringIn: a new branch takes HEAD\u2019s folder unless the target already has the same one', () => {
+  assert.equal(specBringIn({ targetTree: null, headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), true, 'the target lacks it')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), true, 'the target holds an older copy')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasFolder: true, isNewBranch: true }), false, 'identical')
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'an existing branch is left alone')
+  assert.equal(specBringIn({ targetTree: 'h', headTree: 'h', worktreeHasFolder: false, isNewBranch: false }), true, 'a worktree with no spec folder heals')
+  // The caller reports a folder holding only SPEC.md (condensed at sign-off, merge pending) as present.
+  assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'a SPEC.md-only folder is not healed')
+})
+
+test('renderStatus shows each feature\'s build profile by display name', () => {
+  const f = (profile) => ({ status: 'building', runs: 1, facts: profile ? { size: 'md', profile } : undefined })
+  const out = renderStatus({ features: { a: f('rush'), b: f('thorough-you'), c: f('custom'), d: f('bogus'), e: f(null) } })
+  assert.match(out, /\| Profile \|/)
+  assert.match(out, /\| a \| building \| rush \|/)
+  assert.match(out, /\| b \| building \| thorough \+ you \|/)
+  assert.match(out, /\| c \| building \| custom \|/)
+  assert.match(out, /\| d \| building \| thorough \|/)
+  assert.match(out, /\| e \| building \| — \|/)
+})
+
+test('renderArchived labels the profile as every status view does', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const out = renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now)
+  assert.match(out, /\| y \| thorough \+ you \|/)
+})
+
+test('renderStatus: a row with no facts yet shows the profile the caller resolves for it', () => {
+  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { profile: 'rush' } } } }
+  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'thorough-you' : 'standard'))
+  assert.match(out, /\| a \| queued \| thorough \+ you \|/)
+  assert.match(out, /\| b \| building \| rush \|/, 'facts win over the fallback')
+  assert.match(renderStatus(fleet), /\| a \| queued \| — \|/, 'no fallback given: as before')
+})
+
+test('landedRow reads the whole archive and returns the last row for a feature', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  assert.equal(landedRow(root, 'a'), null)
+  appendArchive(root, { feature: 'a', target: 'main', merged: 'abc' })
+  appendArchive(root, { feature: 'b', target: 'main', merged: 'def' })
+  assert.deepEqual(landedRow(root, 'a'), { feature: 'a', target: 'main', merged: 'abc' })
+  assert.equal(landedRow(root, 'c'), null)
 })

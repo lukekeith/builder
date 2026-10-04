@@ -15,6 +15,7 @@ registry: docs/features
 # The branch a PR targets. No skill ever commits or dispatches on it.
 base_branch: main
 # merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch
+# build_profile_default: standard   # the build profile pre-selected at the go-ahead when the spec doesn't call for Thorough
 
 # ─── apps ──────────────────────────────────────────────────────────────────
 # The deployable/buildable units of this repo. A single-app repo lists ONE.
