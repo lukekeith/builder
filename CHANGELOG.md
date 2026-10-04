@@ -4,6 +4,38 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.9.0
+
+**Agents build every feature, and you pick how hard they try:**
+
+- **The go-ahead asks how to build, and where to land.** One prompt, two questions. The profile is
+  Rush, Standard or Thorough, with the recommended one first; Customize is under Other. "Land on?"
+  recommends `merge_into`. Picking Thorough asks once more whether you walk the feature yourself
+  before it lands. Rush and Standard trade review and verify depth for speed; **Thorough and
+  Thorough + you are today's pipeline** (default models, every task reviewed, full agent walk, deep
+  verify). Stronger models and a second reviewer on contract and schema tasks are Customize-only.
+- **Agents build every feature in a project with `agent_walk` set.** The go-ahead launches the
+  fleet, so nothing is built by hand there. The fleet never pushes; PR and CI landing is not part
+  of this release.
+- **New optional `build_profile_default` in `.claude/builder.md`** sets the profile the go-ahead
+  recommends. An invalid value warns once and is ignored.
+- **Estimates come from your own history.** The archive now records plan size, profile, tokens and
+  cost for every landing. Estimates are drawn from it, and show numbers only after three comparable
+  landings. `/builder:status` and the fleet table show each feature's profile.
+- **`/builder:revise` on a feature agents are building pauses it.** It runs `fleet.mjs --pause`,
+  applies the change in the feature's worktree and re-queues it, so a revision no longer races the
+  agents.
+
+**Changed:**
+- **A spec or plan committed on a branch other than the target reaches the feature's worktree.**
+  It is brought in before the build; when the copies differ, HEAD's copy wins. A failed bring-in
+  heals on the next run.
+- **Features approved before 4.9 have no `profile:` and run as Thorough**, which is today's
+  pipeline, so nothing about them changes.
+- **Projects without `agent_walk` build by hand exactly as before.**
+- **Thorough + you is a human step in the fleet.** Your walk waits for you instead of stalling the
+  other features, and each feature keeps its own state.
+
 ## 4.8.1
 
 **Changed:**
