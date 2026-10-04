@@ -15,6 +15,10 @@ re-offers the walk.
 Invocation: **`/builder:signoff --path <folder> [--hold "<reason>"] <verdict in your own words>`** —
 without the verdict it is taken by one question. Flags: [REFERENCE](../resume/REFERENCE.md) §Flags.
 
+**`--path` inside a fleet worktree** — an absolute path into a row's `worktree` in
+`.builder/fleet/fleet.json`, as `/builder:resume`'s `waiting for your walk` row prints it — §A fleet
+worktree.
+
 **No `--path` = the picker:** run `node <builder>/scripts/list-features.mjs --json` and offer every
 row whose manifest is `state: built` with `walk: none`; none eligible → say where each stands and
 record nothing.
@@ -67,6 +71,24 @@ record nothing.
    half-verified thing reaches a PR.
 
 4. **Write** per §What gets written, then hand off. One commit — that commit IS the durable proof.
+
+## A fleet worktree
+
+The feature is parked `waiting for your walk` (profile `thorough-you`), and the fleet's worktree
+`<worktree>` holds the live copy — the main checkout's is stale. 🔴 **Everything happens there:**
+read and write `<worktree>/<registry>/<feature>/`, the walk script from
+`cd <worktree> && <builder>/scripts/workspace <feature>`, every git command as `git -C <worktree> …`,
+and the one commit is made there. Step 1b's migration **status** runs in `<worktree>` with the
+config's `agent_walk.env` ({feature} filled in) — the walk env `/builder:resume` started for you.
+Never write the main checkout's copy. `blocked:` is left as it is: the fleet clears it.
+
+After the commit, stop the walk env `/builder:resume` started — end its `agent_walk.start` process,
+then `agent_walk.stop` in `<worktree>` with the same env — since the fleet's walk lane starts its own.
+Then, whatever the verdict, hand it back to the fleet from the main checkout:
+`node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) —
+on PASS it verifies and lands it; on PROBLEMS or PARTIAL the agents work the `## Fixes`, re-walk, and
+park it for your walk again. The footer is
+`📍 <feature>: <verdict> — handed back to the fleet — next: /builder:status`.
 
 ## What gets written
 

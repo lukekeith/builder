@@ -45,6 +45,7 @@ whose state is `planned` or `building`.
 | The manifest says | What to do |
 |---|---|
 | there is no `MANIFEST.md` | this step does not run on it. One line, hand back, stop |
+| `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `profile:` or `target:` (a 4.9 go-ahead) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:agent --path <folder>`. Never build it here. Neither key (a 4.8 go-ahead) → the rows below, as before |
 | `state: planned` **and** `go-ahead:` carries a name + date | run |
 | `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:plan --path <folder>` — its go-ahead picks the build profile and launches the fleet. Never take the go-ahead or build it here |
 | `state: planned` **and** `go-ahead: none` | present `PLAN.md`'s `## Phases` table — phase · app · tasks · goal · gates, with the totals and which phase freezes the contract — and take the go-ahead here through `ExitPlanMode`. Yes → write `go-ahead:`, commit, run. No → hand back. ⛔ Never hand back to the plan step for this. Under `--auto` the table is presented and the run proceeds |
@@ -121,8 +122,9 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
   tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
   pass or fail against a lie. Put the remedy **in the step**, not in the prose.
-- 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `.builder/fleet/requests/<feature>.pause`
-  exists, tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
+- 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `$BUILDER_FLEET_DIR/requests/<feature>.pause`
+  exists — the fleet sets `BUILDER_FLEET_DIR` to the main checkout's fleet dir, since this run's cwd
+  is its worktree; unset → `.builder/fleet/requests/<feature>.pause` — tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
   manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop. The
   ledger keeps every finished task.
 

@@ -61,7 +61,7 @@ fix each round tried and its commit; the evidence paths; and *Where to dig* — 
 behaviour runs through, and what the five rounds have ruled out. A human or a later run starts the
 dig from there.
 🔴 **Between rounds** — before dispatching any round after the first — check for
-`.builder/fleet/requests/<feature>.pause`. On one, write `blocked: "revising — next: /builder:revise --path <folder>"`
+`$BUILDER_FLEET_DIR/requests/<feature>.pause` (unset → `.builder/fleet/requests/<feature>.pause`). On one, write `blocked: "revising — next: /builder:revise --path <folder>"`
 to the manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop.
 **Under `persist: low`**, one failed round since the last unpark is the limit: the next one parks
 the same way, `failed five rounds running` written as `failed its one round`.
