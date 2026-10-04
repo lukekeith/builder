@@ -557,7 +557,7 @@ test('--status renders the table live, with progress read from each feature', ()
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
   writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\nnext: x\n')
   const r2 = runFleet(root, ['--status'], {})
-  assert.match(r2.stdout, /\| b \| building \| [^|]+ \| ▓░░░░░░░░░ 10% · audited \| 1 \|/)
+  assert.match(r2.stdout, /\| b \| building \| — \| ▓░░░░░░░░░ 10% · audited \| 1 \|/)
 })
 
 test('--status says when the fleet process is gone with features mid-run, and how to resume', () => {

@@ -36,7 +36,7 @@ import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { parseProfile } from './profile.mjs'
+import { parseProfile, profileLabel } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
 import { ago } from './fleet-core.mjs'
@@ -480,11 +480,11 @@ if (asStatus) {
   // A pipe inside a cell would split it into two columns.
   const cell = (s, n) => clip(String(s ?? '—'), n).replace(/\|/g, '\\|')
   console.log(`**${CFG.project}** — ${open.length} in progress, most recent first\n`)
-  console.log('| # | Feature | What it is | Last done | Next step | Updated | Pick it up |')
-  console.log('|---|---|---|---|---|---|---|')
+  console.log('| # | Feature | Profile | What it is | Last done | Next step | Updated | Pick it up |')
+  console.log('|---|---|---|---|---|---|---|---|')
   open.forEach((r, i) =>
     console.log(
-      `| ${i + 1} | **${cell(r.feature, 40)}** | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
+      `| ${i + 1} | **${cell(r.feature, 40)}** | ${profileLabel(r.profile)} | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
     )
   )
   // The pipeline commits on the feature's branch, so resuming from another one is the usual trap.

@@ -194,3 +194,12 @@ test('a feature with a go-ahead reports its build profile; before one, null', ()
   assert.equal(rows.c.profile, null)
   assert.equal(rows.d.profile, 'thorough')
 })
+
+test('--status shows each feature\'s profile, and a dash before a go-ahead', () => {
+  const root = setup({ a: 'state: planned\ngo-ahead: x\nprofile: rush', b: 'state: audited' })
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /\| Feature \| Profile \|/)
+  assert.match(st.stdout, /\| \*\*a\*\* \| rush \|/)
+  assert.match(st.stdout, /\| \*\*b\*\* \| — \|/)
+})
