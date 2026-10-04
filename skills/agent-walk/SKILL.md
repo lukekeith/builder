@@ -13,6 +13,18 @@ name into `walk:`, and never runs `/builder:signoff` (which stays human-only). O
 its own, differently-labelled record — `walk: agent-pass`, `> 🤖 AGENT SIGNED OFF …` — and condenses,
 so agent mode can take the feature to merged with every record saying it is not human-tested.
 
+**The build profile.** Read the levers: `node <builder>/scripts/profile.mjs --levers <folder>`. The
+floors in its `floors` hold whatever the levers say.
+
+- **`testing: none`** → no walk, no walker. Go straight to §4 **AGENT-PASS**'s sign-off at HEAD, the
+  header line `> 🤖 AGENT SIGNED OFF — no walk (profile: rush) — not human-tested · YYYY-MM-DD — <sha>`
+  (`custom` in place of `rush` under a custom profile).
+- **`testing: risky`** → walk only the `[risk]` items and the `## Cross-app (verify E2E)` section.
+- **`testing: full`** → the walk as written.
+- **`testing: full+human`** → the walk as written. On AGENT-PASS, instead of the sign-off, park:
+  `blocked: "waiting for your walk — next: /builder:resume --path <folder>"` (§4).
+- **`persist: low`** → park after 1 failed round, not 5 (§1).
+
 ## Precondition — read `<folder>/MANIFEST.md`
 
 | The manifest says | What to do |
@@ -46,6 +58,8 @@ still failing with its *expected* and *saw* from every round it failed, quoted f
 fix each round tried and its commit; the evidence paths; and *Where to dig* — the code the failing
 behaviour runs through, and what the five rounds have ruled out. A human or a later run starts the
 dig from there.
+**Under `persist: low`**, one failed round since the last unpark is the limit: the next one parks
+the same way, `failed five rounds running` written as `failed its one round`.
 An item that fails because the SPEC never said what it should do is not a fix to retry: rule what
 the spec most plausibly means, fix to that, and say so in the hand-off.
 
@@ -60,7 +74,8 @@ never the build's context: the agent that built it does not grade it. Its brief 
   item that can only be checked by looking at the screen `UNVERIFIABLE`";
 - the config's §Environment landmines, verbatim;
 - the output directory `<WS>/agent-walk/round-<n>/`;
-- the rules: work **every** item, in order, per app; for each, record `PASS`, `FAIL` or
+- the rules: work **every** item — under `testing: risky`, every `[risk]` item and the cross-app
+  section, and say so — in order, per app; for each, record `PASS`, `FAIL` or
   `UNVERIFIABLE`, what it did, what it saw, and its evidence files — screenshots `NN-<slug>.png`,
   console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.
   **Never edit code, never commit, never touch the manifest or the SPEC.**
@@ -77,7 +92,7 @@ never the build's context: the agent that built it does not grade it. Its brief 
 
 Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
-- Every `walk.md` item present and `PASS` — `UNVERIFIABLE` allowed only when there is no driver, and
+- Every `walk.md` item in scope (under `testing: risky`, the `[risk]` and `E` items) present and `PASS` — `UNVERIFIABLE` allowed only when there is no driver, and
   each one listed — → **AGENT-PASS**.
 - Any `FAIL`, an item of `walk.md` missing from the report (count it `FAIL — not walked`), or any
   `UNVERIFIABLE` item while a driver is configured → **AGENT-PROBLEMS**.
@@ -93,6 +108,12 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
   `> 🤖 AGENT SIGNED OFF YYYY-MM-DD — <sha> · agent walk round <n> · not human-tested · evidence: .builder/<feature>/agent-walk/round-<n>/`
   (it replaces an older `> 🤖 AGENT-VERIFIED …` line if there is one).
 - Commit all of it: `docs(<ticket-or-feature>): <feature> agent signed off (not human-tested)`.
+
+**AGENT-PASS under `testing: full+human`** — no sign-off, no condense. Manifest: `walk:` stays
+`none`; `blocked: "waiting for your walk — next: /builder:resume --path <folder>"`; `<folder>/PARKED.md`
+with `kind: human-step` (REFERENCE §The park record) citing the passing round. Commit:
+`chore(<ticket-or-feature>): <feature> — agent walk round <n> passed, waiting for your walk`, and end
+the run. The fleet treats it as a human step; your `/builder:signoff` lands it.
 
 **AGENT-PROBLEMS**
 - Each failing item becomes `- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)`

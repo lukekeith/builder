@@ -125,7 +125,10 @@ mkdir -p .claude && cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder
 apps, and list each change. When the config has **no `agent_walk:` block**, that's not a gap to fill
 silently — **offer it once**: "Add an agent_walk block for unattended /builder:agent and
 /builder:fleet runs? (not yet / yes)". On yes, run §3's `agent_walk` questions and write the block; on
-*not yet*, leave the config without one and don't ask again this run.
+*not yet*, leave the config without one and don't ask again this run. With an `agent_walk:` block,
+make sure the frontmatter documents **`build_profile_default`** — the build profile the go-ahead
+pre-selects when the spec doesn't call for Thorough (`rush` · `standard` · `thorough`; absent →
+`standard`) — as the template's commented-out line unless the user names one.
 
 ## 5. Prove it
 

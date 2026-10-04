@@ -295,3 +295,59 @@ test('agents get the right target, no hand build in agent_walk projects, and the
   // M-6
   assert.match(read('skills/agent/SKILL.md'), /without `target:` counts as `merge_into`/)
 })
+
+test('each lever is applied where the work happens: build, agent-walk, verify, revise, resume, init, status, help', () => {
+  const LEVERS = /node <builder>\/scripts\/profile\.mjs --levers <folder>/
+  const FLOORS = /The\s+floors\s+in\s+its\s+`floors`\s+hold\s+whatever\s+the\s+levers\s+say/
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, LEVERS)
+  assert.match(build, FLOORS)
+  assert.match(build, /final`[^\n]*no per-task reviewer/)
+  assert.match(build, /`per-task\+second`[\s\S]{0,200}§Contract or §Schema/)
+  assert.match(build, /`unruled: park`/)
+  assert.match(build, /\.builder\/fleet\/requests\/<feature>\.pause/)
+  assert.match(build, /revising — next: \/builder:revise --path <folder>/)
+  assert.match(build, /`\[risk\]`/)
+  const exec = read('skills/build/EXECUTION.md')
+  const models = exec.slice(exec.indexOf('## Model selection'), exec.indexOf('## The task loop'))
+  assert.match(models, /economy`[^\n]*integration tasks drop to the cheapest tier/)
+  assert.match(models, /strong`[^\n]*integration tasks and every review run on the most capable model/)
+  const walk = read('skills/agent-walk/SKILL.md')
+  assert.match(walk, LEVERS)
+  assert.match(walk, FLOORS)
+  for (const v of ['none', 'risky', 'full', 'full+human']) assert.ok(walk.includes(`\`testing: ${v}\``), `agent-walk names testing: ${v}`)
+  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(profile: rush\) — not human-tested/)
+  assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
+  assert.match(walk, /`persist: low`[^\n]*1 failed round/)
+  const verify = read('skills/verify/SKILL.md')
+  assert.match(verify, LEVERS)
+  assert.match(verify, FLOORS)
+  assert.match(verify, /`verify: floors`/)
+  assert.match(verify, /consumer parity when[^\n]*`released_artifact`/)
+  assert.match(verify, /`landing: pr-ci`/)
+  const revise = read('skills/revise/SKILL.md')
+  assert.match(revise, /fleet\.mjs --pause <feature>/)
+  assert.match(revise, /every 30 s[^\n]*20 min/)
+  assert.match(revise, /fleet\.mjs <feature> --detach --into <target>/)
+  assert.match(revise, /no worktree[^\n]*in place/)
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
+  const init = read('skills/init/SKILL.md')
+  assert.match(init, /build_profile_default/)
+  assert.match(read('skills/status/SKILL.md'), /Profile/)
+  for (const f of ['skills/help/SKILL.md', 'README.md']) {
+    const s = read(f)
+    for (const p of ['Rush', 'Standard', 'Thorough', 'Thorough + you']) assert.ok(s.includes(p), `${f} names ${p}`)
+    assert.match(s, /floors/, `${f} names the floors`)
+    assert.match(s, /How should agents build/, `${f} names the go-ahead's profile question`)
+  }
+})
+
+test('with agent_walk set, no skill offers /builder:build as how a user builds', () => {
+  // Task 8 asserts resume's planned-with-go-ahead row names /builder:agent and plan's footer has no `2. agent`;
+  // this widens it to every skill and the README: no line pairs agent_walk with /builder:build unless it says never.
+  const files = [...readdirSync(join(ROOT, 'skills')).map((d) => `skills/${d}/SKILL.md`).filter((f) => existsSync(join(ROOT, f))), 'README.md']
+  for (const f of files)
+    for (const line of read(f).split('\n'))
+      if (/agent_walk/.test(line) && /\/builder:build\b/.test(line) && !/never/i.test(line)) assert.fail(`${f}: ${line}`)
+})
