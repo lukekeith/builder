@@ -1120,7 +1120,7 @@ function enqueue(feature) {
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in /
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
 function appendHistory(path, what) {
@@ -1187,6 +1187,13 @@ function ensureParkRecord(feature) {
   tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
 }
 
+/** agent_walk.auto_unpark, except 0 for a feature whose profile has low persistence (rush). */
+function retryBudget(f, feature) {
+  const live = [f.worktree, ROOT].filter(Boolean).map((b) => readManifest(b, feature)).find(Boolean)
+  const value = live ? parseManifest(live).profile : f.facts?.profile
+  return parseProfile(value).levers.persist === 'low' ? 0 : AW.autoUnpark
+}
+
 /**
  * agent_walk.auto_unpark: a park gets an agent run to dig into its record, up to that many times per
  * fleet run — every park but a human-step one, which only a person can clear. The walk env's own
@@ -1195,7 +1202,7 @@ function ensureParkRecord(feature) {
 function autoRetry(feature) {
   const f = fleet.features[feature]
   if (f?.status !== 'parked' || RESTART.test(f.reason ?? '')) return false
-  if ((f.autoUnparks ?? 0) >= AW.autoUnpark || parkKind(feature) === 'human-step') return false
+  if ((f.autoUnparks ?? 0) >= retryBudget(f, feature) || parkKind(feature) === 'human-step') return false
   f.autoUnparks = (f.autoUnparks ?? 0) + 1
   markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${AW.autoUnpark}`)
   enqueue(feature)

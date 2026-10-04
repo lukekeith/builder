@@ -13,7 +13,7 @@ const STUB = join(HERE, 'fixtures', 'stub-claude.mjs')
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim()
 
 /** `lines` are extra `agent_walk:` keys, e.g. ['copy: .env.local', 'setup: pnpm i']. */
-function makeRepo(features, { reset, stop, lines = [] } = {}) {
+function makeRepo(features, { reset, stop, lines = [], manifest = [] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'fleet-'))
   git(root, 'init', '-q', '-b', 'main')
   git(root, 'config', 'user.email', 't@t')
@@ -29,7 +29,7 @@ function makeRepo(features, { reset, stop, lines = [] } = {}) {
   )
   for (const f of features) {
     mkdirSync(join(root, 'docs/features', f), { recursive: true })
-    writeFileSync(join(root, 'docs/features', f, 'MANIFEST.md'), `size: md\nstate: spec\nnext: /builder:resume --path docs/features/${f}\n`)
+    writeFileSync(join(root, 'docs/features', f, 'MANIFEST.md'), `size: md\nstate: spec\nnext: /builder:resume --path docs/features/${f}\n${manifest.map((l) => `${l}\n`).join('')}`)
   }
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'init')
@@ -1251,6 +1251,24 @@ test('a human-step park is never retried automatically', () => {
   const r = runFleet(root, ['a'], { a: ['PARK-HUMAN:the web app commits by hand — next: commit phase 2, then /builder:agent', 'audited'] })
   assert.equal(r.fleet.features.a.status, 'parked')
   assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 1)
+})
+
+test('low persistence (rush) gets no automatic retry', () => {
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 2'], manifest: ['profile: rush'] })
+  const r = runFleet(root, ['a'], { a: ['BLOCK:stuck', 'audited'] })
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 1)
+  assert.equal(r.calls.filter((l) => /unpark/.test(l)).length, 0)
+})
+
+test('a park waiting for your walk is a human step, never retried', () => {
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 2'], manifest: ['profile: thorough-you'] })
+  const reason = 'waiting for your walk — next: /builder:resume --path docs/features/a'
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:' + reason, 'planned'] })
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.equal(r.fleet.features.a.reason, reason)
+  assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 2, 'the audited run and the parking run, no retry')
+  assert.match(readFileSync(wtFile(r, 'a', 'PARKED.md'), 'utf8'), /^kind: human-step$/m)
 })
 
 test('the fleet writes a park record when the parking run left none; an unpark adds to its history', () => {
