@@ -83,7 +83,8 @@ export function planSize(planText) {
   return { tasks, phases: rows.length, apps: new Set(rows.map((r) => r[1]).filter(Boolean)).size }
 }
 
-const NONE = new Set(['', '—', '–', '-', 'none'])
+const AUTH_SIGNAL = /\b(role|admin|permission|owner|scope)/i
+const DELETE_VERB = /\b(delete|remove)/i
 
 function mentionsMigration(planText) {
   const blocks = String(planText ?? '').split(/^(?=### Task \d+)/m).filter((b) => /^### Task \d+/.test(b))
@@ -105,7 +106,9 @@ export function recommend({ specText, planText, cfg }) {
   if (mentionsMigration(planText)) signals.push('migration')
   if (contract.some((r) => (r[2] ?? '').split(/[,\s/]+/).some((c) => released.has(c.replace(/[`*]/g, ''))))) signals.push('released consumer')
   if (apps >= 3) signals.push(`${apps} apps`)
-  if (contract.some((r) => !NONE.has((r[3] ?? '').toLowerCase()) || /delete/i.test(r.join(' ')))) signals.push('auth or delete')
+  // A permission or role in the Auth cell, or a delete verb anywhere in the row. A plain session or
+  // signed-in user is every endpoint's auth, not a signal.
+  if (contract.some((r) => AUTH_SIGNAL.test(r[3] ?? '') || DELETE_VERB.test(r.join(' ')))) signals.push('auth or delete')
   if (signals.length) return { preset: 'thorough', signals }
   const { tasks } = planSize(planText)
   if (apps === 1 && !contract.length && tasks <= 5) return { preset: 'rush', signals: ['1 app', `${tasks} tasks`, 'no contract'] }
@@ -120,10 +123,11 @@ const median = (xs) => {
 
 /** rows: archive.jsonl rows → { minutes, tokens, n } | null when fewer than 3 usable rows */
 export function estimate(rows, preset, tasks) {
-  const usable = (rows ?? []).filter((r) => r && r.profile === preset && r.size?.tasks > 0 && r.lanes && r.tokens)
+  const spent = (r) => (Number(r.tokens.input) || 0) + (Number(r.tokens.output) || 0)
+  const usable = (rows ?? []).filter((r) => r && r.profile === preset && r.size?.tasks > 0 && r.lanes && r.tokens && spent(r) > 0)
   if (usable.length < 3) return null
   const perMin = usable.map((r) => (Object.values(r.lanes).reduce((a, b) => a + (Number(b) || 0), 0) / 60000) / r.size.tasks)
-  const perTok = usable.map((r) => ((Number(r.tokens.input) || 0) + (Number(r.tokens.output) || 0)) / r.size.tasks)
+  const perTok = usable.map((r) => spent(r) / r.size.tasks)
   return { minutes: Math.round(median(perMin) * tasks), tokens: Math.round(median(perTok) * tasks), n: usable.length }
 }
 
@@ -142,7 +146,9 @@ function main(argv) {
   } else {
     const planText = read(join(dir, 'PLAN.md'))
     if (mode === '--recommend') {
-      out = recommend({ specText: read(join(dir, 'SPEC.md')), planText, cfg: loadCfg() })
+      const cfg = loadCfg()
+      if (cfg.buildProfileDefaultInvalid) console.error(`builder: build_profile_default: "${cfg.buildProfileDefaultInvalid}" is not one of rush, standard, thorough; ignoring`)
+      out = recommend({ specText: read(join(dir, 'SPEC.md')), planText, cfg })
     } else {
       const preset = flag('--profile') ? arg('--profile') : 'standard'
       let rows = []

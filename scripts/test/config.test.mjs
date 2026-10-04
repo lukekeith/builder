@@ -152,25 +152,23 @@ test('build_profile_default: thorough → "thorough"', () => {
   assert.equal(cfgWith('build_profile_default: thorough').buildProfileDefault, 'thorough')
 })
 
-test('build_profile_default: invalid value → null without throwing, warns once per value', () => {
-  // Stub console.warn to capture calls
+test('build_profile_default: invalid value → null without throwing', () => {
+  const cfg = cfgWith('build_profile_default: fast')
+  assert.equal(cfg.ok, true)
+  assert.equal(cfg.buildProfileDefault, null)
+})
+
+test('build_profile_default: an invalid value is reported, never warned from loadConfig', () => {
   const warnCalls = []
   const origWarn = console.warn
   console.warn = (...args) => warnCalls.push(args.join(' '))
-
   try {
-    // First call with 'fast' should warn
-    const cfg1 = cfgWith('build_profile_default: fast')
-    assert.equal(cfg1.ok, true)
-    assert.equal(cfg1.buildProfileDefault, null)
-    assert.equal(warnCalls.length, 1)
-    assert.match(warnCalls[0], /fast/)
-
-    // Second call with 'fast' should not warn again (deduped)
-    const cfg2 = cfgWith('build_profile_default: fast')
-    assert.equal(cfg2.ok, true)
-    assert.equal(cfg2.buildProfileDefault, null)
-    assert.equal(warnCalls.length, 1) // Still only 1, not 2
+    const cfg = cfgWith('build_profile_default: speedy')
+    assert.equal(cfg.buildProfileDefault, null)
+    assert.equal(cfg.buildProfileDefaultInvalid, 'speedy')
+    assert.equal(warnCalls.length, 0)
+    assert.equal(cfgWith('build_profile_default: rush').buildProfileDefaultInvalid, null)
+    assert.equal(cfgWith('').buildProfileDefaultInvalid, null)
   } finally {
     console.warn = origWarn
   }

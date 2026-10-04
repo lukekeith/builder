@@ -135,7 +135,11 @@ pre-selects when the spec doesn't call for Thorough (`rush` · `standard` · `th
 ```bash
 node "$CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs"
 grep -n '<[a-z][^>]*>' .claude/builder.md    # any placeholder left over — must print nothing outside code blocks
+node -e "import('$CLAUDE_PLUGIN_ROOT/scripts/config.mjs').then((m) => { const v = m.loadConfig().buildProfileDefaultInvalid; if (v) console.log('build_profile_default: ' + v + ' is not rush, standard or thorough') })"
 ```
+
+The last line prints nothing, or a `build_profile_default` value nothing reads — say it, and fix it or
+comment it out (the config loader never warns, so this is the one place it is named).
 
 `list-features.mjs` must load the config: with an empty registry it reports no features, and that is
 a pass. A `reason` line such as "lists no apps" or "no frontmatter" means step 4 is wrong — fix it and

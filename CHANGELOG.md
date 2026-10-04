@@ -18,7 +18,8 @@ agree — see [RELEASING.md](RELEASING.md).
   fleet, so nothing is built by hand there. The fleet never pushes; PR and CI landing is not part
   of this release.
 - **New optional `build_profile_default` in `.claude/builder.md`** sets the profile the go-ahead
-  recommends. An invalid value warns once and is ignored.
+  recommends. An invalid value is ignored, and named by `/builder:init` and the go-ahead's
+  recommendation (no longer on every status line render).
 - **Estimates come from your own history.** The archive now records plan size, profile, tokens and
   cost for every landing. Estimates are drawn from it, and show numbers only after three comparable
   landings. `/builder:status` and the fleet table show each feature's profile.
@@ -34,7 +35,22 @@ agree — see [RELEASING.md](RELEASING.md).
   pipeline, so nothing about them changes.
 - **Projects without `agent_walk` build by hand exactly as before.**
 - **Thorough + you is a human step in the fleet.** Your walk waits for you instead of stalling the
-  other features, and each feature keeps its own state.
+  other features, and each feature keeps its own state. The fleet keeps that feature's worktree,
+  `/builder:resume` reads the fleet's copy there, starts its walk env and gives you the exact
+  `/builder:signoff --path` into it; the sign-off is recorded there and hands the feature back.
+  `/builder:agent` never unparks it.
+- **A feature the fleet already landed can't be launched again from a branch that still holds the
+  live copy.** The fleet refuses it and says to merge the target into your branch, and
+  `/builder:status` shows `Landed on <target> — merge <target> into this branch` instead of its old
+  step. A go-ahead whose `target:` differs from the run's `--into` is refused too, naming the
+  `--into` that runs it.
+- **A revision asked for while a feature waits to merge parks it instead of landing it**, and the
+  pause check finds the request from inside a fleet worktree (`BUILDER_FLEET_DIR`).
+- **Go-aheads from before 4.9 in an `agent_walk` project keep building by hand.** Only a manifest
+  carrying `profile:` or `target:` is routed to the agents.
+- **An ordinary signed-in endpoint no longer makes the recommendation Thorough.** A §Contract row
+  counts only when its Auth cell names a role, permission, owner or scope, or the row deletes
+  something.
 
 ## 4.8.1
 

@@ -1,6 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PRESETS, LEVERS, FLOORS, parseProfile, recommend, estimate, planSize } from '../profile.mjs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, dirname } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 test('parseProfile: absent or none is thorough with no warning', () => {
   for (const v of [undefined, 'none']) {
@@ -138,4 +143,38 @@ test('estimate: three rows give the median per task times the task count', () =>
 test('estimate: rows without size or profile are ignored', () => {
   const old = { lanes: { build: 1, walk: 1 }, tokens: { input: 1, output: 1 } }
   assert.equal(estimate([old, old, old, row(10), row(10)], 'standard', 10), null)
+})
+
+test('recommend: a plain session or user Auth cell is not an auth signal', () => {
+  for (const auth of ['session', 'user', 'Session cookie'])
+    assert.equal(recommend({ specText: spec({ contract: [crow('web', auth)] }), planText: plan(8), cfg: {} }).preset, 'standard', auth)
+})
+
+test('recommend: an Auth cell naming a role or permission, or a delete verb, is thorough', () => {
+  for (const auth of ['admin', 'role: editor', 'permission x.write', 'owner only', 'scope read:all']) {
+    const r = recommend({ specText: spec({ contract: [crow('web', auth)] }), planText: plan(8), cfg: {} })
+    assert.equal(r.preset, 'thorough', auth)
+    assert.ok(r.signals.includes('auth or delete'))
+  }
+  assert.equal(recommend({ specText: spec({ contract: ['| DELETE /x | api | web | session | – | – | – |'] }), planText: plan(8), cfg: {} }).preset, 'thorough')
+  assert.equal(recommend({ specText: spec({ contract: ['| POST /x | api | web | — | – | removes the item | – |'] }), planText: plan(8), cfg: {} }).preset, 'thorough')
+})
+
+test('estimate: a row whose tokens sum to 0 is not usable', () => {
+  const zero = { ...row(10), tokens: { input: 0, output: 0 } }
+  assert.equal(estimate([zero, zero, zero, row(10), row(10)], 'standard', 10), null)
+})
+
+test('--recommend names an invalid build_profile_default on stderr and falls back to standard', () => {
+  const root = mkdtempSync(join(tmpdir(), 'prof-'))
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nbuild_profile_default: speedy\napps:\n  - name: app\n    path: app/\n    role: app\n---\nbody\n')
+  mkdirSync(join(root, 'f'))
+  writeFileSync(join(root, 'f/SPEC.md'), spec({ contract: [crow('web')] }))
+  writeFileSync(join(root, 'f/PLAN.md'), plan(8))
+  const script = join(dirname(fileURLToPath(import.meta.url)), '..', 'profile.mjs')
+  const r = spawnSync('node', [script, '--recommend', join(root, 'f')], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stderr, /build_profile_default: "speedy" is not one of rush, standard, thorough/)
+  assert.equal(JSON.parse(r.stdout).preset, 'standard')
 })
