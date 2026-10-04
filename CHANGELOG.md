@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.9.2
+
+**Fixed:**
+- **Migrations a feature brings reach your dev DB when it lands.** Under the fleet, the walk applied
+  a feature's migrations to its throwaway walk DB. The merge then put the code on your branch, but
+  nothing ran in your checkout, so a hot-reloading dev server hit a schema it didn't have. That
+  happened in d2m on 2026-09-27 and again now. After merging into the branch checked out in this
+  folder, the fleet now looks for new files under §Walk readiness `migrations:`:
+  - `apply_mode: agent` and additive migrations: it runs `apply:` and then `regenerate:` there.
+  - `ask`, `human`, or a migration that drops or rewrites data: it leaves a note naming the exact
+    command.
+  - A merge written onto a branch checked out nowhere: it notes the migrations for when you switch
+    to that branch.
+
 ## 4.9.1
 
 **Fixed:**
