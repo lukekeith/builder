@@ -152,7 +152,7 @@ What makes the **dev** environment run this branch before a human is asked to wa
 migrations: <dir holding migration files>             # e.g. packages/db/prisma/migrations
 status:     <command>   # pending migrations on the DEV db, e.g. npx prisma migrate status
 apply:      <command>   # e.g. npx prisma migrate deploy
-apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it)
+apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it — the fleet also runs apply then regenerate in your checkout after landing a feature with new additive migrations)
 regenerate: <command>   # after a schema change, e.g. npx prisma generate — omit if none
 start:      <command>   # how the dev env comes up, and who may start it
 smoke:      <command>   # a health check / smoke subset against the running app — omit if none

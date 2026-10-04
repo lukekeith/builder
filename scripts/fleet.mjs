@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseProfile } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -870,8 +870,10 @@ function mergeIntoTarget(feature, branch) {
   const message = `merge(${feature}): agent-verified, not human-tested`
   const here = tryGit(['branch', '--show-current'])
   if (here === TARGET) {
+    const before = tryGit(['rev-parse', 'HEAD'])
     try {
       execFileSync('git', ['merge', '--no-ff', '--no-edit', '-m', message, branch], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      migrateAfterLanding(feature, before, 'HEAD')
       return null
     } catch (e) {
       tryGit(['merge', '--abort'])
@@ -886,7 +888,43 @@ function mergeIntoTarget(feature, branch) {
   const commit = tryGit(['commit-tree', `${branch}^{tree}`, '-p', old, '-p', branch, '-m', message])
   if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return `shipped, but writing the merge onto ${TARGET} failed — next: /builder:fleet to merge it`
   addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
+  const landed = newMigrations(old, commit)
+  if (landed.length) addNote(`${feature} brought ${landed.length} new migration${landed.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
   return null
+}
+
+/** The migration files `from..to` added under the config's §Walk readiness `migrations:` dir, with their text. */
+function newMigrations(from, to) {
+  const dir = parseWalkReadiness(CFG.body).migrations
+  if (!dir || !from) return []
+  const names = (tryGit(['diff', '--name-only', '--diff-filter=A', `${from}..${to}`, '--', dir]) ?? '').split('\n').filter(Boolean)
+  return names.map((path) => ({ path, text: tryGit(['show', `${to}:${path}`]) ?? '' }))
+}
+
+/**
+ * After a merge into the target checked out here: the dev DB this checkout serves must have the
+ * migrations the feature brought (a hot-reloading dev server is already running the merged code).
+ * apply_mode agent and additive → run the config's apply, then regenerate, here; anything else → a
+ * note naming what to run. The walk only proved them on a throwaway walk DB.
+ */
+function migrateAfterLanding(feature, before, after) {
+  const files = newMigrations(before, after)
+  const plan = landedMigrations({ files, readiness: parseWalkReadiness(CFG.body) })
+  if (plan.action === 'none') return
+  if (plan.action === 'note') return addNote(`⚠ ${feature}: ${plan.why}`)
+  const log = join(DIR, 'logs', `${feature}-land.log`)
+  mkdirSync(dirname(log), { recursive: true })
+  for (const cmd of plan.commands) {
+    const fd = openSync(log, 'a')
+    try {
+      execSync(cmd, { cwd: ROOT, stdio: ['ignore', fd, fd], timeout: 10 * 60 * 1000 })
+    } catch {
+      return addNote(`⚠ ${feature}: ${files.length} new migration${files.length === 1 ? '' : 's'} landed, but \`${cmd}\` failed in this checkout — see ${log}, then run ${plan.commands.map((c) => `\`${c}\``).join(', then ')} by hand`)
+    } finally {
+      closeSync(fd)
+    }
+  }
+  addNote(`${feature}: applied ${files.length} new migration${files.length === 1 ? '' : 's'} to the dev DB here (${plan.commands.map((c) => `\`${c}\``).join(', then ')})`)
 }
 
 /** A pause request parks the feature at once — before a sync, a walk env or a run. No run counted. */

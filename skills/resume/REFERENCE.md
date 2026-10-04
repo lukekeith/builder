@@ -750,6 +750,10 @@ readiness again (twice at most). The
 walker's URLs, wherever step 3 loads a page or hits an endpoint, come from `agent_walk.driver` and
 `agent_walk.env`, never from §Walk readiness's own start/smoke commands.
 
+🔴 **Under the fleet, the walk's migrations are applied to the walk env's database, not your dev DB.**
+Your dev DB gets them when the feature lands: `scripts/fleet.mjs` runs `apply:` then `regenerate:` in
+the checkout it merged into (apply_mode `agent`, additive migrations only) or notes the command.
+
 1. **Migrations.** List the migrations this branch adds
    (`git diff --name-only --diff-filter=A <base_branch>...HEAD -- <the config's migrations path>`),
    then run the config's **status** command against the **dev** database.
