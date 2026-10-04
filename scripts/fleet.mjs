@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseProfile } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { specBringIn, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -91,12 +91,17 @@ const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
 // Progress is read live from each feature's worktree (or the root before it has one): the manifest's
 // state, the plan's tasks and the ledger's completed ones. A few small files per feature.
 const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
+// The table's Profile before the fleet has noted a row's facts: what its manifest resolves to.
+const profileOf = (feature, f) => {
+  const p = join(specDir(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature), 'MANIFEST.md')
+  return existsSync(p) ? parseProfile(parseManifest(readFileSync(p, 'utf8')).profile).preset : null
+}
 
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
-    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5)) : 'No fleet has run in this repo yet.')
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), profileOf) : 'No fleet has run in this repo yet.')
     // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
@@ -188,6 +193,14 @@ function preflight(feature) {
   // A blocked spec is admitted: naming it is the human asking for a retry (see unpark).
   const lane = laneOf({ ...mf, blocked: 'none' })
   if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
+  // Landed already, and this checkout still holds the live copy: a relaunch would build it twice.
+  const prior = landedRow(ROOT, feature)
+  if (prior || tryGit(['cat-file', '-e', `${TARGET}:${CFG.registry}/${ARCHIVE}/${feature}`]) !== null) {
+    const on = prior?.target ?? TARGET
+    return `${feature} already landed on ${on} — merge ${on} into this branch to pick up the shipped spec`
+  }
+  // The go-ahead recorded where it lands (plan §The build profile); a run into another branch isn't it.
+  if (isSet(mf.target) && unquote(mf.target) !== TARGET) return `${feature}'s go-ahead lands it on ${unquote(mf.target)} — run with --into ${unquote(mf.target)}`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
   const branch = branchOf(feature, mf)
   if (tryGit(['branch', '--show-current']) === branch)
@@ -222,6 +235,9 @@ function envFor(feature, lane) {
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
+  // Set after it for the same reason: a run's cwd is its worktree, beside the repo, so the skills'
+  // pause check (`$BUILDER_FLEET_DIR/requests/<feature>.pause`) needs the main checkout's fleet dir.
+  env.BUILDER_FLEET_DIR = DIR
   return env
 }
 
@@ -542,7 +558,7 @@ const unlock = () => {
   } catch {}
 }
 process.on('exit', unlock)
-const save = () => saveFleet(ROOT, fleet, progressOf)
+const save = () => saveFleet(ROOT, fleet, progressOf, profileOf)
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {
@@ -810,6 +826,8 @@ function land(feature) {
 
 async function landNow(feature) {
   const f = fleet.features[feature]
+  // A revision asked for before the merge parks it here: once merged, revise has nothing to change.
+  if (parkIfPaused(f, feature)) return 'parked'
   noteFacts(f, feature)
   const facts = landingFacts(f, feature)
   f.pr = shippedPr(readSpec(f.worktree, feature))
@@ -1157,6 +1175,7 @@ function enqueue(feature) {
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
 const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising/
+const YOUR_WALK = /^waiting for your walk/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
 function appendHistory(path, what) {
@@ -1240,7 +1259,7 @@ function autoRetry(feature) {
   if (f?.status !== 'parked' || RESTART.test(f.reason ?? '')) return false
   if ((f.autoUnparks ?? 0) >= retryBudget(f, feature) || parkKind(feature) === 'human-step') return false
   f.autoUnparks = (f.autoUnparks ?? 0) + 1
-  markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${AW.autoUnpark}`)
+  markUnpark(f, `the fleet — automatic retry ${f.autoUnparks} of ${retryBudget(f, feature)}`)
   enqueue(feature)
   save()
   return true
@@ -1575,8 +1594,9 @@ for (const f of Object.values(fleet.features))
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
   if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
-  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it.
-  if ((f.reason ?? '').includes(f.worktree)) continue
+  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it — and so
+  // does one waiting for your walk, which /builder:resume starts in this worktree.
+  if ((f.reason ?? '').includes(f.worktree) || YOUR_WALK.test(f.reason ?? '')) continue
   const r = clearWorktree(ROOT, f.worktree, feature)
   if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
   if (r.removed || !existsSync(f.worktree)) f.worktree = null

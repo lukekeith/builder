@@ -557,7 +557,7 @@ test('--status renders the table live, with progress read from each feature', ()
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
   writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\nnext: x\n')
   const r2 = runFleet(root, ['--status'], {})
-  assert.match(r2.stdout, /\| b \| building \| — \| ▓░░░░░░░░░ 10% · audited \| 1 \|/)
+  assert.match(r2.stdout, /\| b \| building \| thorough \| ▓░░░░░░░░░ 10% · audited \| 1 \|/, 'no facts yet: the manifest\'s profile')
 })
 
 test('--status says when the fleet process is gone with features mid-run, and how to resume', () => {
@@ -1432,4 +1432,72 @@ test('--pause with no fleet running says so; an inherited name is not a feature'
   assert.match(p.stdout, /pause requested: a — no fleet is running; it parks when the fleet next runs it/)
   const c = runFleet(root, ['--pause', 'constructor'], {})
   assert.match(c.stdout, /nothing to pause/)
+})
+
+// ---- 4.9.0 final review ------------------------------------------------------------------------
+
+test('every run is told where the fleet keeps its requests: BUILDER_FLEET_DIR, which agent_walk.env cannot move', () => {
+  const root = makeRepo(['a'], { lines: ['env: BUILDER_FLEET_DIR=/nope'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.ok(starts.some((l) => / walk /.test(l)), 'a walk-lane run was checked')
+  for (const l of starts) {
+    const dir = / fleet_dir=(\S+)/.exec(l)?.[1]
+    assert.ok(dir === join(root, '.builder/fleet') || dir === join(realpathSync(root), '.builder/fleet'), l)
+  }
+})
+
+test('a pause filed while a shipped feature waits to merge parks it as revising; it does not land', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, 'docs/features/_archive/a'), { recursive: true })
+  writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n')
+  const first = runFleet(root, ['a'], { a: HAPPY })
+  assert.match(first.fleet.features.a.reason, /your uncommitted changes are in the way/)
+  unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
+  assert.match(runFleet(root, ['--pause', 'a'], {}).stdout, /pause requested: a/)
+  const second = runFleet(root, [], { a: HAPPY })
+  assert.equal(second.fleet.features.a.status, 'parked')
+  assert.match(second.fleet.features.a.reason, /^revising — next: \/builder:revise --path docs\/features\/a$/)
+  assert.equal(second.archived.a, undefined, 'not landed')
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+})
+
+test('a feature that already landed on the target is refused, naming the merge that brings it in', () => {
+  const root = makeRepo(['a'])
+  git(root, 'checkout', '-q', '-b', 'work')
+  assertLanded(runFleet(root, ['a'], { a: HAPPY }), 'a')
+  assert.ok(existsSync(join(root, 'docs/features/a/MANIFEST.md')), 'work still holds the live copy')
+  const dry = runFleet(root, ['a', '--dry-run'], {})
+  assert.match(dry.stdout, /✗ a — a already landed on main — merge main into this branch to pick up the shipped spec/)
+})
+
+test('a feature archive.jsonl says landed is refused even when the target holds no archived folder', () => {
+  const root = makeRepo(['a'])
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/archive.jsonl'), JSON.stringify({ feature: 'a', target: 'main', merged: 'abc1234' }) + '\n')
+  const dry = runFleet(root, ['a', '--dry-run'], {})
+  assert.match(dry.stdout, /✗ a — a already landed on main — merge main into this branch/)
+})
+
+test('a go-ahead whose target is not this run’s is refused, naming the --into that runs it', () => {
+  const root = makeRepo(['a'], { manifest: ['target: release'] })
+  git(root, 'branch', 'release')
+  const dry = runFleet(root, ['a', '--dry-run'], {})
+  assert.match(dry.stdout, /✗ a — a's go-ahead lands it on release — run with --into release/)
+  const into = runFleet(root, ['a', '--into', 'release', '--dry-run'], {})
+  assert.match(into.stdout, /✓ a → builder\/a/)
+  const none = makeRepo(['b'], { manifest: ['target: none'] })
+  assert.match(runFleet(none, ['b', '--dry-run'], {}).stdout, /✓ b → builder\/b/)
+})
+
+test('a feature waiting for your walk keeps its worktree when the fleet ends', () => {
+  const root = makeRepo(['a'], { manifest: ['profile: thorough-you'] })
+  const reason = 'waiting for your walk — next: /builder:resume --path docs/features/a'
+  const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:' + reason] }, { FLEET_KEEP_STOPPED_WORKTREES: '0' })
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.ok(r.fleet.features.a.worktree && existsSync(r.fleet.features.a.worktree), 'the worktree your walk runs in stays')
+  const other = makeRepo(['b'])
+  const s = runFleet(other, ['b'], { b: ['audited', 'BLOCK:stuck — next: x'] }, { FLEET_KEEP_STOPPED_WORKTREES: '0' })
+  assert.equal(s.fleet.features.b.worktree, null, 'any other park still loses its worktree')
 })

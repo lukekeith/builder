@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens } from '../fleet-core.mjs'
+import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -383,4 +383,27 @@ test('renderStatus shows each feature\'s build profile by display name', () => {
   assert.match(out, /\| c \| building \| custom \|/)
   assert.match(out, /\| d \| building \| thorough \|/)
   assert.match(out, /\| e \| building \| — \|/)
+})
+
+test('renderArchived labels the profile as every status view does', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const out = renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now)
+  assert.match(out, /\| y \| thorough \+ you \|/)
+})
+
+test('renderStatus: a row with no facts yet shows the profile the caller resolves for it', () => {
+  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { profile: 'rush' } } } }
+  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'thorough-you' : 'standard'))
+  assert.match(out, /\| a \| queued \| thorough \+ you \|/)
+  assert.match(out, /\| b \| building \| rush \|/, 'facts win over the fallback')
+  assert.match(renderStatus(fleet), /\| a \| queued \| — \|/, 'no fallback given: as before')
+})
+
+test('landedRow reads the whole archive and returns the last row for a feature', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  assert.equal(landedRow(root, 'a'), null)
+  appendArchive(root, { feature: 'a', target: 'main', merged: 'abc' })
+  appendArchive(root, { feature: 'b', target: 'main', merged: 'def' })
+  assert.deepEqual(landedRow(root, 'a'), { feature: 'a', target: 'main', merged: 'abc' })
+  assert.equal(landedRow(root, 'c'), null)
 })
