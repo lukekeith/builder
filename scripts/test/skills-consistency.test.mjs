@@ -257,3 +257,19 @@ test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line;
     assert.doesNotMatch(read(f), /branch (you ran it from|you're on now|the fleet was run from|it was run from)|into your current branch|merged into this branch/, f)
   for (const f of ['tidy.mjs', 'inventory.mjs', 'tidy-core.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
+
+test('the go-ahead picks a build profile and launches the fleet; resume routes a go-ahead to the agents', () => {
+  const plan = read('skills/plan/SKILL.md')
+  assert.match(plan, /profile\.mjs --recommend <folder>/)
+  assert.match(plan, /profile\.mjs --estimate <folder> --profile/)
+  assert.match(plan, /fleet\.mjs <feature> --detach --into <target>/)
+  assert.match(plan, /Walk it yourself before it lands/)
+  assert.match(plan, /\/builder:init --update/)
+  assert.match(plan, /profile: custom k=v/)
+  assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<profile>\)/)
+  // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
+  assert.doesNotMatch(plan, /2\. agent/)
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
+  assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
+})
