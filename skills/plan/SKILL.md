@@ -214,9 +214,11 @@ when it launches. Given `--ticket`, check the branch name carries the key and wa
    **Walk it yourself before it lands?** — **No (Recommended)** → `thorough`; **Yes** →
    `thorough-you` (the fleet parks it for your walk after the agent's, and lands it after your
    `/builder:signoff`).
-4. **Other (Customize)** → two AskUserQuestion calls over the seven levers, each pre-filled from the
+4. **Other (Customize)** → two AskUserQuestion calls over the levers, each pre-filled from the
    recommended preset (`profile.mjs --levers` keys): `testing`, `review`, `models`, `verify`; then
-   `persist`, `unruled`, `landing`. Written as `profile: custom k=v …`. The floors — fast gates, the
+   `persist`, `unruled`. Written as `profile: custom k=v …`. `models=strong` and
+   `review=per-task+second` (a second reviewer on contract and schema tasks) are offered only here.
+   `landing` is always `local` — PR + CI landing is deferred — so it is not asked. The floors — fast gates, the
    final review, released-consumer parity — are not levers and hold under every profile.
 5. **The target** is the **Land on?** answer: `target: <branch>`.
 6. **Record and launch.** Write `go-ahead: <name YYYY-MM-DD>`, `profile: <preset or custom k=v …>`

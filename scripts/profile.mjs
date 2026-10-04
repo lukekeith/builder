@@ -16,10 +16,12 @@ import { loadConfig } from './config.mjs'
 export const PRESETS = {
   rush:           { testing: 'none',       review: 'final',           models: 'economy', verify: 'floors',     persist: 'low',     unruled: 'recommend', landing: 'local' },
   standard:       { testing: 'risky',      review: 'per-task',        models: 'default', verify: 'full',       persist: 'default', unruled: 'recommend', landing: 'local' },
-  thorough:       { testing: 'full',       review: 'per-task+second', models: 'strong',  verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
-  'thorough-you': { testing: 'full+human', review: 'per-task+second', models: 'strong',  verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
+  thorough:       { testing: 'full',       review: 'per-task',        models: 'default', verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
+  'thorough-you': { testing: 'full+human', review: 'per-task',        models: 'default', verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
 }
-export const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local','pr-ci'] }
+export const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local'] }
+// Thorough is today's pipeline; `strong` and `per-task+second` are Customize-only. PR + CI landing is
+// deferred (the fleet never pushes), so `landing` keeps its key with one value and old manifests stay valid.
 /** How a resolved preset name reads in a table; one map for every status view. */
 export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
 /** preset → its label; none → `—`, an unknown name → `thorough`. */

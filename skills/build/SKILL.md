@@ -121,7 +121,7 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
   tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
   pass or fail against a lie. Put the remedy **in the step**, not in the prose.
-- 🔴 **Under `--agent-walk`, after each task's review:** if `.builder/fleet/requests/<feature>.pause`
+- 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `.builder/fleet/requests/<feature>.pause`
   exists, tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
   manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop. The
   ledger keeps every finished task.

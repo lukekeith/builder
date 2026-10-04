@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PRESETS, FLOORS, parseProfile, recommend, estimate, planSize } from '../profile.mjs'
+import { PRESETS, LEVERS, FLOORS, parseProfile, recommend, estimate, planSize } from '../profile.mjs'
 
 test('parseProfile: absent or none is thorough with no warning', () => {
   for (const v of [undefined, 'none']) {
@@ -35,6 +35,26 @@ test('parseProfile: every preset carries the floors', () => {
     assert.equal(p.preset, name)
     assert.deepEqual(p.floors, FLOORS)
   }
+})
+
+test('thorough is today\'s pipeline: default models, per-task review; strong and a second reviewer are Customize-only', () => {
+  for (const name of ['thorough', 'thorough-you']) {
+    assert.equal(PRESETS[name].models, 'default', name)
+    assert.equal(PRESETS[name].review, 'per-task', name)
+  }
+  assert.ok(LEVERS.models.includes('strong'))
+  assert.ok(LEVERS.review.includes('per-task+second'))
+  const p = parseProfile('custom models=strong review=per-task+second')
+  assert.equal(p.levers.models, 'strong')
+  assert.equal(p.levers.review, 'per-task+second')
+  assert.equal(p.warning, null)
+})
+
+test('landing pr-ci is deferred: dropped with the warning, landing stays local', () => {
+  assert.deepEqual(LEVERS.landing, ['local'])
+  const p = parseProfile('custom landing=pr-ci')
+  assert.equal(p.levers.landing, 'local')
+  assert.match(p.warning, /landing=pr-ci/)
 })
 
 const spec = ({ apps = ['✅'], contract = [], schema = [] } = {}) => `# Spec

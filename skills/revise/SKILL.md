@@ -39,18 +39,20 @@ question.
 ## Step 1b — A feature agents are building
 
 Read `.builder/fleet/fleet.json`. When `features[<feature>]` is there with a `status` other than
-`done` and `node <builder>/scripts/fleet.mjs --status` shows that fleet running, the change goes into
-its worktree, never under a live run:
+`done`, the change goes into its worktree, never under a live run:
 
-1. Run `node <builder>/scripts/fleet.mjs --pause <feature>`.
-2. Wait for its park: poll `fleet.mjs --status` every 30 s, for at most 20 min, until the feature
-   shows parked with a `revising` reason. Not parked by then → say so, and stop.
-3. Apply the change — routed by Step 2 — **in the row's `worktree`**, and commit it there.
-4. Run `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` — `<target>` the
-   manifest's `target:`, else the config's `merge_into`. Re-queuing unparks it and clears the request.
-
-A queued feature with no worktree yet is revised in place, on the branch its spec is committed on —
-no pause.
+- **The row is `building`, `walking` or `queued` in a running fleet** (`node <builder>/scripts/fleet.mjs --status`
+  shows it running):
+  1. Run `node <builder>/scripts/fleet.mjs --pause <feature>`.
+  2. Wait for its park: poll `fleet.mjs --status` every 30 s, for at most 20 min, until the feature
+     shows parked with a `revising` reason. Not parked by then → say so, and stop.
+  3. Apply the change — routed by Step 2 — **in the row's `worktree`**, and commit it there.
+  4. Run `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` — `<target>` the
+     manifest's `target:`, else the config's `merge_into`. Re-queuing unparks it and clears the request.
+- **The row has a worktree and is `parked` or `failed`, or the fleet is stopped** → skip the pause:
+  steps 3 and 4 only.
+- **No worktree yet** (only queued) → no pause; Step 2 as written. Revise in place only when there is
+  no worktree — on the branch its spec is committed on.
 
 ## Step 2 — Route it (the whole skill is this table)
 
