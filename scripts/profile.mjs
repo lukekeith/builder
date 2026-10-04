@@ -125,7 +125,8 @@ const median = (xs) => {
 export function estimate(rows, preset, tasks) {
   const spent = (r) => (Number(r.tokens.input) || 0) + (Number(r.tokens.output) || 0)
   const usable = (rows ?? []).filter((r) => r && r.profile === preset && r.size?.tasks > 0 && r.lanes && r.tokens && spent(r) > 0)
-  if (usable.length < 3) return null
+  // No plan yet (0 tasks) → no number: the ladder words stand in, never "0 min".
+  if (usable.length < 3 || !(tasks > 0)) return null
   const perMin = usable.map((r) => (Object.values(r.lanes).reduce((a, b) => a + (Number(b) || 0), 0) / 60000) / r.size.tasks)
   const perTok = usable.map((r) => spent(r) / r.size.tasks)
   return { minutes: Math.round(median(perMin) * tasks), tokens: Math.round(median(perTok) * tasks), n: usable.length }

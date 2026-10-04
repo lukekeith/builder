@@ -110,7 +110,10 @@ evidence.
 2. A new model, schema change, endpoint, permission or contract change? **Any → at least md.**
 3. A new route, screen, or shared component? **Any → at least md.**
 4. **Apps touched (from the config's `apps:`)? Two+ → lg.** Three+ with independently shippable
-   slices → xl.
+   slices → xl. 🔴 **A slice is shippable only when it gives the user something they can use on its
+   own** — say, in one sentence, what they can do once it alone lands. A layer is not a slice: a
+   shell with nothing behind it, a data model no screen uses, a UI whose action does nothing yet.
+   Fewer than two such slices → **lg, one spec**, however many apps and files it touches.
 5. Fits one sitting? **No → at least md** (the spec exists so `/clear` can happen).
 
 A feasibility question ("can we…", "is it possible…") is a **spike, not a build**: say so, answer it
@@ -548,6 +551,12 @@ xl only, ~50 lines.
 
 🔴 **Children are ordered by the contract**, not by convenience: a child producing a contract another
 consumes ships first — the phase rule, one level up.
+
+🔴 **Children are cut by value, never by layer.** Each child's *One line* says what the user can do
+once that child alone has shipped. A child that can't say it (a shell, a data model, a step whose
+output nothing uses yet) folds into the child that makes it useful. Two value-sized children beat
+five layered ones: every child costs an audit, a plan, a go-ahead, a walk and a landing, and children
+that share contracts freeze them across specs.
 
 *Depends on* is read by the scripts (`scripts/program.mjs`): `#` row numbers or child folder names,
 comma- or space-separated; `—` or empty for none. A dependency is met when its `child:` line reads

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { isTestOutput, clearWorktree } from '../tidy-core.mjs'
-import { git, repo, fixture } from './fixtures/tidy-repo.mjs'
+import { git, repo, fixture, branch } from './fixtures/tidy-repo.mjs'
 
 const worktree = (root, name, branch) => {
   const wt = `${root}-wt-${name}`
@@ -162,4 +162,14 @@ test('a tag with a branch\'s name does not confuse the inventory', () => {
   const items = byName(inventory(root, CFG, 'main'))
   assert.equal(items.spike.group, 'unknown')
   assert.equal(items['heads/spike'], undefined)
+})
+
+test('a worktree kept for your walk is kept, never in the safe batch', () => {
+  const root = fixture()
+  branch(root, 'builder/w', { manifest: { w: 'size: md\nstate: built\nblocked: "waiting for your walk — next: /builder:resume --path docs/features/w"\nnext: x\n' } })
+  git(root, 'worktree', 'add', '-q', `${root}-wt-w`, 'builder/w')
+  const w = byName(inventory(root, CFG, 'main', { fleet: { features: {} }, lockAlive: false }))['builder/w']
+  assert.deepEqual([w.group, w.action], ['parked', 'keep'])
+  assert.match(w.why, /waiting for your walk/)
+  assert.match(w.next, /\/builder:resume/)
 })

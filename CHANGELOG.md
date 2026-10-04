@@ -4,6 +4,25 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.9.1
+
+**Fixed:**
+- **Handing features to agents asks for the build profile first.** `/builder:agent` and
+  `/builder:fleet` took features before they were planned, so the go-ahead ran headless and chose
+  the profile and landing branch without asking. That undid the point of the levers. Now each pick
+  without a `profile:` gets the profile question (Rush / Standard / Thorough, the Thorough follow-up,
+  Customize) and **Land on?** before the one confirmation. A headless go-ahead keeps what you chose.
+  A feature with no plan yet shows the ladder words, never "0 min".
+- **Splits are cut by value, not by layer, and "one spec" is always offered.** A slice now counts
+  toward a split only when it gives you something you can use once it alone ships. A shell, a data
+  model or a button that does nothing yet is not a slice. The split question always offers **One
+  spec** next to value-sized specs, and recommends the fewest. (A d2m design had become five layered
+  children where one or two specs fit.)
+- **`/builder:tidy` keeps a worktree parked for your walk.** It used to put it in the safe batch
+  to remove.
+- **`/builder:resume` writes to the fleet's copy.** When it routes on a feature's worktree, an
+  unpark and every other edit go to that worktree, never to your checkout's stale manifest.
+
 ## 4.9.0
 
 **Agents build every feature, and you pick how hard they try:**
