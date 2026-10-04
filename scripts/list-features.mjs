@@ -36,6 +36,7 @@ import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
+import { parseProfile } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
 import { ago } from './fleet-core.mjs'
@@ -110,6 +111,7 @@ const inspect = (root, name) => {
     path: `${root}/${name}`,
     done: false,
     next: null,
+    profile: null,
     blocked: null,
     state: null,
     source: null,
@@ -126,6 +128,8 @@ const inspect = (root, name) => {
     out.layout = mf.tier === 'program' ? 'program' : 'manifest'
     out.source = 'MANIFEST.md'
     out.next = mf.next ?? null
+    // The resolved preset once the go-ahead is given; a misspelling reads as thorough (its warning is not printed here — the statusline reads this).
+    out.profile = isSet(mf['go-ahead']) ? parseProfile(mf.profile).preset : null
     out.pr = mf.pr && mf.pr !== 'none' ? mf.pr : null
     out.blocked = mf.hold && mf.hold !== 'none' ? `🛑 PR HELD — ${mf.hold}` : null
     if (out.layout === 'program') {

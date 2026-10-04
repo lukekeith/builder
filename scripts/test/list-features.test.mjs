@@ -181,3 +181,16 @@ test('a vendored copy behind the newest release on this machine says so in --sta
   // Run as a plugin install (not inside the repo), there is no line.
   assert.doesNotMatch(list(root, '--status').stdout, /⬆️/)
 })
+
+test('a feature with a go-ahead reports its build profile; before one, null', () => {
+  const rows = repo({
+    a: 'state: planned\ngo-ahead: x\nprofile: rush',
+    b: 'state: planned\ngo-ahead: x',
+    c: 'state: audited\nprofile: rush',
+    d: 'state: planned\ngo-ahead: x\nprofile: bogus',
+  })
+  assert.equal(rows.a.profile, 'rush')
+  assert.equal(rows.b.profile, 'thorough')
+  assert.equal(rows.c.profile, null)
+  assert.equal(rows.d.profile, 'thorough')
+})
