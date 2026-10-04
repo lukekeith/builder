@@ -22,7 +22,7 @@
  * after agent_walk.keep_logs days); fleet.json holds only work in flight.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseProfile } from './profile.mjs'
@@ -47,8 +47,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]]   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --pause <feature>   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived', '--pause'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -77,11 +77,16 @@ if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
   console.error(`--into needs a branch name. ${USAGE}`)
   process.exit(2)
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into'].includes(argv[i - 1]))
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into', '--pause'].includes(argv[i - 1]))
 
 const CFG = requireConfig()
 const ROOT = CFG.root
 const DIR = fleetDir(ROOT)
+
+// A pause request is a file the fleet checks before each run of that feature (drive): it parks the
+// feature for /builder:revise, which changes its spec in the worktree and names it again.
+const pauseFile = (feature) => join(DIR, 'requests', `${feature}.pause`)
+const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
 
 // Progress is read live from each feature's worktree (or the root before it has one): the manifest's
 // state, the plan's tasks and the ledger's completed ones. A few small files per feature.
@@ -97,6 +102,21 @@ if (flag('--status') || flag('--archived')) {
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
     if (note) console.log(note)
   }
+  process.exit(0)
+}
+
+if (flag('--pause')) {
+  const name = opt('--pause')
+  if (!name || name.startsWith('--') || name.includes('/') || name.includes('..') || name.includes('\\')) {
+    console.error(`--pause needs a feature name (no slashes). ${USAGE}`)
+    process.exit(2)
+  }
+  const row = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT).features?.[name] : null
+  if (row && row.status !== 'done') {
+    mkdirSync(join(DIR, 'requests'), { recursive: true })
+    writeFileSync(pauseFile(name), `requested ${new Date().toISOString()}\n`)
+    console.log(`pause requested: ${name}`)
+  } else console.log(`${name} isn't in this fleet — nothing to pause`)
   process.exit(0)
 }
 
@@ -577,7 +597,11 @@ for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${wh
 for (const f of fresh)
   fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, unpark: true, ...(after[f] && { waitsOn: after[f] }) }
 // Naming a parked or failed feature is asking for a retry, whatever stopped it: enqueue unparks it.
-for (const f of asked) if (['parked', 'failed'].includes(fleet.features[f]?.status)) markUnpark(fleet.features[f])
+for (const f of asked)
+  if (['parked', 'failed'].includes(fleet.features[f]?.status)) {
+    markUnpark(fleet.features[f])
+    clearPause(f)
+  }
 
 // ---- one claude run ------------------------------------------------------------------------
 /**
@@ -742,6 +766,7 @@ function landingFacts(f, feature) {
 
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature, facts) {
+  clearPause(feature)
   const f = fleet.features[feature]
   const { size, profile } = facts ?? landingFacts(f, feature)
   const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
@@ -860,6 +885,8 @@ async function drive(feature, lane) {
   let failures = 0
   let stalls = 0
   for (;;) {
+    // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
+    if (existsSync(pauseFile(feature))) return park(f, `revising — next: /builder:revise --path ${specOf(feature)}`)
     const before = snapshot(f.worktree, feature)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
     f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
@@ -1120,7 +1147,7 @@ function enqueue(feature) {
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk/
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
 function appendHistory(path, what) {
@@ -1369,6 +1396,7 @@ function drainInbox() {
     if (row && !['parked', 'failed'].includes(row.status)) continue // queued or running already
     if (row) {
       markUnpark(row)
+      clearPause(name)
       Object.assign(row, { status: 'queued', reason: null, runsThisTime: 0, autoUnparks: 0 })
       joining.push(name)
       continue

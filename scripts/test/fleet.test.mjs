@@ -1361,3 +1361,48 @@ test('archived logs older than keep_logs are pruned at fleet start', () => {
   assert.ok(existsSync(join(base, 'fresh')))
   assert.ok(existsSync(join(base, 'a', 'a-01.log')), 'this run’s landing is archived after the prune')
 })
+
+test('--pause parks a feature at its next run with a reason starting revising', async () => {
+  const root = makeRepo(['a'])
+  const scenario = { a: ['audited', 'SLOW:planned', 'building'] }
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
+  const fleet = spawn('node', [FLEET, 'a'], { cwd: root, stdio: 'ignore', env: ENV(root, { STUB_SLOW_MS: '2500', FLEET_KEEP_STOPPED_WORKTREES: '1' }) })
+  const exited = new Promise((r) => fleet.on('exit', (code) => r(code)))
+  const calls = join(root, '.stub/calls.log')
+  await until(() => existsSync(calls), 'a never started')
+  const p = runFleet(root, ['--pause', 'a'], scenario, { STUB_SLOW_MS: '2500' })
+  assert.equal(p.status, 0, p.stderr)
+  assert.match(p.stdout, /pause requested: a/)
+  assert.equal(existsSync(join(root, '.builder/fleet/requests/a.pause')), true)
+  await exited
+  const fj = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.equal(fj.features.a.status, 'parked')
+  assert.match(fj.features.a.reason, /^revising — next: \/builder:revise --path docs\/features\/a$/)
+  const steps = readFileSync(calls, 'utf8').trim().split('\n').filter((l) => l.startsWith('start'))
+  assert.ok(steps.length <= 2, `runs stopped before building: ${steps.length} starts`)
+  assert.match(readFileSync(wtFile({ fleet: fj }, 'a', 'PARKED.md'), 'utf8'), /^kind: human-step$/m)
+})
+
+test('--pause on a feature that is not in the fleet says so and writes nothing', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['--pause', 'zzz'], {})
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /nothing to pause/)
+  assert.equal(existsSync(join(root, '.builder/fleet/requests/zzz.pause')), false)
+  const bad = runFleet(root, ['--pause', '../x'], {})
+  assert.notEqual(bad.status, 0)
+})
+
+test('naming a paused feature again deletes the request and carries it to merged', () => {
+  const root = makeRepo(['a'])
+  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stuck — next: x'] })
+  assert.equal(first.fleet.features.a.status, 'parked')
+  const p = runFleet(root, ['--pause', 'a'], {})
+  assert.match(p.stdout, /pause requested: a/)
+  const req = join(root, '.builder/fleet/requests/a.pause')
+  assert.equal(existsSync(req), true)
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assert.equal(existsSync(req), false, 'the request is gone')
+  assertLanded(r, 'a')
+})

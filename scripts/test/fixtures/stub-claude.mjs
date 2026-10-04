@@ -7,7 +7,7 @@
 //   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
-//   SLOW:<step>     wait 150 ms, then <step>
+//   SLOW:<step>     wait STUB_SLOW_MS (default 150) ms, then <step>
 //   SWITCH-THEN-SHIP  run .stub/switch.sh (the human switching branches), then SHIP
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
@@ -98,7 +98,7 @@ if (step.startsWith('TOUCH:')) {
 }
 if (step.startsWith('SLOW:')) {
   step = step.slice(5)
-  await new Promise((r) => setTimeout(r, 150))
+  await new Promise((r) => setTimeout(r, Number(process.env.STUB_SLOW_MS) || 150))
 }
 if (step === 'HANG-CHILD') {
   spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
