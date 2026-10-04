@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "builder",
+  "version": "4.9.1",
+  "description": "Persistent concept-to-delivery builds with model routing, isolated worktrees, and verified local integration.",
+  "author": {
+    "name": "Luke Keith"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/lukekeith/builder",
+  "repository": "https://github.com/lukekeith/builder"
+}

@@ -1,5 +1,7 @@
 # builder — a dependency-free build pipeline for Claude Code
 
+**Codex is also available:** [install Builder for Codex](codex/README.md). Develop Claude first, then run `$sync` in Codex to migrate, verify and release the Codex package. `$update-local` rolls the Codex release out to local projects.
+
 `claude plugin marketplace add lukekeith/builder` → `claude plugin install builder@claude-builder`
 
 Invoked as `/builder:<skill>`. Start with **`/builder:brainstorm <what you want>`**; `/builder:help`

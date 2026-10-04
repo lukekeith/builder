@@ -1,0 +1,20 @@
+{
+  "name": "builder-codex",
+  "interface": {
+    "displayName": "Builder for Codex"
+  },
+  "plugins": [
+    {
+      "name": "builder",
+      "source": {
+        "source": "local",
+        "path": "./codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
