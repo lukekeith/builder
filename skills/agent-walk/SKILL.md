@@ -16,10 +16,12 @@ so agent mode can take the feature to merged with every record saying it is not 
 **The build profile.** Read the levers: `node <builder>/scripts/profile.mjs --levers <folder>`. The
 floors in its `floors` hold whatever the levers say.
 
-- **`testing: none`** → no walk, no walker. Go straight to §4 **AGENT-PASS**'s sign-off at HEAD, the
+- **`testing: none`** → no walk, no walker. After the precondition table passes, go straight to §4
+  **AGENT-PASS**'s sign-off at HEAD, the
   header line `> 🤖 AGENT SIGNED OFF — no walk (profile: rush) — not human-tested · YYYY-MM-DD — <sha>`
   (`custom` in place of `rush` under a custom profile).
 - **`testing: risky`** → walk only the `[risk]` items and the `## Cross-app (verify E2E)` section.
+  Neither present → no walker: AGENT-PASS with `0 items in scope` in the verdict and the hand-off.
 - **`testing: full`** → the walk as written.
 - **`testing: full+human`** → the walk as written. On AGENT-PASS, instead of the sign-off, park:
   `blocked: "waiting for your walk — next: /builder:resume --path <folder>"` (§4).
@@ -58,10 +60,14 @@ still failing with its *expected* and *saw* from every round it failed, quoted f
 fix each round tried and its commit; the evidence paths; and *Where to dig* — the code the failing
 behaviour runs through, and what the five rounds have ruled out. A human or a later run starts the
 dig from there.
+🔴 **Between rounds** — before dispatching any round after the first — check for
+`.builder/fleet/requests/<feature>.pause`. On one, write `blocked: "revising — next: /builder:revise --path <folder>"`
+to the manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop.
 **Under `persist: low`**, one failed round since the last unpark is the limit: the next one parks
 the same way, `failed five rounds running` written as `failed its one round`.
 An item that fails because the SPEC never said what it should do is not a fix to retry: rule what
-the spec most plausibly means, fix to that, and say so in the hand-off.
+the spec most plausibly means, fix to that, and say so in the hand-off. **Under `unruled: park`**, park
+instead — `kind: decision` (REFERENCE §The park record), naming what the spec leaves open.
 
 ## 2. Dispatch the walker
 

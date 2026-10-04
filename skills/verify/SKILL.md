@@ -42,11 +42,9 @@ consumer is affected. Without `--agent-walk`, verify runs as written.
 - **`verify: full`** → the checklist as written, with the cross-app E2E (item 10) only on the legs
   §A re-verify's table names for this feature's diff.
 - **`verify: everything`** → the checklist as written: a feature's first verify, every leg.
-- **`landing: pr-ci`** → READY's ship opens the PR through resume §Ship's existing PR path, and the
-  fleet's land waits for green CI. No CI configured → say so in the verdict and merge locally, as
-  `landing: local`.
 - **`testing: none`** (no walk): item 1 holds on the `🤖 AGENT SIGNED OFF — no walk …` header, and
-  the verdict's first line says nothing walked it. **`testing: risky`**: item 1 holds on the
+  the verdict's first line says nothing walked it. There is no walk report, so when the verify level
+  calls for the cross-app E2E (item 10), verify drives the app for it itself. **`testing: risky`**: item 1 holds on the
   report's `[risk]` and `E` rows.
 
 🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)

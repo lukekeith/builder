@@ -144,10 +144,11 @@ the repo grows a second app.
    profile, recorded as `profile:` on the manifest:
    - **Rush** — final review and fast gates only; no agent walk — you test it once it lands.
    - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
-   - **Thorough** — every task reviewed (a second reviewer on contract and schema tasks), full agent
-     walk, deep verify with cross-app E2E.
+   - **Thorough** — today's full pipeline: every task reviewed, full agent walk, deep verify with
+     cross-app E2E.
    - **Thorough + you** — Thorough, then your own walk and `/builder:signoff` before it lands.
-   - *Customize* sets the seven levers one by one. **The floors hold under every profile:** each
+   - *Customize* sets the levers one by one — stronger models and a second reviewer on contract and
+     schema tasks are only there. **The floors hold under every profile:** each
      app's fast gates at its phase close, the final whole-branch review, and consumer parity when a
      `released_artifact` consumer is affected.
 3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished

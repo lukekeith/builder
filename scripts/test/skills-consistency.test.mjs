@@ -324,12 +324,11 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   assert.match(verify, FLOORS)
   assert.match(verify, /`verify: floors`/)
   assert.match(verify, /consumer parity when[^\n]*`released_artifact`/)
-  assert.match(verify, /`landing: pr-ci`/)
   const revise = read('skills/revise/SKILL.md')
   assert.match(revise, /fleet\.mjs --pause <feature>/)
   assert.match(revise, /every 30 s[^\n]*20 min/)
   assert.match(revise, /fleet\.mjs <feature> --detach --into <target>/)
-  assert.match(revise, /no worktree[^\n]*in place/)
+  assert.match(revise, /no worktree[^\n]*in place/i)
   const resume = read('skills/resume/SKILL.md')
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   const init = read('skills/init/SKILL.md')
@@ -350,4 +349,24 @@ test('with agent_walk set, no skill offers /builder:build as how a user builds',
   for (const f of files)
     for (const line of read(f).split('\n'))
       if (/agent_walk/.test(line) && /\/builder:build\b/.test(line) && !/never/i.test(line)) assert.fail(`${f}: ${line}`)
+})
+
+test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise never stall', () => {
+  // Ruling A: no skill or doc describes Thorough as strong models or a second reviewer.
+  for (const f of ['skills/plan/SKILL.md', 'skills/help/SKILL.md', 'README.md', 'skills/init/SKILL.md'])
+    assert.doesNotMatch(read(f), /\*\*Thorough\*\*[^\n]*(second reviewer|strong|most capable)/, f)
+  // Ruling B: pr-ci is not offered anywhere.
+  for (const f of ['skills/plan/SKILL.md', 'skills/verify/SKILL.md', 'skills/help/SKILL.md', 'README.md'])
+    assert.doesNotMatch(read(f), /pr-ci/, f)
+  // Important 2: your walk hands back to the fleet whatever the sign-off's verdict.
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*whatever its verdict[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
+  // Important 3: pause only a live row; a worktree that isn't running is revised there with no pause.
+  const revise = read('skills/revise/SKILL.md')
+  assert.match(revise, /`building`, `walking` or `queued`[^\n]*running fleet/)
+  assert.match(revise, /fleet is stopped[\s\S]{0,200}skip the pause/)
+  assert.match(revise, /Revise in place only when there is\s+no worktree/)
+  // design §6: the agent walk checks for a pause request between rounds.
+  const walk = read('skills/agent-walk/SKILL.md')
+  assert.match(walk, /between rounds[\s\S]{0,200}\.builder\/fleet\/requests\/<feature>\.pause[\s\S]{0,200}revising — next: \/builder:revise --path <folder>/i)
 })

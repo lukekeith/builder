@@ -83,13 +83,16 @@ exactly today's pipeline. No existing feature changes behaviour.
 | Lever | Rush | Standard | Thorough | Thorough + you |
 |---|---|---|---|---|
 | Testing | none; you test after landing | agent walks the **risky** walk items | agent walks every item | Thorough, then **your** walk before landing |
-| Review during build | final review only | per task + final | per task + final + a second reviewer on contract and schema tasks | as Thorough |
-| Model tier | `economy` | `default` (EXECUTION.md §Model selection) | `strong` | as Thorough |
+| Review during build | final review only | per task + final | per task + final | as Thorough |
+| Model tier | `economy` | `default` (EXECUTION.md §Model selection) | `default` | as Thorough |
 | Verify | floors only | full gates + deep set; cross-app E2E only on the affected legs | everything, full cross-app E2E | as Thorough |
 | Persistence | park early (1 walk round, no auto-unpark) | default (5 rounds, `auto_unpark`) | default | default |
 | Choices the spec left open | take the recommendation, listed under "Rulings I made" | same | same | same |
 | Landing | local `--no-ff` merge | same | same | same |
 
+- **Stronger models and a second reviewer on contract and schema tasks are Customize options**
+  (`models=strong`, `review=per-task+second`); no preset sets them.
+- **PR + CI landing: deferred — the fleet never pushes.** `landing` is always `local`.
 - **Floors (D8)** hold in every column and under Customize: each app's fast gates at its phase close,
   the final whole-branch review, and consumer parity when a `released_artifact` consumer is affected.
   Customize can't switch them off.
@@ -102,8 +105,8 @@ exactly today's pipeline. No existing feature changes behaviour.
   `walk.md`.
 - **Customize…** asks the levers in two AskUserQuestion calls (testing, review, models, verify, then
   persistence, open choices, landing), each pre-filled from the recommended preset. Choices made
-  this way are only valid there: the park-on-open-choice policy and PR + CI landing. PR + CI landing
-  uses the existing ship path's PR and waits for CI before the merge.
+  this way are only valid there: the park-on-open-choice policy, stronger models and the second
+  reviewer.
 - **Where the levers are read.** `scripts/profile.mjs` maps `profile:` to lever values
   (`profile.mjs --levers <folder>` → JSON). Build, agent-walk and verify read it under
   `--agent-walk`. The fleet reads it for persistence and landing. The skills never interpret a
