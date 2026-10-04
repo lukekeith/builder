@@ -273,3 +273,25 @@ test('the go-ahead picks a build profile and launches the fleet; resume routes a
   assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
   assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
 })
+
+test('agents get the right target, no hand build in agent_walk projects, and the target is its own question', () => {
+  const plan = read('skills/plan/SKILL.md')
+  // I-1: under the fleet, the target is the --into the run was given.
+  assert.match(plan, /^Invocation: [^\n]*\[--into <branch>\]/m)
+  assert.match(plan, /`target: <the --into this run was given>`/)
+  // I-3: the target is a second question in the same call; Other on the profile question is only Customize.
+  assert.match(plan, /\*\*Land on\?\*\*/)
+  assert.match(plan, /`<merge_into> \(Recommended\)`/)
+  assert.match(plan, /Other[^\n]*means only \*\*Customize\*\*/)
+  // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /^\| `state: planned` \*\*and\*\* `go-ahead: none` \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:plan --path <folder>/m)
+  assert.match(read('skills/build/SKILL.md'), /`go-ahead: none`[^\n]*`agent_walk:` block[^\n]*\/builder:plan --path <folder>/)
+  // M-5: the agent_walk row comes before the ready: pending row.
+  assert.ok(resume.indexOf('**and** the config has an `agent_walk:` block, **not** under `--agent-walk`') < resume.indexOf('`state: building` **and** `ready: pending`'))
+  // M-4
+  assert.match(read('skills/resume/REFERENCE.md'), /plan's go-ahead footer/)
+  assert.match(read('skills/help/SKILL.md'), /except the plan go-ahead, which launches agents itself/)
+  // M-6
+  assert.match(read('skills/agent/SKILL.md'), /without `target:` counts as `merge_into`/)
+})
