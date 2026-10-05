@@ -431,3 +431,12 @@ test('4.9.1: splits are cut by value and "one spec" is always offered', () => {
 test('4.9.1: resume writes to the fleet worktree copy when it routes on it', () => {
   assert.match(read('skills/resume/SKILL.md'), /Every write that follows goes there too/)
 })
+
+test('4.9.3: a section approval only approves, names its checks, and real forks are asked properly', () => {
+  const spec = read('skills/spec/SKILL.md')
+  assert.match(spec, /options are only \*\*Right\*\* and \*\*Change something\*\*/)
+  assert.match(spec, /never alternative designs as options/)
+  assert.match(spec, /never "the three checks"/)
+  assert.match(spec, /A check that is really an unsettled choice is not a check/)
+  assert.match(spec, /§Rounds format/)
+})
