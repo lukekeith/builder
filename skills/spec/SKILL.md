@@ -52,7 +52,20 @@ lists, types, status codes or length limits. Show each one in three parts:
   already depends on, a real fork between alternatives. Give each one line saying what happens and
   what it means for them. If nothing qualifies, say "Nothing here needs your judgement — it follows
   from what we settled." Never invent an item to fill the list.
-- **The ask.** "Right?" Show the full section text only when they ask for it.
+- **The ask.** One AskUserQuestion whose options are only **Right** and **Change something** —
+  🔴 **never alternative designs as options**: an approval approves; it doesn't decide. Its
+  `question` text stands on its own, because the question box can hide the message above it: name
+  every "What to check" item in it in a few words ("Right — design boxes hidden outside the designer,
+  a click tags it in chat, the next Design doesn't get them?"), never "the three checks". Show the
+  full section text only when they ask for it.
+
+**A check that is really an unsettled choice is not a check.** If a "What to check" item has two
+defensible answers that the record never ruled on, the brainstorm missed a branch: add it to the
+record's tree as `open` and ask it before the section, as its own question in
+`/builder:brainstorm`'s §Rounds format — the briefing in chat (the decision, why it matters, what it
+affects, the recommendation with its evidence) and one AskUserQuestion whose options each say what
+picking it does. Quote the owner's own words when they already answer it — then it was settled, and
+it's a check again.
 
 For §Apps and §Contract, say once why the check matters: the contract freezes when the producer's
 build phase closes, and changing it after that means `/builder:revise` and a re-check of every
