@@ -4,6 +4,18 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.9.3
+
+**Fixed:**
+- **`/builder:spec`'s section approval only approves.** Approving a section (§Idea, §Contract, …)
+  could show alternative designs as answer options, with the explanation cut off above the question
+  box. You were asked to approve "the three checks" without seeing them. Now:
+  - The approval's options are only **Right** and **Change something**.
+  - The question names every check in its own text.
+  - A "check" that is really an unsettled choice goes back into the brainstorm's tree. It is asked as
+    its own question first, with why it matters, what it affects, a recommendation, and options that
+    say what each one does.
+
 ## 4.9.2
 
 **Fixed:**
