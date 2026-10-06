@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.10.0
+
+**New:**
+- **Build it here, without the ceremony.** Every handoff before the build now offers a third way
+  through: `3. here` (or `2.` without `agent_walk`), or `/builder:resume --path <folder> --here`.
+  - **Still runs:** the audit, the decisions gate and the plan, in full.
+  - **Then:** the plan's go-ahead shows the phase table and goes straight on. This session works
+    `PLAN.md` task by task: test first, one commit per task the house way (`commit: manual` apps are
+    staged for you), and each app's fast gates at its phase close.
+  - **Skipped:** the fleet, the worktree, the reviewer agents, the final review, the deep set, walk
+    readiness, sign-off and verify.
+  - **At the end:** it stops at `state: built` (`build: here` on the manifest, `here` in
+    `/builder:status`). `/builder:resume` can still walk, verify and ship it when you want the full
+    finish.
+
 ## 4.9.3
 
 **Fixed:**

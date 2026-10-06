@@ -135,8 +135,10 @@ recommendations; in prototype mode add the gap tally in its three buckets — fi
 📍 <feature>: designed (<size>, <apps>) — next:
    1. resume — continue here, step by step: /builder:resume --path <registry>/<feature>
    2. agent  — hand it to agents to finish and merge: /builder:agent --path <registry>/<feature>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <registry>/<feature> --here
+   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
 ```
 
 The numbered form is REFERENCE §The two-way footer (`../resume/REFERENCE.md`); without a config
-`agent_walk:` block, the single line `📍 … — next: <option 1> · or say go`.
+`agent_walk:` block there is no **agent** option, so **here** is `2.` and the reply line reads
+`Reply 1 or 2 (or "resume" / "here"; "go" is 1)`.
