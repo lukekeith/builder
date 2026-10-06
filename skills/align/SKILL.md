@@ -128,7 +128,8 @@ happen in the design rather than the app, with the command that would make it.
 📍 <feature>: aligned — <n> fields aligned, <m> T# owed (<per-app split>) — next:
    1. resume — continue here, step by step: /builder:resume --path <folder>
    2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
+   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never

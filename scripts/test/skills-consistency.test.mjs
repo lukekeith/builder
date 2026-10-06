@@ -391,7 +391,7 @@ test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause request
   assert.match(signoff, /whatever the verdict, hand it back[\s\S]{0,120}fleet\.mjs <feature> --detach --into <target>/)
   // C1.3: agent and resume's agent row never unpark a park waiting for your walk.
   assert.match(agent, /The one exception:\*\* a\s+park whose reason starts `waiting for your walk`[\s\S]{0,200}never unparked here/)
-  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`'))
+  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`') && l.includes('`profile:` or `target:`'))
   assert.match(agentRow, /`waiting for your walk …` is the walk row above, never this one/)
   // C1.4: the park's next step stays resume.
   assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
@@ -439,4 +439,20 @@ test('4.9.3: a section approval only approves, names its checks, and real forks 
   assert.match(spec, /never "the three checks"/)
   assert.match(spec, /A check that is really an unsettled choice is not a check/)
   assert.match(spec, /§Rounds format/)
+})
+
+test('4.10.0: build here — offered before the build, audit and plan still run, the build stops at built', () => {
+  const ref = read('skills/resume/REFERENCE.md'), resume = read('skills/resume/SKILL.md'), plan = read('skills/plan/SKILL.md'), build = read('skills/build/SKILL.md')
+  assert.match(ref, /\| `--here` \|/)
+  assert.match(ref, /build: here \| none/)
+  assert.match(ref, /3\. here {3}— audit and plan it, then build it in this session without the ceremony/)
+  for (const f of ['spec', 'align', 'audit']) assert.match(read(`skills/${f}/SKILL.md`), /--here\n {3}Reply 1, 2 or 3 \(or "resume" \/ "agent" \/ "here"; "go" is 1\)/, f)
+  assert.match(resume, /\*\*`--here` \(not under `--agent-walk`\)\*\* → write `build: here`/)
+  assert.match(resume, /`build: here` \| `\/builder:build --path <folder> --here`/)
+  assert.ok(resume.indexOf('**and** `build: here` |') < resume.indexOf('**and** the config has an `agent_walk:` block, **not** under `--agent-walk` |'), 'the here rows come before the agent rows')
+  assert.match(plan, /### Build here \(`build: here`\)/)
+  assert.match(plan, /don't stop for an approval/)
+  assert.match(build, /## Build here/)
+  assert.match(build, /chore\(<feature>\): built here — not walked/)
+  assert.match(build, /stage and carry on/)
 })
