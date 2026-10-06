@@ -181,12 +181,22 @@ approval covers the whole build; no later phase re-asks.
   Under `--auto` the table is presented and the run proceeds, recorded as
   `go-ahead: auto (recommended) YYYY-MM-DD`.
 - **Yes, with an `agent_walk:` block** → §The build profile: agents build it.
+- **The manifest says `build: here`** → §Build here instead of the approval above.
 - **No** → leave `go-ahead: none`; `state: planned` stands. A scope objection routes to
   `/builder:brainstorm --path <folder>`; a changed requirement or reversed ruling routes to
   `/builder:revise --path <folder> <the change>`.
 
 **Nothing here creates a branch, a worktree or a ticket** — the fleet makes the feature's worktree
 when it launches. Given `--ticket`, check the branch name carries the key and warn once if not.
+
+### Build here (`build: here`)
+
+The human chose to build it in this session without the ceremony (REFERENCE §Flags `--here`). Present
+the `## Phases` table and what rides along exactly as above — it is the plan they are about to watch
+being built — but **don't stop for an approval**: choosing *here* was the go-ahead. Write
+`go-ahead: <name YYYY-MM-DD> (here)`, commit `chore(<feature>): <feature> — go-ahead (here)`, and run
+`/builder:build --path <folder> --here` through the Skill tool in the same turn. No build profile, no
+**Land on?**, no fleet. Under `--agent-walk`, `build: here` is ignored.
 
 ### The build profile (`agent_walk:` set)
 

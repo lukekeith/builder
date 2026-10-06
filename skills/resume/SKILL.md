@@ -5,7 +5,7 @@ description: Where a feature stands and the one next step — reads the feature'
 
 # `/builder:resume` — where a feature stands, and the next step
 
-Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--agent-walk] [--no-dev-env] [--help]`**. Flags:
+Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--agent-walk] [--here] [--no-dev-env] [--help]`**. Flags:
 [REFERENCE](REFERENCE.md) §Flags — flags first, and **ignore any flag this step does not use rather
 than erroring on it**.
 
@@ -15,6 +15,11 @@ picker, nothing written.
 **Read `.claude/builder.md` before anything else.** It is the only place this pipeline learns what
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
 `/builder:init`, and stop.
+
+**`--here` (not under `--agent-walk`)** → write `build: here` to the manifest (once; a manifest that
+already says it is left alone), commit `chore(<feature>): build here, without the ceremony`, then
+route as below. Valid only before the build starts (`state` spec, aligned, audited or planned); past
+that, say so in one line and route as usual.
 
 **No `--path` and no text → §The picker first**, before Step 1. Never ask "which feature?" as an
 open question, and never guess one from the branch or the session.
@@ -96,6 +101,8 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: audited` **and** §Decisions has an OPEN row | §The decisions gate |
 | `state: audited` **and** §Findings & risks has a `blocked:` row | ⛔ name each row and the clearer it carries; the plan step refuses until they are gone. A `build-time risk` row is not a blocker |
 | `state: audited`, no OPEN row, no `blocked:` row | `/builder:plan --path <folder>` |
+| `state: planned` with a go-ahead, or `state: building`, **and** `build: here` | `/builder:build --path <folder> --here` — build §Build here; never the fleet |
+| `state: planned` **and** `go-ahead: none` **and** `build: here` | `/builder:plan --path <folder>` — its go-ahead shows the phase table and proceeds straight into the build here (plan §Build here) |
 | `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | `/builder:plan --path <folder>` — its go-ahead picks the build profile and launches the fleet (plan §The build profile); never a hand build |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
 | `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `profile:` or `target:` (only a 4.9 go-ahead writes them) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: `/builder:agent --path <folder>` — it relaunches the fleet on the manifest's `target:`, or says it is already running. A fleet row parked `waiting for your walk …` is the walk row above, never this one. Neither key (a 4.8 go-ahead) → the hand-build rows below, as before |

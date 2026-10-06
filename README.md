@@ -172,6 +172,10 @@ Write the specs, then hand them over:
 /builder:fleet <feature>…       # while a fleet runs: the specs join its queue, no second fleet
 ```
 
+Or build it yourself, without the ceremony: pick `here` on the handoff (or `/builder:resume --path <folder> --here`).
+The audit and plan still run; then the session works the plan task by task, test first, with each app's fast gates,
+and stops at `built`. No fleet, no reviewer agents, no walk lock, and `/builder:resume` can finish it later.
+
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
 at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
 per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it

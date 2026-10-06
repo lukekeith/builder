@@ -216,3 +216,12 @@ test('a feature the fleet landed elsewhere says to merge its target, not its man
   assert.equal(rows.b.nextStep, 'Continue the build')
   assert.equal(rows.b.landed ?? null, null)
 })
+
+test('a feature built here reports `here`, from the moment it is chosen, never a fleet profile', () => {
+  const rows = repo({
+    a: 'state: audited\nbuild: here',
+    b: 'state: built\ngo-ahead: x (here)\nbuild: here',
+  })
+  assert.equal(rows.a.profile, 'here')
+  assert.equal(rows.b.profile, 'here')
+})

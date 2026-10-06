@@ -143,6 +143,7 @@ mid-task. When in doubt, the heavier size.
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
 | `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
+| `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (`3. here`). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the phase table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm move the save button into the header` |
@@ -197,32 +198,39 @@ does-not-continue table above don't carry it.
 
 ## The two-way footer
 
-**Wherever agents could take over the next step, the footer offers it** — only in a project whose
-config has an `agent_walk:` block. A footer about one feature
-whose `state` is one of `spec aligned audited planned building built signed-off verified` — the
-states `/builder:agent` offers — and that would end in ` · or say go` (or names the walk, which agents
-can do instead of you) is printed as a numbered choice:
+**Wherever another way through the next step exists, the footer offers it.** A footer about one
+feature whose `state` is one of `spec aligned audited planned building built signed-off verified`
+and that would end in ` · or say go` (or names the walk) is printed as a numbered choice. Its
+options, numbered in this order, are those that apply:
+
+- **resume** — always: the command the single-line footer would have named (for the walk,
+  `🔒 your walk → /builder:signoff --path <folder>`).
+- **agent** — only when the config has an `agent_walk:` block: `/builder:agent --path <folder>`.
+- **here** — only before the build starts (`state` is `spec`, `aligned`, `audited` or `planned`):
+  `/builder:resume --path <folder> --here` — the audit and the plan still run; then this session
+  builds it without the ceremony (REFERENCE §Flags `--here`).
 
 ```
 📍 <feature>: <what just happened> — next:
    1. resume — continue here, step by step: <the footer's command>
    2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
+   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
 ```
 
-Option 1 is the command the single-line footer would have named — for the walk,
-`🔒 your walk → /builder:signoff --path <folder>`. Option 2 is always `/builder:agent --path <folder>`.
+Without an `agent_walk:` block the **here** option is `2.` and the reply line reads `Reply 1 or 2
+(or "resume" / "here"; "go" is 1)`. With only one option left, the single-line footer is printed.
 
 **Replies.** `1`, `resume` or a bare affirmative → option 1, by §Continuing on "go" — so `1` on the
-walk line answers with the signoff command to type, exactly as "go" would. `2` or `agent` → run
-`/builder:agent --path <folder>` through the Skill tool in that turn; its own dry run and its one
-confirmation still ask.
+walk line answers with the signoff command to type, exactly as "go" would. The **agent** number or
+`agent` → run `/builder:agent --path <folder>` through the Skill tool in that turn; its own questions
+and its one confirmation still ask. The **here** number or `here` → run
+`/builder:resume --path <folder> --here` through the Skill tool in that turn.
 
-**Not two-way:** a footer under `--agent-walk` (no human reads it); one in the does-not-continue table
+**Not numbered:** a footer under `--agent-walk` (no human reads it); one in the does-not-continue table
 other than the walk — 🛑 held, a human's step, a placeholder, more than one candidate; a footer before
-a spec exists (brainstorm, intake) or after the feature merged; plan's go-ahead footer, which
-launches the agents itself or, without the block, names `/builder:init --update`; and a config with
-no `agent_walk:` block, where `/builder:agent` would refuse — the single-line footer then, as before.
+a spec exists (brainstorm, intake) or after the feature merged; and plan's go-ahead footer, which
+launches the agents itself, builds here, or, without the block, names `/builder:init --update`.
 
 ## Branch and ticket
 
@@ -294,6 +302,7 @@ ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readine
 auto: on YYYY-MM-DD | off
 blocked: none | "<why> — next: <step>"                # parked by an unattended run — §How a park reads; resume runs nothing while it is set
 agent-walk: on YYYY-MM-DD | off                        # --agent-walk, recorded so a cold session keeps it
+build: here | none                                     # --here: built in the session without the ceremony (build §Build here); absent = none
 ```
 
 **Write moments** — the manifest commits at step transitions and stops, never per phase: spec
