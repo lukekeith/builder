@@ -23,7 +23,7 @@ export const LEVERS = { testing: ['none','risky','full','full+human'], review: [
 // Thorough is today's pipeline; `strong` and `per-task+second` are Customize-only. PR + CI landing is
 // deferred (the fleet never pushes), so `landing` keeps its key with one value and old manifests stay valid.
 /** How a resolved preset name reads in a table; one map for every status view. */
-export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
+export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom', here: 'here' }
 /** preset → its label; none → `—`, an unknown name → `thorough`. */
 export const profileLabel = (preset) => (preset ? (PROFILE_LABELS[preset] ?? 'thorough') : '—')
 export const FLOORS = { fastGates: true, finalReview: true, releasedParity: true }

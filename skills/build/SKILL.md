@@ -5,9 +5,12 @@ description: The code-changing step of the /builder:* pipeline — executes the 
 
 # `/builder:build` — PLAN.md, executed by subagents
 
-Invocation: **`/builder:build --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--no-dev-env]`**. Flags:
+Invocation: **`/builder:build --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--here] [--no-dev-env]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
+
+**`--here`, or the manifest says `build: here` (and not under `--agent-walk`)** → §Build here, and
+nothing else in this skill applies.
 
 **This skill is a wrapper.** [`EXECUTION.md`](EXECUTION.md) owns the loop — setup, dispatch, the task
 review, the fix loop and its breaker, the final review, the "Rulings I made" list. **Read it first**,
@@ -256,6 +259,36 @@ Never ask.
    with what it costs if wrong. It is the only place those decisions reach the human.
 7. ⛔ **Do not delete the workspace** — the walk, verify and the sign-off still read it.
    `/builder:ship` removes it.
+
+## Build here
+
+The human chose this session over the ceremony. The plan is the same `PLAN.md`; what changes is who
+works it and what is skipped. Read `.claude/builder.md` (§Quality gates, §Global constraints, §House
+rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
+
+1. **Work the tasks in order, yourself, in this session.** For each `### Task N`: read its block and
+   the SPEC section it implements, then the recipe skill its `Recipe:` line names; write the test
+   first where behaviour changes ([`test-driven-development`](../test-driven-development/SKILL.md)),
+   see it fail, implement, see it pass. On the branch checked out here — never a new branch or
+   worktree.
+2. **Commit per task** the house way (§Global constraints' commit rule): name every file you stage.
+   🔴 **In an app the config marks `commit: manual`, stage and carry on** — those commits are the
+   human's; list them at the end.
+3. **At each phase close, that app's fast gates** — `node <builder>/scripts/gate.mjs <app>`. A red
+   gate is fixed here, in place, before the next phase.
+4. **Keep a one-line ledger** in the workspace (`<builder>/scripts/workspace <feature>` →
+   `ledger.md`): `Task N: done <sha>`. After a `/clear`, `/builder:resume` routes back here and you
+   pick up at the first task without a line.
+5. **Skipped:** reviewer and implementer agents, the final whole-branch review, the deep set, the
+   contract-freeze ceremony (still freeze it in the manifest when the producer's phase closes),
+   walk readiness, the walk, sign-off and verify.
+6. **When the last task is in:** write `state: built`, `walk: none`, `ready: none` and commit
+   `chore(<feature>): built here — not walked`. Then:
+
+~~~
+📍 <feature>: built here, not walked — test it yourself. When you want the full finish:
+   /builder:resume --path <folder> (walk → sign-off → verify → ship)
+~~~
 
 ## 🔒 This skill never opens a PR
 

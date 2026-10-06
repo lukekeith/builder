@@ -207,7 +207,8 @@ build called out separately and first; the next command — **never "another pas
 📍 <feature>: audited — next:
    1. resume — continue here, step by step: /builder:resume --path <folder>
    2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
+   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
 ```
 
 Append ` · BLOCKED: <n> items` after `audited` when the verdict is BLOCKED. The numbered form is

@@ -129,7 +129,8 @@ const inspect = (root, name) => {
     out.source = 'MANIFEST.md'
     out.next = mf.next ?? null
     // The resolved preset once the go-ahead is given; a misspelling reads as thorough (its warning is not printed here — the statusline reads this).
-    out.profile = isSet(mf['go-ahead']) ? parseProfile(mf.profile).preset : null
+    // `build: here` (the human builds it in a session, no fleet) shows from the moment it is chosen.
+    out.profile = mf.build === 'here' ? 'here' : isSet(mf['go-ahead']) ? parseProfile(mf.profile).preset : null
     out.pr = mf.pr && mf.pr !== 'none' ? mf.pr : null
     out.blocked = mf.hold && mf.hold !== 'none' ? `🛑 PR HELD — ${mf.hold}` : null
     if (out.layout === 'program') {
