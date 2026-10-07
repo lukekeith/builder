@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.10.2
+
+**Fixed:**
+- **`/builder:agent` no longer offers a feature a session is building.** A feature that is planned
+  with a go-ahead, or building, and whose workspace was written in the last 30 minutes is being built
+  in a session, so agents taking it too would mean two builders on one feature. It isn't offered,
+  `--path` refuses it, and the fleet's pre-flight refuses it however it's named. A feature you only
+  just specced in a session is still offered.
+- **Work on a branch several features share isn't handed to agents.** Agents would treat that branch
+  as one feature's branch (d2m's `feat/design-versions` carried two). The feature says which others
+  share the branch: merge it into the target first, or finish them in a session.
+- **The picker says what agents would actually do.** For example, "built in a session, not tested
+  yet · agents only walk it, verify and merge it". Features not built yet are listed first.
+
 ## 4.10.1
 
 **Changed:**

@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseProfile } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -190,6 +190,13 @@ function preflight(feature) {
   if (tryGit(['ls-files', '--error-unmatch', `${spec}/MANIFEST.md`]) === null) return `${spec} is not committed — commit it so the worktree gets it`
   if (tryGit(['diff', '--quiet', 'HEAD', '--', spec]) === null) return `${spec} has uncommitted changes — commit them first`
   const mf = parseManifest(text)
+  if (buildingInSession(ROOT, feature, mf))
+    return `${spec} is being built in a session right now (its workspace changed in the last 30 min) — finish it there, or name it again once that session is done`
+  if (UNDERWAY.has(mf.state)) {
+    const manifests = Object.fromEntries(features(ROOT, CFG.registry).map((f) => [f, parseManifest(readManifest(ROOT, f) ?? '')]))
+    const others = sharedBranch(feature, manifests, CFG).filter((f) => UNDERWAY.has(manifests[f].state) || manifests[f].state === 'built')
+    if (others.length) return `${spec} is on ${mf.branch} with ${others.join(', ')} — one branch can't be handed to agents as one feature's: merge ${mf.branch} into ${TARGET} first, or finish them in a session`
+  }
   // A blocked spec is admitted: naming it is the human asking for a retry (see unpark).
   const lane = laneOf({ ...mf, blocked: 'none' })
   if (lane === 'done') return `${spec} already shipped — nothing left for the fleet`
