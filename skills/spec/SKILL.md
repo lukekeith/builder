@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), presents the design section by section for approval with §Idea first (why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered), then writes SPEC.md + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, and hands on to /builder:resume. Also applies a brainstorm revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
+description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), asks only the product choices the conversation left open (each as a real decision with its alternatives, never a section approval), records implementation details as assumed, then writes SPEC.md (§Idea first: why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered) + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, and hands on to /builder:resume. Also applies a brainstorm revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
 ---
 
 # `/builder:spec` — the confirmed concept, written down
@@ -28,50 +28,35 @@ the newly settled branches.
 §MANIFEST.md and §PROGRAM.md hold every shape this step produces; the config holds every fact about
 the project. Read the whole record.
 
-## 1. Present the design, section by section
+## 1. Settle what the record left open — no section approvals
 
-In SPEC order, each section scaled to its complexity, asking after each whether it is right:
+🔴 **The owner already approved the design** — at the brainstorm's §Confirm (or intake's). Never
+present the spec section by section for approval, and never ask "Right?" about a section: an
+approval of a summary the owner can't evaluate protects nothing and costs a stop.
 
-1. **§Idea** — from the record's Intent, How it works today, Approaches and the Tree's Why and
-   Rejected columns: why, what success looks like, **the owner's key rules verbatim** each linked to
-   the D# that operationalizes it, the concept (a mermaid diagram when several parts move), how it
-   fits today (prose; `file:line` only as footnotes), the approaches considered with why each lost.
-2. **§Apps and §Contract** — the blast radius.
-3. The per-app sections, §Schema & API changes, §Testing, §Out of scope; in prototype mode §Prototype
-   and §Replaced surfaces from the record's intake findings.
+Draft every section in your head from the record first (SPEC order: §Idea · §Apps and §Contract · the
+per-app sections · §Schema & API changes · §Testing · §Out of scope; in prototype mode §Prototype and
+§Replaced surfaces from the intake findings). Then list **every choice the draft makes that the
+record's tree never ruled on** — a scope line, a behaviour, what an AI or another app may see or do,
+what is stored, kept or lost — and sort each one:
 
-**How a section is shown.** Never paste the section as the file will hold it: no tables, field
-lists, types, status codes or length limits. Show each one in three parts:
+- **A product choice** — it changes what the owner sees or can do, what data is kept, overwritten or
+  lost, what an agent or AI may read or change, something made visible or irreversible, or a shape a
+  released consumer depends on. **Ask it** before writing, as its own question in
+  `/builder:brainstorm`'s §Rounds format: the briefing in chat (`**Q<n> — <the decision>**`, the
+  question in one plain sentence, **Why it matters**, **What it affects**, **Recommendation** with its
+  evidence), then one AskUserQuestion whose options are the real alternatives — the recommendation
+  first, each option's description saying what picking it does. 🔴 **Never "Right / Change
+  something"** — that is an approval, and this is a decision. Record the answer in the record's tree
+  (Who/date the owner) and carry on. The owner's own words in the record already answering it → it was
+  settled: no question.
+- **An implementation detail** — how it is stored, a limit, an error code, a field's type, which
+  internal module owns what. **Don't ask.** Write it as a §Decisions row marked
+  `(assumed at spec) YYYY-MM-DD`, and list it in the closing summary.
 
-- **What it says.** Two to four plain sentences about what changes for the user and between the
-  apps. Routine plumbing (a new field, an error code, a limit, a command shown on a page) gets one
-  closing "Also:" line.
-- **What to check.** List only the items where a different answer changes the product or would be
-  expensive to undo: something that acts without the user (an agent closing, merging or deleting),
-  data overwritten or lost, something made visible or irreversible, a shape a released consumer
-  already depends on, a real fork between alternatives. Give each one line saying what happens and
-  what it means for them. If nothing qualifies, say "Nothing here needs your judgement — it follows
-  from what we settled." Never invent an item to fill the list.
-- **The ask.** One AskUserQuestion whose options are only **Right** and **Change something** —
-  🔴 **never alternative designs as options**: an approval approves; it doesn't decide. Its
-  `question` text stands on its own, because the question box can hide the message above it: name
-  every "What to check" item in it in a few words ("Right — design boxes hidden outside the designer,
-  a click tags it in chat, the next Design doesn't get them?"), never "the three checks". Show the
-  full section text only when they ask for it.
-
-**A check that is really an unsettled choice is not a check.** If a "What to check" item has two
-defensible answers that the record never ruled on, the brainstorm missed a branch: add it to the
-record's tree as `open` and ask it before the section, as its own question in
-`/builder:brainstorm`'s §Rounds format — the briefing in chat (the decision, why it matters, what it
-affects, the recommendation with its evidence) and one AskUserQuestion whose options each say what
-picking it does. Quote the owner's own words when they already answer it — then it was settled, and
-it's a check again.
-
-For §Apps and §Contract, say once why the check matters: the contract freezes when the producer's
-build phase closes, and changing it after that means `/builder:revise` and a re-check of every
-consumer.
-
-Pushback amends the record's tree first, then the section. Under `--auto` present and proceed.
+Nothing open → no question at all; write the files. Pushback at any point amends the record's tree
+first, then the spec. Under `--auto` every product choice takes its recommendation, recorded
+`auto (recommended) YYYY-MM-DD`.
 
 ## 2. Write the files
 
@@ -128,8 +113,13 @@ stranger could implement two ways is not written yet. Commit `docs(<ticket-or-fe
 <feature>` (scope from the manifest's `ticket`, otherwise the feature name), set the record's
 `status: handed-off`.
 
-Say what was written and where; **lead with the §Apps row**; list the OPEN decisions with their
-recommendations; in prototype mode add the gap tally in its three buckets — fixed in the design · written into the SPEC · out of scope — and name which items are not yet built. Then:
+**Close with one plain summary — and no question.** Where it was written; **what it does**, in two
+to four plain sentences for the owner (what they'll be able to do, not tables or field lists);
+**what it touches**, from §Apps; **the choices you settled with them** in step 1, one line each;
+**the details assumed at spec**, one line each, so a wrong one is easy to spot; the OPEN decisions
+with their recommendations, if any; in prototype mode the gap tally in its three buckets —
+fixed in the design · written into the SPEC · out of scope — and which items are not yet built. End the
+summary with `Anything wrong? Just say what — it's revised before anything is built.` Then:
 
 ```
 📍 <feature>: designed (<size>, <apps>) — next:

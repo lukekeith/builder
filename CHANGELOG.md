@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.10.1
+
+**Changed:**
+- **`/builder:spec` no longer asks you to approve it section by section.** Your "yes" at the end of
+  the brainstorm is the approval. Section approvals ("Right / Change something") asked you to judge
+  summaries you couldn't evaluate, and they buried the real decisions. Now:
+  - Before writing, the spec lists every choice it makes that the conversation never settled.
+  - A **product choice** (what you see or can do, what data is kept or lost, what an AI may read or
+    change) is asked as a real decision: why it matters, what it affects, a recommendation, and the
+    alternatives as options.
+  - An **implementation detail** is recorded in §Decisions as "assumed at spec" without asking.
+  - The step ends with one plain summary (what it does, what it touches, what was settled and what
+    was assumed) and no question. Say what's wrong, and it's revised.
+
 ## 4.10.0
 
 **New:**
