@@ -39,7 +39,7 @@ import { parseManifest, isSet } from './manifest.mjs'
 import { parseProfile, profileLabel } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
-import { ago, landedRows } from './fleet-core.mjs'
+import { ago, landedRows, buildingInSession, sharedBranch } from './fleet-core.mjs'
 import { newerRelease, newerLine } from './newer.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -332,6 +332,16 @@ for (const { root, requireManifest } of REGISTRY) {
   for (const name of features(ROOT, root).sort()) {
     if (requireManifest && !existsSync(join(ROOT, root, name, 'MANIFEST.md'))) continue
     rows.push(inspect(root, name))
+  }
+}
+// What /builder:agent must know before offering a row: a session is building it right now, or its
+// feature branch also carries other unfinished features.
+{
+  const manifests = Object.fromEntries(rows.filter((r) => r.manifest).map((r) => [r.feature, r.manifest]))
+  const now = Date.now()
+  for (const r of rows) {
+    r.inSession = buildingInSession(ROOT, r.feature, r.manifest, now)
+    r.sharedWith = r.manifest ? sharedBranch(r.feature, manifests, CFG) : []
   }
 }
 /** A git query that answers null instead of throwing — outside a repo, or on a path git never saw. */

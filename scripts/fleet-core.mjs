@@ -438,3 +438,47 @@ export function landedMigrations({ files, readiness }) {
   if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
   return { action: 'apply', commands: cmds }
 }
+
+/** How recently a feature's workspace must have been written for a session to count as building it. */
+export const ACTIVE_MS = 30 * 60 * 1000
+
+/**
+ * True when a session is working on the feature right now: any file in `<root>/.builder/<feature>/`
+ * (its ledger, briefs, gate logs — written as a build goes) was touched within ACTIVE_MS. Agents must
+ * not start on a feature someone is building in a session.
+ */
+export function activeInSession(root, feature, now = Date.now()) {
+  const dir = join(root, '.builder', feature)
+  let names
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return false
+  }
+  return names.some((n) => {
+    try {
+      return now - statSync(join(dir, n)).mtimeMs <= ACTIVE_MS
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
+ * The other unfinished features whose manifest names the same feature branch as `feature` — work
+ * that shares a branch can't be handed to a fleet as one feature's branch. The base branch, the
+ * merge target and `builder/` branches are never shared work. `manifests` is { name: parsed manifest }.
+ */
+export function sharedBranch(feature, manifests, cfg) {
+  const branch = manifests[feature]?.branch
+  if (!branch || branch === 'none' || branch === cfg.baseBranch || branch === cfg.mergeInto || branch.startsWith('builder/')) return []
+  return Object.entries(manifests)
+    .filter(([name, mf]) => name !== feature && mf?.branch === branch && mf.state !== 'shipped')
+    .map(([name]) => name)
+    .sort()
+}
+
+/** A session is building it: planned with a go-ahead, or building, and its workspace is fresh. A
+ *  feature only specced in a session (its record written minutes ago) is not being built. */
+export const buildingInSession = (root, feature, mf, now = Date.now()) =>
+  (mf?.state === 'building' || (mf?.state === 'planned' && isSet(mf['go-ahead']))) && activeInSession(root, feature, now)

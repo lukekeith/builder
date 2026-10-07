@@ -446,14 +446,14 @@ test('a manifest branch: before building is the spec branch, not a build branch'
   assert.match(r.stdout, /✓ a → builder\/a/)
 })
 
-test('two features resolving to one branch: the second is refused', () => {
+test("two features building on one branch: both refused — one feature can't take the shared branch", () => {
   const root = makeRepo(['p1', 'p2'])
   for (const f of ['p1', 'p2']) writeFileSync(join(root, `docs/features/${f}/MANIFEST.md`), 'size: md\nstate: building\nbranch: feat/shared\nnext: x\n')
   git(root, 'commit', '-qam', 'both building on one branch')
   git(root, 'branch', 'feat/shared')
   const r = runFleet(root, ['p1', 'p2', '--dry-run'], {})
-  assert.match(r.stdout, /✓ p1 → feat\/shared/)
-  assert.match(r.stdout, /✗ p2 — p1 and p2 both resolve to branch feat\/shared/)
+  assert.match(r.stdout, /✗ p1 — docs\/features\/p1 is on feat\/shared with p2/)
+  assert.match(r.stdout, /✗ p2 — docs\/features\/p2 is on feat\/shared with p1/)
 })
 
 test('a planned feature whose spec branch another feature is building on gets its own branch', () => {
@@ -1540,4 +1540,28 @@ test('apply_mode ask leaves a note naming the command; a drop is never run under
   assertLanded(d, 'a')
   assert.ok(!existsSync(join(drop, 'applied.txt')))
   assert.ok(d.fleet.notes.some((n) => /drops or rewrites data, so it was not applied/.test(n)), JSON.stringify(d.fleet.notes))
+})
+
+// ---- agents never take a feature a session is building, or one branch several features share ----
+test('a feature a session is building is refused; one only specced in a session is not', () => {
+  const root = makeRepo(['a', 's'])
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: building\ngo-ahead: x\nnext: x\n')
+  git(root, 'commit', '-qam', 'building')
+  for (const f of ['a', 's']) {
+    mkdirSync(join(root, '.builder', f), { recursive: true })
+    writeFileSync(join(root, '.builder', f, 'ledger.md'), 'x\n')
+  }
+  const r = runFleet(root, ['a', 's', '--dry-run'], {})
+  assert.match(r.stdout + r.stderr, /docs\/features\/a is being built in a session right now/)
+  assert.doesNotMatch(r.stdout + r.stderr, /docs\/features\/s is being built/)
+})
+
+test('a built feature on a branch other unfinished features share is refused, naming them', () => {
+  const root = makeRepo(['a', 'b'])
+  git(root, 'branch', 'feat/x')
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: built\nbranch: feat/x\nnext: x\n')
+  writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: building\nbranch: feat/x\nnext: x\n')
+  git(root, 'commit', '-qam', 'shared')
+  const r = runFleet(root, ['a', '--dry-run'], {})
+  assert.match(r.stdout + r.stderr, /docs\/features\/a is on feat\/x with b — .* merge feat\/x into main first/)
 })
