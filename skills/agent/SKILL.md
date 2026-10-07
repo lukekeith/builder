@@ -41,7 +41,17 @@ park whose reason starts `waiting for your walk` (the fleet.json row's `reason`,
 fleet's worktree) is never unparked here — it waits for your walk, not for agents. It is not offered;
 name it with `/builder:resume --path <folder>`, its walk row, instead — and with `--path`, route there
 and stop. A row with `landed` set already merged into that branch: not offered — say `merge <landed>
-into this branch`. No config `agent_walk:` block → stop here and name `/builder:init --update`.
+into this branch`.
+
+🔴 **Never offered — and with `--path`, refused in one line:**
+- **`inSession: true`** — a session is building it right now (planned with a go-ahead, or building,
+  and its workspace was written in the last 30 minutes). Two builders on one feature is how work is
+  lost: say `<feature> — being built in a session; finish it there`.
+- **A non-empty `sharedWith` on a row past the plan** (`building`, `built`, `signed-off`, `verified`)
+  — its manifest's branch also carries those features, so it can't be handed to agents as one
+  feature's branch: say `<feature> — on <branch> with <sharedWith>; merge <branch> into <target>
+  first, or finish them in a session`.
+The fleet's own pre-flight refuses both too, whatever names them. No config `agent_walk:` block → stop here and name `/builder:init --update`.
 
 **A fleet may already be running.** `.builder/fleet/lock` holding a pid that `kill -0 <pid>` accepts
 means one is: then a row `.builder/fleet/fleet.json` lists with a status other than `parked` or
@@ -72,11 +82,18 @@ is still unreadable — bare codes like "D6 on C-063" — read the SPEC rows it 
 plain line what behaviour is stuck. Then add one line of your own: whether picking it is the step
 you'd recommend over its `next:`.
 
-One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the label; its
-`manifest.state` and `nextStep` as the description — for a parked row, `parked — <why, cut to
-fit> · picking it unparks and retries`. **More than four offerable** → offer the four most recently touched
-(`updatedAt`), and say in the question that any others can be named with
-`/builder:fleet <feature> <feature>…`. Nothing picked → stop.
+One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the label, and a
+description that says **what the agents would actually do**, in plain words:
+- **spec … planned** — `not built yet · agents audit, plan, build, test and merge it`.
+- **building** — `part-built (<what's done>) · agents build the rest, test and merge it`.
+- **built, not walked** — `built in a session, not tested yet · agents only walk it, verify and
+  merge it` (`build: here` → `built here by you, not tested yet · …`).
+- **signed-off / verified** — `tested · agents only verify and merge it`.
+- **parked** — `parked — <why, cut to fit> · picking it unparks and retries`.
+**Order:** features not built yet first, then part-built, then built — so new work leads. **More
+than four offerable** → the first four in that order (most recently touched within each), and say in
+the question that any others can be named with `/builder:fleet <feature> <feature>…`. Nothing picked
+→ stop.
 
 ## 3. Check, confirm, launch
 

@@ -460,3 +460,12 @@ test('4.10.0: build here — offered before the build, audit and plan still run,
   assert.match(build, /chore\(<feature>\): built here — not walked/)
   assert.match(build, /stage and carry on/)
 })
+
+test('4.10.2: /builder:agent never offers in-session or shared-branch work, and says what agents would do', () => {
+  const agent = read('skills/agent/SKILL.md')
+  assert.match(agent, /\*\*`inSession: true`\*\*/)
+  assert.match(agent, /being built in a session; finish it there/)
+  assert.match(agent, /non-empty `sharedWith`/)
+  assert.match(agent, /built in a session, not tested yet · agents only walk it, verify and\s+merge it/)
+  assert.match(agent, /features not built yet first, then part-built, then built/)
+})

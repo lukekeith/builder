@@ -225,3 +225,27 @@ test('a feature built here reports `here`, from the moment it is chosen, never a
   assert.equal(rows.a.profile, 'here')
   assert.equal(rows.b.profile, 'here')
 })
+
+test('rows say when a session is building a feature, and which features share its branch', () => {
+  const rows = repo({
+    a: 'state: building\nbranch: feat/x',
+    b: 'state: built\nbranch: feat/x',
+    c: 'state: spec\nbranch: main',
+  })
+  assert.deepEqual(rows.a.sharedWith, ['b'])
+  assert.deepEqual(rows.b.sharedWith, ['a'])
+  assert.deepEqual(rows.c.sharedWith, [])
+  assert.equal(rows.a.inSession, false)
+})
+
+test('a feature whose workspace was just written is active — a session is building it', () => {
+  const root = setup({ a: 'state: building', b: 'state: building', s: 'state: spec' })
+  for (const f of ['a', 's']) {
+    mkdirSync(join(root, '.builder', f), { recursive: true })
+    writeFileSync(join(root, '.builder', f, 'ledger.md'), 'x\n')
+  }
+  const rows = Object.fromEntries(JSON.parse(list(root, '--json').stdout).features.map((f) => [f.feature, f]))
+  assert.equal(rows.a.inSession, true)
+  assert.equal(rows.b.inSession, false, 'no fresh workspace')
+  assert.equal(rows.s.inSession, false, 'just specced in a session is not being built')
+})

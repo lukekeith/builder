@@ -461,3 +461,33 @@ test('landedMigrations: ask, human, or no apply command → a note naming the co
   assert.match(none.why, /no `apply:` command/)
   assert.equal(landedMigrations({ files, readiness: { ...parseWalkReadiness(BODY), apply_mode: undefined } }).action, 'note', 'ask is the default')
 })
+
+// ---- agent picks: a feature a session is building, and a branch several features share ---------
+import { activeInSession, sharedBranch, ACTIVE_MS } from '../fleet-core.mjs'
+
+test('activeInSession: a workspace file touched within ACTIVE_MS means a session is building it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'active-'))
+  mkdirSync(join(root, '.builder', 'f'), { recursive: true })
+  writeFileSync(join(root, '.builder', 'f', 'ledger.md'), 'x')
+  const now = Date.now()
+  assert.equal(activeInSession(root, 'f', now), true)
+  assert.equal(activeInSession(root, 'f', now + ACTIVE_MS + 1000), false)
+  assert.equal(activeInSession(root, 'missing', now), false)
+  assert.equal(ACTIVE_MS, 30 * 60 * 1000)
+})
+
+test('sharedBranch: other unfinished features whose manifest names the same feature branch', () => {
+  const manifests = {
+    a: { state: 'building', branch: 'feat/x' },
+    b: { state: 'built', branch: 'feat/x' },
+    c: { state: 'spec', branch: 'feat/x' },
+    d: { state: 'building', branch: 'main' },
+    e: { state: 'building', branch: 'main' },
+    f: { state: 'shipped', branch: 'feat/x' },
+    g: { state: 'building', branch: 'builder/g' },
+  }
+  const cfg = { baseBranch: 'main', mergeInto: 'main' }
+  assert.deepEqual(sharedBranch('a', manifests, cfg), ['b', 'c'])
+  assert.deepEqual(sharedBranch('d', manifests, cfg), [], 'the base branch is everyone\'s, not shared work')
+  assert.deepEqual(sharedBranch('g', manifests, cfg), [])
+})
