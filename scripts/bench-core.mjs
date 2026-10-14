@@ -198,3 +198,56 @@ export function summarize(runs) {
   }
   return rows
 }
+
+const usd = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : '—')
+const dur = (n) => (Number.isFinite(n) ? duration(n) : '—')
+const score = (s) => (s ? `${Math.round(s.passed)}/${Math.round(s.total)}` : '—')
+const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
+const calls = (tc) => Object.entries(tc ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ')
+
+export function renderSummary(data) {
+  const rows = summarize(data.runs ?? [])
+  const reps = Math.max(1, ...rows.map((r) => r.n))
+  const lines = ['| Config | Status | Wall | Turns | Tokens | Cost | Accept | Fixture tests | Longest step |', '|---|---|---|---|---|---|---|---|---|']
+  for (const r of rows) {
+    lines.push(`| ${r.config}${r.flagged ? ' ⚠' : ''} | ${cell(r.status)} | ${dur(r.ms)} | ${Number.isFinite(r.turns) ? Math.round(r.turns) : '—'} | ${Number.isFinite(r.tokens) ? formatTokens(r.tokens) : '—'} | ${usd(r.costUsd)} | ${score(r.accept)} | ${score(r.fixture)} | ${r.longest ? `${r.longest.name} ${dur(r.longest.ms)}` : '—'} |`)
+  }
+  if (reps > 1) lines.push('', `median of ${reps} reps`)
+  for (const r of rows) if (r.flagged) lines.push('', `⚠ ${r.config}: ${r.flagged}`)
+  return { rows, text: lines.join('\n') }
+}
+
+export function renderReport(data) {
+  const { rows, text: summary } = renderSummary(data)
+  const v = data.versions ?? {}
+  const out = [`# benchmark ${data.runId} — ${data.feature}`, '', `builder ${v.builder ?? '—'} · superpowers ${v.superpowers ?? '—'} · gsd ${v.gsd ?? '—'} · ${data.model ?? 'default model'} · ${new Date(data.startedAt).toISOString()}`, '', '## Summary', '', summary]
+  const stepNames = [...new Set(rows.flatMap((r) => Object.keys(r.steps)))]
+  out.push('', '## Time per step', '', `| Config | ${stepNames.map(cell).join(' | ')} |`, `|---|${stepNames.map(() => '---').join('|')}|`)
+  for (const r of rows) out.push(`| ${r.config} | ${stepNames.map((n) => (n in r.steps ? dur(r.steps[n]) : '—')).join(' | ')} |`)
+  for (const run of data.runs ?? []) {
+    const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
+    out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')
+    if (run.path === 'in-chat') out.push(`⚠ ${IN_CHAT_FLAG}`, '')
+    out.push(`wall ${dur(run.ms)} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
+    for (const s of run.sessions ?? []) {
+      out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``, '')
+      for (const st of s.steps ?? []) {
+        out.push(`- **${st.name}** — ${dur(st.ms)}, ${st.turns} turns${calls(st.toolCalls) ? `, ${calls(st.toolCalls)}` : ''}`)
+        if (st.files?.length) out.push(`  - files: ${st.files.join(', ')}`)
+        if (st.tests?.length) out.push(`  - tests: ${[...new Set(st.tests)].join(' · ')}`)
+        if (st.subagents?.length) out.push(`  - subagents: ${st.subagents.map((a) => `${a.type} — ${a.first}`).join(' · ')}`)
+        if (st.gaps?.length) out.push(`  - longest waits: ${st.gaps.map((g) => `${dur(g.ms)} after ${g.after}`).join(' · ')}`)
+      }
+      if (run.status !== 'done' && s.tail?.length) out.push('', '```', ...s.tail.slice(-10), '```')
+      out.push('')
+    }
+    if (run.gitLog?.length) out.push('git log main:', '', '```', ...run.gitLog.slice(0, 20), '```')
+  }
+  return out.join('\n') + '\n'
+}
+
+export function renderStatusTable(data, progress) {
+  const { text } = renderSummary(data)
+  const line = progress ? `running: ${progress.config} (session ${progress.session}, ${duration(Date.now() - progress.startedAt)})` : 'not running'
+  return `${text}\n\n${line}\n`
+}

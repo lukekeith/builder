@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStream, deriveSteps, sessionTotals, parseTap, runTotals, median, summarize } from '../bench-core.mjs'
+import { parseStream, deriveSteps, sessionTotals, parseTap, runTotals, median, summarize, renderReport, renderStatusTable } from '../bench-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STREAM = readFileSync(join(HERE, 'fixtures/bench/session.jsonl'), 'utf8')
@@ -140,4 +140,47 @@ test('summarize medians scores and steps over the reps that have them, not zero-
 test('summarize: a step one rep never reached does not halve its median', () => {
   const rows = summarize([run('gsd', 1), run('gsd', 2, { sessions: [{ name: 'a', steps: [{ name: 'builder:audit', ms: 40 }] }] })])
   assert.equal(rows[0].steps['builder:build'], 60)
+})
+
+const DATA = {
+  runId: '2026-10-13-1200-tags', feature: 'tags', model: 'claude-sonnet-5-5', startedAt: 1, endedAt: 2,
+  versions: { builder: '4.11.0', superpowers: '6.4.1', gsd: '1.7.0' },
+  runs: [
+    run('builder-rush', 1, { sessions: [{ name: 'brainstorm', prompt: '/builder:brainstorm --auto …', totals: { ms: 100, turns: 10, tokens: { input: 1, output: 2, cacheRead: 3 }, costUsd: 1, ended: 'result' },
+      steps: [{ name: 'builder:brainstorm', start: 0, end: 40, ms: 40, turns: 3, toolCalls: { Read: 2, Skill: 1 }, files: ['src/cli.mjs'], commands: ['ls'], tests: [], subagents: [], gaps: [{ ms: 30, after: 'Read src/cli.mjs' }] },
+              { name: 'builder:build', start: 40, end: 100, ms: 60, turns: 7, toolCalls: { Agent: 2, Edit: 4, Bash: 3 }, files: ['src/cli.mjs', 'test/cli.test.mjs'], commands: ['npm test'], tests: ['npm test'], subagents: [{ type: 'general-purpose', first: 'Implement task 1' }], gaps: [] }], tail: [] }] }),
+    run('gsd', 1, { status: 'timed out', score: { accept: { passed: 2, failed: 5, total: 7 }, fixture: { passed: 4, failed: 0, total: 4 } }, sessions: [{ name: '/gsd-plan-phase 1', prompt: '/gsd-plan-phase 1', totals: { ms: 100, turns: 10, tokens: { input: 1, output: 2, cacheRead: 3 }, costUsd: 1, ended: 'cut' }, steps: [{ name: '/gsd-plan-phase 1', start: 0, end: 100, ms: 100, turns: 10, toolCalls: {}, files: [], commands: [], tests: [], subagents: [], gaps: [] }], tail: ['last line'] }] }),
+  ],
+}
+
+test('renderReport has the summary table, the steps table and a section per config', () => {
+  const md = renderReport(DATA)
+  assert.match(md, /^# benchmark 2026-10-13-1200-tags — tags/m)
+  assert.match(md, /builder 4\.11\.0 · superpowers 6\.4\.1 · gsd 1\.7\.0 · claude-sonnet-5-5/)
+  assert.match(md, /\| Config \| Status \| Wall \| Turns \| Tokens \| Cost \| Accept \| Fixture tests \| Longest step \|/)
+  assert.match(md, /\| builder-rush \| done \| 0s \| 10 \| 3 \| \$1\.00 \| 7\/7 \| 4\/4 \| builder:build 0s \|/)
+  assert.match(md, /\| gsd \| timed out \|/)
+  assert.match(md, /\| Config \| builder:brainstorm \| builder:build \| \/gsd-plan-phase 1 \|/)
+  assert.match(md, /\| builder-rush \| 0s \| 0s \| — \|/)
+  assert.match(md, /^## builder-rush$/m)
+  assert.match(md, /builder:build\*\* — 0s, 7 turns, Edit 4 · Bash 3 · Agent 2/)
+  assert.match(md, /files: src\/cli\.mjs, test\/cli\.test\.mjs/)
+  assert.match(md, /subagents: general-purpose — Implement task 1/)
+  assert.match(md, /longest waits: 0s after Read src\/cli\.mjs/)
+  assert.match(md, /^## gsd — timed out$/m)
+  assert.match(md, /last line/)
+})
+
+test('renderReport flags an in-chat row and prints medians with n', () => {
+  const md = renderReport({ ...DATA, runs: [run('builder-rush', 1, { path: 'in-chat' }), run('builder-rush', 2, { path: 'in-chat' })] })
+  assert.match(md, /\| builder-rush ⚠ \| done \|/)
+  assert.match(md, /median of 2 reps/)
+  assert.match(md, /⚠ builder-rush: built in chat/)
+})
+
+test('renderStatusTable adds the config now running', () => {
+  const s = renderStatusTable(DATA, { config: 'superpowers', rep: 1, session: 'superpowers', startedAt: Date.now() - 65000 })
+  assert.match(s, /\| builder-rush \|/)
+  assert.match(s, /running: superpowers \(session superpowers, 1m\)/)
+  assert.match(renderStatusTable(DATA, null), /not running/)
 })
