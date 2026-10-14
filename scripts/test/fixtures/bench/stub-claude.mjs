@@ -4,7 +4,7 @@
 // Emits a stream-json session: init, one Skill tool_use per skill (10 ms apart), a result.
 import { appendFileSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 
 const argv = process.argv.slice(2)
 if (argv[0] === 'plugin') {
@@ -38,6 +38,7 @@ if (s.commit) {
   execFileSync('git', ['add', '-A'], { cwd: process.cwd() })
   execFileSync('git', ['-c', 'user.name=stub', '-c', 'user.email=stub@x', 'commit', '-qm', s.commit], { cwd: process.cwd() })
 }
+if (s.orphan) writeFileSync(join(process.env.STUB_STATE, 'orphan.pid'), String(spawn('sleep', ['30'], { stdio: 'ignore' }).pid))
 if (s.hang) setInterval(() => {}, 1000)
 else {
   line({ type: 'result', subtype: 'success', duration_ms: 30, num_turns: (s.skills ?? []).length, total_cost_usd: 0.01, usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 0 }, result: 'done', session_id: 'stub', timestamp: ts() })
