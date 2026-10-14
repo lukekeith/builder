@@ -129,7 +129,7 @@ export function sessionTotals(parsed) {
   const wall = events.length ? endOf(parsed) - events[0].t : 0
   if (r) {
     const tk = tokensOf(r)
-    return { ms: r.duration_ms ?? wall, turns: r.num_turns ?? 0, tokens: { input: tk.input, output: tk.output, cacheRead: tk.cacheRead }, costUsd: tk.costUsd, ended: 'result' }
+    return { ms: Math.max(r.duration_ms ?? 0, wall), turns: r.num_turns ?? 0, tokens: { input: tk.input, output: tk.output, cacheRead: tk.cacheRead }, costUsd: tk.costUsd, ended: 'result' }
   }
   return { ms: wall, turns: events.filter((e) => e.type === 'assistant' && e.top).length, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, ended: 'cut' }
 }
@@ -165,6 +165,7 @@ export function median(nums) {
   return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2
 }
 
+export const OVERLAP_FLAG = 'sessions overlapped (a session waited on a fleet it launched): per-step times are not additive'
 export const IN_CHAT_FLAG = 'built in chat (sized xs/sm) — not the pipeline; resize the feature'
 
 /** Every step of a run, by name, with its time — the same name twice (two fleet runs both auditing) adds up. */
@@ -204,12 +205,14 @@ export function summarize(runs) {
       fixture: scored('fixture'),
       longest: longest ? { name: longest[0], ms: longest[1] } : null,
       steps,
-      flagged: reps.some((r) => r.path === 'in-chat') ? IN_CHAT_FLAG : null,
+      flagged: [reps.some((r) => r.path === 'in-chat') ? IN_CHAT_FLAG : null, reps.some(overlapped) ? OVERLAP_FLAG : null].filter(Boolean).join(' · ') || null,
     })
   }
   return rows
 }
 
+/** True when a run's sessions, summed, outlast its wall time by >10% — one waited on a fleet it launched. */
+export const overlapped = (run) => (run.sessions ?? []).reduce((a, x) => a + (x.totals?.ms ?? 0), 0) > (run.ms ?? 0) * 1.1 && (run.ms ?? 0) > 0
 const usd = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : '—')
 const dur = (n) => (Number.isFinite(n) ? duration(n) : '—')
 const score = (s) => (s ? `${Math.round(s.passed)}/${Math.round(s.total)}` : '—')
@@ -239,6 +242,7 @@ export function renderReport(data) {
     const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
     out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')
     if (run.path === 'in-chat') out.push(`⚠ ${IN_CHAT_FLAG}`, '')
+    if (overlapped(run)) out.push(`⚠ ${OVERLAP_FLAG}`, '')
     out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
     for (const s of run.sessions ?? []) {
       out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``)

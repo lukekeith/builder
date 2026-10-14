@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 const feature = process.argv[2]
 const root = process.cwd()
+process.on('exit', () => rmSync(join(root, '.builder', 'fleet', 'lock'), { force: true }))
+await new Promise((r) => setTimeout(r, Number(process.env.STUB_FLEET_DELAY_MS) || 0))
 const park = !!process.env.STUB_FLEET_PARK
 const logs = park ? join(root, '.builder', 'fleet', 'logs') : join(root, '.builder', 'fleet', 'logs', '_archive', feature)
 mkdirSync(logs, { recursive: true })
