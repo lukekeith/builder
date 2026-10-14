@@ -202,6 +202,153 @@ export function flagsFor(pipeline, copy) {
 
 export const runId = (feature, now = new Date()) => `${now.toISOString().slice(0, 10)}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}-${feature}`
 
+// ---- running one config ----------------------------------------------------------------------------
+
+const FLEET = process.env.BENCH_FLEET || join(BUILDER, 'scripts', 'fleet.mjs')
+
+/** The feature folder builder's spec session left, or null (xs/sm: built in chat; or nothing). */
+export function featureOf(copy) {
+  const reg = join(copy, 'docs', 'features')
+  if (!existsSync(reg)) return null
+  return readdirSync(reg).find((n) => !n.startsWith('_') && existsSync(join(reg, n, 'MANIFEST.md'))) ?? null
+}
+
+/** The fleet engine on one feature; its stream logs become this config's sessions. */
+export function runFleet({ copy, feature, outDir, env }) {
+  const log = join(outDir, 'fleet.out')
+  const r = spawnSync(process.execPath, [FLEET, feature, '--parallel', '1'], { cwd: copy, encoding: 'utf8', env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: copy }, timeout: RUN_TIMEOUT_MS * 3 })
+  writeFileSync(log, `${r.stdout ?? ''}\n${r.stderr ?? ''}`)
+  const logs = join(copy, '.builder', 'fleet', 'logs')
+  const files = existsSync(logs) ? readdirSync(logs).filter((n) => n.startsWith(`${feature}-`) && n.endsWith('.jsonl')).sort() : []
+  const sessions = files.map((n) => {
+    const file = join(outDir, `session-fleet-${n}`)
+    cpSync(join(logs, n), file)
+    const text = readFileSync(file, 'utf8')
+    const prompt = /"-p","([^"]*)"/.exec(text)?.[1] ?? `/builder:resume --path docs/features/${feature} --agent-walk`
+    const rec = sessionRecord({ name: `fleet ${n.slice(feature.length + 1, -6)}`, lane: null, prompt, file })
+    rec.lane = rec.steps.some((s) => /walk|signoff/.test(s.name)) ? 'walk' : rec.steps.some((s) => /verify|ship/.test(s.name)) ? 'ship' : 'build'
+    return rec
+  })
+  const mfPath = join(copy, 'docs', 'features', feature, 'MANIFEST.md')
+  const mf = existsSync(mfPath) ? readFileSync(mfPath, 'utf8') : null
+  const blocked = mf && /^blocked:\s*(?!none\b)(.+)$/m.exec(mf)?.[1]?.replace(/^"(.*)"$/, '$1')
+  const status = r.status === null ? 'timed out' : blocked ? `parked: ${blocked}` : r.status !== 0 && !existsSync(join(copy, '.builder', 'fleet', 'archive.jsonl')) ? `failed: fleet exit ${r.status}` : 'done'
+  return { sessions, status }
+}
+
+export function installGsd(copy) {
+  const r = spawnSync('sh', ['-c', GSD_INSTALL], { cwd: copy, encoding: 'utf8', timeout: 10 * 60 * 1000 })
+  if (r.status !== 0) return { ok: false, version: null, reason: `gsd install failed: ${(r.stderr || r.stdout || `exit ${r.status}`).trim().split('\n').pop()}` }
+  return { ok: true, version: /(\d+\.\d+\.\d+)/.exec(`${r.stdout}\n${r.stderr}`)?.[1] ?? null, reason: null }
+}
+
+/** After the run: main checked out, the fixture's tests and the hidden acceptance tests, both TAP. */
+export function score(copy, feature) {
+  try {
+    git(copy, 'checkout', '-q', 'main')
+  } catch {}
+  const env = { ...process.env }
+  delete env.NODE_TEST_CONTEXT // set when bench itself runs under `node --test`; it makes a nested run report as a child instead of printing TAP
+  const tap = (file) => {
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', file], { cwd: copy, encoding: 'utf8', env, timeout: 5 * 60 * 1000 })
+    return parseTap(`${r.stdout}\n${r.stderr}`)
+  }
+  const fixture = tap(join('test', 'cli.test.mjs'))
+  cpSync(join(FEATURES, feature, 'accept.test.mjs'), join(copy, 'test', 'accept.test.mjs'))
+  const accept = tap(join('test', 'accept.test.mjs'))
+  rmSync(join(copy, 'test', 'accept.test.mjs'), { force: true })
+  return { accept, fixture }
+}
+
+const writeJson = (p, o) => {
+  writeFileSync(`${p}.tmp`, JSON.stringify(o, null, 2) + '\n')
+  renameSync(`${p}.tmp`, p)
+}
+
+export async function runConfig(plan, m, rep, data, outRoot) {
+  const label = plan.repeat > 1 ? `${m.config}-${rep}` : m.config
+  const copy = join(TMP, plan.id, label)
+  const outDir = join(outRoot, label)
+  mkdirSync(outDir, { recursive: true })
+  const flags = flagsFor(m.pipeline, copy)
+  prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: flags.join(' ') })
+  writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
+  const run = { config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
+  const progress = (session) => writeJson(join(outRoot, 'progress.json'), { config: m.config, rep, session, startedAt: Date.now() })
+  if (m.pipeline === 'gsd') {
+    progress('install gsd')
+    const g = installGsd(copy)
+    data.versions.gsd ??= g.version
+    if (!g.ok) run.status = `not run: ${g.reason}`
+  }
+  const sessions = sessionsFor(m, copy, plan.request)
+  let n = 0
+  for (const s of sessions) {
+    if (run.status !== 'done') break
+    n++
+    progress(s.name)
+    if (s.fleet) {
+      const feature = featureOf(copy)
+      if (!feature) {
+        run.path = 'in-chat'
+        break
+      }
+      const f = runFleet({ copy, feature, outDir, env: {} })
+      run.sessions.push(...f.sessions)
+      run.status = f.status
+      continue
+    }
+    const file = join(outDir, `session-${String(n).padStart(2, '0')}-${s.name}.jsonl`)
+    const r = await runSession({ copy, name: s.name, prompt: s.prompt, outFile: file, claudeArgs: s.flags, systemPrompt: s.system, model: plan.model })
+    run.sessions.push(sessionRecord({ name: s.name, lane: null, prompt: s.prompt, file }))
+    if (r.exit === null) run.status = 'timed out'
+    else if (r.exit !== 0) run.status = `failed: session ${s.name} exit ${r.exit}`
+    else if (m.pipeline === 'builder' && s.name === 'spec' && !featureOf(copy)) {
+      run.path = 'in-chat'
+      run.sessions.pop()
+      break
+    }
+  }
+  if (!run.status.startsWith('not run')) {
+    run.score = score(copy, plan.feature)
+    try {
+      run.gitLog = git(copy, 'log', '--oneline', 'main').split('\n')
+    } catch {}
+  }
+  run.endedAt = Date.now()
+  run.ms = run.endedAt - run.startedAt
+  run.totals = runTotals(run.sessions)
+  return run
+}
+
+function versions() {
+  const builder = JSON.parse(readFileSync(join(BUILDER, '.claude-plugin', 'plugin.json'), 'utf8')).version
+  const sp = superpowersDir()
+  return { builder, superpowers: sp ? basename(sp) : null, gsd: null }
+}
+
+export async function runAll(plan) {
+  const outRoot = join(RESULTS, plan.id)
+  mkdirSync(outRoot, { recursive: true })
+  const data = { runId: plan.id, feature: plan.feature, model: plan.model, startedAt: Date.now(), endedAt: null, versions: versions(), runs: [] }
+  const save = () => {
+    writeJson(join(outRoot, 'runs.json'), data)
+    writeFileSync(join(outRoot, 'REPORT.md'), renderReport(data))
+  }
+  save()
+  for (let rep = 1; rep <= plan.repeat; rep++) {
+    for (const m of plan.configs) {
+      console.log(`▶ ${m.config}${plan.repeat > 1 ? ` rep ${rep}` : ''}`)
+      data.runs.push(await runConfig(plan, m, rep, data, outRoot))
+      data.endedAt = Date.now()
+      save()
+      console.log(`  ${data.runs.at(-1).status} in ${Math.round(data.runs.at(-1).ms / 1000)}s`)
+    }
+  }
+  rmSync(join(outRoot, 'progress.json'), { force: true })
+  console.log(`\n${renderStatusTable(data, null)}\nreport: ${join(outRoot, 'REPORT.md')}`)
+}
+
 // ---- CLI -----------------------------------------------------------------------------------------
 
 const argv = process.argv.slice(2)
@@ -250,7 +397,12 @@ function dryRun(plan) {
 }
 
 const cmd = argv[0]
-if (cmd === 'run' && flag('--dry-run')) {
-  dryRun(planRun())
+if (cmd === 'run') {
+  const plan = planRun()
+  if (flag('--dry-run')) {
+    dryRun(plan)
+    process.exit(0)
+  }
+  await runAll(plan)
   process.exit(0)
 }
