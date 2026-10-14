@@ -198,6 +198,12 @@ past landings, and launches the fleet:
 | **Thorough** | today's full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E |
 | **Thorough + you** | Thorough, then your own walk and `/builder:signoff` before it lands |
 
+**Measuring it.** `/builder:benchmark` runs one small feature (a notes CLI gaining tags) through
+builder at each profile and through superpowers and GSD, unattended, and writes
+`bench/results/<run>/REPORT.md`: wall time, time per step, what each step did, turns, tokens, cost,
+and whether the feature passes acceptance tests the agent never saw. Configs run one at a time;
+nothing in your Claude home changes. `/builder:benchmark --status` while it runs.
+
 *Customize* sets the levers one by one (testing, review, models, verify, persistence, open choices) —
 stronger models and a second reviewer on contract and schema tasks are Customize options. Landing is
 always the local merge; PR + CI landing is deferred, since the fleet never pushes. **The floors hold under every profile:** each app's fast gates at its phase

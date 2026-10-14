@@ -5,3 +5,8 @@
 
 /dist/
 /.claude/skills/update-finpro/
+
+# benchmark: the raw streams beside each committed REPORT.md + runs.json
+/bench/results/*/*/
+/bench/results/lock
+/bench/results/bench.out
