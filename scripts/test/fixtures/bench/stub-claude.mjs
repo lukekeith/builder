@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A stand-in for `claude -p` in the bench tests. Scenario: { "<prompt substring>": { skills: [...],
-// files: { "rel/path": "content" }, commit: "msg", manifest: "feature-name", exit: 0, hang: false } }.
+// files: { "rel/path": "content" }, commit: "msg", manifest: "feature-name", brainstormRecord: "sized sm", exit: 0, hang: false } }.
 // Emits a stream-json session: init, one Skill tool_use per skill (10 ms apart), a result.
 import { appendFileSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -33,6 +33,10 @@ if (s.manifest) {
   mkdirSync(join(process.cwd(), 'docs/features', s.manifest), { recursive: true })
   writeFileSync(join(process.cwd(), 'docs/features', s.manifest, 'MANIFEST.md'), 'size: md\nstate: spec\nnext: /builder:resume\n')
   writeFileSync(join(process.cwd(), 'docs/features', s.manifest, 'SPEC.md'), '# spec\n')
+}
+if (s.brainstormRecord) {
+  mkdirSync(join(process.cwd(), '.builder/tags'), { recursive: true })
+  writeFileSync(join(process.cwd(), '.builder/tags/brainstorm.md'), `# tags — brainstorm\nstatus: ${s.brainstormRecord}\n\n## Intent\n`)
 }
 if (s.commit) {
   execFileSync('git', ['add', '-A'], { cwd: process.cwd() })

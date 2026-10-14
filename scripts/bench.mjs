@@ -10,13 +10,17 @@
  *
  * Env: BENCH_CLAUDE (the claude binary), BENCH_TMP (where copies go; $TMPDIR/bench),
  * BENCH_RUN_TIMEOUT_MS (2h), BENCH_IDLE_TIMEOUT_MS (20 min), BENCH_FLEET (the fleet script —
- * tests point it at a stub), BENCH_GSD_INSTALL (the install command — tests set `true`).
+ * tests point it at a stub), BENCH_GSD_INSTALL (the install command — tests set `true`),
+ * BENCH_SUPERPOWERS_DIR (a superpowers plugin dir, or `none` for "not installed"; wins over the
+ * plugin-cache lookup), BENCH_INSTALLED_PLUGINS (a path to an installed_plugins.json — the plugins
+ * a session must not load from user scope are read from it; default: the host's own file).
  */
 import { spawn, execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, createWriteStream, openSync, renameSync, appendFileSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve, basename } from 'node:path'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { readBrainstormHeader } from './brainstorm-file.mjs'
 import { parseStream, deriveSteps, sessionTotals, runTotals, parseTap, renderReport, renderStatusTable } from './bench-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -58,6 +62,25 @@ function builderPluginId() {
   return 'builder'
 }
 
+/** The host's config dir: CLAUDE_CONFIG_DIR, else ~/.claude-home when it holds installed plugins, else ~/.claude. */
+function configDir() {
+  if (process.env.CLAUDE_CONFIG_DIR) return process.env.CLAUDE_CONFIG_DIR
+  const home = process.env.HOME || homedir()
+  return existsSync(join(home, '.claude-home', 'plugins', 'installed_plugins.json')) ? join(home, '.claude-home') : join(home, '.claude')
+}
+
+/** Every plugin a session would load from user scope, set to false — so only the pipeline under test (--plugin-dir) is loaded. */
+function disabledPlugins() {
+  const file = process.env.BENCH_INSTALLED_PLUGINS || join(configDir(), 'plugins', 'installed_plugins.json')
+  try {
+    const plugins = JSON.parse(readFileSync(file, 'utf8')).plugins ?? {}
+    const ids = Object.keys(plugins).filter((id) => (plugins[id] ?? []).some((e) => e?.scope === 'user'))
+    return Object.fromEntries(ids.map((id) => [id, false]))
+  } catch {
+    return { [builderPluginId()]: false, 'superpowers@claude-plugins-official': false }
+  }
+}
+
 /** The fixture, copied and made a repo on `main`; the fleet's claude_args filled in. */
 export function prepareCopy({ fixture, dest, claudeArgs }) {
   if (/\s/.test(dest)) throw new Error(`the copy's path must contain no spaces (the fleet splits claude_args on whitespace): ${dest} — set BENCH_TMP`)
@@ -66,7 +89,7 @@ export function prepareCopy({ fixture, dest, claudeArgs }) {
   cpSync(fixture, dest, { recursive: true })
   const cfg = join(dest, '.claude', 'builder.md')
   writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('{claude_args}', claudeArgs))
-  writeFileSync(join(dest, '.claude', 'bench-settings.json'), JSON.stringify({ enabledPlugins: { [builderPluginId()]: false, 'superpowers@claude-plugins-official': false } }, null, 2) + '\n')
+  writeFileSync(join(dest, '.claude', 'bench-settings.json'), JSON.stringify({ enabledPlugins: disabledPlugins() }, null, 2) + '\n')
   git(dest, 'init', '-q', '-b', 'main')
   mkdirSync(join(dest, '.git', 'info'), { recursive: true })
   writeFileSync(join(dest, '.git', 'info', 'exclude'), 'REQUEST.md\n.claude/bench-settings.json\n')
@@ -136,17 +159,19 @@ export function runSession({ copy, name, prompt, outFile, claudeArgs, systemProm
 }
 
 /** A session file → the Session row of runs.json. */
-export function sessionRecord({ name, lane, prompt, file }) {
+export function sessionRecord({ name, lane, prompt, file, copy = null }) {
   const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
   const parsed = parseStream(text)
   const lines = text.split('\n').filter((l) => l.trim() && !l.startsWith('{'))
-  return { name, file, lane, sessionId: parsed.sessionId, model: parsed.model, prompt, totals: sessionTotals(parsed), steps: deriveSteps(parsed, { prompt }), tail: lines.slice(-10) }
+  return { name, file, lane, sessionId: parsed.sessionId, model: parsed.model, prompt, totals: sessionTotals(parsed), plugins: parsed.plugins.filter((x) => x.path !== 'builtin').map((x) => `${x.name} ${x.version ?? ''}`.trim()), steps: deriveSteps(parsed, { prompt, root: copy }), tail: lines.slice(-10) }
 }
 
 // ---- the matrix and the drivers ------------------------------------------------------------------
 
 /** Where the superpowers plugin is on this machine, newest version — or null. */
 export function superpowersDir() {
+  const forced = process.env.BENCH_SUPERPOWERS_DIR
+  if (forced) return forced === 'none' ? null : forced
   const base = join(process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME || '', '.claude'), 'plugins', 'cache', 'claude-plugins-official', 'superpowers')
   const alt = join(process.env.HOME || '', '.claude-home', 'plugins', 'cache', 'claude-plugins-official', 'superpowers')
   for (const d of [base, alt]) {
@@ -213,10 +238,26 @@ export function featureOf(copy) {
   return readdirSync(reg).find((n) => !n.startsWith('_') && existsSync(join(reg, n, 'MANIFEST.md'))) ?? null
 }
 
+/** True when the brainstorm record under <copy>/.builder/<feature>/ says sized xs or sm (built in chat). */
+export function sizedSmall(copy) {
+  const base = join(copy, '.builder')
+  if (!existsSync(base)) return false
+  for (const n of readdirSync(base)) {
+    if (['fleet', 'jobs', 'bench'].includes(n)) continue
+    let h = null
+    try {
+      h = readBrainstormHeader(join(base, n, 'brainstorm.md'))
+    } catch {}
+    if (!h) continue
+    return h.status === 'sized' && (h.size === 'xs' || h.size === 'sm')
+  }
+  return false
+}
+
 /** The fleet engine on one feature; its stream logs become this config's sessions. */
 export function runFleet({ copy, feature, outDir, env }) {
   const log = join(outDir, 'fleet.out')
-  const r = spawnSync(process.execPath, [FLEET, feature, '--parallel', '1'], { cwd: copy, encoding: 'utf8', env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: copy }, timeout: RUN_TIMEOUT_MS * 3 })
+  const r = spawnSync(process.execPath, [FLEET, feature, '--parallel', '1'], { cwd: copy, encoding: 'utf8', env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: copy }, timeout: RUN_TIMEOUT_MS * 3, maxBuffer: 64 * 1024 * 1024 })
   writeFileSync(log, `${r.stdout ?? ''}\n${r.stderr ?? ''}`)
   const fleetDir = join(copy, '.builder', 'fleet')
   const readJson = (f) => {
@@ -241,12 +282,14 @@ export function runFleet({ copy, feature, outDir, env }) {
     const file = join(outDir, `session-fleet-${n}`)
     cpSync(byName.get(n), file)
     const prompt = `/builder:resume --path docs/features/${feature} --agent-walk`
-    const rec = sessionRecord({ name: `fleet ${nn}`, lane: null, prompt, file })
+    const rec = sessionRecord({ name: `fleet ${nn}`, lane: null, prompt, file, copy })
     rec.lane = timing.find((t) => t.n === Number(nn))?.lane ?? (rec.steps.some((x) => /walk|signoff/.test(x.name)) ? 'walk' : rec.steps.some((x) => /verify|ship/.test(x.name)) ? 'ship' : 'build')
     return rec
   })
   let status
-  if (r.error && r.error.code !== 'ETIMEDOUT') status = `failed: fleet could not start: ${r.error.message}`
+  if (r.error?.code === 'ENOBUFS') status = 'failed: fleet output exceeded the buffer'
+  else if (r.error?.code === 'ETIMEDOUT') status = 'timed out'
+  else if (r.error) status = `failed: fleet could not start: ${r.error.message}`
   else if (r.status === null) status = 'timed out'
   else if (entry?.status === 'parked') status = `parked: ${entry.reason}`
   else if (entry?.status === 'failed') status = `failed: ${entry.reason}`
@@ -272,7 +315,10 @@ export function score(copy, feature) {
     const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', file], { cwd: copy, encoding: 'utf8', env, timeout: 5 * 60 * 1000 })
     return parseTap(`${r.stdout}\n${r.stderr}`)
   }
-  const fixture = tap(join('test', 'cli.test.mjs'))
+  // the agent may have edited test/cli.test.mjs: score the pristine one
+  cpSync(join(FIXTURE, 'test', 'cli.test.mjs'), join(copy, 'test', '.bench-fixture.test.mjs'))
+  const fixture = tap(join('test', '.bench-fixture.test.mjs'))
+  rmSync(join(copy, 'test', '.bench-fixture.test.mjs'), { force: true })
   cpSync(join(FEATURES, feature, 'accept.test.mjs'), join(copy, 'test', 'accept.test.mjs'))
   const accept = tap(join('test', 'accept.test.mjs'))
   rmSync(join(copy, 'test', 'accept.test.mjs'), { force: true })
@@ -291,15 +337,19 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   mkdirSync(outDir, { recursive: true })
   const flags = flagsFor(m.pipeline, copy)
   prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: [...flags, ...(plan.model ? ['--model', plan.model] : [])].join(' ') })
-  writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
-  const run = { config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
+  if (m.pipeline === 'gsd') writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
+  const run = { config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, installMs: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
   const progress = (session) => writeJson(join(outRoot, 'progress.json'), { config: m.config, rep, session, startedAt: Date.now() })
   if (m.pipeline === 'gsd') {
     progress('install gsd')
+    const t0 = Date.now()
     const g = installGsd(copy)
+    run.installMs = Date.now() - t0
+    run.startedAt = Date.now()
     data.versions.gsd ??= g.version
     if (!g.ok) run.status = `not run: ${g.reason}`
   }
+  if (m.pipeline === 'superpowers' && !superpowersDir()) run.status = 'not run: superpowers is not in the plugin cache'
   const sessions = sessionsFor(m, copy, plan.request)
   let n = 0
   for (const s of sessions) {
@@ -309,7 +359,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     if (s.fleet) {
       const feature = featureOf(copy)
       if (!feature) {
-        run.path = 'in-chat'
+        run.status = 'failed: spec left no manifest'
         break
       }
       const f = runFleet({ copy, feature, outDir, env: {} })
@@ -319,14 +369,13 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     }
     const file = join(outDir, `session-${String(n).padStart(2, '0')}-${s.name}.jsonl`)
     const r = await runSession({ copy, name: s.name, prompt: s.prompt, outFile: file, claudeArgs: s.flags, systemPrompt: s.system, model: plan.model })
-    run.sessions.push(sessionRecord({ name: s.name, lane: null, prompt: s.prompt, file }))
+    run.sessions.push(sessionRecord({ name: s.name, lane: null, prompt: s.prompt, file, copy }))
     if (r.exit === null) run.status = 'timed out'
     else if (r.exit !== 0) run.status = `failed: session ${s.name} exit ${r.exit}`
-    else if (m.pipeline === 'builder' && s.name === 'spec' && !featureOf(copy)) {
+    else if (m.pipeline === 'builder' && s.name === 'brainstorm' && sizedSmall(copy)) {
       run.path = 'in-chat'
-      run.sessions.pop()
       break
-    }
+    } else if (m.pipeline === 'builder' && s.name === 'spec' && !featureOf(copy)) run.status = 'failed: spec left no manifest'
   }
   if (!run.status.startsWith('not run')) {
     run.score = score(copy, plan.feature)
@@ -386,6 +435,7 @@ const FIXTURE = join(BUILDER, 'bench', 'fixture')
 function planRun() {
   const feature = argv[1]
   if (!feature || feature.startsWith('--')) die('usage: bench.mjs run <feature> [--only a,b] [--repeat N] [--model m] [--dry-run] [--detach]')
+  if (feature !== basename(feature) || feature.startsWith('.')) die('feature must be a plain directory name')
   if (!existsSync(join(FEATURES, feature, 'request.md'))) die(`no feature '${feature}' — bench/features/ has: ${readdirSync(FEATURES).join(', ') || 'nothing'}`)
   const only = opt('--only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null
   for (const c of only ?? []) if (!MATRIX.some((m) => m.config === c)) die(`unknown config '${c}' — one of ${MATRIX.map((m) => m.config).join(', ')}`)
@@ -502,6 +552,8 @@ if (cmd === 'report') {
   process.exit(0)
 }
 if (cmd === 'clean') {
+  const lock = lockState()
+  if (lock?.live) die(`a benchmark is running (pid ${lock.pid}, ${lock.runId}) — not cleaning`)
   rmSync(TMP, { recursive: true, force: true })
   console.log(`removed ${TMP}`)
   process.exit(0)

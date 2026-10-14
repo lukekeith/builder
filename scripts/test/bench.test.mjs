@@ -40,6 +40,7 @@ test('resultsDir: bench/results inside the builder repo, .builder/bench elsewher
 test('prepareCopy: a git repo on main with the fixture committed, settings written, claude_args filled, REQUEST.md excluded', async () => {
   const { prepareCopy } = await import('../bench.mjs')
   const root = makeRoot()
+  process.env.BENCH_INSTALLED_PLUGINS = '/nonexistent'
   const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c1'), claudeArgs: '--permission-mode bypassPermissions --plugin-dir /p --settings /s' })
   assert.equal(copy, join(root, 'c1'))
   assert.equal(git(copy, 'branch', '--show-current'), 'main')
@@ -47,6 +48,7 @@ test('prepareCopy: a git repo on main with the fixture committed, settings writt
   assert.equal(git(copy, 'status', '--porcelain'), '')
   const settings = JSON.parse(readFileSync(join(copy, '.claude', 'bench-settings.json'), 'utf8'))
   assert.deepEqual(settings.enabledPlugins, { 'builder@claude-builder': false, 'superpowers@claude-plugins-official': false })
+  delete process.env.BENCH_INSTALLED_PLUGINS
   assert.match(readFileSync(join(copy, '.claude', 'builder.md'), 'utf8'), /claude_args: --permission-mode bypassPermissions --plugin-dir \/p --settings \/s/)
   assert.match(readFileSync(join(copy, '.git', 'info', 'exclude'), 'utf8'), /^REQUEST\.md$/m)
   writeFileSync(join(copy, 'REQUEST.md'), 'x')
@@ -126,7 +128,7 @@ test('run refuses an unknown feature and an unknown --only config', () => {
   assert.match(runBench(root, ['run', 'tags', '--only', 'x', '--dry-run']).stderr, /unknown config 'x'/)
 })
 
-const SP = { skills: ['superpowers:brainstorming', 'superpowers:writing-plans', 'superpowers:subagent-driven-development'], files: { 'src/tags.mjs': 'export const x = 1\n' }, commit: 'feat: tags' }
+const SP = { skills: ['superpowers:brainstorming', 'superpowers:writing-plans', 'superpowers:subagent-driven-development'], files: { 'src/tags.mjs': 'export const x = 1\n', 'test/cli.test.mjs': "import { test } from 'node:test'\ntest('ok', () => {})\n" }, commit: 'feat: tags' }
 
 test('run: superpowers only — one session, scored, runs.json and REPORT.md written under .builder/bench', () => {
   const root = makeRoot()
@@ -141,7 +143,9 @@ test('run: superpowers only — one session, scored, runs.json and REPORT.md wri
   assert.equal(run.config, 'superpowers')
   assert.equal(run.status, 'done')
   assert.deepEqual(run.sessions.map((s) => s.name), ['superpowers'])
-  assert.deepEqual(run.sessions[0].steps.map((s) => s.name), ['(prompt)', ...SP.skills])
+  assert.deepEqual(run.sessions[0].steps.map((s) => s.name), ['/superpowers:brainstorming', ...SP.skills])
+  assert.equal(run.installMs, 0)
+  assert.deepEqual(run.sessions[0].plugins, ['stub-plugin 0.0.0'])
   assert.equal(run.score.fixture.total, 4)
   assert.equal(run.score.fixture.passed, 4)
   assert.ok(run.score.accept.total >= 7)
@@ -149,7 +153,7 @@ test('run: superpowers only — one session, scored, runs.json and REPORT.md wri
   assert.ok(run.gitLog.some((l) => /feat: tags/.test(l)))
   assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /\| superpowers \| done \|/)
   assert.match(r.calls[0], /--append-system-prompt/)
-  assert.ok(existsSync(join(root, 'tmp', id, 'superpowers', 'REQUEST.md')))
+  assert.ok(!existsSync(join(root, 'tmp', id, 'superpowers', 'REQUEST.md')))
 })
 
 test('run: builder — brainstorm, spec, then the fleet; its logs become sessions; the profile is in the owner prompt', () => {
@@ -163,17 +167,18 @@ test('run: builder — brainstorm, spec, then the fleet; its logs become session
   assert.equal(run.path, 'pipeline')
   assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'spec', 'fleet 01'])
   assert.equal(run.sessions[2].lane, 'walk') // from the fleet's timing record, not the step names
-  assert.deepEqual(run.sessions[2].steps.map((s) => s.name), ['(prompt)', 'builder:audit', 'builder:plan', 'builder:build'])
+  assert.deepEqual(run.sessions[2].steps.map((s) => s.name), ['/builder:resume', 'builder:audit', 'builder:plan', 'builder:build'])
   assert.deepEqual(run.sessions[2].steps[1].toolCalls, { Skill: 1, Edit: 1 })
   assert.equal(run.totals.turns, 1 + 1 + 3)
   assert.match(r.calls[0], /\/builder:brainstorm --auto/)
   assert.ok(r.calls.length === 2, `expected 2 claude calls, got ${r.calls.length}`)
 })
 
-test('run: builder config with no manifest after spec is in-chat — the fleet is not run', () => {
+test('run: builder config sized xs/sm in the brainstorm record is in-chat — spec and fleet are not run', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' }, '/builder:spec': { skills: [] } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized sm', files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' }, '/builder:spec': { skills: [] } })
   assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.calls.length, 1, 'spec and fleet are skipped')
   const dir = join(root, '.builder', 'bench')
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
   const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
@@ -181,6 +186,18 @@ test('run: builder config with no manifest after spec is in-chat — the fleet i
   assert.equal(run.status, 'done')
   assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm'])
   assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /built in chat/)
+})
+
+test('run: a spec session that leaves no manifest on a sized md feature is a failure, not in-chat', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: [] } })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.match(run.status, /^failed: spec left no manifest/)
+  assert.equal(run.path, 'pipeline')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'spec'])
 })
 
 test('run: a parked fleet feature ends the config as parked with the reason', () => {
@@ -214,7 +231,9 @@ test('run: gsd — four sessions in order, REQUEST.md in the copy, the version r
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
   const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
   assert.equal(data.versions.gsd, '1.7.0')
-  assert.equal(data.runs[0].sessions[1].steps[0].name, '/gsd-plan-phase 1')
+  assert.equal(data.runs[0].sessions[1].steps[0].name, '/gsd-plan-phase')
+  assert.ok(existsSync(join(root, 'tmp', id, 'gsd', 'REQUEST.md')))
+  assert.ok(data.runs[0].installMs >= 0)
 })
 
 test('run: a timed-out session ends the config as timed out; runs.json is still written', () => {
@@ -357,4 +376,51 @@ test('report refuses a run id that is not a plain directory name', () => {
     assert.notEqual(r.status, 0)
     assert.match(r.stderr, /plain directory name/)
   }
+})
+
+test('prepareCopy disables every user-scope plugin in the installed list, and only those', async () => {
+  const { prepareCopy } = await import('../bench.mjs')
+  const root = makeRoot()
+  const f = join(root, 'installed.json')
+  writeFileSync(f, JSON.stringify({ version: 2, plugins: { 'figma@claude-plugins-official': [{ scope: 'user' }], 'railway@claude-plugins-official': [{ scope: 'project' }], 'builder@claude-builder': [{ scope: 'project' }, { scope: 'user' }] } }))
+  process.env.BENCH_INSTALLED_PLUGINS = f
+  try {
+    const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c2'), claudeArgs: '' })
+    assert.deepEqual(JSON.parse(readFileSync(join(copy, '.claude', 'bench-settings.json'), 'utf8')).enabledPlugins, { 'figma@claude-plugins-official': false, 'builder@claude-builder': false })
+    process.env.BENCH_INSTALLED_PLUGINS = '/nonexistent'
+    const c3 = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c3'), claudeArgs: '' }).copy
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(c3, '.claude', 'bench-settings.json'), 'utf8')).enabledPlugins), ['builder@claude-builder', 'superpowers@claude-plugins-official'])
+  } finally {
+    delete process.env.BENCH_INSTALLED_PLUGINS
+  }
+})
+
+test('run: superpowers missing from the plugin cache is a not-run row, with no session', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': SP }, { BENCH_SUPERPOWERS_DIR: 'none' })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.match(run.status, /^not run: superpowers/)
+  assert.equal(run.sessions.length, 0)
+  assert.equal(r.calls.length, 0)
+})
+
+test('clean refuses while a live lock is held', () => {
+  const root = makeRoot()
+  runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': SP })
+  const dir = join(root, '.builder', 'bench')
+  writeFileSync(join(dir, 'lock'), JSON.stringify({ pid: process.pid, runId: 'x-tags' }))
+  const r = runBench(root, ['clean'])
+  assert.notEqual(r.status, 0)
+  assert.match(r.stderr, /a benchmark is running \(pid \d+, x-tags\) — not cleaning/)
+  assert.ok(existsSync(join(root, 'tmp')))
+})
+
+test('run refuses a feature name that is not a plain directory name', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', '../x', '--dry-run'])
+  assert.notEqual(r.status, 0)
+  assert.match(r.stderr, /feature must be a plain directory name/)
 })

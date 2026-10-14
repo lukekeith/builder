@@ -29,7 +29,7 @@ test('parseStream skips blank and non-JSON lines', () => {
 
 test('steps open on each top-level Skill call; time before the first is (prompt)', () => {
   const steps = deriveSteps(parseStream(STREAM), { prompt: '/superpowers:brainstorming tags' })
-  assert.deepEqual(steps.map((s) => s.name), ['(prompt)', 'superpowers:brainstorming', 'superpowers:writing-plans'])
+  assert.deepEqual(steps.map((s) => s.name), ['/superpowers:brainstorming', 'superpowers:brainstorming', 'superpowers:writing-plans'])
   assert.equal(steps[0].start, T0)
   assert.equal(steps[0].end, T0 + 10000)
   assert.equal(steps[1].ms, 110000)
@@ -57,8 +57,32 @@ test('a session that never calls Skill is one step named after its prompt', () =
   const lines = STREAM.split('\n').filter((l) => l && !l.includes('"name":"Skill"'))
   const steps = deriveSteps(parseStream(lines.join('\n')), { prompt: '/gsd-plan-phase 1' })
   assert.equal(steps.length, 1)
-  assert.equal(steps[0].name, '/gsd-plan-phase 1')
+  assert.equal(steps[0].name, '/gsd-plan-phase')
   assert.equal(steps[0].ms, 300000)
+})
+
+test('a Skill-less session with a non-slash prompt is named after its first line; a slash prompt after its command', () => {
+  const lines = STREAM.split('\n').filter((l) => l && !l.includes('"name":"Skill"')).join('\n')
+  assert.equal(deriveSteps(parseStream(lines), { prompt: 'Build this\nmore\nlines' })[0].name, 'Build this')
+  assert.equal(deriveSteps(parseStream(lines), { prompt: '/builder:brainstorm --auto Notes can carry tags.\nmore\nlines' })[0].name, '/builder:brainstorm')
+})
+
+test('files are relative to the root (also through /private); a heredoc that mentions npm test is not a test run', () => {
+  const steps = deriveSteps(parseStream(STREAM), { prompt: 'x', root: '/tmp/x' })
+  assert.deepEqual(steps[2].files, ['src/cli.mjs'])
+  const priv = deriveSteps(parseStream(STREAM.replaceAll('/tmp/x', '/private/var/x')), { prompt: 'x', root: '/var/x' })
+  assert.deepEqual(priv[2].files, ['src/cli.mjs'])
+  const ev = (cmd) => JSON.stringify({ type: 'assistant', parent_tool_use_id: null, timestamp: '2026-10-13T10:00:01.000Z', message: { content: [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: cmd } }] } })
+  const init = STREAM.split('\n')[0]
+  const s = deriveSteps(parseStream([init, ev("cat > x.mjs <<'EOF'\nnpm test\nEOF"), ev('npm test 2>&1 | tail -5')].join('\n')), { prompt: 'x' })
+  assert.equal(s[0].commands.length, 2)
+  assert.deepEqual(s[0].tests, ['npm test 2>&1 | tail -5'])
+})
+
+test('parseStream exposes the init plugins', () => {
+  const init = { type: 'system', subtype: 'init', session_id: 's', timestamp: '2026-10-13T10:00:00.000Z', plugins: [{ name: 'a', version: '1', path: '/a' }] }
+  assert.deepEqual(parseStream(JSON.stringify(init)).plugins, [{ name: 'a', version: '1', path: '/a' }])
+  assert.deepEqual(parseStream(STREAM).plugins, [])
 })
 
 test('no (prompt) step when the first event is a Skill', () => {
@@ -157,7 +181,7 @@ test('renderReport has the summary table, the steps table and a section per conf
   const md = renderReport(DATA)
   assert.match(md, /^# benchmark 2026-10-13-1200-tags — tags/m)
   assert.match(md, /builder 4\.11\.0 · superpowers 6\.4\.1 · gsd 1\.7\.0 · claude-sonnet-5-5/)
-  assert.match(md, /\| Config \| Status \| Wall \| Turns \| Tokens \| Cost \| Accept \| Fixture tests \| Longest step \|/)
+  assert.match(md, /\| Config \| Status \| Wall \| Turns \| Tokens \(in\+out\) \| Cost \| Accept \| Fixture tests \| Longest step \|/)
   assert.match(md, /\| builder-rush \| done \| 0s \| 10 \| 3 \| \$1\.00 \| 7\/7 \| 4\/4 \| builder:build 0s \|/)
   assert.match(md, /\| gsd \| timed out \|/)
   assert.match(md, /\| Config \| builder:brainstorm \| builder:build \| \/gsd-plan-phase 1 \|/)
@@ -183,4 +207,12 @@ test('renderStatusTable adds the config now running', () => {
   assert.match(s, /\| builder-rush \|/)
   assert.match(s, /running: superpowers \(session superpowers, 1m\)/)
   assert.match(renderStatusTable(DATA, null), /not running/)
+})
+
+test('renderReport keeps a multi-line step name inside its table cell and prints plugins and install time', () => {
+  const r = run('gsd', 1, { installMs: 5000, sessions: [{ name: 'a', prompt: 'p', plugins: ['stub 1.0'], totals: { ms: 1, turns: 1, tokens: { input: 1, output: 1, cacheRead: 0 }, costUsd: 0, ended: 'result' }, steps: [{ name: 'line one\nline two', ms: 5, turns: 1, toolCalls: {}, files: [], commands: [], tests: [], subagents: [], gaps: [] }], tail: [] }] })
+  const md = renderReport({ ...DATA, runs: [r] })
+  assert.match(md, /\| Config \| line one line two \|/)
+  assert.match(md, /^plugins: stub 1\.0$/m)
+  assert.match(md, /install 5s/)
 })
