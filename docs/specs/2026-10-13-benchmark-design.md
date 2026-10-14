@@ -15,7 +15,7 @@ feature through builder at each of its build profiles and through superpowers an
 defaults, unattended, and reports how long each step took, what happened inside it, what it cost,
 and whether the feature that came out actually works.
 
-**Success:** one command runs the matrix and writes a report whose summary table lets the owner say
+**Success:** `/builder:benchmark` runs the matrix and writes a report whose summary table lets the owner say
 "this pipeline, at this profile, shipped a working feature in this time for this many tokens",
 whose per-config sections say where the time went, and which can be re-run after a builder change
 to see whether it got faster.
@@ -27,6 +27,9 @@ to see whether it got faster.
   configurations per feature.
 - **D2 — Quality counts.** A fast run that ships a broken feature is not fast. Every run is scored
   by acceptance tests the agent never sees, plus the fixture's own tests.
+- **D4 — How it is run.** A skill, `/builder:benchmark`, the way `/builder:fleet` wraps its script:
+  it checks, confirms once, launches `scripts/bench.mjs` detached and reports; `--status` shows the
+  run in progress or the last report.
 - **D3 — How steps are measured.** From the `stream-json` output of each headless session (step
   boundaries, turns, tokens, cost) plus a PostToolUse hook in the fixture that logs every tool call
   from every session and subagent (what happened inside a step). No instrumentation inside any of
@@ -47,6 +50,7 @@ bench/
     REPORT.md                   committed (§6)
     runs.json                   committed — every derived number the report is built from
     <config>[/<rep>]/           git-ignored — raw session streams, the tool-call log, the fixture's git log
+skills/benchmark/SKILL.md       /builder:benchmark (§8)
 scripts/
   bench.mjs                     the runner (§3)
   bench-core.mjs                pure functions: step derivation, hook-log parsing, scoring, report rendering
@@ -57,7 +61,10 @@ scripts/
 ```
 
 `<run-id>` is `YYYY-MM-DD-HHMM-<feature>`. `bench/results/*/` raw directories are listed in
-`.gitignore`; `REPORT.md` and `runs.json` are not, so results travel with the repo.
+`.gitignore`; `REPORT.md` and `runs.json` are not, so results travel with the repo. Run from a repo
+that is not builder itself (the skill is in the plugin, so it can be), results go to that repo's
+`.builder/bench/<run-id>/` instead, git-ignored like the fleet's files. `bench/` ships with the
+plugin — the fixture and features are a few small files — so the skill works from any install.
 
 ### 2. The fixture and the feature
 
@@ -85,10 +92,17 @@ Adding a feature is a new directory with those two files. The README says so.
 ### 3. The runner
 
 ```
-node scripts/bench.mjs run <feature> [--only <config,…>] [--repeat N] [--model <m>] [--dry-run]
+node scripts/bench.mjs run <feature> [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--detach]
 node scripts/bench.mjs report <run-id>
 node scripts/bench.mjs status
+node scripts/bench.mjs clean
 ```
+
+`--detach` re-launches the runner as its own process group, prints `bench started detached (pid N)`
+and returns, the way `fleet.mjs --detach` does; the run outlives the session that started it. A
+lock file under the results directory stops two runs at once. `status` reads it: a run in progress
+prints the table so far with the config and session now running and how long it has been at it; no
+run prints the last report's summary table.
 
 **`run`** — for each configuration in the matrix, `--repeat` times, in sequence (never in parallel:
 API rate limits and CPU contention would skew one run against another):
@@ -251,6 +265,30 @@ Durations print through `fleet-core.duration`; tokens through its `formatTokens`
 - `bench-hook` is tested by piping a PostToolUse payload through it.
 - The fixture's own tests run in CI with the rest, so the fixture never ships broken.
 
+### 8. The skill — `/builder:benchmark`
+
+`skills/benchmark/SKILL.md`, built like `/builder:fleet`: the work is `scripts/bench.mjs`; the
+skill checks, confirms once, launches and reports. Invocation:
+
+**`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id>]`**
+
+1. **`--status`** → `node <builder>/scripts/bench.mjs status`, relayed as markdown. **`--report`**
+   → `bench.mjs report <run-id>` then the report's summary table and its path.
+2. **Otherwise, the pre-flight:** `claude` on the PATH, `bench/features/<feature>/` exists
+   (default `tags`; the only feature today, so no question), the plugin cache has superpowers
+   (else the superpowers row is `not run` and the skill says so), no run in progress. Then one
+   dry run, `bench.mjs run … --dry-run`, shown as a short table: configs to run, sessions each
+   will make, which plugins each session loads, the model, and the estimated span (sum of the
+   last report's walls when there is one; "no estimate yet" otherwise).
+3. **One confirmation** — "run it?" — then `bench.mjs run … --detach` in the foreground, exactly
+   as the fleet skill launches, never as a background task of the session.
+4. **Report** in two lines: it is running on its own and outlives this session, and
+   `/builder:benchmark --status` shows where it is; when every config has landed, the same
+   command shows the report. Footer: `▶ benchmark: <n> configs running — next: /builder:benchmark --status`.
+
+The skill never runs a config in the foreground, never edits results, and never changes any
+pipeline's behaviour. Listed in `/builder:help` and README with the other skills.
+
 ## Out of scope
 
 - Running configs in parallel.
@@ -261,5 +299,5 @@ Durations print through `fleet-core.duration`; tokens through its `formatTokens`
 
 ## Release
 
-A new capability reached for by name (`scripts/bench.mjs`, `bench/`): **minor**, 4.11.0. The
-plugin manifest does not ship `bench/`; it is a repo tool, like the tests.
+A new skill (`/builder:benchmark`): **minor**, 4.11.0. `bench/` ships with the plugin;
+`bench/results/` raw directories do not, and `/builder:vendor` copies `bench/` without `results/`.
