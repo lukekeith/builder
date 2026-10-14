@@ -30,10 +30,12 @@ to see whether it got faster.
 - **D4 — How it is run.** A skill, `/builder:benchmark`, the way `/builder:fleet` wraps its script:
   it checks, confirms once, launches `scripts/bench.mjs` detached and reports; `--status` shows the
   run in progress or the last report.
-- **D3 — How steps are measured.** From the `stream-json` output of each headless session (step
-  boundaries, turns, tokens, cost) plus a PostToolUse hook in the fixture that logs every tool call
-  from every session and subagent (what happened inside a step). No instrumentation inside any of
-  the three pipelines; all three are measured the same way.
+- **D3 — How steps are measured.** From the `stream-json` output of each headless session alone:
+  every event carries a `timestamp`, and events from inside a subagent carry its
+  `parent_tool_use_id`, so step boundaries, turns, tokens, cost and every tool call — the
+  subagents' included — are all in one stream. (The conversation planned a PostToolUse hook for
+  the subagent view; a real fleet log showed the stream already has it, so there is no hook.) No
+  instrumentation inside any of the three pipelines; all three are measured the same way.
 
 ## Design
 
@@ -53,11 +55,10 @@ bench/
 skills/benchmark/SKILL.md       /builder:benchmark (§8)
 scripts/
   bench.mjs                     the runner (§3)
-  bench-core.mjs                pure functions: step derivation, hook-log parsing, scoring, report rendering
-  bench-hook.mjs                the PostToolUse hook the fixture's settings.json points at (§5)
+  bench-core.mjs                pure functions: stream parsing, step derivation, scoring, report rendering
   test/bench-core.test.mjs
   test/bench.test.mjs
-  test/fixtures/bench/          recorded streams and hook logs the tests parse
+  test/fixtures/bench/          recorded streams the tests parse
 ```
 
 `<run-id>` is `YYYY-MM-DD-HHMM-<feature>`. `bench/results/*/` raw directories are listed in
@@ -76,8 +77,6 @@ a README that says what it is, and:
 - `.claude/builder.md` already filled in: one app at `.`, gates `node --test`, `commit: auto`,
   `agent_walk` with `claude_args: --permission-mode bypassPermissions`, a driver of "run the CLI
   with Bash", no `start`/`smoke` (there is no dev server), and `merge_into: main`.
-- `.claude/settings.json` with the PostToolUse hook (§5), matcher `.*`, and the permission mode
-  every headless session needs.
 - No `.git`: the runner initialises one per copy.
 
 **Feature** — `bench/features/tags/`: "Notes can carry tags. `notes add --tag <t>` (repeatable)
@@ -120,9 +119,10 @@ API rate limits and CPU contention would skew one run against another):
      (the fleet splits it on whitespace, so the copy's path must contain no spaces — the runner
      refuses a `$TMPDIR` that does).
    - superpowers: `--plugin-dir` of the version installed in this machine's plugin cache.
-   - GSD: `npx get-shit-done-cc` into the copy's `.claude/` (its local install mode; GSD installs
-     commands, not a plugin). GSD is not installed on this machine today; the runner installs it
-     per copy and records the version it got. If the install fails, the gsd rows are marked
+   - GSD: `npx -y @opengsd/gsd-core@latest --claude --local` in the copy (GSD Core, the project's
+     current home; a local install writes commands into the copy's `.claude/`, not a plugin). GSD
+     is not installed on this machine today; the runner installs it per copy and records the
+     version the installer prints. If the install fails, the gsd rows are marked
      `not run: <reason>` and the rest proceeds.
    - The dry run prints which plugins each session loaded (`claude plugin list` in the copy with
      the same flags), so a second builder sneaking in is caught before a real run.
@@ -134,7 +134,7 @@ API rate limits and CPU contention would skew one run against another):
 4. **Score.** After the last session: `git checkout main` in the copy, `npm test` (fixture tests),
    copy `accept.test.mjs` in and run it, record pass/fail counts for both, then
    `git log --oneline main` and `git branch -a` for the record.
-5. **Derive and save.** Parse the streams and the hook log (§5) into the run's row of `runs.json`
+5. **Derive and save.** Parse the streams (§5) into the run's row of `runs.json`
    and rewrite `REPORT.md`. Saved after every config, so a matrix killed half-way still has a
    report of what finished.
 
@@ -161,9 +161,12 @@ exactly as it would for a real owner.
 
 | Session | Prompt | Ends when |
 |---|---|---|
-| 1 brainstorm | `/builder:brainstorm <request>` | the workspace record is written and sized |
-| 2 spec | `/builder:spec` (resumes the record) | SPEC.md + MANIFEST.md committed |
-| 3 fleet | `node <builder>/scripts/fleet.mjs <feature>` in the copy | the feature is merged or parked |
+| 1 brainstorm | `/builder:brainstorm --auto <request>` | the workspace record is written and sized |
+| 2 spec | `/builder:spec --auto` (resumes the record) | SPEC.md + MANIFEST.md committed |
+| 3 fleet | `node <builder>/scripts/fleet.mjs <feature> --parallel 1` in the copy | the feature is merged or parked |
+
+`--auto` is builder's own unattended mode (every product choice takes its recommendation,
+recorded as such); the owner prompt covers whatever still asks.
 
 Session 3 is the fleet engine itself, not a `claude -p`: it runs audit, plan, build, the agent
 walk, sign-off, verify, ship and merge, with its own `claude -p` runs streamed under
@@ -179,24 +182,29 @@ to compare profiles, and the feature should be resized.
 > the plan, execute the plan with subagent-driven development, then finish the branch by merging
 > it into `main`.
 
-**GSD** — four sessions, because GSD expects a clear between its commands:
+**GSD** — four sessions, one per command, since each GSD command is written to start fresh. The
+request is written to `<copy>/REQUEST.md` (excluded from git) because GSD's unattended entry
+takes a file:
 
 | Session | Prompt |
 |---|---|
-| 1 | `/gsd:new-project <request>` |
-| 2 | `/gsd:plan-phase 1` |
-| 3 | `/gsd:execute-phase 1` |
-| 4 | `/gsd:verify-work` then merge to `main` |
+| 1 | `/gsd-new-project --auto @REQUEST.md` — plus "plan it as one phase" |
+| 2 | `/gsd-plan-phase 1` |
+| 3 | `/gsd-execute-phase 1` |
+| 4 | `/gsd-verify-work 1` — plus "then merge the work into `main` and leave it checked out" |
 
-GSD's command names and the local install flag are confirmed against the version `npx` fetches
-during implementation; the driver is one table in `bench.mjs` so a rename is a one-line change.
+These are GSD Core 1.7's names (`docs/COMMANDS.md`); the driver is one table in `bench.mjs`, so a
+rename is a one-line change. `/gsd-ship` opens a PR, which a repo with no remote cannot, so the
+merge is asked for in words instead.
 
 Every driver is a function `(copy, request, opts) → sessions[]` in `bench.mjs`; the matrix is a
 list of `{ config, driver, profile }`. Adding a pipeline is adding a driver.
 
 ### 5. What gets recorded
 
-**Sessions** — each `claude -p` stream, raw. From it, `bench-core.mjs` derives:
+**Sessions** — each `claude -p` stream, raw, one `.jsonl` per session. Every event has a
+`timestamp`; an event from inside a subagent has `parent_tool_use_id` set, a top-level one has it
+null. From the stream `bench-core.mjs` derives:
 
 - `result`: duration, turns, input/output/cache-read tokens, cost, from the `result` event — the
   same fields `fleet-core.tokensOf` reads.
@@ -204,24 +212,13 @@ list of `{ config, driver, profile }`. Adding a pipeline is adding a driver.
   the step's name — `superpowers:brainstorming`, `builder:audit`, `gsd:plan-phase`, …) and closes
   on the next or at session end. Time before the first Skill call is a step named `(prompt)`. A
   session that never calls Skill is one step named after its prompt. Each step records start,
-  end, turns within it (assistant events), and the tool calls the top-level stream shows.
+  end, turns within it (top-level assistant events), and every tool call in its window, the
+  subagents' included: calls by tool, files touched (Edit/Write/Read paths), commands run (Bash,
+  first 80 chars), test commands among them, subagents spawned (the Agent/Task tool's type and
+  the prompt's first line), and the five longest gaps between consecutive events (the model
+  thinking, or a command running).
 - Fleet sessions: the same derivation on `.builder/fleet/logs/*.jsonl`; the fleet's lane
   (`build`/`walk`/`ship`) is recorded on each.
-
-**The tool-call log** — `scripts/bench-hook.mjs` is a PostToolUse hook, installed by the fixture's
-`.claude/settings.json`, that appends one JSON line per tool call to `$BENCH_LOG` (an env var the
-runner sets for every session; the hook exits 0 and writes nothing when it is unset, so the
-fixture is harmless to open by hand):
-
-```json
-{"t":1760390400123,"session":"…","agent":"…|null","tool":"Edit","summary":"src/cli.mjs","ms":null}
-```
-
-`summary` is one line per tool: the path for file tools, the command's first 80 chars for Bash,
-the skill for Skill, the agent type and the prompt's first 80 chars for Agent, the tool name
-otherwise. Hooks fire inside subagents too, so this is the only record of what a builder task
-implementer or a superpowers subagent actually did. Lines are assigned to steps by timestamp and
-session.
 
 **Per config, per rep** (`runs.json`): config, profile, pipeline and version, model, started,
 ended, wall-clock, status (`done` | `parked: …` | `timed out` | `failed: …` | `not run: …`),
@@ -255,14 +252,13 @@ Durations print through `fleet-core.duration`; tokens through its `formatTokens`
 `node --test 'scripts/test/*.test.mjs'`, no dependencies, as every script here:
 
 - `bench-core.test.mjs`: step derivation from recorded streams (a session with three Skill calls,
-  one with none, one cut off without a result event); hook-log parsing and assignment to steps;
+  one with none, one cut off without a result event, subagent events landing in the right step);
   scoring from `node --test` output; report rendering from a hand-written `runs.json` (medians,
   blanks, flagged rows); `(prompt)` and `in-chat` cases.
 - `bench.test.mjs`: the runner against a stub `claude` (the fleet tests' `stub-claude.mjs` pattern:
   a scenario file says what each session writes), checking the copy is prepared, the owner prompt
   carries the profile, sessions run in order, a timed-out session ends the config, `runs.json` is
   saved after each config, `--only` and `--dry-run`.
-- `bench-hook` is tested by piping a PostToolUse payload through it.
 - The fixture's own tests run in CI with the rest, so the fixture never ships broken.
 
 ### 8. The skill — `/builder:benchmark`
