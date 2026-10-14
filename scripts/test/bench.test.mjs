@@ -159,7 +159,7 @@ test('run: builder — brainstorm, spec, then the fleet; its logs become session
   assert.equal(run.status, 'done')
   assert.equal(run.path, 'pipeline')
   assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'spec', 'fleet 01'])
-  assert.equal(run.sessions[2].lane, 'build')
+  assert.equal(run.sessions[2].lane, 'walk') // from the fleet's timing record, not the step names
   assert.deepEqual(run.sessions[2].steps.map((s) => s.name), ['(prompt)', 'builder:audit', 'builder:plan', 'builder:build'])
   assert.deepEqual(run.sessions[2].steps[1].toolCalls, { Skill: 1, Edit: 1 })
   assert.equal(run.totals.turns, 1 + 1 + 3)
@@ -234,4 +234,34 @@ test('run: --repeat 2 gives two reps and the report says median of 2', () => {
   const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
   assert.deepEqual(data.runs.map((x) => x.rep), [1, 2])
   assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /median of 2 reps/)
+})
+
+test('run: --model reaches every session, the fleet\'s included', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush', '--model', 'm1'], { '/builder:brainstorm': { skills: ['builder:brainstorm'] }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
+  assert.equal(r.status, 0, r.stderr)
+  const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
+  const cfg = readFileSync(join(root, 'tmp', id, 'builder-rush', '.claude', 'builder.md'), 'utf8')
+  const line = cfg.split('\n').find((l) => /claude_args/.test(l))
+  assert.equal(line.split('--model m1').length - 1, 1, line)
+  assert.match(r.calls[0], /--model/)
+})
+
+test('run: a fleet script that cannot start is a failed row', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'] }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { BENCH_FLEET: '/nonexistent/fleet.mjs' })
+  assert.equal(r.status, 0, r.stderr)
+  const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(root, '.builder', 'bench', id, 'runs.json'), 'utf8')).runs[0]
+  assert.match(run.status, /^failed: fleet (could not start|exit)/)
+})
+
+test('run: a config that throws is recorded as crashed and the next config still runs', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers,gsd'], {}, { BENCH_TMP: join(root, 'has space') })
+  assert.equal(r.status, 0, r.stderr)
+  const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(root, '.builder', 'bench', id, 'runs.json'), 'utf8'))
+  assert.equal(data.runs.length, 2)
+  for (const x of data.runs) assert.match(x.status, /^crashed: .*no spaces/)
 })

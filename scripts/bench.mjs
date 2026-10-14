@@ -218,21 +218,40 @@ export function runFleet({ copy, feature, outDir, env }) {
   const log = join(outDir, 'fleet.out')
   const r = spawnSync(process.execPath, [FLEET, feature, '--parallel', '1'], { cwd: copy, encoding: 'utf8', env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: copy }, timeout: RUN_TIMEOUT_MS * 3 })
   writeFileSync(log, `${r.stdout ?? ''}\n${r.stderr ?? ''}`)
-  const logs = join(copy, '.builder', 'fleet', 'logs')
-  const files = existsSync(logs) ? readdirSync(logs).filter((n) => n.startsWith(`${feature}-`) && n.endsWith('.jsonl')).sort() : []
-  const sessions = files.map((n) => {
+  const fleetDir = join(copy, '.builder', 'fleet')
+  const readJson = (f) => {
+    try {
+      return JSON.parse(readFileSync(f, 'utf8'))
+    } catch {
+      return null
+    }
+  }
+  const rows = existsSync(join(fleetDir, 'archive.jsonl')) ? readFileSync(join(fleetDir, 'archive.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean) : []
+  const archived = rows.filter((x) => x.feature === feature).at(-1) ?? null
+  const entry = readJson(join(fleetDir, 'fleet.json'))?.features?.[feature] ?? null
+  const timing = archived?.timing ?? entry?.timing ?? []
+  // a landed feature's logs are moved to logs/_archive/<feature>/; a parked or failed one's stay in logs/
+  const byName = new Map()
+  for (const dir of [join(fleetDir, 'logs'), join(fleetDir, 'logs', '_archive', feature)]) {
+    if (!existsSync(dir)) continue
+    for (const n of readdirSync(dir)) if (n.startsWith(`${feature}-`) && n.endsWith('.jsonl') && !byName.has(n)) byName.set(n, join(dir, n))
+  }
+  const sessions = [...byName.keys()].sort().map((n) => {
+    const nn = n.slice(feature.length + 1, -6)
     const file = join(outDir, `session-fleet-${n}`)
-    cpSync(join(logs, n), file)
-    const text = readFileSync(file, 'utf8')
-    const prompt = /"-p","([^"]*)"/.exec(text)?.[1] ?? `/builder:resume --path docs/features/${feature} --agent-walk`
-    const rec = sessionRecord({ name: `fleet ${n.slice(feature.length + 1, -6)}`, lane: null, prompt, file })
-    rec.lane = rec.steps.some((s) => /walk|signoff/.test(s.name)) ? 'walk' : rec.steps.some((s) => /verify|ship/.test(s.name)) ? 'ship' : 'build'
+    cpSync(byName.get(n), file)
+    const prompt = `/builder:resume --path docs/features/${feature} --agent-walk`
+    const rec = sessionRecord({ name: `fleet ${nn}`, lane: null, prompt, file })
+    rec.lane = timing.find((t) => t.n === Number(nn))?.lane ?? (rec.steps.some((x) => /walk|signoff/.test(x.name)) ? 'walk' : rec.steps.some((x) => /verify|ship/.test(x.name)) ? 'ship' : 'build')
     return rec
   })
-  const mfPath = join(copy, 'docs', 'features', feature, 'MANIFEST.md')
-  const mf = existsSync(mfPath) ? readFileSync(mfPath, 'utf8') : null
-  const blocked = mf && /^blocked:\s*(?!none\b)(.+)$/m.exec(mf)?.[1]?.replace(/^"(.*)"$/, '$1')
-  const status = r.status === null ? 'timed out' : blocked ? `parked: ${blocked}` : r.status !== 0 && !existsSync(join(copy, '.builder', 'fleet', 'archive.jsonl')) ? `failed: fleet exit ${r.status}` : 'done'
+  let status
+  if (r.error && r.error.code !== 'ETIMEDOUT') status = `failed: fleet could not start: ${r.error.message}`
+  else if (r.status === null) status = 'timed out'
+  else if (entry?.status === 'parked') status = `parked: ${entry.reason}`
+  else if (entry?.status === 'failed') status = `failed: ${entry.reason}`
+  else if (!entry && archived) status = 'done'
+  else status = r.status === 0 ? 'done' : `failed: fleet exit ${r.status}`
   return { sessions, status }
 }
 
@@ -271,7 +290,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   const outDir = join(outRoot, label)
   mkdirSync(outDir, { recursive: true })
   const flags = flagsFor(m.pipeline, copy)
-  prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: flags.join(' ') })
+  prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: [...flags, ...(plan.model ? ['--model', plan.model] : [])].join(' ') })
   writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
   const run = { config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
   const progress = (session) => writeJson(join(outRoot, 'progress.json'), { config: m.config, rep, session, startedAt: Date.now() })
@@ -339,7 +358,12 @@ export async function runAll(plan) {
   for (let rep = 1; rep <= plan.repeat; rep++) {
     for (const m of plan.configs) {
       console.log(`▶ ${m.config}${plan.repeat > 1 ? ` rep ${rep}` : ''}`)
-      data.runs.push(await runConfig(plan, m, rep, data, outRoot))
+      const t0 = Date.now()
+      try {
+        data.runs.push(await runConfig(plan, m, rep, data, outRoot))
+      } catch (err) {
+        data.runs.push({ config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: `crashed: ${String(err?.message ?? err).split('\n')[0]}`, path: 'pipeline', startedAt: t0, endedAt: Date.now(), ms: Date.now() - t0, sessions: [], totals: runTotals([]), score: null, copy: null, gitLog: [] })
+      }
       data.endedAt = Date.now()
       save()
       console.log(`  ${data.runs.at(-1).status} in ${Math.round(data.runs.at(-1).ms / 1000)}s`)
