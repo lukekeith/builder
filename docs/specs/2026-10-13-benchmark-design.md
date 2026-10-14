@@ -1,0 +1,265 @@
+# Pipeline benchmark — design
+
+> 2026-10-13 · builder 4.10.3 · status: approved in conversation (build and release end to end)
+
+## Why
+
+The full superpowers pipeline feels much faster than builder on the same size of feature, and today
+there is no number behind the feeling. Builder's fleet records one duration and one token count per
+`claude -p` run, nothing per step, and nothing at all exists for superpowers or GSD. Without a
+per-step record there is no way to tell which of builder's steps earn their time, which profile
+levers actually move the needle, or whether a change to builder made agent builds faster.
+
+The goal is data to improve the performance of agent builds. The benchmark runs the same small
+feature through builder at each of its build profiles and through superpowers and GSD at their
+defaults, unattended, and reports how long each step took, what happened inside it, what it cost,
+and whether the feature that came out actually works.
+
+**Success:** one command runs the matrix and writes a report whose summary table lets the owner say
+"this pipeline, at this profile, shipped a working feature in this time for this many tokens",
+whose per-config sections say where the time went, and which can be re-run after a builder change
+to see whether it got faster.
+
+## Decisions (from the conversation)
+
+- **D1 — What "performance level" means.** Builder's build profiles — rush, standard, thorough —
+  against superpowers and GSD at their defaults. `thorough-you` needs a human and is out. Five
+  configurations per feature.
+- **D2 — Quality counts.** A fast run that ships a broken feature is not fast. Every run is scored
+  by acceptance tests the agent never sees, plus the fixture's own tests.
+- **D3 — How steps are measured.** From the `stream-json` output of each headless session (step
+  boundaries, turns, tokens, cost) plus a PostToolUse hook in the fixture that logs every tool call
+  from every session and subagent (what happened inside a step). No instrumentation inside any of
+  the three pipelines; all three are measured the same way.
+
+## Design
+
+### 1. Layout
+
+```
+bench/
+  README.md                     how to run it, how to read a report, how to add a feature
+  fixture/                      the project every run starts from (§2)
+  features/<name>/
+    request.md                  the ask, given to every pipeline word for word
+    accept.test.mjs             acceptance tests the agent never sees
+  results/<run-id>/
+    REPORT.md                   committed (§6)
+    runs.json                   committed — every derived number the report is built from
+    <config>[/<rep>]/           git-ignored — raw session streams, the tool-call log, the fixture's git log
+scripts/
+  bench.mjs                     the runner (§3)
+  bench-core.mjs                pure functions: step derivation, hook-log parsing, scoring, report rendering
+  bench-hook.mjs                the PostToolUse hook the fixture's settings.json points at (§5)
+  test/bench-core.test.mjs
+  test/bench.test.mjs
+  test/fixtures/bench/          recorded streams and hook logs the tests parse
+```
+
+`<run-id>` is `YYYY-MM-DD-HHMM-<feature>`. `bench/results/*/` raw directories are listed in
+`.gitignore`; `REPORT.md` and `runs.json` are not, so results travel with the repo.
+
+### 2. The fixture and the feature
+
+**Fixture** — `bench/fixture/` is a small Node CLI, a notes app: `notes add <text>`, `notes list`,
+`notes rm <id>`, `notes show <id>`, storing notes in a JSON file whose path an env var sets. It has
+its own tests under `node:test`, a `package.json` with `test` as its only script, no dependencies,
+a README that says what it is, and:
+
+- `.claude/builder.md` already filled in: one app at `.`, gates `node --test`, `commit: auto`,
+  `agent_walk` with `claude_args: --permission-mode bypassPermissions`, a driver of "run the CLI
+  with Bash", no `start`/`smoke` (there is no dev server), and `merge_into: main`.
+- `.claude/settings.json` with the PostToolUse hook (§5), matcher `.*`, and the permission mode
+  every headless session needs.
+- No `.git`: the runner initialises one per copy.
+
+**Feature** — `bench/features/tags/`: "Notes can carry tags. `notes add --tag <t>` (repeatable)
+stores them; `notes list --tag <t>` shows only notes with that tag; `notes show` prints a note's
+tags; `notes tags` lists every tag in use with its count." Big enough that builder sizes it md
+and runs its full pipeline, small enough for one run to take minutes. `accept.test.mjs` exercises
+each of those behaviours through the CLI and is copied into the fixture copy only after the run
+ends.
+
+Adding a feature is a new directory with those two files. The README says so.
+
+### 3. The runner
+
+```
+node scripts/bench.mjs run <feature> [--only <config,…>] [--repeat N] [--model <m>] [--dry-run]
+node scripts/bench.mjs report <run-id>
+node scripts/bench.mjs status
+```
+
+**`run`** — for each configuration in the matrix, `--repeat` times, in sequence (never in parallel:
+API rate limits and CPU contention would skew one run against another):
+
+1. **Prepare a copy.** Copy `bench/fixture/` to `$TMPDIR/bench/<run-id>/<config>[-<rep>]/`, `git
+   init`, commit as `fixture`, create `main`. Write the feature's `request.md` nowhere the agent
+   can find it — the request is passed in the prompt.
+2. **Load the pipeline under test for the session only**, never changing the user's Claude home:
+   - Every session gets `--settings <copy>/.claude/bench-settings.json`, written by the runner,
+     whose `enabledPlugins` switches off the builder and superpowers installed at user scope, so
+     exactly one copy of each pipeline is loaded and it is the one under test.
+   - builder: `--plugin-dir <this repo>`, so the benchmark measures the checkout it runs from. The
+     fleet's own `claude -p` runs take their flags from the fixture's `agent_walk.claude_args`;
+     the runner fills that line at prepare time with the same `--plugin-dir` and `--settings`
+     (the fleet splits it on whitespace, so the copy's path must contain no spaces — the runner
+     refuses a `$TMPDIR` that does).
+   - superpowers: `--plugin-dir` of the version installed in this machine's plugin cache.
+   - GSD: `npx get-shit-done-cc` into the copy's `.claude/` (its local install mode; GSD installs
+     commands, not a plugin). GSD is not installed on this machine today; the runner installs it
+     per copy and records the version it got. If the install fails, the gsd rows are marked
+     `not run: <reason>` and the rest proceeds.
+   - The dry run prints which plugins each session loaded (`claude plugin list` in the copy with
+     the same flags), so a second builder sneaking in is caught before a real run.
+3. **Drive the pipeline** (§4), each session a `claude -p` with `--output-format stream-json
+   --verbose`, cwd the copy, `--model` when given, and the owner prompt (§4). Stream to
+   `<config>/session-<n>-<name>.jsonl`. Per session a hard timeout (default 2h) and an idle timeout
+   (default 20 min, reset by any output), both env-overridable, killing the process group the way
+   the fleet does; a killed session ends the run as `timed out`.
+4. **Score.** After the last session: `git checkout main` in the copy, `npm test` (fixture tests),
+   copy `accept.test.mjs` in and run it, record pass/fail counts for both, then
+   `git log --oneline main` and `git branch -a` for the record.
+5. **Derive and save.** Parse the streams and the hook log (§5) into the run's row of `runs.json`
+   and rewrite `REPORT.md`. Saved after every config, so a matrix killed half-way still has a
+   report of what finished.
+
+`--dry-run` prepares one copy, installs, prints the sessions it would run and their prompts, and
+stops. `status` prints the latest run's table from `runs.json`, or "no benchmark has run".
+
+Nothing the runner does touches this repo except `bench/results/`. The copies stay under `$TMPDIR`
+for inspection and are not deleted; `bench.mjs clean` removes them.
+
+### 4. Driving each pipeline unattended
+
+**The owner prompt**, passed to every session as `--append-system-prompt`:
+
+> You are being benchmarked. The owner is not here. Whenever a step would ask the human a question,
+> answer it yourself: take the option marked recommended, or the simplest one when none is. Never
+> stop to wait for input and never ask the owner anything. The feature is done only when it is
+> merged into `main` and the tests pass. Do not explain the benchmark in commits or files.
+
+For builder configs one line is appended: "When asked for a build profile, choose **<profile>**."
+That is the only place the profile enters: builder records it on the manifest at the go-ahead
+exactly as it would for a real owner.
+
+**builder** — the way `/builder:agent` reaches a merged feature from an idea:
+
+| Session | Prompt | Ends when |
+|---|---|---|
+| 1 brainstorm | `/builder:brainstorm <request>` | the workspace record is written and sized |
+| 2 spec | `/builder:spec` (resumes the record) | SPEC.md + MANIFEST.md committed |
+| 3 fleet | `node <builder>/scripts/fleet.mjs <feature>` in the copy | the feature is merged or parked |
+
+Session 3 is the fleet engine itself, not a `claude -p`: it runs audit, plan, build, the agent
+walk, sign-off, verify, ship and merge, with its own `claude -p` runs streamed under
+`.builder/fleet/logs/`. The runner reads those logs as sessions of this config, in order, and the
+fleet's `archive.jsonl` row for the feature. A parked feature ends the config as `parked:
+<reason>`. If builder sizes the feature xs/sm and builds it in chat, the config records `path:
+in-chat`, sessions 2 and 3 do not run, and the row is flagged in the report — the matrix was meant
+to compare profiles, and the feature should be resized.
+
+**superpowers** — one session, the way a person uses it:
+
+> `/superpowers:brainstorming` — Build this feature end to end: <request>. Brainstorm it, write
+> the plan, execute the plan with subagent-driven development, then finish the branch by merging
+> it into `main`.
+
+**GSD** — four sessions, because GSD expects a clear between its commands:
+
+| Session | Prompt |
+|---|---|
+| 1 | `/gsd:new-project <request>` |
+| 2 | `/gsd:plan-phase 1` |
+| 3 | `/gsd:execute-phase 1` |
+| 4 | `/gsd:verify-work` then merge to `main` |
+
+GSD's command names and the local install flag are confirmed against the version `npx` fetches
+during implementation; the driver is one table in `bench.mjs` so a rename is a one-line change.
+
+Every driver is a function `(copy, request, opts) → sessions[]` in `bench.mjs`; the matrix is a
+list of `{ config, driver, profile }`. Adding a pipeline is adding a driver.
+
+### 5. What gets recorded
+
+**Sessions** — each `claude -p` stream, raw. From it, `bench-core.mjs` derives:
+
+- `result`: duration, turns, input/output/cache-read tokens, cost, from the `result` event — the
+  same fields `fleet-core.tokensOf` reads.
+- `steps`: a step opens on each top-level `tool_use` of the `Skill` tool (its `skill` argument is
+  the step's name — `superpowers:brainstorming`, `builder:audit`, `gsd:plan-phase`, …) and closes
+  on the next or at session end. Time before the first Skill call is a step named `(prompt)`. A
+  session that never calls Skill is one step named after its prompt. Each step records start,
+  end, turns within it (assistant events), and the tool calls the top-level stream shows.
+- Fleet sessions: the same derivation on `.builder/fleet/logs/*.jsonl`; the fleet's lane
+  (`build`/`walk`/`ship`) is recorded on each.
+
+**The tool-call log** — `scripts/bench-hook.mjs` is a PostToolUse hook, installed by the fixture's
+`.claude/settings.json`, that appends one JSON line per tool call to `$BENCH_LOG` (an env var the
+runner sets for every session; the hook exits 0 and writes nothing when it is unset, so the
+fixture is harmless to open by hand):
+
+```json
+{"t":1760390400123,"session":"…","agent":"…|null","tool":"Edit","summary":"src/cli.mjs","ms":null}
+```
+
+`summary` is one line per tool: the path for file tools, the command's first 80 chars for Bash,
+the skill for Skill, the agent type and the prompt's first 80 chars for Agent, the tool name
+otherwise. Hooks fire inside subagents too, so this is the only record of what a builder task
+implementer or a superpowers subagent actually did. Lines are assigned to steps by timestamp and
+session.
+
+**Per config, per rep** (`runs.json`): config, profile, pipeline and version, model, started,
+ended, wall-clock, status (`done` | `parked: …` | `timed out` | `failed: …` | `not run: …`),
+sessions with their steps, totals (turns, tokens, cost), the score (`accept` passed/total,
+`fixture` passed/total), `path` (`pipeline` | `in-chat`), and the copy's path.
+
+### 6. The report
+
+`REPORT.md`, rendered by `bench-core.mjs` from `runs.json` alone, so `bench.mjs report <run-id>`
+can rebuild it after a format change without re-running anything.
+
+**Summary table** — one row per config, median over reps when `--repeat` > 1 (and `n`):
+
+| Config | Status | Wall | Turns | Tokens | Cost | Accept | Fixture tests | Longest step |
+|---|---|---|---|---|---|---|---|---|
+
+**Steps table** — one row per config, one column per step name seen in any config, the time spent
+in that step (blank where the config has no such step). Builder's and GSD's steps are their skills;
+superpowers' are its skills. This is the table that answers "where does builder's time go".
+
+**Per config** — one section per config (per rep under it when repeated): its sessions in order,
+each step with duration, turns, tool calls by tool (`Edit 14 · Bash 22 · Agent 6`), files touched,
+test commands run, subagents spawned with their prompts' first line, and the five longest gaps
+between consecutive tool calls (where the model was thinking or a command was running). For a
+parked, failed or timed-out run: the reason and the last ten log lines.
+
+Durations print through `fleet-core.duration`; tokens through its `formatTokens`.
+
+### 7. Tests
+
+`node --test 'scripts/test/*.test.mjs'`, no dependencies, as every script here:
+
+- `bench-core.test.mjs`: step derivation from recorded streams (a session with three Skill calls,
+  one with none, one cut off without a result event); hook-log parsing and assignment to steps;
+  scoring from `node --test` output; report rendering from a hand-written `runs.json` (medians,
+  blanks, flagged rows); `(prompt)` and `in-chat` cases.
+- `bench.test.mjs`: the runner against a stub `claude` (the fleet tests' `stub-claude.mjs` pattern:
+  a scenario file says what each session writes), checking the copy is prepared, the owner prompt
+  carries the profile, sessions run in order, a timed-out session ends the config, `runs.json` is
+  saved after each config, `--only` and `--dry-run`.
+- `bench-hook` is tested by piping a PostToolUse payload through it.
+- The fixture's own tests run in CI with the rest, so the fixture never ships broken.
+
+## Out of scope
+
+- Running configs in parallel.
+- Benchmarking `thorough-you` or any config that needs a human.
+- A fixture with a dev server or UI; the walk drives a CLI.
+- Comparing across machines or models in one report (one run is one model; `--model` is recorded).
+- Any change to how builder, superpowers or GSD behave.
+
+## Release
+
+A new capability reached for by name (`scripts/bench.mjs`, `bench/`): **minor**, 4.11.0. The
+plugin manifest does not ship `bench/`; it is a repo tool, like the tests.
