@@ -393,7 +393,7 @@ function planRun() {
   const model = opt('--model')
   const request = readFileSync(join(FEATURES, feature, 'request.md'), 'utf8').trim()
   const configs = MATRIX.filter((m) => !only || only.includes(m.config))
-  return { feature, request, configs, repeat, model, id: runId(feature) }
+  return { feature, request, configs, repeat, model, id: process.env.BENCH_RUN_ID ?? runId(feature) }
 }
 
 /** The sessions a config would run in a copy, with the flags and the owner prompt each gets. */
@@ -441,6 +441,19 @@ function lockState() {
   }
   return Number.isInteger(l.pid) && alive(l.pid) ? { live: true, ...l } : { live: false, ...l }
 }
+/** Take the lock atomically (wx). A dead holder's lock is cleared; a live other holder is a refusal. */
+function acquireLock(pid, runId) {
+  const held = lockState()
+  if (held && !held.live) rmSync(LOCK, { force: true })
+  try {
+    writeFileSync(LOCK, JSON.stringify({ pid, runId }), { flag: 'wx' })
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e
+    const l = lockState()
+    if (l?.pid === pid || l?.pid === process.pid) return // the lock is already ours (the detach parent wrote it for this child)
+    die(`a benchmark is running (pid ${l?.pid}, ${l?.runId}) — /builder:benchmark --status`)
+  }
+}
 const latestRun = () => (existsSync(RESULTS) ? readdirSync(RESULTS).filter((n) => existsSync(join(RESULTS, n, 'runs.json'))).sort().at(-1) ?? null : null)
 const readRun = (id) => JSON.parse(readFileSync(join(RESULTS, id, 'runs.json'), 'utf8'))
 
@@ -469,7 +482,8 @@ if (cmd === 'status') {
 }
 if (cmd === 'report') {
   const id = argv[1]
-  if (!id || !existsSync(join(RESULTS, id, 'runs.json'))) die(`no run '${id ?? ''}' under ${RESULTS}`)
+  if (!id || id !== basename(id) || id.startsWith('.')) die(`run id must be a plain directory name: '${id ?? ''}'`)
+  if (!existsSync(join(RESULTS, id, 'runs.json'))) die(`no run '${id ?? ''}' under ${RESULTS}`)
   const data = readRun(id)
   writeFileSync(join(RESULTS, id, 'REPORT.md'), renderReport(data))
   console.log(renderStatusTable(data, null))
@@ -487,8 +501,8 @@ if (cmd === 'run') {
     dryRun(plan)
     process.exit(0)
   }
-  const lock = lockState()
-  if (lock?.live) die(`a benchmark is running (pid ${lock.pid}, ${lock.runId}) — /builder:benchmark --status`)
+  const held = lockState()
+  if (held?.live && held.pid !== process.pid) die(`a benchmark is running (pid ${held.pid}, ${held.runId}) — /builder:benchmark --status`)
   mkdirSync(RESULTS, { recursive: true })
   if (!resultsDir(ROOT).endsWith(join('bench', 'results'))) {
     const ignore = join(ROOT, '.builder', '.gitignore')
@@ -496,16 +510,24 @@ if (cmd === 'run') {
   }
   if (flag('--detach')) {
     const outFd = openSync(join(RESULTS, 'bench.out'), 'a')
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv.filter((a) => a !== '--detach')], { cwd: process.cwd(), env: process.env, detached: true, stdio: ['ignore', outFd, outFd] })
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv.filter((a) => a !== '--detach')], { cwd: process.cwd(), env: { ...process.env, BENCH_RUN_ID: plan.id }, detached: true, stdio: ['ignore', outFd, outFd] })
     child.unref()
+    try {
+      acquireLock(child.pid, plan.id)
+    } catch (e) {
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {}
+      throw e
+    }
     console.log(`bench started detached (pid ${child.pid}) — output in ${join(RESULTS, 'bench.out')} · /builder:benchmark --status`)
     process.exit(0)
   }
-  writeFileSync(LOCK, JSON.stringify({ pid: process.pid, runId: plan.id }))
+  acquireLock(process.pid, plan.id)
   try {
     await runAll(plan)
   } finally {
-    rmSync(LOCK, { force: true })
+    if (lockState()?.pid === process.pid) rmSync(LOCK, { force: true })
   }
   process.exit(0)
 }
