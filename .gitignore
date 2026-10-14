@@ -5,3 +5,8 @@
 
 /dist/
 /.claude/skills/update-project-a/
+
+# benchmark: the raw streams beside each committed REPORT.md + runs.json
+/bench/results/*/*/
+/bench/results/lock
+/bench/results/bench.out

@@ -105,7 +105,7 @@ function buildCopy(author) {
     files[rel] = { data: readFileSync(p), mode: statSync(p).mode & 0o777 }
   }
   // Tests don't run in a host, and /builder:update updates a plugin install, which a copy is not.
-  const SKIP = new Set([join('scripts', 'test'), join('skills', 'update')])
+  const SKIP = new Set([join('scripts', 'test'), join('skills', 'update'), join('bench', 'results')])
   const walk = (rel) => {
     for (const n of readdirSync(join(SRC, rel)).sort()) {
       const r = join(rel, n)
