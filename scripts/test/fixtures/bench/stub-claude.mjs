@@ -20,7 +20,7 @@ const s = all[key] ?? { skills: [] }
 const line = (o) => process.stdout.write(JSON.stringify(o) + '\n')
 let t = Date.now()
 const ts = () => new Date((t += 10)).toISOString()
-line({ type: 'system', subtype: 'init', session_id: 'stub', model: 'stub-model', timestamp: ts() })
+line({ type: 'system', subtype: 'init', session_id: 'stub', model: 'stub-model', plugins: [{ name: 'stub-plugin', version: '0.0.0', path: '/stub/plugin', source: 'stub-plugin@stub' }], timestamp: ts() })
 for (const skill of s.skills ?? []) {
   line({ type: 'assistant', parent_tool_use_id: null, timestamp: ts(), message: { content: [{ type: 'tool_use', id: `t-${skill}`, name: 'Skill', input: { skill } }] } })
   line({ type: 'user', parent_tool_use_id: null, timestamp: ts(), message: { content: [{ type: 'tool_result', tool_use_id: `t-${skill}`, content: 'ok' }] } })

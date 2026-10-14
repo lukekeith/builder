@@ -415,8 +415,19 @@ function dryRun(plan) {
     for (const s of sessions) console.log(`  ${s.name}: ${s.fleet ? `node ${process.env.BENCH_FLEET || join(BUILDER, 'scripts', 'fleet.mjs')} <feature> --parallel 1` : s.prompt.split('\n')[0].slice(0, 110)}${s.system.includes('choose **') ? `   [${/choose \*\*\w+\*\*/.exec(s.system)[0]}]` : ''}`)
   }
   console.log('')
-  const list = spawnSync(CLAUDE, ['plugin', 'list', ...flagsFor(m0.pipeline, dest)], { cwd: dest, encoding: 'utf8' })
-  console.log(list.status === 0 ? `plugins a ${m0.config} session loads:\n${list.stdout.trim()}` : `could not list plugins (${list.stderr?.trim() || `exit ${list.status}`})`)
+  for (const pipeline of [...new Set(plan.configs.map((m) => m.pipeline))]) {
+    const r = spawnSync(CLAUDE, ['-p', 'reply with the single word ok', '--max-turns', '1', '--output-format', 'stream-json', '--verbose', ...flagsFor(pipeline, dest)], { cwd: dest, encoding: 'utf8', timeout: 120000 })
+    try {
+      if (r.status !== 0) throw new Error((r.stderr || '').trim().split('\n').pop() || `exit ${r.status}`)
+      const init = (r.stdout || '').split('\n').find((l) => l.includes('"subtype":"init"'))
+      if (!init) throw new Error('no init event')
+      const loaded = (JSON.parse(init).plugins ?? []).filter((x) => x.path !== 'builtin')
+      console.log(`plugins a ${pipeline} session loads:${loaded.length ? '' : ' (none)'}`)
+      for (const x of loaded) console.log(`  ${x.name} ${x.version} (${x.path})`)
+    } catch (e) {
+      console.log(`could not probe ${pipeline}'s plugins (${e.message})`)
+    }
+  }
   console.log(`gsd install: ${GSD_INSTALL}`)
 }
 
