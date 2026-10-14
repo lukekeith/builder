@@ -113,6 +113,17 @@ export function runSession({ copy, name, prompt, outFile, claudeArgs, systemProm
       settled = true
       clearTimeout(idle)
       clearTimeout(hard)
+      // Whatever the session left in its process group (a server, an MCP process) must not outlive it.
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {}
+      // A grandchild may still hold the pipes: stop reading before the file is closed.
+      try {
+        child.stdout.destroy()
+      } catch {}
+      try {
+        child.stderr.destroy()
+      } catch {}
       out.end(() => done({ exit, file: outFile }))
     }
     child.on('error', (e) => {

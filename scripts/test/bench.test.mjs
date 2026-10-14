@@ -84,6 +84,25 @@ test('runSession kills a hung session on the idle timeout and reports exit null'
   assert.equal(sessionRecord({ name: 'h', lane: null, prompt: 'hang', file: out }).totals.ended, 'cut')
 })
 
+test('runSession kills what a session left running in its process group after a normal exit', async () => {
+  const { runSession } = await import('../bench.mjs')
+  const root = makeRoot()
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ orphan: { orphan: true } }))
+  const r = await runSession({ copy: root, name: 'o', prompt: 'orphan', outFile: join(root, 'session-01-o.jsonl'), claudeArgs: [], systemPrompt: '', model: null, runTimeoutMs: 20000, idleTimeoutMs: 20000, claude: STUB, env: { STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub') } })
+  assert.equal(r.exit, 0)
+  const pid = Number(readFileSync(join(root, '.stub/orphan.pid'), 'utf8'))
+  let gone = false
+  for (let i = 0; i < 40 && !gone; i++) {
+    try {
+      process.kill(pid, 0)
+      await new Promise((res) => setTimeout(res, 50))
+    } catch {
+      gone = true
+    }
+  }
+  assert.ok(gone, 'the grandchild is still running')
+})
+
 test('--dry-run prepares one copy, prints the sessions per config with their prompts, and runs nothing', () => {
   const root = makeRoot()
   const r = runBench(root, ['run', 'tags', '--dry-run'])
