@@ -241,22 +241,6 @@ export function featureOf(copy) {
   return readdirSync(reg).find((n) => !n.startsWith('_') && existsSync(join(reg, n, 'MANIFEST.md'))) ?? null
 }
 
-/** True when the brainstorm record under <copy>/.builder/<feature>/ says sized xs or sm (built in chat). */
-export function sizedSmall(copy) {
-  const base = join(copy, '.builder')
-  if (!existsSync(base)) return false
-  for (const n of readdirSync(base)) {
-    if (['fleet', 'jobs', 'bench'].includes(n)) continue
-    let h = null
-    try {
-      h = readBrainstormHeader(join(base, n, 'brainstorm.md'))
-    } catch {}
-    if (!h) continue
-    return h.status === 'sized' && (h.size === 'xs' || h.size === 'sm')
-  }
-  return false
-}
-
 /** The first <copy>/.builder/<name>/ holding a brainstorm.md → { feature, header }, or null. */
 export function brainstormOf(copy) {
   const base = join(copy, '.builder')
@@ -348,7 +332,12 @@ export function fleetRecord({ copy, feature, outDir, r }) {
   else if (r.status === null) status = 'timed out'
   else if (entry?.status === 'parked') status = `parked: ${entry.reason}`
   else if (entry?.status === 'failed') status = `failed: ${entry.reason}`
-  else if (!entry && archived) status = 'done'
+  else if (r.status === undefined) {
+    // no real exit code (a fleet a session launched): only a record of landing counts as done
+    if (entry?.status === 'done' || (!entry && archived)) status = 'done'
+    else if (entry) status = `failed: fleet stopped (${entry.status})`
+    else status = 'failed: fleet left no record'
+  } else if (!entry && archived) status = 'done'
   else status = r.status === 0 ? 'done' : `failed: fleet exit ${r.status}`
   return { sessions, status }
 }
@@ -411,6 +400,23 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   let n = 0
   let skipToFleet = false
   let feature = null
+  let lastSession = null
+  // wait for a fleet running in the copy (launched by a session), then take its record
+  const adoptFleet = async (by) => {
+    if (fleetLive(copy)) {
+      progress(`fleet (launched by ${by})`)
+      const deadline = Date.now() + RUN_TIMEOUT_MS * 3
+      while (fleetLive(copy) && Date.now() < deadline) await new Promise((res) => setTimeout(res, pollMs))
+      if (fleetLive(copy)) {
+        run.status = 'timed out'
+        return
+      }
+    }
+    const f = fleetRecord({ copy, feature, outDir, r: {} })
+    run.sessions.push(...f.sessions)
+    run.status = f.status
+    run.fleetLaunchedBy = by
+  }
   for (const s of sessions) {
     if (run.status !== 'done') break
     if (skipToFleet && !s.fleet) continue
@@ -418,6 +424,11 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     progress(s.name)
     if (s.fleet) {
       feature ??= brainstormOf(copy)?.feature ?? featureOf(copy)
+      if (feature && fleetLive(copy)) {
+        // the session launched the fleet and left before its lock/record landed: wait, never start a second
+        await adoptFleet(lastSession)
+        break
+      }
       if (!feature || !hasManifest(feature)) {
         run.status = 'failed: spec left no manifest'
         break
@@ -430,40 +441,32 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     const file = join(outDir, `session-${String(n).padStart(2, '0')}-${s.name}.jsonl`)
     const r = await runSession({ copy, name: s.name, prompt: s.prompt, outFile: file, claudeArgs: s.flags, systemPrompt: s.system, model: plan.model })
     run.sessions.push(sessionRecord({ name: s.name, lane: null, prompt: s.prompt, file, copy }))
-    if (r.exit === null) run.status = 'timed out'
-    else if (r.exit !== 0) run.status = `failed: session ${s.name} exit ${r.exit}`
-    else if (m.pipeline === 'builder') {
+    lastSession = s.name
+    const ok = r.exit === 0
+    if (m.pipeline === 'builder') {
       const rec = brainstormOf(copy)
       if (!rec) {
-        run.status = 'failed: brainstorm left no record'
-        break
-      }
-      feature = rec.feature
-      const handedOffInChat = rec.header?.status === 'handed-off' && !hasManifest(feature) && !existsSync(join(copy, 'docs', 'features', '_archive', feature)) && !hasFleetRecord(copy, feature)
-      if ((rec.header?.status === 'sized' && (rec.header.size === 'xs' || rec.header.size === 'sm')) || handedOffInChat) {
-        run.path = 'in-chat'
-        break
-      }
-      const live = fleetLive(copy)
-      if (live || hasFleetRecord(copy, feature)) {
-        // the session launched the fleet itself: wait for it, then take its record
-        if (live) {
-          progress(`fleet (launched by ${s.name})`)
-          const deadline = Date.now() + RUN_TIMEOUT_MS * 3
-          while (fleetLive(copy) && Date.now() < deadline) await new Promise((res) => setTimeout(res, pollMs))
-          if (fleetLive(copy)) {
-            run.status = 'timed out'
-            break
-          }
+        if (ok) run.status = 'failed: brainstorm left no record'
+      } else {
+        feature = rec.feature
+        const handedOffInChat = rec.header?.status === 'handed-off' && !hasManifest(feature) && !existsSync(join(copy, 'docs', 'features', '_archive', feature)) && !hasFleetRecord(copy, feature)
+        if (ok && ((rec.header?.status === 'sized' && (rec.header.size === 'xs' || rec.header.size === 'sm')) || handedOffInChat)) {
+          run.path = 'in-chat'
+          break
         }
-        const f = fleetRecord({ copy, feature, outDir, r: { status: 0 } })
-        run.sessions.push(...f.sessions)
-        run.status = f.status
-        run.fleetLaunchedBy = s.name
-        break
+        // a fleet the session launched is taken whatever way the session ended
+        if (fleetLive(copy) || hasFleetRecord(copy, feature)) {
+          await adoptFleet(s.name)
+          if (r.exit === null && run.status !== 'timed out') run.sessionTimedOut = s.name
+          break
+        }
+        if (ok && hasManifest(feature)) skipToFleet = true
+        else if (ok && s.name === 'spec') run.status = 'failed: spec left no manifest'
       }
-      if (hasManifest(feature)) skipToFleet = true
-      else if (s.name === 'spec') run.status = 'failed: spec left no manifest'
+    }
+    if (run.status === 'done') {
+      if (r.exit === null) run.status = 'timed out'
+      else if (!ok) run.status = `failed: session ${s.name} exit ${r.exit}`
     }
   }
   if (!run.status.startsWith('not run')) {

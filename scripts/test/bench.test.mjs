@@ -211,6 +211,41 @@ test('run: builder — a brainstorm that launches the fleet itself is waited on 
   assert.equal(run.fleetLaunchedBy, 'brainstorm')
 })
 
+test('run: builder — a fleet that finished before the session ended is found by its record (rule d)', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true } }, { STUB_FLEET_DELAY_MS: '0', BENCH_FLEET_POLL_MS: '100' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.calls.length, 1)
+  const { run } = readRun(root)
+  assert.equal(run.status, 'done')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'fleet 01'])
+  assert.equal(run.fleetLaunchedBy, 'brainstorm')
+})
+
+test('run: builder — a dead fleet (stale lock, entry still walking) is failed, and no second fleet starts', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', fleetState: { lock: 'dead', entry: { status: 'walking' } } } })
+  assert.equal(r.status, 0, r.stderr)
+  const { run } = readRun(root)
+  assert.match(run.status, /^failed: fleet stopped \(walking\)/)
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm'])
+  const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
+  assert.ok(!existsSync(join(root, 'tmp', id, 'builder-rush', '.builder', 'fleet', 'logs', '_archive')), 'the stub fleet must not have run')
+})
+
+test('run: builder — a session cut by the idle timeout while waiting on its fleet still yields the fleet record', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true, hang: true } }, { STUB_FLEET_DELAY_MS: '2000', BENCH_FLEET_POLL_MS: '100', BENCH_IDLE_TIMEOUT_MS: '700' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.calls.length, 1)
+  const { run, report } = readRun(root)
+  assert.equal(run.status, 'done')
+  assert.equal(run.sessionTimedOut, 'brainstorm')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'fleet 01'])
+  assert.equal(run.sessions[0].totals.ended, 'cut')
+  assert.match(report, /session brainstorm was cut by the timeout while waiting on the fleet/)
+})
+
 test('run: builder — a manifest after brainstorm skips the spec session', () => {
   const root = makeRoot()
   const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec' } })
