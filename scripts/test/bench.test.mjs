@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -121,4 +121,117 @@ test('run refuses an unknown feature and an unknown --only config', () => {
   const root = makeRoot()
   assert.match(runBench(root, ['run', 'nope', '--dry-run']).stderr, /no feature 'nope'/)
   assert.match(runBench(root, ['run', 'tags', '--only', 'x', '--dry-run']).stderr, /unknown config 'x'/)
+})
+
+const SP = { skills: ['superpowers:brainstorming', 'superpowers:writing-plans', 'superpowers:subagent-driven-development'], files: { 'src/tags.mjs': 'export const x = 1\n' }, commit: 'feat: tags' }
+
+test('run: superpowers only — one session, scored, runs.json and REPORT.md written under .builder/bench', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': SP })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
+  assert.equal(data.feature, 'tags')
+  assert.equal(data.runs.length, 1)
+  const run = data.runs[0]
+  assert.equal(run.config, 'superpowers')
+  assert.equal(run.status, 'done')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['superpowers'])
+  assert.deepEqual(run.sessions[0].steps.map((s) => s.name), ['(prompt)', ...SP.skills])
+  assert.equal(run.score.fixture.total, 4)
+  assert.equal(run.score.fixture.passed, 4)
+  assert.ok(run.score.accept.total >= 7)
+  assert.ok(run.score.accept.failed >= 5)
+  assert.ok(run.gitLog.some((l) => /feat: tags/.test(l)))
+  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /\| superpowers \| done \|/)
+  assert.match(r.calls[0], /--append-system-prompt/)
+  assert.ok(existsSync(join(root, 'tmp', id, 'superpowers', 'REQUEST.md')))
+})
+
+test('run: builder — brainstorm, spec, then the fleet; its logs become sessions; the profile is in the owner prompt', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'] }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.equal(run.status, 'done')
+  assert.equal(run.path, 'pipeline')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm', 'spec', 'fleet 01'])
+  assert.equal(run.sessions[2].lane, 'build')
+  assert.deepEqual(run.sessions[2].steps.map((s) => s.name), ['(prompt)', 'builder:audit', 'builder:plan', 'builder:build'])
+  assert.deepEqual(run.sessions[2].steps[1].toolCalls, { Skill: 1, Edit: 1 })
+  assert.equal(run.totals.turns, 1 + 1 + 3)
+  assert.match(r.calls[0], /\/builder:brainstorm --auto/)
+  assert.ok(r.calls.length === 2, `expected 2 claude calls, got ${r.calls.length}`)
+})
+
+test('run: builder config with no manifest after spec is in-chat — the fleet is not run', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' }, '/builder:spec': { skills: [] } })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.equal(run.path, 'in-chat')
+  assert.equal(run.status, 'done')
+  assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm'])
+  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /built in chat/)
+})
+
+test('run: a parked fleet feature ends the config as parked with the reason', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'] }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { STUB_FLEET_PARK: '1' })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.match(run.status, /^parked: spec leaves the tag format open/)
+})
+
+test('run: a failing gsd install marks the row not run and the other configs still run', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'gsd,superpowers'], { '/superpowers:brainstorming': SP }, { BENCH_GSD_INSTALL: 'sh -c "echo no network >&2; exit 1"' })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
+  assert.deepEqual(data.runs.map((x) => x.config), ['superpowers', 'gsd']) // the matrix's order, whatever --only says
+  assert.equal(data.runs[0].status, 'done')
+  assert.match(data.runs[1].status, /^not run: gsd install failed: no network/)
+})
+
+test('run: gsd — four sessions in order, REQUEST.md in the copy, the version recorded', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'gsd'], { '/gsd-new-project': { skills: [] }, '/gsd-plan-phase': { skills: [] }, '/gsd-execute-phase': { files: { 'src/tags.mjs': 'x' }, commit: 'tags' }, '/gsd-verify-work': { skills: [] } }, { BENCH_GSD_INSTALL: 'echo "gsd-core 1.7.0 installed"' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(r.calls.map((c) => c.split(' ')[0]), ['/gsd-new-project', '/gsd-plan-phase', '/gsd-execute-phase', '/gsd-verify-work'])
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
+  assert.equal(data.versions.gsd, '1.7.0')
+  assert.equal(data.runs[0].sessions[1].steps[0].name, '/gsd-plan-phase 1')
+})
+
+test('run: a timed-out session ends the config as timed out; runs.json is still written', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': { skills: ['a'], hang: true } }, { BENCH_IDLE_TIMEOUT_MS: '500' })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.equal(run.status, 'timed out')
+  assert.equal(run.sessions[0].totals.ended, 'cut')
+})
+
+test('run: --repeat 2 gives two reps and the report says median of 2', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers', '--repeat', '2'], { '/superpowers:brainstorming': SP })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
+  assert.deepEqual(data.runs.map((x) => x.rep), [1, 2])
+  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /median of 2 reps/)
 })
