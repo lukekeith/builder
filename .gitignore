@@ -8,5 +8,6 @@
 
 # benchmark: the raw streams beside each committed REPORT.md + runs.json
 /bench/results/*/*/
+/bench/results/*/progress.json
 /bench/results/lock
 /bench/results/bench.out

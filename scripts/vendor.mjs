@@ -115,6 +115,7 @@ function buildCopy(author) {
   }
   walk('skills')
   walk('scripts')
+  walk('bench')
   for (const f of ['PROJECT.template.md', 'LICENSE', 'LICENSE-THIRD-PARTY.md']) if (existsSync(join(SRC, f))) add(f)
   const pj = { name: srcPlugin.name, description: srcPlugin.description, version: srcPlugin.version, author }
   files[join('.claude-plugin', 'plugin.json')] = { data: Buffer.from(JSON.stringify(pj, null, 2) + '\n'), mode: 0o644 }

@@ -37,9 +37,12 @@ then its table and the path.
   one is refused by the script with the list.
 - Superpowers in the plugin cache: the script's dry run names the `--plugin-dir` it found; if the
   `superpowers` line has none, say that row will run without the plugin and offer `--only` without it.
-- No run in progress: `status` says `running:` → offer `--status` and stop.
+- No run in progress: `status` says `running:` → offer `--status` and stop. The launch itself also refuses with `a benchmark is running (pid N, …)`
+  when one holds the lock, so a stale `status` reading cannot start a second run.
 
-Then the dry run, in the foreground:
+Then the dry run, in the foreground. It probes one one-turn session per pipeline and prints the
+plugins each loads; a `builder` line naming any path but `<builder>`, or a `superpowers` line that
+is `(none)`, means stop and say so.
 
 ```bash
 node <builder>/scripts/bench.mjs run <feature> <the same flags> --dry-run

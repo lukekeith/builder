@@ -114,7 +114,10 @@ test('--dry-run prepares one copy, prints the sessions per config with their pro
   assert.match(r.stdout, /gsd: 4 sessions/)
   assert.match(r.stdout, /\/gsd-new-project --auto @REQUEST\.md/)
   assert.match(r.stdout, /--plugin-dir/)
-  assert.deepEqual(r.calls.filter((c) => !c.startsWith('plugin')), [])
+  assert.equal(r.calls.length, 3, 'one probe per pipeline')
+  assert.ok(r.calls.every((c) => c.startsWith('reply with the single word ok')), 'only the probes')
+  assert.match(r.stdout, /plugins a builder session loads:\n\s+stub-plugin 0\.0\.0/)
+  assert.match(r.stdout, /plugins a gsd session loads:/)
 })
 
 test('run refuses an unknown feature and an unknown --only config', () => {
