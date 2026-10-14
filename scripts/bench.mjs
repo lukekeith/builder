@@ -13,7 +13,7 @@
  * tests point it at a stub), BENCH_GSD_INSTALL (the install command — tests set `true`).
  */
 import { spawn, execFileSync, spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, createWriteStream, openSync, renameSync, appendFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, createWriteStream, openSync, renameSync, appendFileSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -420,13 +420,93 @@ function dryRun(plan) {
   console.log(`gsd install: ${GSD_INSTALL}`)
 }
 
-const cmd = argv[0]
+// ---- the lock, status, report, clean, detach ------------------------------------------------------
+
+const LOCK = join(RESULTS, 'lock')
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+/** { pid, runId } of a live benchmark, 'dead' with the stale lock's runId, or null. */
+function lockState() {
+  let l
+  try {
+    l = JSON.parse(readFileSync(LOCK, 'utf8'))
+  } catch {
+    return null
+  }
+  return Number.isInteger(l.pid) && alive(l.pid) ? { live: true, ...l } : { live: false, ...l }
+}
+const latestRun = () => (existsSync(RESULTS) ? readdirSync(RESULTS).filter((n) => existsSync(join(RESULTS, n, 'runs.json'))).sort().at(-1) ?? null : null)
+const readRun = (id) => JSON.parse(readFileSync(join(RESULTS, id, 'runs.json'), 'utf8'))
+
+function status() {
+  const lock = lockState()
+  const id = lock?.runId && existsSync(join(RESULTS, lock.runId, 'runs.json')) ? lock.runId : latestRun()
+  if (!id) return console.log('no benchmark has run here yet — /builder:benchmark starts one')
+  const data = readRun(id)
+  const pf = join(RESULTS, id, 'progress.json')
+  const progress = existsSync(pf) ? JSON.parse(readFileSync(pf, 'utf8')) : null
+  console.log(`# benchmark ${id} — ${data.feature}\n`)
+  if (lock?.live) console.log(renderStatusTable(data, progress))
+  else {
+    console.log(renderStatusTable(data, null))
+    if (lock && !lock.live && progress) console.log(`⚠ benchmark stopped mid-run (config ${progress.config}) — its process is gone; the finished configs are in the table. Re-run with --only for the rest.`)
+  }
+  console.log(`report: ${join(RESULTS, id, 'REPORT.md')}`)
+}
+
+// imported (by the tests) the file only exports; the CLI runs when it is the script
+const isMain = (() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()
+const cmd = isMain ? argv[0] : null
+if (cmd === 'status') {
+  status()
+  process.exit(0)
+}
+if (cmd === 'report') {
+  const id = argv[1]
+  if (!id || !existsSync(join(RESULTS, id, 'runs.json'))) die(`no run '${id ?? ''}' under ${RESULTS}`)
+  const data = readRun(id)
+  writeFileSync(join(RESULTS, id, 'REPORT.md'), renderReport(data))
+  console.log(renderStatusTable(data, null))
+  console.log(`report: ${join(RESULTS, id, 'REPORT.md')}`)
+  process.exit(0)
+}
+if (cmd === 'clean') {
+  rmSync(TMP, { recursive: true, force: true })
+  console.log(`removed ${TMP}`)
+  process.exit(0)
+}
 if (cmd === 'run') {
   const plan = planRun()
   if (flag('--dry-run')) {
     dryRun(plan)
     process.exit(0)
   }
-  await runAll(plan)
+  const lock = lockState()
+  if (lock?.live) die(`a benchmark is running (pid ${lock.pid}, ${lock.runId}) — /builder:benchmark --status`)
+  mkdirSync(RESULTS, { recursive: true })
+  if (!resultsDir(ROOT).endsWith(join('bench', 'results'))) {
+    const ignore = join(ROOT, '.builder', '.gitignore')
+    if (!existsSync(ignore)) writeFileSync(ignore, '*\n')
+  }
+  if (flag('--detach')) {
+    const outFd = openSync(join(RESULTS, 'bench.out'), 'a')
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...argv.filter((a) => a !== '--detach')], { cwd: process.cwd(), env: process.env, detached: true, stdio: ['ignore', outFd, outFd] })
+    child.unref()
+    console.log(`bench started detached (pid ${child.pid}) — output in ${join(RESULTS, 'bench.out')} · /builder:benchmark --status`)
+    process.exit(0)
+  }
+  writeFileSync(LOCK, JSON.stringify({ pid: process.pid, runId: plan.id }))
+  try {
+    await runAll(plan)
+  } finally {
+    rmSync(LOCK, { force: true })
+  }
   process.exit(0)
 }
+if (isMain) die('usage: bench.mjs run <feature> [--only a,b] [--repeat N] [--model m] [--dry-run] [--detach] | report <run-id> | status | clean')
