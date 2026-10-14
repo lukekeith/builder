@@ -127,3 +127,17 @@ test('summarize flags an in-chat builder row and carries a not-done status', () 
   assert.equal(rows[1].status, 'not run: npx failed')
   assert.equal(rows[1].accept, null)
 })
+
+test('summarize medians scores and steps over the reps that have them, not zero-filled', () => {
+  const rows = summarize([run('builder-rush', 1), run('builder-rush', 2, { status: 'not run: x', score: { accept: null, fixture: null }, sessions: [], totals: null })])
+  const r = rows[0]
+  assert.deepEqual(r.accept, { passed: 7, total: 7 })
+  assert.deepEqual(r.steps, { 'builder:audit': 40, 'builder:build': 60 })
+  assert.equal(r.status, 'not run: x')
+  assert.equal(r.n, 2)
+})
+
+test('summarize: a step one rep never reached does not halve its median', () => {
+  const rows = summarize([run('gsd', 1), run('gsd', 2, { sessions: [{ name: 'a', steps: [{ name: 'builder:audit', ms: 40 }] }] })])
+  assert.equal(rows[0].steps['builder:build'], 60)
+})
