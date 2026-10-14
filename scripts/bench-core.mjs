@@ -163,17 +163,24 @@ export function stepTimes(run) {
   return out
 }
 
-/** One row per config: medians over its reps. Status is the worst rep's (`done` only when every rep is). */
+/** One row per config: medians over its reps. Status is a not-done rep's status (`done` when every rep is done). */
 export function summarize(runs) {
   const byConfig = new Map()
   for (const r of runs) (byConfig.get(r.config) ?? byConfig.set(r.config, []).get(r.config)).push(r)
   const rows = []
   for (const [config, reps] of byConfig) {
     const med = (f) => median(reps.map(f))
-    const stepNames = [...new Set(reps.flatMap((r) => Object.keys(stepTimes(r))))]
-    const steps = Object.fromEntries(stepNames.map((n) => [n, med((r) => stepTimes(r)[n] ?? 0)]))
+    // Scores and steps are medians over the reps that have them — a rep without one is left out, never counted as zero.
+    const timesOf = new Map(reps.map((r) => [r, stepTimes(r)]))
+    const stepNames = [...new Set([...timesOf.values()].flatMap((t) => Object.keys(t)))]
+    const steps = Object.fromEntries(
+      stepNames.map((n) => [n, median(reps.filter((r) => n in timesOf.get(r)).map((r) => timesOf.get(r)[n]))]),
+    )
     const longest = Object.entries(steps).sort((a, b) => b[1] - a[1])[0]
-    const scored = (k) => (reps.some((r) => r.score?.[k]) ? { passed: med((r) => r.score?.[k]?.passed ?? 0), total: med((r) => r.score?.[k]?.total ?? 0) } : null)
+    const scored = (k) => {
+      const have = reps.filter((r) => r.score?.[k])
+      return have.length ? { passed: median(have.map((r) => r.score[k].passed)), total: median(have.map((r) => r.score[k].total)) } : null
+    }
     rows.push({
       config,
       n: reps.length,
