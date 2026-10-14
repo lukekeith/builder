@@ -43,6 +43,11 @@ if (s.commit) {
   execFileSync('git', ['add', '-A'], { cwd: process.cwd() })
   execFileSync('git', ['-c', 'user.name=stub', '-c', 'user.email=stub@x', 'commit', '-qm', s.commit], { cwd: process.cwd() })
 }
+if (s.fleetState) {
+  mkdirSync(join(process.cwd(), '.builder', 'fleet'), { recursive: true })
+  if (s.fleetState.lock === 'dead') writeFileSync(join(process.cwd(), '.builder', 'fleet', 'lock'), '999999')
+  writeFileSync(join(process.cwd(), '.builder', 'fleet', 'fleet.json'), JSON.stringify({ features: { tags: s.fleetState.entry } }))
+}
 if (s.launchFleet) {
   // like a real --auto brainstorm that chains into /builder:agent: a detached fleet in the copy, its lock written, the session kept alive
   const feature = 'tags'

@@ -242,6 +242,7 @@ export function renderReport(data) {
     const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
     out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')
     if (run.path === 'in-chat') out.push(`⚠ ${IN_CHAT_FLAG}`, '')
+    if (run.sessionTimedOut) out.push(`⚠ session ${run.sessionTimedOut} was cut by the timeout while waiting on the fleet`, '')
     if (overlapped(run)) out.push(`⚠ ${OVERLAP_FLAG}`, '')
     out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
     for (const s of run.sessions ?? []) {
