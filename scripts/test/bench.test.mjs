@@ -316,6 +316,20 @@ test('run: gsd — four sessions in order, REQUEST.md in the copy, the version r
   assert.ok(data.runs[0].installMs >= 0)
 })
 
+test('run: gsd stops after the session that verifies the phase', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'gsd'], { '/gsd-new-project': { files: { '.planning/phases/01-tags/01-VERIFICATION.md': 'phase: 1\nstatus: passed\n', 'src/tags.mjs': 'x' }, commit: 'tags' } }, { BENCH_GSD_INSTALL: 'echo "gsd-core 1.7.0 installed"' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.calls.length, 1)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
+  assert.deepEqual(data.runs[0].sessions.map((x) => x.name), ['new-project'])
+  assert.equal(data.runs[0].status, 'done')
+  assert.equal(data.runs[0].stoppedEarly, 'phase verified after new-project')
+  assert.match(readFileSync(join(dir, id, 'report.md'), 'utf8'), /stopped early: phase verified after new-project/)
+})
+
 test('run: a timed-out session ends the config as timed out; runs.json is still written', () => {
   const root = makeRoot()
   const r = runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': { skills: ['a'], hang: true } }, { BENCH_IDLE_TIMEOUT_MS: '500' })

@@ -374,6 +374,20 @@ const writeJson = (p, o) => {
   renameSync(`${p}.tmp`, p)
 }
 
+/** True when a phase's VERIFICATION.md in the copy holds a `status: passed` line. */
+export function gsdVerified(copy) {
+  const base = join(copy, '.planning', 'phases')
+  try {
+    for (const d of readdirSync(base, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue
+      for (const n of readdirSync(join(base, d.name))) {
+        if (n.endsWith('VERIFICATION.md') && /^status:\s*passed\b/m.test(readFileSync(join(base, d.name, n), 'utf8'))) return true
+      }
+    }
+  } catch {}
+  return false
+}
+
 export async function runConfig(plan, m, rep, data, outRoot) {
   const label = plan.repeat > 1 ? `${m.config}-${rep}` : m.config
   const copy = join(TMP, plan.id, label)
@@ -467,6 +481,11 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     if (run.status === 'done') {
       if (r.exit === null) run.status = 'timed out'
       else if (!ok) run.status = `failed: session ${s.name} exit ${r.exit}`
+    }
+    // GSD's --auto may run the whole pipeline in one session: once the phase is verified the rest is noise
+    if (m.pipeline === 'gsd' && gsdVerified(copy)) {
+      run.stoppedEarly = `phase verified after ${s.name}`
+      break
     }
   }
   if (!run.status.startsWith('not run')) {

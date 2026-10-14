@@ -127,6 +127,11 @@ test('summarize and renderReport flag sessions that overlapped (summed time > 1.
   assert.equal(summarize([run('builder-rush', 1, { ms: 100, sessions: [{ name: 'a', totals: { ms: 105 }, steps: [] }] })])[0].flagged, null)
 })
 
+test('renderReport prints the stopped-early line', () => {
+  const md = renderReport({ ...DATA, runs: [run('gsd', 1, { ms: 100, stoppedEarly: 'phase verified after new-project', sessions: [] })] })
+  assert.match(md, /stopped early: phase verified after new-project — the remaining sessions were not run/)
+})
+
 test('parseTap reads the pass and fail counts', () => {
   assert.deepEqual(parseTap('TAP version 13\nok 1 - a\nnot ok 2 - b\n# tests 2\n# pass 1\n# fail 1\n'), { passed: 1, failed: 1, total: 2 })
   assert.deepEqual(parseTap(''), { passed: 0, failed: 0, total: 0 })
