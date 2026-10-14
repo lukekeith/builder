@@ -244,7 +244,7 @@ export function renderReport(data) {
     if (run.path === 'in-chat') out.push(`⚠ ${IN_CHAT_FLAG}`, '')
     if (run.sessionTimedOut) out.push(`⚠ session ${run.sessionTimedOut} was cut by the timeout while waiting on the fleet`, '')
     if (overlapped(run)) out.push(`⚠ ${OVERLAP_FLAG}`, '')
-    out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
+    out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, ...(run.stoppedEarly ? [`stopped early: ${run.stoppedEarly} — the remaining sessions were not run`] : []), `copy: \`${run.copy ?? '—'}\``, '')
     for (const s of run.sessions ?? []) {
       out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``)
       if (s.plugins?.length) out.push(`plugins: ${s.plugins.join(', ')}`)
