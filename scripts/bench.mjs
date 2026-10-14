@@ -190,11 +190,14 @@ const GSD_INSTALL = process.env.BENCH_GSD_INSTALL || 'npx -y @opengsd/gsd-core@l
  * `fleet: true` is builder's third step: the fleet engine, not a claude -p (see runFleet).
  */
 export const DRIVERS = {
-  builder: ({ request, profile }) => [
-    { name: 'brainstorm', prompt: `/builder:brainstorm --auto ${request}`, system: `When asked for a build profile, choose **${profile}**.` },
-    { name: 'spec', prompt: '/builder:spec --auto', system: `When asked for a build profile, choose **${profile}**.` },
-    { name: 'fleet', fleet: true, system: `When asked for a build profile, choose **${profile}**.` },
-  ],
+  builder: ({ request, profile }) => {
+    const system = `When asked for a build profile, choose **${profile}**. After /builder:spec has committed SPEC.md and MANIFEST.md, stop: do not run /builder:agent, /builder:fleet or any agent — the benchmark runs the fleet itself.`
+    return [
+      { name: 'brainstorm', prompt: `/builder:brainstorm --auto ${request}`, system },
+      { name: 'spec', prompt: '/builder:spec --auto', system },
+      { name: 'fleet', fleet: true, system },
+    ]
+  },
   superpowers: ({ request }) => [
     { name: 'superpowers', prompt: `/superpowers:brainstorming — Build this feature end to end: ${request}\n\nBrainstorm it, write the plan, execute the plan with subagent-driven development, then finish the branch by merging it into \`main\`.` },
   ],
@@ -254,11 +257,63 @@ export function sizedSmall(copy) {
   return false
 }
 
+/** The first <copy>/.builder/<name>/ holding a brainstorm.md → { feature, header }, or null. */
+export function brainstormOf(copy) {
+  const base = join(copy, '.builder')
+  if (!existsSync(base)) return null
+  for (const n of readdirSync(base).sort()) {
+    if (n.startsWith('.') || ['fleet', 'jobs', 'bench'].includes(n)) continue
+    const f = join(base, n, 'brainstorm.md')
+    if (!existsSync(f)) continue
+    let header = null
+    try {
+      header = readBrainstormHeader(f)
+    } catch {}
+    return { feature: n, header }
+  }
+  return null
+}
+
+const pidAlive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+/** True when a fleet running in the copy holds .builder/fleet/lock with a live pid. */
+export function fleetLive(copy) {
+  try {
+    const pid = Number(readFileSync(join(copy, '.builder', 'fleet', 'lock'), 'utf8'))
+    return Number.isInteger(pid) && pid > 0 && pidAlive(pid)
+  } catch {
+    return false
+  }
+}
+/** True when the copy's fleet has a record of the feature (an archive row, or a fleet.json entry). */
+export function hasFleetRecord(copy, feature) {
+  const dir = join(copy, '.builder', 'fleet')
+  try {
+    if (readFileSync(join(dir, 'archive.jsonl'), 'utf8').split('\n').some((l) => { try { return JSON.parse(l).feature === feature } catch { return false } })) return true
+  } catch {}
+  try {
+    return !!JSON.parse(readFileSync(join(dir, 'fleet.json'), 'utf8'))?.features?.[feature]
+  } catch {
+    return false
+  }
+}
+
 /** The fleet engine on one feature; its stream logs become this config's sessions. */
 export function runFleet({ copy, feature, outDir, env }) {
   const log = join(outDir, 'fleet.out')
   const r = spawnSync(process.execPath, [FLEET, feature, '--parallel', '1'], { cwd: copy, encoding: 'utf8', env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: copy }, timeout: RUN_TIMEOUT_MS * 3, maxBuffer: 64 * 1024 * 1024 })
   writeFileSync(log, `${r.stdout ?? ''}\n${r.stderr ?? ''}`)
+  return fleetRecord({ copy, feature, outDir, r })
+}
+
+/** The sessions and status of a fleet that has finished in the copy; `r` is its exit info ({ status, error? }). */
+export function fleetRecord({ copy, feature, outDir, r }) {
   const fleetDir = join(copy, '.builder', 'fleet')
   const readJson = (f) => {
     try {
@@ -351,14 +406,19 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   }
   if (m.pipeline === 'superpowers' && !superpowersDir()) run.status = 'not run: superpowers is not in the plugin cache'
   const sessions = sessionsFor(m, copy, plan.request)
+  const hasManifest = (f) => existsSync(join(copy, 'docs', 'features', f, 'MANIFEST.md'))
+  const pollMs = Number(process.env.BENCH_FLEET_POLL_MS) || 5000
   let n = 0
+  let skipToFleet = false
+  let feature = null
   for (const s of sessions) {
     if (run.status !== 'done') break
+    if (skipToFleet && !s.fleet) continue
     n++
     progress(s.name)
     if (s.fleet) {
-      const feature = featureOf(copy)
-      if (!feature) {
+      feature ??= brainstormOf(copy)?.feature ?? featureOf(copy)
+      if (!feature || !hasManifest(feature)) {
         run.status = 'failed: spec left no manifest'
         break
       }
@@ -372,10 +432,39 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     run.sessions.push(sessionRecord({ name: s.name, lane: null, prompt: s.prompt, file, copy }))
     if (r.exit === null) run.status = 'timed out'
     else if (r.exit !== 0) run.status = `failed: session ${s.name} exit ${r.exit}`
-    else if (m.pipeline === 'builder' && s.name === 'brainstorm' && sizedSmall(copy)) {
-      run.path = 'in-chat'
-      break
-    } else if (m.pipeline === 'builder' && s.name === 'spec' && !featureOf(copy)) run.status = 'failed: spec left no manifest'
+    else if (m.pipeline === 'builder') {
+      const rec = brainstormOf(copy)
+      if (!rec) {
+        run.status = 'failed: brainstorm left no record'
+        break
+      }
+      feature = rec.feature
+      const handedOffInChat = rec.header?.status === 'handed-off' && !hasManifest(feature) && !existsSync(join(copy, 'docs', 'features', '_archive', feature)) && !hasFleetRecord(copy, feature)
+      if ((rec.header?.status === 'sized' && (rec.header.size === 'xs' || rec.header.size === 'sm')) || handedOffInChat) {
+        run.path = 'in-chat'
+        break
+      }
+      const live = fleetLive(copy)
+      if (live || hasFleetRecord(copy, feature)) {
+        // the session launched the fleet itself: wait for it, then take its record
+        if (live) {
+          progress(`fleet (launched by ${s.name})`)
+          const deadline = Date.now() + RUN_TIMEOUT_MS * 3
+          while (fleetLive(copy) && Date.now() < deadline) await new Promise((res) => setTimeout(res, pollMs))
+          if (fleetLive(copy)) {
+            run.status = 'timed out'
+            break
+          }
+        }
+        const f = fleetRecord({ copy, feature, outDir, r: { status: 0 } })
+        run.sessions.push(...f.sessions)
+        run.status = f.status
+        run.fleetLaunchedBy = s.name
+        break
+      }
+      if (hasManifest(feature)) skipToFleet = true
+      else if (s.name === 'spec') run.status = 'failed: spec left no manifest'
+    }
   }
   if (!run.status.startsWith('not run')) {
     run.score = score(copy, plan.feature)

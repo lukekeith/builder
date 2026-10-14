@@ -13,7 +13,8 @@ if (argv[0] === 'plugin') {
 }
 const prompt = argv[argv.indexOf('-p') + 1] ?? ''
 const flags = argv.filter((a) => a.startsWith('--')).join(' ')
-appendFileSync(join(process.env.STUB_STATE, 'calls.log'), `${prompt.slice(0, 60).replace(/\n/g, ' ')} | ${flags}\n`)
+const sys = argv.includes('--append-system-prompt') ? argv[argv.indexOf('--append-system-prompt') + 1] ?? '' : ''
+appendFileSync(join(process.env.STUB_STATE, 'calls.log'), `${prompt.slice(0, 60).replace(/\n/g, ' ')} | ${flags} | ${sys.replace(/\s+/g, ' ')}\n`)
 const all = JSON.parse(readFileSync(process.env.STUB_SCENARIO, 'utf8'))
 const key = Object.keys(all).find((k) => prompt.includes(k))
 const s = all[key] ?? { skills: [] }
@@ -41,6 +42,15 @@ if (s.brainstormRecord) {
 if (s.commit) {
   execFileSync('git', ['add', '-A'], { cwd: process.cwd() })
   execFileSync('git', ['-c', 'user.name=stub', '-c', 'user.email=stub@x', 'commit', '-qm', s.commit], { cwd: process.cwd() })
+}
+if (s.launchFleet) {
+  // like a real --auto brainstorm that chains into /builder:agent: a detached fleet in the copy, its lock written, the session kept alive
+  const feature = 'tags'
+  const child = spawn(process.execPath, [process.env.BENCH_FLEET, feature, '--parallel', '1'], { cwd: process.cwd(), detached: true, stdio: 'ignore' })
+  mkdirSync(join(process.cwd(), '.builder', 'fleet'), { recursive: true })
+  writeFileSync(join(process.cwd(), '.builder', 'fleet', 'lock'), String(child.pid))
+  child.unref()
+  await new Promise((r) => setTimeout(r, 1500))
 }
 if (s.orphan) writeFileSync(join(process.env.STUB_STATE, 'orphan.pid'), String(spawn('sleep', ['30'], { stdio: 'ignore' }).pid))
 if (s.hang) setInterval(() => {}, 1000)

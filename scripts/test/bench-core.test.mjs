@@ -111,6 +111,22 @@ test('sessionTotals reads the result event when there is one', () => {
   assert.deepEqual(t, { ms: 300000, turns: 7, tokens: { input: 100, output: 900, cacheRead: 5000 }, costUsd: 0.5, ended: 'result' })
 })
 
+test('sessionTotals: a session that waited past its result event is timed by the stream (max of duration_ms and the event span)', () => {
+  const ev = (t, o) => JSON.stringify({ timestamp: new Date(T0 + t).toISOString(), ...o })
+  const text = [ev(0, { type: 'system', subtype: 'init', session_id: 's' }), ev(518000, { type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'x' }] } }), ev(518000, { type: 'result', subtype: 'success', duration_ms: 19000, num_turns: 1, usage: {}, session_id: 's' })].join('\n')
+  assert.equal(sessionTotals(parseStream(text)).ms, 518000)
+})
+
+test('summarize and renderReport flag sessions that overlapped (summed time > 1.1 x wall)', () => {
+  const o = run('builder-rush', 1, { ms: 100, sessions: [{ name: 'brainstorm', totals: { ms: 200 }, steps: [] }, { name: 'fleet 01', totals: { ms: 50 }, steps: [] }] })
+  const rows = summarize([o])
+  assert.match(rows[0].flagged, /sessions overlapped/)
+  const md = renderReport({ ...DATA, runs: [o] })
+  assert.match(md, /⚠ sessions overlapped \(a session waited on a fleet it launched\): per-step times are not additive/)
+  assert.match(md, /\| builder-rush ⚠ \|/)
+  assert.equal(summarize([run('builder-rush', 1, { ms: 100, sessions: [{ name: 'a', totals: { ms: 105 }, steps: [] }] })])[0].flagged, null)
+})
+
 test('parseTap reads the pass and fail counts', () => {
   assert.deepEqual(parseTap('TAP version 13\nok 1 - a\nnot ok 2 - b\n# tests 2\n# pass 1\n# fail 1\n'), { passed: 1, failed: 1, total: 2 })
   assert.deepEqual(parseTap(''), { passed: 0, failed: 0, total: 0 })
