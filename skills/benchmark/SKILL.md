@@ -40,9 +40,9 @@ then its table and the path.
 - No run in progress: `status` says `running:` → offer `--status` and stop. The launch itself also refuses with `a benchmark is running (pid N, …)`
   when one holds the lock, so a stale `status` reading cannot start a second run.
 
-Then the dry run, in the foreground. It probes one one-turn session per pipeline and prints the
+Then the dry run, in the foreground. It spends up to three one-turn model calls (one probe per pipeline) and prints the
 plugins each loads; a `builder` line naming any path but `<builder>`, or a `superpowers` line that
-is `(none)`, means stop and say so.
+is `(none)`, or more than one line for a pipeline, means stop and say so.
 
 ```bash
 node <builder>/scripts/bench.mjs run <feature> <the same flags> --dry-run

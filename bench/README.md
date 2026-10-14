@@ -12,5 +12,10 @@ cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-de
 Run it: `/builder:benchmark` (or `node scripts/bench.mjs run tags`). Watch it:
 `/builder:benchmark --status`. Rebuild a report: `node scripts/bench.mjs report <run-id>`.
 
+The fleet's own idle and run timeouts (`FLEET_IDLE_TIMEOUT_MS`, `FLEET_RUN_TIMEOUT_MS`) govern
+builder's fleet sessions; `BENCH_IDLE_TIMEOUT_MS` and `BENCH_RUN_TIMEOUT_MS` govern the sessions the
+runner starts itself. A vendored copy of builder (no `marketplace.json`) falls back to disabling only
+`builder` when the installed-plugins list is unreadable, so the dry-run probe is the check there.
+
 Add a feature: a new directory under `features/` with those two files; the acceptance test must
 drive the CLI through `src/cli.mjs` with `NOTES_FILE` set, as `fixture/test/cli.test.mjs` does.

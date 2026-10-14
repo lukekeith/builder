@@ -13,7 +13,7 @@ const ms = (iso) => (iso ? Date.parse(iso) : NaN)
 
 /** One stream-json file → { sessionId, model, result, events }. Non-JSON lines are skipped. */
 export function parseStream(text) {
-  const out = { sessionId: null, model: null, result: null, events: [] }
+  const out = { sessionId: null, model: null, result: null, plugins: [], events: [] }
   for (const line of String(text ?? '').split('\n')) {
     if (!line.trim()) continue
     let ev
@@ -26,6 +26,7 @@ export function parseStream(text) {
     out.sessionId ??= ev.session_id ?? null
     out.model ??= ev.model ?? ev.message?.model ?? null
     if (ev.type === 'result') out.result = ev
+    if (ev.type === 'system' && ev.subtype === 'init' && Array.isArray(ev.plugins) && !out.plugins.length) out.plugins = ev.plugins
     const parent = ev.parent_tool_use_id ?? null
     const blocks = []
     for (const b of ev.message?.content ?? []) {
@@ -62,9 +63,16 @@ export function endOf(parsed) {
 
 /**
  * Steps: one opens on each top-level Skill call and closes on the next, or at the end. Time before
- * the first is `(prompt)`; a session with no Skill call is one step named after its prompt.
+ * the first is `(prompt)`; a session with no Skill call is one step named after its slash command, else its first line.
  */
-export function deriveSteps(parsed, { prompt }) {
+export function deriveSteps(parsed, { prompt, root = null }) {
+  const rel = (p) => {
+    if (!root) return p
+    for (const r of [root, `/private${root}`]) if (p.startsWith(`${r}/`)) return p.slice(r.length + 1)
+    return p
+  }
+  // a slash command invokes its skill with no Skill tool call: the step is named after the command
+  const command = String(prompt ?? '').startsWith('/') ? String(prompt).split(/\s/)[0] : null
   const events = parsed.events.filter((e) => Number.isFinite(e.t))
   if (!events.length) return []
   const t0 = events[0].t
@@ -90,11 +98,11 @@ export function deriveSteps(parsed, { prompt }) {
       if (b.kind !== 'tool_use') continue
       cur.toolCalls[b.name] = (cur.toolCalls[b.name] ?? 0) + 1
       const i = b.input
-      if (FILE_TOOLS.has(b.name) && i.file_path && !cur.files.includes(i.file_path)) cur.files.push(i.file_path)
+      if (FILE_TOOLS.has(b.name) && i.file_path && !cur.files.includes(rel(i.file_path))) cur.files.push(rel(i.file_path))
       if (b.name === 'Bash' && i.command) {
         const c = firstLine(i.command)
         cur.commands.push(c)
-        if (TEST_RE.test(i.command)) cur.tests.push(c)
+        if (TEST_RE.test(String(i.command).split('\n')[0])) cur.tests.push(c)
       }
       if (AGENT_TOOLS.has(b.name)) cur.subagents.push({ type: i.subagent_type ?? 'agent', first: firstLine(i.description ?? i.prompt) })
       label = describeCall(b)
@@ -103,7 +111,10 @@ export function deriveSteps(parsed, { prompt }) {
   }
   cur.end = end
   if (steps.length > 1 && steps[0].name === '(prompt)' && steps[0].end === steps[0].start) steps.shift()
-  if (steps.length === 1 && steps[0].name === '(prompt)') steps[0].name = prompt
+  if (steps[0]?.name === '(prompt)') {
+    if (command) steps[0].name = command
+    else if (steps.length === 1) steps[0].name = firstLine(prompt)
+  }
   for (const s of steps) {
     s.ms = s.end - s.start
     s.gaps = s.gaps.sort((a, b) => b.ms - a.ms).slice(0, 5)
@@ -202,13 +213,13 @@ export function summarize(runs) {
 const usd = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : '—')
 const dur = (n) => (Number.isFinite(n) ? duration(n) : '—')
 const score = (s) => (s ? `${Math.round(s.passed)}/${Math.round(s.total)}` : '—')
-const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
+const cell = (s) => String(s ?? '—').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|')
 const calls = (tc) => Object.entries(tc ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ')
 
 export function renderSummary(data) {
   const rows = summarize(data.runs ?? [])
   const reps = Math.max(1, ...rows.map((r) => r.n))
-  const lines = ['| Config | Status | Wall | Turns | Tokens | Cost | Accept | Fixture tests | Longest step |', '|---|---|---|---|---|---|---|---|---|']
+  const lines = ['| Config | Status | Wall | Turns | Tokens (in+out) | Cost | Accept | Fixture tests | Longest step |', '|---|---|---|---|---|---|---|---|---|']
   for (const r of rows) {
     lines.push(`| ${r.config}${r.flagged ? ' ⚠' : ''} | ${cell(r.status)} | ${dur(r.ms)} | ${Number.isFinite(r.turns) ? Math.round(r.turns) : '—'} | ${Number.isFinite(r.tokens) ? formatTokens(r.tokens) : '—'} | ${usd(r.costUsd)} | ${score(r.accept)} | ${score(r.fixture)} | ${r.longest ? `${r.longest.name} ${dur(r.longest.ms)}` : '—'} |`)
   }
@@ -228,9 +239,11 @@ export function renderReport(data) {
     const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
     out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')
     if (run.path === 'in-chat') out.push(`⚠ ${IN_CHAT_FLAG}`, '')
-    out.push(`wall ${dur(run.ms)} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
+    out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, `copy: \`${run.copy ?? '—'}\``, '')
     for (const s of run.sessions ?? []) {
-      out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``, '')
+      out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``)
+      if (s.plugins?.length) out.push(`plugins: ${s.plugins.join(', ')}`)
+      out.push('')
       for (const st of s.steps ?? []) {
         out.push(`- **${st.name}** — ${dur(st.ms)}, ${st.turns} turns${calls(st.toolCalls) ? `, ${calls(st.toolCalls)}` : ''}`)
         if (st.files?.length) out.push(`  - files: ${st.files.join(', ')}`)
