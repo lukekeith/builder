@@ -124,3 +124,70 @@ export function sessionTotals(parsed) {
 }
 
 export { duration, formatTokens }
+
+/** `# pass N` / `# fail N` from node --test's TAP reporter. */
+export function parseTap(text) {
+  const n = (k) => Number(new RegExp(`^# ${k} (\\d+)`, 'm').exec(text ?? '')?.[1] ?? 0)
+  const passed = n('pass')
+  const failed = n('fail')
+  return { passed, failed, total: passed + failed }
+}
+
+export function runTotals(sessions) {
+  const t = { ms: 0, turns: 0, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0 }
+  for (const s of sessions) {
+    const x = s.totals ?? {}
+    t.ms += x.ms ?? 0
+    t.turns += x.turns ?? 0
+    t.tokens.input += x.tokens?.input ?? 0
+    t.tokens.output += x.tokens?.output ?? 0
+    t.tokens.cacheRead += x.tokens?.cacheRead ?? 0
+    t.costUsd += x.costUsd ?? 0
+  }
+  return t
+}
+
+export function median(nums) {
+  const a = nums.filter(Number.isFinite).sort((x, y) => x - y)
+  if (!a.length) return NaN
+  const mid = a.length >> 1
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2
+}
+
+export const IN_CHAT_FLAG = 'built in chat (sized xs/sm) — not the pipeline; resize the feature'
+
+/** Every step of a run, by name, with its time — the same name twice (two fleet runs both auditing) adds up. */
+export function stepTimes(run) {
+  const out = {}
+  for (const s of run.sessions ?? []) for (const st of s.steps ?? []) out[st.name] = (out[st.name] ?? 0) + st.ms
+  return out
+}
+
+/** One row per config: medians over its reps. Status is the worst rep's (`done` only when every rep is). */
+export function summarize(runs) {
+  const byConfig = new Map()
+  for (const r of runs) (byConfig.get(r.config) ?? byConfig.set(r.config, []).get(r.config)).push(r)
+  const rows = []
+  for (const [config, reps] of byConfig) {
+    const med = (f) => median(reps.map(f))
+    const stepNames = [...new Set(reps.flatMap((r) => Object.keys(stepTimes(r))))]
+    const steps = Object.fromEntries(stepNames.map((n) => [n, med((r) => stepTimes(r)[n] ?? 0)]))
+    const longest = Object.entries(steps).sort((a, b) => b[1] - a[1])[0]
+    const scored = (k) => (reps.some((r) => r.score?.[k]) ? { passed: med((r) => r.score?.[k]?.passed ?? 0), total: med((r) => r.score?.[k]?.total ?? 0) } : null)
+    rows.push({
+      config,
+      n: reps.length,
+      status: reps.find((r) => r.status !== 'done')?.status ?? 'done',
+      ms: med((r) => r.ms),
+      turns: med((r) => r.totals?.turns),
+      tokens: med((r) => (r.totals?.tokens?.input ?? 0) + (r.totals?.tokens?.output ?? 0)),
+      costUsd: med((r) => r.totals?.costUsd),
+      accept: scored('accept'),
+      fixture: scored('fixture'),
+      longest: longest ? { name: longest[0], ms: longest[1] } : null,
+      steps,
+      flagged: reps.some((r) => r.path === 'in-chat') ? IN_CHAT_FLAG : null,
+    })
+  }
+  return rows
+}
