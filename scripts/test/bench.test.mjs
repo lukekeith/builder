@@ -323,3 +323,35 @@ test('clean removes the copies', () => {
   assert.equal(r.status, 0)
   assert.ok(!existsSync(join(root, 'tmp')))
 })
+
+test('the lock names the detached child while it runs and is gone when it ends', async () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'superpowers', '--detach'], { '/superpowers:brainstorming': { skills: ['a'], hang: true } }, { BENCH_IDLE_TIMEOUT_MS: '1500' })
+  assert.equal(r.status, 0, r.stderr)
+  const pid = Number(/bench started detached \(pid (\d+)\)/.exec(r.stdout)[1])
+  const dir = join(root, '.builder', 'bench')
+  const lock = JSON.parse(readFileSync(join(dir, 'lock'), 'utf8'))
+  assert.equal(lock.pid, pid)
+  assert.match(lock.runId, /-tags$/)
+  const rows = () => {
+    try {
+      return JSON.parse(readFileSync(join(dir, lock.runId, 'runs.json'), 'utf8')).runs.length
+    } catch {
+      return 0
+    }
+  }
+  for (let i = 0; i < 100 && !rows(); i++) await new Promise((res) => setTimeout(res, 200))
+  assert.equal(rows(), 1)
+  for (let i = 0; i < 25 && existsSync(join(dir, 'lock')); i++) await new Promise((res) => setTimeout(res, 200))
+  assert.ok(!existsSync(join(dir, 'lock')))
+})
+
+test('report refuses a run id that is not a plain directory name', () => {
+  const root = makeRoot()
+  runBench(root, ['run', 'tags', '--only', 'superpowers'], { '/superpowers:brainstorming': SP })
+  for (const id of ['../x', '.hidden']) {
+    const r = runBench(root, ['report', id])
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /plain directory name/)
+  }
+})
