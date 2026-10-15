@@ -105,7 +105,7 @@ function buildCopy(author) {
     files[rel] = { data: readFileSync(p), mode: statSync(p).mode & 0o777 }
   }
   // Tests don't run in a host, and /builder:update updates a plugin install, which a copy is not.
-  const SKIP = new Set([join('scripts', 'test'), join('skills', 'update')])
+  const SKIP = new Set([join('scripts', 'test'), join('skills', 'update'), join('bench', 'results')])
   const walk = (rel) => {
     for (const n of readdirSync(join(SRC, rel)).sort()) {
       const r = join(rel, n)
@@ -115,6 +115,7 @@ function buildCopy(author) {
   }
   walk('skills')
   walk('scripts')
+  walk('bench')
   for (const f of ['PROJECT.template.md', 'LICENSE', 'LICENSE-THIRD-PARTY.md']) if (existsSync(join(SRC, f))) add(f)
   const pj = { name: srcPlugin.name, description: srcPlugin.description, version: srcPlugin.version, author }
   files[join('.claude-plugin', 'plugin.json')] = { data: Buffer.from(JSON.stringify(pj, null, 2) + '\n'), mode: 0o644 }
