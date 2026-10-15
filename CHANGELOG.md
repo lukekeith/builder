@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.11.0
+
+**New:**
+- **`/builder:benchmark`** — runs one small feature through builder at rush, standard and thorough and
+  through superpowers and GSD, unattended, and reports time per step, what happened in each step,
+  turns, tokens, cost, and whether the feature works (acceptance tests the agent never sees). Steps
+  come from each session's `stream-json` — the Skill calls that open them, with subagent work inside
+  them. Results land in `bench/results/<run>/` (`REPORT.md` + `runs.json` committed, raw streams
+  not). `--status` while it runs; `--report <run-id>` rebuilds one. Design:
+  `docs/specs/2026-10-13-benchmark-design.md`.
+
 ## 4.10.2
 
 **Fixed:**
