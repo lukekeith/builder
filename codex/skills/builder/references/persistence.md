@@ -14,6 +14,8 @@ Write before a worker dispatch, after its review, at each phase/slice boundary, 
 
 `node <plugin>/scripts/lifecycle.mjs checkpoint <feature> --phase <phase> --next "<concrete action>" --task "<task ID>"`
 
+`build: here` on the manifest (written by `lifecycle.mjs here <feature>` and committed as `chore(<feature>): build here, without the ceremony` where policy permits, kept by later checkpoints; absent means none) routes resume: planned without a go-ahead → the plan's here go-ahead; planned with a go-ahead or building → execution.md §Build here, never workers; built → the full finish (walk, final review, verification, delivery) only when the user asks for it. `--here` is valid only before the build starts (spec, aligned, audited, planned); later, the helper refuses and resume routes as usual.
+
 Run from a known repository with explicit `--root` where needed. The helper updates MANIFEST in the feature worktree and runtime metadata. Record scope authorization, holds, walk provenance, acceptance coverage, and ledger details in the tracked files. Commit those updates in the worktree where authorized; otherwise identify all uncommitted checkpoint files in the handoff.
 
 After committing final tracked evidence and running required feature checks on that clean HEAD, use:

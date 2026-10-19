@@ -65,6 +65,15 @@ Mark app `commit: manual` where every commit requires its owner's action.
 
 Document how to start, smoke-test and stop an isolated running environment.
 Name migrations and ownership restrictions; never put secret values in this file.
+
+```
+migrations: <dir holding migration files>             # e.g. packages/db/prisma/migrations
+status:     <command>   # pending migrations on the DEV db
+apply:      <command>   # e.g. npx prisma migrate deploy
+apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it — delivery also runs apply then regenerate in the target checkout after landing new additive migrations)
+regenerate: <command>   # after a schema change — omit if none
+```
+
 State whether a personal human walk is mandatory or agent verification is acceptable.
 
 ## Companion skills
