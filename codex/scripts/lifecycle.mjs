@@ -186,13 +186,25 @@ async function migrateAfterLanding(m, worktree, before, after) {
     if (plan.action === 'note') return { migrations, action: 'note', note: plan.why };
     const log = path.join(m.commonDir, 'builder-codex', 'logs', `${m.name}-land.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
+    const n = `${files.length} new migration${files.length === 1 ? '' : 's'}`;
+    // The target was clean before delivery (targetReady); anything the commands left behind would
+    // block every later prepare/deliver/cleanup, so it is named for its owner instead of hidden.
+    const leftovers = () => { try { const d = dirty(worktree); return d ? d.split('\n').map(l => l.trim().replace(/^\S+\s+/, '')).filter(Boolean) : []; } catch { return []; } };
+    const changed = files => files.length ? ` It changed ${files.join(', ')} in ${worktree}: commit them under the project's policy or restore them (git -C ${worktree} restore/clean) — the target checkout must be clean before another prepare, deliver or cleanup.` : '';
+    const done = [];
     for (const cmd of plan.commands) {
       const fd = fs.openSync(log, 'a');
-      try { execSync(cmd, { cwd: worktree, stdio: ['ignore', fd, fd], timeout: 10 * 60 * 1000 }); }
-      catch { return { migrations, action: 'failed', commands: plan.commands, log, note: `${files.length} new migration${files.length === 1 ? '' : 's'} landed, but \`${cmd}\` failed in ${worktree} — see ${log}, then run ${plan.commands.map(c => `\`${c}\``).join(', then ')} by hand` }; }
+      try { execSync(cmd, { cwd: worktree, stdio: ['ignore', fd, fd], timeout: 10 * 60 * 1000 }); done.push(cmd); }
+      catch {
+        const left = leftovers();
+        const rest = plan.commands.slice(done.length).map(c => `\`${c}\``).join(', then ');
+        return { migrations, action: 'failed', commands: plan.commands, ran: done, failed: cmd, log, dirty: left, note: `${n} landed${done.length ? ` and ${done.map(c => `\`${c}\``).join(', ')} ran` : ''}, but \`${cmd}\` failed in ${worktree} — see ${log}, then run ${rest} by hand.${changed(left)}` };
+      }
       finally { fs.closeSync(fd); }
     }
-    return { migrations, action: 'applied', commands: plan.commands, log, worktree };
+    const left = leftovers();
+    if (left.length) return { migrations, action: 'applied-dirty', commands: plan.commands, ran: done, log, worktree, dirty: left, note: `${n} applied to the dev DB here (${done.map(c => `\`${c}\``).join(', then ')}).${changed(left)}` };
+    return { migrations, action: 'applied', commands: plan.commands, ran: done, log, worktree };
   } catch (error) {
     return { migrations: [], action: 'note', note: `Could not check landed migrations (${error.message}) — check the dev DB by hand` };
   }

@@ -18,10 +18,10 @@ For `$builder agent`, resolve missing profile preferences and the immutable land
 
 ## Which features agents may take
 
-Before any worker starts on a feature, run `node <plugin>/scripts/lifecycle.mjs agent-ready <feature> --root <host-repo>`. A nonzero result is a refusal: report its one line and stop for that feature, whoever named it. It refuses:
+Run `node <plugin>/scripts/lifecycle.mjs agent-ready <feature> --root <host-repo>` **once, before the handoff begins** — before any worker of this handoff starts. A nonzero result is a refusal: report its one line and stop for that feature, whoever named it. Do not re-run it while continuing or resuming a handoff this session started: its own workers' fresh files would read as another session building it. It refuses:
 
-- **A feature another session is building** — building, or planned with a go-ahead (an approved profile or `build: here`), with its working files (`.builder/<feature>/` in its worktree, or its tracked ledger.md) written in the last 30 minutes. Two coordinators on one feature worktree is how work is lost: `<feature> — being built in a session; finish it there`. A feature only specced in a session is still offered.
-- Merged, paused, waiting for a human walk (resume it instead; never unpark a human step here), or still exploring with no spec.
+- **A feature another session is building** — building, or planned with a go-ahead (an approved profile or `build: here`), with activity in its worktree in the last 30 minutes: any file under `.builder/<feature>/` or `.builder/gates/`, its tracked ledger.md, its Git index, or its HEAD commit. Two coordinators on one feature worktree is how work is lost: `<feature> — being built in a session; finish it there`. A feature only specced in a session is still offered.
+- Merged, paused, waiting for a human walk once built (resume it instead; never unpark a human step here — a Thorough + you feature that is not built yet is still offered), or still exploring with no spec.
 
 `$builder agent` with no feature offers the rows `lifecycle.mjs list` marks `agent.offer`, in its order: features not built yet first, then part-built, then built, then blocked, most recently touched within each; offer the first four and say any other can be named. Each option's description is the row's `agent.does` — what the workers would actually do, for example `built in a session, not tested yet · agents only walk it, verify and merge it`. Nothing picked → stop. A branch shared by several features cannot occur here: every feature gets its own `builder/<feature>` branch and worktree at start, so no extra shared-branch check exists.
 
