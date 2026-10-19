@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseWalkReadiness, landedMigrations } from './landing.mjs';
+import { agentOffer, buildingInSession } from './offer.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const head = root => git(root, 'rev-parse', 'HEAD');
@@ -152,7 +154,7 @@ function manifest(m) {
   const file = safeDestination(m.worktree, path.join(m.featurePath, 'MANIFEST.md'));
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  for (const [key, value] of Object.entries({ phase: m.phase, state: m.phase, next: m.nextAction, 'current-task': m.currentTask || 'none', 'origin-branch': m.originBranch || 'detached', 'origin-head': m.originHead, 'target-branch': targetBranch(m), 'target-start-head': m.targetStartHead || m.originHead, profile: m.profile || 'thorough', branch: m.featureBranch, 'feature-name': m.name, registry: m.registry })) {
+  for (const [key, value] of Object.entries({ phase: m.phase, state: m.phase, next: m.nextAction, 'current-task': m.currentTask || 'none', 'origin-branch': m.originBranch || 'detached', 'origin-head': m.originHead, 'target-branch': targetBranch(m), 'target-start-head': m.targetStartHead || m.originHead, profile: m.profile || 'thorough', branch: m.featureBranch, 'feature-name': m.name, registry: m.registry, ...(m.build ? { build: m.build } : {}) })) {
     const line = `${key}: ${key === 'next' || key === 'current-task' ? JSON.stringify(value) : value}`;
     const re = new RegExp(`^${key}:.*$`, 'm');
     text = re.test(text) ? text.replace(re, () => line) : `${text}${text && !text.endsWith('\n') ? '\n' : ''}${line}\n`;
@@ -160,11 +162,65 @@ function manifest(m) {
   if (!/^size:/m.test(text)) text = `size: md\n${text}`;
   fs.writeFileSync(file, text);
 }
+/** The migration files `from..to` added under the config's Walk readiness `migrations:` dir, with their text. */
+function newMigrations(root, dir, from, to) {
+  if (!dir || !from) return [];
+  const names = git(root, 'diff', '--name-only', '--diff-filter=A', `${from}..${to}`, '--', dir).split('\n').filter(Boolean);
+  return names.map(file => ({ path: file, text: (() => { try { return git(root, 'show', `${to}:${file}`); } catch { return ''; } })() }));
+}
+/**
+ * After delivery into the target: the dev DB the target checkout serves needs the migrations the
+ * feature brought (its walk only proved them on the feature's isolated database). apply_mode agent
+ * and additive → run apply, then regenerate, in that checkout; anything else → a note naming the
+ * exact command. Failures become notes: the landing itself stands.
+ */
+async function migrateAfterLanding(m, worktree, before, after) {
+  try {
+    const { loadConfig } = await import('./config.mjs');
+    const config = loadConfig(worktree || m.integration.worktree);
+    const readiness = config.ok ? parseWalkReadiness(config.body) : {};
+    const files = newMigrations(m.originRoot, readiness.migrations, before, after);
+    const plan = landedMigrations({ files, readiness, checkedOut: Boolean(worktree), target: targetBranch(m) });
+    const migrations = files.map(f => f.path);
+    if (plan.action === 'none') return { migrations, action: 'none' };
+    if (plan.action === 'note') return { migrations, action: 'note', note: plan.why };
+    const log = path.join(m.commonDir, 'builder-codex', 'logs', `${m.name}-land.log`);
+    fs.mkdirSync(path.dirname(log), { recursive: true });
+    const n = `${files.length} new migration${files.length === 1 ? '' : 's'}`;
+    // The target was clean before delivery (targetReady); anything the commands left behind would
+    // block every later prepare/deliver/cleanup, so it is named for its owner instead of hidden.
+    const leftovers = () => { try { const d = dirty(worktree); return d ? d.split('\n').map(l => l.trim().replace(/^\S+\s+/, '')).filter(Boolean) : []; } catch { return []; } };
+    const changed = files => files.length ? ` It changed ${files.join(', ')} in ${worktree}: commit them under the project's policy or restore them (git -C ${worktree} restore/clean) — the target checkout must be clean before another prepare, deliver or cleanup.` : '';
+    const done = [];
+    for (const cmd of plan.commands) {
+      const fd = fs.openSync(log, 'a');
+      try { execSync(cmd, { cwd: worktree, stdio: ['ignore', fd, fd], timeout: 10 * 60 * 1000 }); done.push(cmd); }
+      catch {
+        const left = leftovers();
+        const rest = plan.commands.slice(done.length).map(c => `\`${c}\``).join(', then ');
+        return { migrations, action: 'failed', commands: plan.commands, ran: done, failed: cmd, log, dirty: left, note: `${n} landed${done.length ? ` and ${done.map(c => `\`${c}\``).join(', ')} ran` : ''}, but \`${cmd}\` failed in ${worktree} — see ${log}, then run ${rest} by hand.${changed(left)}` };
+      }
+      finally { fs.closeSync(fd); }
+    }
+    const left = leftovers();
+    if (left.length) return { migrations, action: 'applied-dirty', commands: plan.commands, ran: done, log, worktree, dirty: left, note: `${n} applied to the dev DB here (${done.map(c => `\`${c}\``).join(', then ')}).${changed(left)}` };
+    return { migrations, action: 'applied', commands: plan.commands, ran: done, log, worktree };
+  } catch (error) {
+    return { migrations: [], action: 'note', note: `Could not check landed migrations (${error.message}) — check the dev DB by hand` };
+  }
+}
 export async function run(command, name, options = {}) {
   const root = path.resolve(options.root || process.cwd());
   if (command === 'list') {
     const folder = path.join(common(root), 'builder-codex', 'features');
-    return fs.existsSync(folder) ? fs.readdirSync(folder).filter(x => x.endsWith('.json')).sort().map(x => { const m = JSON.parse(fs.readFileSync(path.join(folder, x), 'utf8')); return { ...m, profile: m.profile || 'thorough' }; }) : [];
+    if (!fs.existsSync(folder)) return [];
+    const { profileLabel, parseProfile } = await import('./profile.mjs');
+    const now = Date.now();
+    return fs.readdirSync(folder).filter(x => x.endsWith('.json')).sort().map(x => {
+      const file = path.join(folder, x); const m = JSON.parse(fs.readFileSync(file, 'utf8')); m.profile ||= 'thorough';
+      // `build: here` shows from the moment it is chosen; otherwise the recorded profile's label.
+      return { ...m, build: m.build || 'none', profileLabel: m.build === 'here' ? 'here' : profileLabel(parseProfile(m.profile).preset), touchedAt: fs.statSync(file).mtimeMs, inSession: buildingInSession(m, now), agent: agentOffer(m, now) };
+    });
   }
   const file = location(root, name);
   assert(options.into === undefined || command === 'start' || command === 'approve', '--into is only accepted by start or approve; landing targets are immutable');
@@ -208,6 +264,12 @@ export async function run(command, name, options = {}) {
   assert(!m.cleaned, 'Cleaned feature is read-only; start a new feature');
   identity(m);
   if (command === 'status' || command === 'resume') return { ...m, head: head(m.worktree), dirty: dirty(m.worktree) };
+  if (command === 'agent-ready') {
+    // Read-only: whether Codex workers may take this feature now, and what they would do.
+    const offer = agentOffer(m);
+    assert(offer.offer, offer.reason);
+    return { name: m.name, phase: m.phase, build: m.build || 'none', targetBranch: targetBranch(m), worktree: m.worktree, ...offer };
+  }
   assert(m.phase !== 'merged' || command === 'cleanup', 'Merged feature is read-only except for cleanup');
   if (command === 'pause') {
     assert(m.phase !== 'merged', 'Merged feature cannot be paused');
@@ -227,6 +289,12 @@ export async function run(command, name, options = {}) {
     importArtifacts(m, file, planningImports(m.originRoot, m.originHead, m.registry, m.name), true); return m;
   }
   assert(!m.importState || m.importState === 'complete', 'Artifact import is incomplete; resolve it and run retry-import before continuing');
+  if (command === 'here') {
+    // Build it in this session without the ceremony: chosen before the build starts, never after.
+    assert(['spec', 'aligned', 'audited', 'planned'].includes(m.phase), `Build here is chosen before the build starts (spec, aligned, audited or planned); ${m.phase} continues as usual`);
+    if (m.build !== 'here') { m.build = 'here'; manifest(m); atomic(file, m); }
+    return m;
+  }
   if (command === 'approve') {
     assert(m.phase !== 'merged', 'Merged feature cannot be approved');
     assert(options.into === undefined || options.into === targetBranch(m), 'Landing target is immutable; start a new feature to change it');
@@ -307,7 +375,11 @@ export async function run(command, name, options = {}) {
       // Compare-and-swap prevents overwriting an independently advanced ref.
       git(m.originRoot, 'update-ref', `refs/heads/${targetBranch(m)}`, options.verifiedHead, m.integration.targetHead);
     }
-    m.phase = 'merged'; m.mergedHead = options.verifiedHead; m.nextAction = 'Optional explicit cleanup'; atomic(file, m); return m;
+    m.phase = 'merged'; m.mergedHead = options.verifiedHead; m.nextAction = 'Optional explicit cleanup'; atomic(file, m);
+    // The merge is final; what follows only brings the dev DB along and never undoes the landing.
+    m.landing = await migrateAfterLanding(m, target.worktree, m.integration.targetHead, options.verifiedHead);
+    if (m.landing.note) m.nextAction = `${m.landing.note}; then optional explicit cleanup`;
+    atomic(file, m); return m;
   }
   if (command === 'cleanup') {
     const target = targetReady(m);
@@ -325,7 +397,7 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH]\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --profile VALUE [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH]\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --profile VALUE [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
