@@ -6,6 +6,8 @@ Put the hardest uncertainty on the earliest working path. Each slice has ID, out
 
 Discuss a consequential scope/decomposition tradeoff when needed. Do not force another approval ceremony if the user's authorization already covers the settled scope and plan. Show the short slice/phase overview and proceed.
 
+**Build here (`build: here`).** Choosing *here* was the go-ahead: present the Phases table and what rides along, record `go-ahead: <who YYYY-MM-DD> (here)` in the manifest, commit `chore(<feature>): <feature> — go-ahead (here)`, and continue straight into execution.md §Build here in the same turn. No profile choice, worker dispatch or landing question. Under `--agent-walk`, `build: here` is ignored.
+
 ## PLAN.md structure
 
 Retain the plan through verification and delivery; never delete it at sign-off. It is recovery evidence when task reports disappear.

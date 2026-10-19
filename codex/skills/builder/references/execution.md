@@ -24,4 +24,17 @@ For configured `@delta` gates, establish the baseline against the captured start
 
 After the last phase, review the whole feature diff once with a judgment model, including SPEC acceptance, frozen contracts, cross-task interfaces, deferred findings, and ledger rulings. One grouped fix wave plus scoped re-review is preferred over one worker per finding. Residual real blockers reopen work; a loop cap limits repetition, not correctness obligations.
 
-Then record built, write the acceptance walk, and proceed to delivery.md. Keep PLAN, ledger, and reports needed for remaining verification. A passing task suite does not establish final integrated acceptance.
+Then record built, write the acceptance walk, and proceed to delivery.md.
+
+## Build here (`build: here`)
+
+The user chose to build it in this session without the ceremony (`$builder resume <feature> --here` or `$builder build <feature> --here`, recorded with `lifecycle.mjs here <feature>`). Spec, alignment, audit, the decisions gate and the plan still run in full; the plan's go-ahead shows the Phases table and proceeds (planning.md). Under `--agent-walk` or an agent handoff, `build: here` is ignored. Then, in the existing feature worktree — Codex isolation is never skipped:
+
+1. **The coordinator works the tasks in order itself.** For each `### Task N`, read its block, the SPEC section it implements and the recipe its `Recipe:` line names; write the test first where behavior changes, see it fail, implement, see it pass. No implementation workers.
+2. **One commit per task** following the project's commit rule, naming every staged file. In an app configured `commit: manual`, stage and carry on; list those for their owner at the end.
+3. **At each phase close, that app's fast gates** via `gate.mjs <app>`; a red gate is fixed in place before the next phase.
+4. **Keep the ledger to one line per task** (`Task N: done <sha>`) and checkpoint per persistence.md, so a cleared context resumes at the first task without a line.
+5. **Skipped:** implementation and reviewer workers, the whole-feature final review, the deep set, walk readiness, the walk, sign-off and verification. Still freeze a producer contract in the manifest when its phase closes.
+6. **After the last task:** checkpoint `built` with next action "Test it yourself, or resume for walk, review, verification and delivery", commit `chore(<feature>): built here — not walked`, and stop. Report `<feature>: built here, not walked — test it yourself; $builder resume <feature> for the full finish`.
+
+A here build is never delivered from this state. The full finish via resume (or an agent handoff) still runs every landing floor in profiles.md before delivery — including the independent whole-feature final review this path skipped, the walk and fresh integration-candidate verification. Keep PLAN, ledger, and reports needed for remaining verification. A passing task suite does not establish final integrated acceptance.

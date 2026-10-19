@@ -16,6 +16,15 @@ Once ready to build, persist `lifecycle.mjs approve <feature> --profile <value> 
 
 For `$builder agent`, resolve missing profile preferences and the immutable landing target before any worker begins planning or implementation. Under `--auto`, record the recommendation and explain it briefly. Keep explicitly recorded preferences through later headless go-ahead; never replace them with new defaults. A feature without PLAN.md has no task count, so its estimate is null and profile options use qualitative descriptions. An existing legacy feature without preferences retains Thorough unless the user selects another profile. Resume uses the original feature worktree; write its live artifacts there.
 
+## Which features agents may take
+
+Run `node <plugin>/scripts/lifecycle.mjs agent-ready <feature> --root <host-repo>` **once, before the handoff begins** — before any worker of this handoff starts. A nonzero result is a refusal: report its one line and stop for that feature, whoever named it. Do not re-run it while continuing or resuming a handoff this session started: its own workers' fresh files would read as another session building it. It refuses:
+
+- **A feature another session is building** — building, or planned with a go-ahead (an approved profile or `build: here`), with activity in its worktree in the last 30 minutes: any file under `.builder/<feature>/` or `.builder/gates/`, its tracked ledger.md, its Git index, or its HEAD commit. Two coordinators on one feature worktree is how work is lost: `<feature> — being built in a session; finish it there`. A feature only specced in a session is still offered.
+- Merged, paused, waiting for a human walk once built (resume it instead; never unpark a human step here — a Thorough + you feature that is not built yet is still offered), or still exploring with no spec.
+
+`$builder agent` with no feature offers the rows `lifecycle.mjs list` marks `agent.offer`, in its order: features not built yet first, then part-built, then built, then blocked, most recently touched within each; offer the first four and say any other can be named. Each option's description is the row's `agent.does` — what the workers would actually do, for example `built in a session, not tested yet · agents only walk it, verify and merge it`. Nothing picked → stop. A branch shared by several features cannot occur here: every feature gets its own `builder/<feature>` branch and worktree at start, so no extra shared-branch check exists.
+
 ## What the profile changes
 
 | Profile | Additional tests | Independent review | Final acceptance |
@@ -25,7 +34,7 @@ For `$builder agent`, resolve missing profile preferences and the immutable land
 | Thorough | Full relevant test coverage | Every task | Full walk and all applicable deep verification |
 | Thorough + you | Same as Thorough | Every task | Human walk before landing, plus required verification |
 
-Every profile retains app fast gates, independent final review, released-consumer compatibility, project-mandated tests/lint/build/Storybook, security/contract obligations, durable resumable identity, and fresh integration-candidate verification. Optional tests can vary; proof required by the spec cannot be waived. Customize `review=per-task+second` adds a second independent reviewer for contract/schema tasks. `testing=full+human` requires a human walk even with a custom profile. `models=strong` escalates through route.mjs; `economy` selects economical workers only where the established role floor permits it. Never downgrade a required judgment model silently.
+Every profile retains app fast gates, independent final review, released-consumer compatibility, project-mandated tests/lint/build/Storybook, security/contract obligations, durable resumable identity, and fresh integration-candidate verification. Optional tests can vary; proof required by the spec cannot be waived. `build: here` is not a profile: it defers the review/walk/verification floors to the full finish, and a here build never lands without them (execution.md §Build here). Customize `review=per-task+second` adds a second independent reviewer for contract/schema tasks. `testing=full+human` requires a human walk even with a custom profile. `models=strong` escalates through route.mjs; `economy` selects economical workers only where the established role floor permits it. Never downgrade a required judgment model silently.
 
 `unruled=recommend` allows reversible recommendations within settled scope; a consequential open product/security/destructive decision remains unresolved. `unruled=park` records the decision for its owner. `persist=low` reduces narrative, not checkpoints or completion evidence. `landing=local` never grants push, PR, deploy or publication permission.
 

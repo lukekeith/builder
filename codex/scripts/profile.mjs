@@ -22,8 +22,8 @@ export const PRESETS = {
 export const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local'] }
 // Thorough is today's pipeline; `strong` and `per-task+second` are Customize-only. PR + CI landing is
 // deferred (the fleet never pushes), so `landing` keeps its key with one value and old manifests stay valid.
-/** How a resolved preset name reads in a table; one map for every status view. */
-export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom' }
+/** How a resolved preset name reads in a table; one map for every status view. `here` is not a profile: it labels a feature built in its own session (`build: here`). */
+export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom', here: 'here' }
 /** preset → its label; none → `—`, an unknown name → `thorough`. */
 export const profileLabel = (preset) => (preset ? (PROFILE_LABELS[preset] ?? 'thorough') : '—')
 export const FLOORS = { fastGates: true, finalReview: true, releasedParity: true, projectRequirements: true }
