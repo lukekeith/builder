@@ -29,7 +29,34 @@ export function parseWalkReadiness(body) {
 }
 
 /** SQL that drops or rewrites data — never applied unattended, whatever apply_mode says. */
-export const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|CONSTRAINT)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
+export const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|MATERIALIZED\s+VIEW|CONSTRAINT|DATABASE|SEQUENCE|FUNCTION|PROCEDURE|TRIGGER|EXTENSION|DEFAULT|NOT\s+NULL)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bALTER\s+COLUMN\b[^;]*\bTYPE\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
+
+/**
+ * Migration code that is not plain SQL (Alembic, Django, Knex, Rails, …): calls that drop, rename,
+ * change or rewrite, or that execute arbitrary SQL/data changes. Any hit is treated as destructive.
+ */
+export const DESTRUCTIVE_CODE = /\bop\.drop_|\bdrop_(column|table|index|constraint)\b|\bremove_(column|columns|index|references|reference|table|timestamps)\b|\bdrop(Table|Column|Columns|Index|Foreign|Unique|Primary|Schema)\w*\b|\bRemoveField\b|\bDeleteModel\b|\bRenameField\b|\bRenameModel\b|\bAlterField\b|\bRunSQL\b|\bRunPython\b|\balter_column\b|\bchange_column\w*\b|\brename_(column|table|index)\b|\brename(Column|Table)\b|\bexecute\s*\(|\.raw\s*\(|\bbulk_update\b|\.update\s*\(|\.del\s*\(|\.delete\s*\(/
+
+// Where the forward migration ends: its down/downgrade half only runs on rollback.
+const UP = /^[ \t]*(?:async\s+)?def\s+(?:upgrade|up|change)\b|\bexports\.up\b|^[ \t]*export\s+(?:async\s+)?function\s+up\b|^[ \t]*(?:async\s+)?up\s*\(/m
+const DOWN = /^[ \t]*(?:async\s+)?def\s+(?:downgrade|down)\b|\bexports\.down\b|^[ \t]*export\s+(?:async\s+)?function\s+down\b|^[ \t]*(?:async\s+)?down\s*\(/m
+
+/** The forward half of a migration file: from its up/upgrade definition to its down/downgrade one. */
+export function forwardPart(text) {
+  const t = String(text ?? '')
+  const up = UP.exec(t)
+  const from = up ? up.index : 0
+  const rest = t.slice(from)
+  const down = DOWN.exec(up ? rest.slice(up[0].length) : rest)
+  return down ? rest.slice(0, (up ? up[0].length : 0) + down.index) : rest
+}
+
+/** True when a landed migration file drops or rewrites data (or cannot be shown not to). */
+export function isDestructive({ path = '', text = '' }) {
+  if (/\.sql$/i.test(path)) return DESTRUCTIVE.test(text)
+  const forward = forwardPart(text)
+  return DESTRUCTIVE.test(forward) || DESTRUCTIVE_CODE.test(forward)
+}
 
 const count = (n) => `${n} new migration${n === 1 ? '' : 's'}`
 
@@ -46,7 +73,7 @@ export function landedMigrations({ files, readiness = {}, checkedOut = true, tar
   const run = cmds.map((c) => `\`${c}\``).join(', then ')
   if (!readiness.apply) return { action: 'note', why: `${n} landed, but the config's Walk readiness has no \`apply:\` command — apply them to the dev DB by hand` }
   if (!checkedOut) return { action: 'note', why: `${n} landed on ${target}, which is checked out nowhere — when you switch to it, apply them to the dev DB first: run ${run}` }
-  const destructive = files.filter((f) => DESTRUCTIVE.test(f.text ?? '')).map((f) => f.path)
+  const destructive = files.filter(isDestructive).map((f) => f.path)
   if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.join(', ')} drops or rewrites data, so it was not applied — check it, then run ${run}` }
   if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
   return { action: 'apply', commands: cmds }

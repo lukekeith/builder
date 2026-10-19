@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { run } from '../scripts/lifecycle.mjs';
-import { ACTIVE_MS, agentOffer, buildingInSession, pickerOrder } from '../scripts/offer.mjs';
+import { ACTIVE_MS, agentOffer, buildingInSession, lastActivity, pickerOrder } from '../scripts/offer.mjs';
 
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const CLI = new URL('../scripts/lifecycle.mjs', import.meta.url).pathname;
@@ -21,10 +21,10 @@ function touch(m, file = 'brief-1.md') { const dir = path.join(m.worktree, '.bui
 test('a session is building a feature only when it is approved-planned, here-planned or building and its working files are fresh', async t => {
   const root = repo(t); const m = await run('start', 'busy', { root });
   const now = Date.now();
-  assert.equal(buildingInSession({ ...m, phase: 'building' }, now), false, 'no working files yet');
+  assert.equal(buildingInSession({ ...m, phase: 'building' }, now), true, 'a fresh HEAD commit counts');
+  assert.equal(buildingInSession({ ...m, phase: 'building' }, now + ACTIVE_MS + 60000), false, 'stale after 30 minutes');
   touch(m);
   assert.equal(buildingInSession({ ...m, phase: 'building' }, now), true);
-  assert.equal(buildingInSession({ ...m, phase: 'building' }, now + ACTIVE_MS + 1000), false, 'stale after 30 minutes');
   assert.equal(buildingInSession({ ...m, phase: 'spec' }, now), false, 'only specced in a session is still offered');
   assert.equal(buildingInSession({ ...m, phase: 'planned' }, now), false, 'planned without a go-ahead');
   assert.equal(buildingInSession({ ...m, phase: 'planned', profileApproved: true }, now), true);
@@ -35,16 +35,41 @@ test('a session is building a feature only when it is approved-planned, here-pla
   assert.equal(buildingInSession({ ...other, phase: 'building' }, Date.now()), true);
 });
 
+test('activity in scratch subfolders and gate logs counts, not only top-level files', async t => {
+  const root = repo(t); const m = await run('start', 'nested', { root });
+  const later = Date.now() + 4 * ACTIVE_MS; const at = (file) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, 'x\n'); fs.utimesSync(file, later / 1000, later / 1000); };
+  const building = { ...m, phase: 'building' };
+  assert.equal(buildingInSession(building, later + 1000), false, 'nothing written near that time');
+  at(path.join(m.worktree, '.builder', 'nested', 'reports', 'task-2', 'report.md'));
+  assert.equal(lastActivity(m), later); assert.equal(buildingInSession(building, later + 1000), true);
+  const g = await run('start', 'gated', { root });
+  at(path.join(g.worktree, '.builder', 'gates', 'app-fast-logs', '01.log'));
+  assert.equal(buildingInSession({ ...g, phase: 'building' }, later + 1000), true);
+});
+
+test('a Thorough + you feature is offered before it is built; once built its pending walk is refused', async t => {
+  const root = repo(t); await run('start', 'you', { root });
+  await run('checkpoint', 'you', { root, phase: 'planned', next: 'Build' });
+  const approved = await run('approve', 'you', { root, profile: 'thorough-you' });
+  assert.equal(approved.awaitingHuman, true);
+  const quiet = Date.now() + 2 * ACTIVE_MS;
+  assert.deepEqual(agentOffer(approved, quiet), { offer: true, group: 0, does: 'not built yet · agents audit, plan, build, test and merge it' });
+  assert.equal(agentOffer({ ...approved, phase: 'building' }, quiet).offer, true);
+  const built = await run('checkpoint', 'you', { root, phase: 'built', next: 'Wait for the walk' });
+  assert.match(agentOffer(built, quiet).reason, /waiting for your walk/);
+});
+
 test('agent offers say what workers would do; merged, paused, awaiting-human, exploring and in-session work is refused', () => {
   const base = { name: 'f', worktree: '/nonexistent', featurePath: '/nonexistent/f', targetBranch: 'main' };
   assert.match(agentOffer({ ...base, phase: 'audited' }).does, /^not built yet · agents audit, plan, build, test and merge it$/);
   assert.match(agentOffer({ ...base, phase: 'building', currentTask: 'Task 3' }).does, /^part-built \(at Task 3\) · agents build the rest, test and merge it$/);
   assert.equal(agentOffer({ ...base, phase: 'built' }).does, 'built in a session, not tested yet · agents only walk it, verify and merge it');
-  assert.equal(agentOffer({ ...base, phase: 'built', build: 'here' }).does, 'built here by you, not tested yet · agents only walk it, verify and merge it');
+  assert.equal(agentOffer({ ...base, phase: 'built', build: 'here' }).does, 'built here by you, not tested yet · agents review, walk, verify and merge it');
   assert.equal(agentOffer({ ...base, phase: 'verified' }).does, 'tested · agents only verify and merge it');
   assert.match(agentOffer({ ...base, phase: 'merged' }).reason, /already merged into main/);
   assert.match(agentOffer({ ...base, phase: 'building', paused: true }).reason, /paused/);
   assert.match(agentOffer({ ...base, phase: 'built', awaitingHuman: true }).reason, /waiting for your walk/);
+  assert.equal(agentOffer({ ...base, phase: 'planned', awaitingHuman: true }).offer, true, 'a reserved walk is not pending before the build');
   assert.match(agentOffer({ ...base, phase: 'exploring' }).reason, /no spec yet/);
 });
 
@@ -87,7 +112,7 @@ test('build here is chosen before the build starts, recorded on the manifest and
   const [row] = await run('list', undefined, { root }); assert.equal(row.profileLabel, 'here'); assert.equal(row.build, 'here');
   await assert.rejects(run('approve', 'local', { root, profile: 'here' }), /Invalid profile/, 'here is not a build profile');
   await run('checkpoint', 'local', { root, phase: 'built', next: 'Test it yourself, or resume for walk, verify and delivery' });
-  assert.equal(agentOffer({ ...(await run('status', 'local', { root })), worktree: '/none' }).does, 'built here by you, not tested yet · agents only walk it, verify and merge it');
+  assert.equal(agentOffer({ ...(await run('status', 'local', { root })), worktree: '/none' }).does, 'built here by you, not tested yet · agents review, walk, verify and merge it');
   const other = await run('start', 'fleetless', { root });
   assert.equal((await run('list', undefined, { root })).find(r => r.name === other.name).profileLabel, 'thorough');
 });
