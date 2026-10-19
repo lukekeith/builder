@@ -7,7 +7,7 @@ description: Manage a resumable feature build from concept or written brief thro
 
 Own the build until its authorized delivery is complete. State lives in files and Git, never only in chat. Explicit user instructions override this workflow. Keep project rules in the host's AGENTS.md and normative specifications; this plugin supplies process, not project architecture.
 
-Invocation: `$builder brainstorm <idea>`, `$builder spec <feature>`, `$builder version`, `$builder agent <feature>`, `$builder build <feature>`, `$builder <idea>`, `$builder intake <brief>`, `$builder resume <feature>`, `$builder status`, `$builder handoff <feature>`, `$builder revise <feature> <change>`, `$builder deliver <feature>`, or `$builder init`. Treat plain-language equivalents the same. Modes include `--auto` (make reversible implementation choices within settled scope) and `--agent-walk` (record agent verification, never human sign-off). Do not infer external publication permission from either flag.
+Invocation: `$builder brainstorm <idea>`, `$builder spec <feature>`, `$builder version`, `$builder agent <feature>`, `$builder build <feature> [--here]`, `$builder <idea>`, `$builder intake <brief>`, `$builder resume <feature> [--here]`, `$builder status`, `$builder handoff <feature>`, `$builder revise <feature> <change>`, `$builder deliver <feature>`, or `$builder init`. Treat plain-language equivalents the same. Modes include `--auto` (make reversible implementation choices within settled scope) and `--agent-walk` (record agent verification, never human sign-off). Do not infer external publication permission from either flag.
 
 ## First action and recovery
 
@@ -33,6 +33,8 @@ Read only the reference needed now:
 - Build, task review, fix loop, and model allocation: [execution.md](references/execution.md) and [models.md](references/models.md).
 - Every checkpoint, pause, and cold resume: [persistence.md](references/persistence.md).
 - Walk, sign-off, final acceptance, merge, and cleanup: [delivery.md](references/delivery.md).
+
+**Handoff choices.** A handoff about one feature in spec through verified that would continue (or names the walk) offers the ways through, numbered in this order, only those that apply: `resume` — continue step by step (`$builder resume <feature>`); `agent` — hand it to Codex workers to finish and merge (`$builder agent <feature>`), only when the config has an `agent_walk` block; `here` — only before the build starts (spec, aligned, audited, planned): audit and plan it, then build it in this session without workers or reviewer agents (`$builder resume <feature> --here`). "go" means the first. With one option left, name just that command. Choosing `here` runs `lifecycle.mjs here <feature>` (it records `build: here`), then routes as usual: audit, decisions gate and plan run in full; execution.md §Build here does the build. Not numbered under `--agent-walk`, before a spec exists, or after landing.
 
 Lifecycle: exploring → spec → aligned (when relevant) → audited → planned → building → built → signed-off → verified → merged. A skipped irrelevant phase is recorded with its reason. State cannot advance past missing required evidence. A hold or blocked record names its cause, owner, and next action; continue independent startable work when possible.
 
