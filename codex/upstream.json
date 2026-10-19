@@ -1,12 +1,12 @@
 {
-  "commit": "b34854bea6bfc21681dd289f7093bdecacc6344e",
-  "version": "4.9.1",
-  "packageHash": "f88922300321ce980f6c485f697ef67fb41cf8951eee03a81218020e95518ceb",
+  "commit": "4ab61d35d658322eb26d437243040f5730b2d3ac",
+  "version": "4.11.0",
+  "packageHash": "4bfaaef7008b29443bc79e2a4cc6c1d9194868663f5fd2fb5e9005284316305d",
   "decisions": [
     {
       "file": ".claude-plugin/plugin.json",
       "disposition": "adapted",
-      "reason": "Codex adopts 4.9.1 after tested migration; release metadata and runtime differences documented.",
+      "reason": "Codex adopts 4.11.0 after the tested migration of 4.9.2-4.10.2 (finish aligns codex/plugin.json); benchmark exclusion and runtime differences documented in README.",
       "evidence": [
         "codex/plugin.json",
         "codex/README.md"
@@ -15,125 +15,269 @@
     {
       "file": "CHANGELOG.md",
       "disposition": "adapted",
-      "reason": "Codex adopts 4.9.1 after tested migration; release metadata and runtime differences documented.",
+      "reason": "Each release note is carried by Codex behavior: 4.9.2 landed migrations (landing.mjs + lifecycle deliver, landing.test), 4.9.3/4.10.1 spec decisions without section approvals (discovery.md, skills.test), 4.10.0 build here (lifecycle here, execution.md, offer/skills tests), 4.10.2 agent handoff refusals and descriptions (offer.mjs, agent-ready, offer.test); 4.11.0 benchmark excluded as Claude-only, with the runtime reason and the Codex adaptation notes in README's Codex adaptation boundaries.",
       "evidence": [
-        "codex/plugin.json",
-        "codex/README.md"
+        "codex/README.md",
+        "codex/scripts/landing.mjs",
+        "codex/scripts/offer.mjs",
+        "codex/skills/builder/references/discovery.md",
+        "codex/skills/builder/references/execution.md",
+        "codex/tests/landing.test.mjs",
+        "codex/tests/offer.test.mjs",
+        "codex/tests/skills.test.mjs"
+      ]
+    },
+    {
+      "file": "PROJECT.template.md",
+      "disposition": "adapted",
+      "reason": "Codex template now carries the Walk readiness fenced block (migrations/status/apply/apply_mode/regenerate) and documents that apply_mode agent makes delivery apply then regenerate in the target checkout after landing additive migrations.",
+      "evidence": [
+        "codex/assets/PROJECT.template.md",
+        "codex/scripts/landing.mjs",
+        "codex/tests/skills.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/bench-core.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/bench.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/fleet-core.mjs",
+      "disposition": "adapted",
+      "reason": "parseWalkReadiness/landedMigrations live in landing.mjs, with destructive detection widened (more DROP forms, UPDATE…SET, ALTER COLUMN…TYPE) and non-.sql migrations (Alembic, Knex, Rails, Django) judged by their forward half, any drop/alter/rename/execute call treated as destructive; ask/human/no-apply/unchecked-out target noted. ACTIVE_MS and buildingInSession live in offer.mjs; upstream's activeInSession is lastActivity there, over Codex worktree activity (.builder/<feature>/ and .builder/gates/ recursively, tracked ledger.md, Git index, HEAD commit time). sharedBranch is unnecessary by construction: every Codex feature has its own builder/<feature> branch, and start refuses an existing one.",
+      "evidence": [
+        "codex/scripts/landing.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/landing.test.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/scripts/offer.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/offer.test.mjs",
+        "codex/skills/builder/references/profiles.md"
+      ]
+    },
+    {
+      "file": "scripts/fleet.mjs",
+      "disposition": "adapted",
+      "reason": "No Claude fleet in Codex. Landing is lifecycle.mjs deliver: after the verified fast-forward/CAS it reads the target's Walk readiness, applies additive migrations under apply_mode agent in the target checkout (logged), and records applied, applied-dirty (files the commands left, so the clean-target checks do not block silently), failed (what ran and what is left) or a note with the exact command in landing.note/nextAction. The fleet pre-flight's in-session refusal has no script enforcement point in Codex: lifecycle.mjs agent-ready computes the refusal and profiles.md requires the coordinator to run it once before a handoff begins. Shared-branch refusal is unnecessary (per-feature builder/<name> branches).",
+      "evidence": [
+        "codex/scripts/landing.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/landing.test.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/scripts/offer.mjs",
+        "codex/skills/builder/references/profiles.md",
+        "codex/tests/offer.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/list-features.mjs",
+      "disposition": "adapted",
+      "reason": "lifecycle.mjs list rows now carry build (here|none), profileLabel ('here' from the moment chosen), inSession and agent {offer, does|reason}; sharedWith omitted because Codex branches are per feature.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/scripts/offer.mjs",
+        "codex/tests/offer.test.mjs"
       ]
     },
     {
       "file": "scripts/profile.mjs",
-      "disposition": "equivalent",
-      "reason": "Codex estimates already return null when PLAN task count is missing/zero; history uses only real comparable usable measurements.",
+      "disposition": "adapted",
+      "reason": "PROFILE_LABELS gains here: 'here' for status views; 'here' stays invalid as an approvable profile.",
       "evidence": [
         "codex/scripts/profile.mjs",
-        "codex/tests/profile.test.mjs"
+        "codex/tests/offer.test.mjs"
       ]
     },
     {
-      "file": "scripts/test/fixtures/tidy-repo.mjs",
-      "disposition": "equivalent",
-      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
+      "file": "scripts/test/bench-core.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/bench.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/fixtures/bench/session.jsonl",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/fixtures/bench/stub-claude.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/fixtures/bench/stub-fleet.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/fleet-core.test.mjs",
+      "disposition": "adapted",
+      "reason": "Same cases ported against Codex modules: readiness parsing, apply/none/destructive/ask/human/no-apply notes, widened SQL and Alembic/Knex/Rails destructive detection, ACTIVE_MS freshness including nested scratch and gate logs; shared-branch case replaced by a per-feature-branch test.",
       "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs",
-        "codex/skills/builder/references/profiles.md"
+        "codex/tests/landing.test.mjs",
+        "codex/tests/offer.test.mjs"
       ]
     },
     {
-      "file": "scripts/test/profile.test.mjs",
-      "disposition": "equivalent",
-      "reason": "Codex estimates already return null when PLAN task count is missing/zero; history uses only real comparable usable measurements.",
+      "file": "scripts/test/fleet.test.mjs",
+      "disposition": "adapted",
+      "reason": "End-to-end delivery tests: agent mode applies then regenerates in the target checkout, ask notes the command, DROP and Alembic op.drop_column are never run while an additive Alembic migration is applied, unchecked target notes for when you switch, failed apply or regenerate is reported with what ran, outputs left in the target are reported as applied-dirty; in-session refusal via the agent-ready CLI while a just-specced feature and a not-yet-built Thorough + you feature are offered.",
       "evidence": [
-        "codex/scripts/profile.mjs",
-        "codex/tests/profile.test.mjs"
+        "codex/tests/landing.test.mjs",
+        "codex/tests/offer.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/list-features.test.mjs",
+      "disposition": "adapted",
+      "reason": "list reports profileLabel 'here' from the moment build here is chosen, inSession for fresh working files, and not for a just-specced feature.",
+      "evidence": [
+        "codex/tests/offer.test.mjs"
       ]
     },
     {
       "file": "scripts/test/skills-consistency.test.mjs",
-      "disposition": "equivalent",
-      "reason": "Claude prose consistency tests map to the tested Codex lifecycle/profile behavior and explicit adapted references; no Claude tool names copied into Codex.",
+      "disposition": "adapted",
+      "reason": "Codex prose consistency test asserts the adapted 4.10.0/4.10.1/4.10.2 rules in Codex references and that the Codex skill names no Claude tools or slash commands.",
       "evidence": [
-        "codex/tests/lifecycle.test.mjs",
-        "codex/tests/profile.test.mjs",
-        "codex/skills/builder/references/profiles.md",
-        "codex/skills/builder/references/discovery.md"
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
-      "file": "scripts/test/tidy-core.test.mjs",
-      "disposition": "equivalent",
-      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
-      "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs",
-        "codex/skills/builder/references/profiles.md"
-      ]
-    },
-    {
-      "file": "scripts/tidy-core.mjs",
-      "disposition": "equivalent",
-      "reason": "Repo-wide Claude tidy is excluded; the relevant human-walk preservation is implemented by per-feature human waits and retained worktree identity.",
-      "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs",
-        "codex/skills/builder/references/profiles.md"
-      ]
+      "file": "scripts/vendor.mjs",
+      "disposition": "claude-only",
+      "reason": "The change only vendors Claude's bench/ directory (minus bench/results) into Claude host copies; the benchmark is excluded from Codex, and Codex vendoring is its own codex/scripts/vendor.mjs with no bench content.",
+      "evidence": []
     },
     {
       "file": "skills/agent/SKILL.md",
       "disposition": "adapted",
-      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "reason": "Codex agent handoff runs lifecycle.mjs agent-ready once before it begins (not again while continuing its own handoff): refuses in-session, merged, paused, built-and-awaiting-human-walk and spec-less features (a Thorough + you feature not yet built is offered); the picker offers list rows in order (not built, part-built, built, blocked; most recent first) with what workers would do, a here build saying agents review, walk, verify and merge it. Shared branches cannot occur.",
       "evidence": [
-        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/offer.mjs",
         "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs"
+        "codex/tests/offer.test.mjs",
+        "codex/skills/builder/references/profiles.md"
       ]
     },
     {
-      "file": "skills/brainstorm/CONVERSATION.md",
+      "file": "skills/align/SKILL.md",
       "disposition": "adapted",
-      "reason": "Offer One spec and recommend fewest independently usable shipping outcomes; scaffolding and inert layers remain tasks within the usable feature.",
+      "reason": "Handoffs before the build offer resume / agent (agent_walk configured) / here, numbered, 'go' is the first.",
       "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/SKILL.md",
+        "codex/tests/skills.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/audit/SKILL.md",
+      "disposition": "adapted",
+      "reason": "Handoffs before the build offer resume / agent (agent_walk configured) / here, numbered, 'go' is the first.",
+      "evidence": [
+        "codex/skills/builder/SKILL.md",
+        "codex/tests/skills.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/benchmark/SKILL.md",
+      "disposition": "claude-only",
+      "reason": "Claude-only maintainer benchmark: drives `claude -p --output-format stream-json` sessions with --plugin-dir, compares the Claude plugin's profiles against the Superpowers and GSD Claude plugins, and derives steps from Claude Skill/Agent tool events. Codex has no Superpowers/GSD to compare, no equivalent step events, and this package never invokes Claude subprocesses; documented in codex/README.md exclusions.",
+      "evidence": []
+    },
+    {
+      "file": "skills/build/SKILL.md",
+      "disposition": "adapted",
+      "reason": "execution.md Build here: coordinator works PLAN task by task itself, test first, one commit per task (manual apps staged), fast gates at phase close, one-line ledger, no workers/reviewers/final review/deep set/walk/sign-off/verify, stops at built with 'built here — not walked'. Codex keeps the feature worktree (never the starting checkout) and requires the skipped floors before any landing.",
+      "evidence": [
+        "codex/skills/builder/SKILL.md",
+        "codex/skills/builder/references/execution.md",
+        "codex/skills/builder/references/planning.md",
+        "codex/skills/builder/references/persistence.md",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/offer.test.mjs",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/fleet/SKILL.md",
       "disposition": "adapted",
-      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "reason": "Landing brings migrations to the dev DB: lifecycle deliver applies additive ones under apply_mode agent in the target checkout, else notes the command; unchecked-out target is noted for when you switch.",
       "evidence": [
-        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/landing.mjs",
         "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs"
+        "codex/tests/landing.test.mjs",
+        "codex/skills/builder/references/delivery.md"
+      ]
+    },
+    {
+      "file": "skills/help/SKILL.md",
+      "disposition": "adapted",
+      "reason": "Build here is listed in the Codex invocation line ($builder build/resume <feature> --here) and handoff choices; benchmark help row excluded with the benchmark.",
+      "evidence": [
+        "codex/skills/builder/SKILL.md",
+        "codex/README.md"
       ]
     },
     {
       "file": "skills/plan/SKILL.md",
       "disposition": "adapted",
-      "reason": "Codex native agent handoff selects missing preferences before delegation, even before PLAN exists; later headless planning preserves choices and immutable target.",
+      "reason": "Under build: here the plan's go-ahead shows the Phases table, records 'go-ahead: <who date> (here)', commits and proceeds straight into Build here without profile, worker or landing questions; ignored under --agent-walk.",
       "evidence": [
-        "codex/skills/builder/references/profiles.md",
-        "codex/scripts/lifecycle.mjs",
-        "codex/tests/lifecycle.test.mjs"
+        "codex/skills/builder/references/planning.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/resume/REFERENCE.md",
       "disposition": "adapted",
-      "reason": "Offer One spec and recommend fewest independently usable shipping outcomes; scaffolding and inert layers remain tasks within the usable feature.",
+      "reason": "--here flag, build: here manifest key (lifecycle.mjs here, kept by checkpoints), numbered handoff with here before the build, and walk migrations go to the isolated walk DB while the dev DB gets them at landing.",
       "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/SKILL.md",
+        "codex/skills/builder/references/execution.md",
+        "codex/skills/builder/references/planning.md",
+        "codex/skills/builder/references/persistence.md",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/offer.test.mjs",
+        "codex/tests/skills.test.mjs",
+        "codex/skills/builder/references/delivery.md"
       ]
     },
     {
       "file": "skills/resume/SKILL.md",
-      "disposition": "equivalent",
-      "reason": "Codex resume returns recorded live featurePath/worktree and all writes continue there; paused/human-wait identity stays immutable.",
+      "disposition": "adapted",
+      "reason": "--here records build: here via lifecycle.mjs here, valid only spec..planned (refused after, routes as usual); resume routes here features to the here go-ahead/build, never workers.",
       "evidence": [
+        "codex/skills/builder/references/persistence.md",
         "codex/scripts/lifecycle.mjs",
-        "codex/skills/builder/SKILL.md",
-        "codex/tests/lifecycle.test.mjs"
+        "codex/tests/offer.test.mjs"
+      ]
+    },
+    {
+      "file": "skills/spec/SKILL.md",
+      "disposition": "adapted",
+      "reason": "No section approvals: unsettled product choices asked as real decisions (why, what it affects, recommendation, alternatives; never approve/change), implementation details recorded '(assumed at spec) YYYY-MM-DD', --auto takes recommendations, one plain closing summary with no question; numbered handoff includes here.",
+      "evidence": [
+        "codex/skills/builder/references/discovery.md",
+        "codex/tests/skills.test.mjs",
+        "codex/skills/builder/SKILL.md"
       ]
     }
   ],
