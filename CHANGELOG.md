@@ -17,7 +17,9 @@ agree — see [RELEASING.md](RELEASING.md).
   concept then seeds the rounds, which run as before. A directed request or brief is unaffected;
   "let's explore" opens discovery for any input, "skip discovery" leaves it. `--auto` takes the
   recommended concept with no extra turn, so `/builder:agent`, the fleet and the benchmark are
-  unchanged. Design: `docs/specs/2026-10-21-brainstorm-discovery-design.md`.
+  unchanged. Measured on the benchmark (`bench/results/2026-10-21-1625-tags`): the tags request is a
+  brief, so discovery is not entered and the brainstorm step costs what it did before — 54 s
+  before, 54 s after. Design: `docs/specs/2026-10-21-brainstorm-discovery-design.md`.
 
 ## 4.11.0
 
