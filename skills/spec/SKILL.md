@@ -62,7 +62,7 @@ first, then the spec. Under `--auto` every product choice takes its recommendati
 
 **`SPEC.md`** per REFERENCE §SPEC.md. md writes the sections its work touches — **§Idea, §Apps and
 §Contract are never skipped**; lg writes them all. When the record has a §Discovery section, §Idea
-is written from it: the frame's *for whom* and *pain/outcome* become the why, *better* becomes what
+is written from it: the frame's *for <who>* and *pain/outcome* become the why, *better* becomes what
 success looks like, `Concept:` is the concept, and the rejected concepts join the approaches
 considered with the reason each lost (an `auto (recommended)` ruling stays exactly that). Without
 §Discovery, §Idea comes from §Intent as before. Every settled branch — a choice — becomes a
