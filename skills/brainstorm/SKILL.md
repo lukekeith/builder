@@ -138,10 +138,11 @@ After the frame is played back and before concepts — once, every discovery:
    would look for ("how other apps let people filter a list by tags"); an internal refactor, a CLI
    flag, a data migration → likely no, said so.
 3. **Offer it — the one closed question in discovery**, an AskUserQuestion (consent to go outside the
-   repo is a closed choice): options built from what the session has — *Research on <resource>*
-   when a community resource is present, *Search the web* when online tools are, both when both are,
-   and *Skip* — your evaluation marking the recommended one `(Recommended)`, each description naming
-   what it would search for. *Other* carries the user's own search terms.
+   repo is a closed choice). The options are exactly these, each present only when the session has
+   the tool for it, in this order: *Research on <resource>* (the community resource) · *Search the
+   web* · *Both* (only when both exist) · *Skip* — never merged into fewer, never reworded into one
+   combined choice. Your evaluation marks one `(Recommended)`, and each description names what it
+   would search for. *Other* carries the user's own search terms.
 4. **Do it, bounded.** A community resource: a handful of searches around the frame's terms, read as
    patterns — how a flow is laid out, what a screen offers, what is common and what is rare — never
    as designs to copy. Online: a few searches and the pages that answer them — how products in the
