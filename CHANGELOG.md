@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.11.1
+
+**Changed:**
+- **`/builder:brainstorm` explores before it decides.** A vague idea now enters a discovery phase in
+  front of the decision tree: the problem is framed in open questions (who, pain or outcome, how it
+  is handled today, what better looks like — one per turn, no option lists), recon finds the design
+  system, UX patterns and prior art the product already has, the agent weighs whether outside
+  research would help and offers it — a community resource such as Mobbin when the session has one,
+  otherwise online research — running it only on your yes, and two to four concepts built from
+  those patterns are proposed and explored in plain conversation until the user names one. The
+  concept then seeds the rounds, which run as before. A directed request or brief is unaffected;
+  "let's explore" opens discovery for any input, "skip discovery" leaves it. `--auto` takes the
+  recommended concept with no extra turn, so `/builder:agent`, the fleet and the benchmark are
+  unchanged. Design: `docs/specs/2026-10-21-brainstorm-discovery-design.md`.
+
 ## 4.11.0
 
 **New:**
