@@ -108,12 +108,13 @@ after every turn.
 ### The frame
 
 Open questions, in plain chat, **one per turn — no AskUserQuestion, no option list, no
-recommendation.** In this order, each one skipped when the input or an earlier answer already
+recommendation.** In this order, each one skipped when the input, an earlier answer or grounding already
 answers it (then stated as `assumed`, with what it was taken from):
 
 1. **Who it is for** — the people or roles, and what they are doing when they meet it.
 2. **The pain or the outcome** — what is hard, slow, missing or wrong today, or what becomes possible.
-3. **How it is handled today** — by the product, by a workaround, or not at all.
+3. **How it is handled today** — what the product does is looked up and stated (§Grounding); only the
+   workaround, or that there is none, is the user's to say.
 4. **What better looks like** — what the user would notice, and how they would know it worked.
 
 - **Grounding holds** (CONVERSATION §Grounding): a term in the user's words is looked up before it is

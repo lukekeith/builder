@@ -72,7 +72,9 @@ stated to the user, not yet contested) · `stated` (intake: the document says so
 something else — evidence required) · `unverifiable` (needs running code or a person).
 
 **Resuming a record** (`--path`): `exploring` or `parked` → say what is settled and what is open,
-then the next question; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
+then the next question — except that `exploring` with a §Discovery whose `Concept:` is empty → back into SKILL §Discovery
+at the step the section shows (a frame line still `<open>` → the next frame question; concepts listed → the
+concepts step), never into the tree; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
 hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
 stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC,
 MANIFEST or PROGRAM → nothing to resume — say where the work went (built in chat, stopped at
@@ -144,7 +146,8 @@ not. Recon never holds up a turn: the frame goes on while it runs; the concepts 
 - **The frontier** is every `open` branch whose prerequisites are settled. A question whose answer
   depends on another still-open question waits until that one is answered.
 - **🔴 One question per turn, by default** — the frontier question that unblocks the most of the
-  tree goes first. Every question has two parts, in this order:
+  tree goes first. (The frame in SKILL §Discovery is not a round: its questions are open, in chat, with
+  no options.) Every question has two parts, in this order:
 
   1. **The briefing, in chat** — a short heading naming the decision, then what a person needs to
      choose or to write their own answer:
@@ -249,10 +252,11 @@ the size: one spec → lg; two or more → xl, its children those slices.
 **The user steers at any time**: "go deeper on X" (open sub-branches under X), "skip that, use your
 recs" (settle every open branch on its recommendation, recorded as the user's ruling), "that's enough"
 (jump to §Confirm, listing what is still open as assumed — or, inside discovery, converge on the
-recommended concept, stated as such), **"let's explore" / "explore this"** (enter SKILL §Discovery for
-any input, or return to its concepts step), **"skip discovery" / "just build it"** (leave discovery
-for the tree, the concept taken as the one the input implies). Each steer is recorded under
-*Steering* in the record with the user as Who.
+recommended concept, stated as such), **"let's explore" / "explore this"** (brainstorm only — enter SKILL §Discovery for
+any input, or return to its concepts step; intake answers that a worked-out spec has had its discovery and
+carries on), **"skip discovery" / "just build it"** (brainstorm only — leave discovery for the tree; the
+`Concept:` line is written as "<the one the input implies> (skipped discovery)" so §Idea still has a
+concept to read). Each steer is recorded under *Steering* in the record with the user as Who.
 
 **Under `--auto`**: play the intent back as `(assumed)`; when discovery runs, the frame is written as
 `(assumed)` from the input, recon runs, no research runs — nothing outside the repo without a
