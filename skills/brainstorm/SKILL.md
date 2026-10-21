@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
+description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, offers research outside the repo (a community resource such as Mobbin when the session has one, otherwise the web) and runs it only on your yes, and proposes two to four concepts built from all of it until you name one; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
 ---
 
 # `/builder:brainstorm` — understand it together, then decide what to build
@@ -87,13 +87,109 @@ Take these in order; the first that applies wins.
    expiry report." The user corrects a finding; they never explain their own product to you. Ask
    what is wrong.
 5. **Recon of the wider area carries on in parallel** (Explore agents, `sonnet`, one per app the
-   idea plausibly touches) — how the neighbouring parts work, for *How it works today*. It never holds
-   up this turn.
+   idea plausibly touches) — how the neighbouring parts work, for *How it works today*; for an
+   abstract idea, the wider brief of CONVERSATION §Discovery recon. It never holds up this turn.
+6. **Where it goes next.** An **abstract idea** → §Discovery, then §How it works today. A **directed
+   request** or a **brief** → §How it works today, then §Rounds. The user overrides either in words
+   at any point — "let's explore" enters discovery for any input; "skip discovery" / "just build it"
+   leaves it (CONVERSATION §Steering and --auto). A revision conversation never enters discovery.
 
 Write the record (`status: exploring`, `source: brainstorm`). The intent stays `(assumed)` until the
 user confirms or corrects it.
 
+## Discovery
+
+For a vague idea, the decision tree is the wrong first move: it asks the user to choose before they
+know what they want. Discovery comes first — a frame, recon aimed at what the product already has,
+research outside the repo when the user allows it, and concepts built from all of it — and ends
+when the user names the concept. The record's §Discovery (CONVERSATION §The record) is rewritten
+after every turn.
+
+### The frame
+
+Open questions, in plain chat, **one per turn — no AskUserQuestion, no option list, no
+recommendation.** In this order, each one skipped when the input or an earlier answer already
+answers it (then stated as `assumed`, with what it was taken from):
+
+1. **Who it is for** — the people or roles, and what they are doing when they meet it.
+2. **The pain or the outcome** — what is hard, slow, missing or wrong today, or what becomes possible.
+3. **How it is handled today** — by the product, by a workaround, or not at all.
+4. **What better looks like** — what the user would notice, and how they would know it worked.
+
+- **Grounding holds** (CONVERSATION §Grounding): a term in the user's words is looked up before it is
+  asked about. The frame asks about intent and judgement, never about a fact the code holds.
+- **Reflect, then follow.** After every answer, play the frame back in a few lines — what the user
+  said kept apart from what you assume — and follow where they went, a tangent included. Never pull
+  them back to the next scripted question while they are mid-thought.
+- **Four is the ceiling**; the user ends it sooner with "that's the problem" or similar.
+
+### Research
+
+After the frame is played back and before concepts — once, every discovery:
+
+1. **What the session has.** Read your own tool list. A tool that searches a library of real product
+   screens, flows or patterns — Mobbin's `mcp__mobbin__search_screens`, `mcp__mobbin__search_flows`,
+   `mcp__mobbin__search_sections`, or another plugin or MCP server of that kind — is a **community
+   resource**. `WebSearch` / `WebFetch` are **online research**. Nothing is configured for this; a
+   session with neither says so in one line and moves on to concepts, recording
+   `Research: skipped (no research tools in this session)`.
+2. **Weigh it, out loud.** One or two lines: would research help this idea, and why — a user-facing
+   surface, a flow other products have solved, an unfamiliar domain → likely yes, and name what you
+   would look for ("how other apps let people filter a list by tags"); an internal refactor, a CLI
+   flag, a data migration → likely no, said so.
+3. **Offer it — the one closed question in discovery**, an AskUserQuestion (consent to go outside the
+   repo is a closed choice): options built from what the session has — *Research on <resource>*
+   when a community resource is present, *Search the web* when online tools are, both when both are,
+   and *Skip* — your evaluation marking the recommended one `(Recommended)`, each description naming
+   what it would search for. *Other* carries the user's own search terms.
+4. **Do it, bounded.** A community resource: a handful of searches around the frame's terms, read as
+   patterns — how a flow is laid out, what a screen offers, what is common and what is rare — never
+   as designs to copy. Online: a few searches and the pages that answer them — how products in the
+   domain solve it, the common UX patterns and their names, libraries or standards that exist — with
+   sources kept. Write §Discovery · *Research* in plain words: what others do, what is common, what
+   is worth borrowing and what is not, each with where it was seen.
+5. **It feeds the concepts.** A concept may be built from a pattern research found as well as from
+   the product's own, and says which is which — a borrowed pattern is one the product does not have
+   yet, marked "(from research: <where>)" in *built from*.
+
+🔴 **Never research outside the repo unasked.** Under `--auto` the evaluation is written, no research
+runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and --auto).
+
+### Concepts
+
+When the frame is played back, research (if any) is in and recon (CONVERSATION §Discovery recon) is
+in, propose **two to four concepts** in chat. Each:
+
+- a short name
+- what the user would experience, as a paragraph, from their point of view
+- **the existing patterns it is built from, named** — "the filter chips the certificate list uses",
+  "a side panel like the owner view" — a borrowed one marked "(from research: <where>)", and
+  anything it needs that the product does not have
+- what it is good at, and what it closes off
+- a rough feel for size (a day, a week, a program) — never a sized estimate
+
+The user may pick one; combine two (write the combination as a new concept); ask "what if …"
+(answer in the concept's terms and revise it); ask for one sketched deeper (a flow in prose, or an
+ASCII layout or mermaid diagram when parts move); add their own; or say none fit, which reopens the
+frame with what was learned. Every turn rewrites §Discovery · *Concepts* with each concept's
+standing and why.
+
+🔴 **No AskUserQuestion in discovery, except the research offer.** The exit is the user naming the concept, in their words;
+confirm it in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
+Right?" — and a yes ends discovery. "That's enough" converges on your recommended concept, stated
+as such. Under `--auto`, CONVERSATION §Steering and --auto takes the recommended concept without a
+turn.
+
+### After discovery
+
+The chosen concept seeds the tree: each choice it embodies becomes a `settled` branch with its Why
+and the user as Who; the other concepts go to *Rejected* with the reason each lost; the concept's
+open questions become the first `open` branches. §How it works today then covers only what
+discovery did not, and §Rounds runs unchanged. §Confirm's playback opens with the concept.
+
 ## How it works today
+
+After discovery, only what §Discovery · *What the product already has* did not cover.
 
 Once the intent is confirmed (under `--auto`, once it is played back), explain what recon found
 **to the user**, in plain words: what exists that the idea touches, how it works, where it lives —
@@ -106,7 +202,8 @@ From here on, "explain X" works at any point (CONVERSATION §Rounds).
 
 ## Rounds
 
-CONVERSATION §Rounds — one question at a time — until the frontier is empty. Where the branches come from:
+CONVERSATION §Rounds — one question at a time — until the frontier is empty. After discovery the
+tree starts seeded from the concept (§Discovery · After discovery). Where the branches come from:
 
 - **The input first** — every choice it leaves open with more than one defensible answer.
 - **The fundamentals, when the idea reaches them**: the data-model shape, lifecycle edges (deletes,
