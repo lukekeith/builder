@@ -61,7 +61,11 @@ first, then the spec. Under `--auto` every product choice takes its recommendati
 ## 2. Write the files
 
 **`SPEC.md`** per REFERENCE §SPEC.md. md writes the sections its work touches — **§Idea, §Apps and
-§Contract are never skipped**; lg writes them all. Every settled branch — a choice — becomes a
+§Contract are never skipped**; lg writes them all. When the record has a §Discovery section, §Idea
+is written from it: the frame's *for <who>* and *pain/outcome* become the why, *better* becomes what
+success looks like, `Concept:` is the concept, and the rejected concepts join the approaches
+considered with the reason each lost (an `auto (recommended)` ruling stays exactly that). Without
+§Discovery, §Idea comes from §Intent as before. Every settled branch — a choice — becomes a
 §Decisions row: an implementable ruling, its why in one line, the rejected option and why it lost,
 and the Tree row's Who / date as its Who/date (an `auto (recommended) YYYY-MM-DD` stays exactly
 that) — copy the §Decisions comment block verbatim. Intake tags each row with its kind. A

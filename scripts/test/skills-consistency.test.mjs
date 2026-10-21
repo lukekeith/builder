@@ -469,3 +469,42 @@ test('4.10.2: /builder:agent never offers in-session or shared-branch work, and 
   assert.match(agent, /built in a session, not tested yet · agents only walk it, verify and\s+merge it/)
   assert.match(agent, /features not built yet first, then part-built, then built/)
 })
+
+test('brainstorm discovery: the record, the skill, spec and the listings agree on the Discovery section', () => {
+  const conv = read('skills/brainstorm/CONVERSATION.md')
+  const skill = read('skills/brainstorm/SKILL.md')
+  // The record template carries the section between Intent and How it works today.
+  const rec = /## Intent[\s\S]*?## Discovery[\s\S]*?## How it works today/.exec(conv)
+  assert.ok(rec, 'CONVERSATION §The record lacks ## Discovery between Intent and How it works today')
+  assert.match(rec[0], /Concept: </)
+  assert.match(rec[0], /^Research: /m)
+  assert.match(conv, /^## Discovery recon$/m)
+  assert.match(conv, /not run \(auto\)/)
+  assert.match(conv, /let's explore/)
+  assert.match(conv, /skip discovery/)
+  assert.match(skill, /^## Discovery$/m)
+  assert.match(skill, /CONVERSATION §Discovery recon/)
+  assert.match(skill, /No AskUserQuestion in discovery, except the research offer/)
+  assert.match(skill, /^### Research$/m)
+  assert.match(skill, /mcp__mobbin__search_screens/)
+  assert.match(read('skills/spec/SKILL.md'), /§Discovery/)
+  for (const f of ['skills/help/SKILL.md', 'README.md']) assert.match(read(f), /explore/i, f)
+})
+
+test('brainstorm discovery: resume lands back in discovery, the steers are brainstorm-only, the frame defers to grounding, a skipped discovery still has a concept', () => {
+  const conv = read('skills/brainstorm/CONVERSATION.md')
+  const skill = read('skills/brainstorm/SKILL.md')
+  // Important 1: an `exploring` record whose §Discovery has no Concept: resumes inside discovery, not the tree.
+  assert.match(conv, /`Concept:` is empty → back into SKILL §Discovery/)
+  // Important 2: the discovery steers do not leak into /builder:intake.
+  assert.match(conv, /"let's explore"[^.]*brainstorm only/)
+  // Important 3: a frame question already answered by grounding is stated, not asked.
+  assert.match(skill, /skipped when the input, an earlier answer or grounding already/)
+  assert.match(skill, /what the product does is looked up and stated/)
+  // Minor 5: §Rounds' one-question rule carves out the frame.
+  assert.match(conv, /The frame in SKILL §Discovery is not a round/)
+  // Minor 9: "skip discovery" still writes a Concept: line.
+  assert.match(conv, /\(skipped discovery\)/)
+  // Minor 8: spec quotes the record's label.
+  assert.match(read('skills/spec/SKILL.md'), /the frame's \*for <who>\*/)
+})
