@@ -27,6 +27,14 @@ Outcome · who it's for · what success looks like — each marked "(assumed)" u
 In your words: "<the user's key rules, verbatim — never paraphrased>"
 Assumed (not yet confirmed): …
 
+## Discovery
+Frame: for <who> · pain/outcome: <what is hard, slow, missing — or what becomes possible> · today: <how it is handled now> · better: <what the user would notice>   — each "(assumed)" until the user confirms it
+What the product already has: <plain prose — the capabilities near the idea, the components, layouts and UX patterns in use with where each is used, prior art, constraints; file:line only as footnotes>
+Research: <skipped (<why>) | not run (auto) | on <resource> / online — what others do, what is common, what is worth borrowing and what is not, each with where it was seen>
+Concepts:
+- <name> — <what the user would experience, one line> · built from: <the product's own patterns, named; a borrowed one marked "(from research: <where>)"> · standing: chosen | open | rejected (<why>)
+Concept: <the chosen one — two lines: what it is, and the patterns it uses>
+
 ## How it works today
 <plain prose; an ASCII or mermaid diagram when several parts move; file:line only as footnotes>
 Explained on request: <topic> — <what was found>
@@ -43,6 +51,10 @@ Chosen: <approach> — <trade-offs> · Rejected: <approach> — <why it lost>
 ## Size
 <size> — evidence: <apps, contract, surfaces, tasks it implies>
 ```
+
+§Discovery exists only when discovery ran (an abstract idea, or the user asked to explore); a
+directed request or a brief has no §Discovery section. The header above it never changes shape —
+scripts read only the header.
 
 `contradicted:` is written by intake only; brainstorm omits the line. `ticket:` is optional —
 written when the run has `--ticket <id>` or the input is a ticket, omitted otherwise. `input:` names
@@ -105,6 +117,27 @@ time**, stopping at the first rung that answers it:
 located in the code, or asks for a fact about how the system works today, is not ready — it goes back
 up the ladder. Asking the user to define a word that is in their own codebase is the failure this
 section exists to stop.
+
+## Discovery recon
+
+When discovery runs (SKILL §Discovery), the Explore agents that start on the first turn — `sonnet`,
+one per app the idea plausibly touches — are briefed to find what concepts can be built from, not
+only how the touched code works. Each agent reports, in plain words with `file:line` as footnotes:
+
+1. **What the product already has near the idea** — the capabilities, screens, data and flows the
+   idea neighbours or overlaps, and what must not be rebuilt.
+2. **The design system and UX patterns in use** — the components, layouts, navigation and
+   interaction conventions, and the empty, loading and error states, each named with where it is
+   used ("filter chips: the certificate list, the owner view"). When the config's `design:` block is
+   configured, its `contracts` directory is read as well.
+3. **Prior art** — the registry's `_archive/` specs, `NOTES.md` files and `.builder/*/brainstorm.md`
+   records that touch the idea, and `git log -S <term> --oneline | head` for the idea's terms.
+4. **Constraints** — that app's §House rules, apps marked `released_artifact: true`, and the
+   permissions in the area.
+
+The findings go under the record's §Discovery · *What the product already has*. They are the
+material the concepts are built from, and *How it works today* then covers only what discovery did
+not. Recon never holds up a turn: the frame goes on while it runs; the concepts step waits for it.
 
 ## Rounds
 
@@ -215,9 +248,17 @@ the size: one spec → lg; two or more → xl, its children those slices.
 
 **The user steers at any time**: "go deeper on X" (open sub-branches under X), "skip that, use your
 recs" (settle every open branch on its recommendation, recorded as the user's ruling), "that's enough"
-(jump to §Confirm, listing what is still open as assumed).
+(jump to §Confirm, listing what is still open as assumed — or, inside discovery, converge on the
+recommended concept, stated as such), **"let's explore" / "explore this"** (enter SKILL §Discovery for
+any input, or return to its concepts step), **"skip discovery" / "just build it"** (leave discovery
+for the tree, the concept taken as the one the input implies). Each steer is recorded under
+*Steering* in the record with the user as Who.
 
-**Under `--auto`**: play the intent back as `(assumed)`; every question settles on its recommendation (no AskUserQuestion),
+**Under `--auto`**: play the intent back as `(assumed)`; when discovery runs, the frame is written as
+`(assumed)` from the input, recon runs, no research runs — nothing outside the repo without a
+person's yes — and §Discovery · *Research* reads `not run (auto)`, the concepts are written to
+§Discovery, and the recommended concept is taken — `Concept:` carries it with
+`auto (recommended) YYYY-MM-DD`; every question settles on its recommendation (no AskUserQuestion),
 each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
 chosen; §Confirm proceeds without waiting and takes **Build it**. §Size takes the splitting
 question's recommendation — the fewest specs whose each slice ships value — recorded the same way. xs and sm take

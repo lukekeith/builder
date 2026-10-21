@@ -88,3 +88,35 @@ test('stopping at understanding hands the record off, so it is never listed as i
   const root = ws({ '.builder/understood/brainstorm.md': HEAD('status: handed-off\nsource: brainstorm\ninput: abstract idea\nupdated: 2026-09-29T10:00:00Z\nsettled: 5 of 5') })
   assert.deepEqual(draftRows(root, REG), [])
 })
+
+test('a record with a Discovery body still reads its header; a status-like line in Discovery is ignored', () => {
+  const body = [
+    '# tags — brainstorm',
+    'status: exploring',
+    'source: brainstorm',
+    'input: abstract idea',
+    'updated: 2026-10-21T10:00:00Z',
+    'settled: 0 of 6',
+    '',
+    '## Intent',
+    'Outcome: tags on notes (assumed)',
+    '',
+    '## Discovery',
+    'Frame: for the person using the notes CLI · pain/outcome: finding notes by topic · today: by eye · better: filter by tag (assumed)',
+    'What the product already has: a list command with no filters[^1]',
+    'Research: skipped (a CLI with no screens — nothing to browse)',
+    'Concepts:',
+    '- Tag chips — tags shown inline and filterable · built from: the list line format · standing: chosen',
+    '- Folders — a notebook per topic · built from: nothing existing · standing: rejected (heavier than the pain)',
+    'Concept: tag chips — notes carry tags, list filters by one. status: parked',
+    '',
+    '## How it works today',
+    'status: sized xl',
+    '',
+  ].join('\n')
+  const root = ws({ [`.builder/tags/${BRAINSTORM_FILE}`]: body })
+  const h = readBrainstormHeader(join(root, '.builder/tags/brainstorm.md'))
+  assert.equal(h.status, 'exploring')
+  assert.equal(h.size, null)
+  assert.equal(h.input, 'abstract idea')
+})
