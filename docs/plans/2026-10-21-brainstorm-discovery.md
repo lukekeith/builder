@@ -14,7 +14,8 @@
 
 - The record header (`# <feature> — brainstorm` through the first blank line: `status:`, `source:`, `input:`, `ticket:`, `updated:`, `settled:`, `contradicted:`) keeps its exact shape; `## Discovery` is a body section only.
 - Discovery runs for an input classified **abstract idea**, for any input on "let's explore" / "explore this", and never for a revision conversation (a live SPEC); "skip discovery" / "just build it" leaves it. No new flag.
-- **No AskUserQuestion inside discovery.** The frame's questions are open, in chat, one per turn, four at most; the exit is the user naming the concept, confirmed in two lines.
+- **No AskUserQuestion inside discovery, except the research offer.** The frame's questions are open, in chat, one per turn, four at most; the exit is the user naming the concept, confirmed in two lines.
+- **Research runs only on the user's yes**, never under `--auto`; a community resource is any tool that searches real product screens, flows or patterns (Mobbin's `mcp__mobbin__search_screens` / `search_flows` / `search_sections` or a like plugin or MCP server); online research is `WebSearch` / `WebFetch`. Nothing is configured; the agent reads its own tool list.
 - Concepts are two to four, each naming the existing patterns it is built from.
 - Under `--auto`: frame `assumed`, recon runs, concepts written, the recommended concept taken with `auto (recommended) YYYY-MM-DD`; no extra turns.
 - Release is a **patch, 4.11.1**; `.claude-plugin/plugin.json` and the top `CHANGELOG.md` heading must agree (the skills-consistency test checks this).
@@ -27,6 +28,7 @@
 3. `--auto` on an abstract idea must not add a turn or an AskUserQuestion; the benchmark's builder rows are the proof. → Task 4's benchmark run.
 4. A record with a `## Discovery` body must still parse; `status:` lines inside the body must not be mistaken for the header. → Task 1's brainstorm-file test.
 5. A directed request must not enter discovery, and "let's explore" must. → Task 2's fork text; Task 5 checks the directed case with a one-line request.
+6. A session with no Mobbin-like tool and no web tools must still make the research step honest: the offer says nothing is available and skips, rather than pretending. → Task 2's §Research text; Task 5 checks the offer names what is actually available.
 
 ---
 
@@ -60,6 +62,7 @@ test('a record with a Discovery body still reads its header; a status-like line 
     '## Discovery',
     'Frame: for the person using the notes CLI · pain/outcome: finding notes by topic · today: by eye · better: filter by tag (assumed)',
     'What the product already has: a list command with no filters[^1]',
+    'Research: skipped (a CLI with no screens — nothing to browse)',
     'Concepts:',
     '- Tag chips — tags shown inline and filterable · built from: the list line format · standing: chosen',
     '- Folders — a notebook per topic · built from: nothing existing · standing: rejected (heavier than the pain)',
@@ -87,12 +90,16 @@ test('brainstorm discovery: the record, the skill, spec and the listings agree o
   const rec = /## Intent[\s\S]*?## Discovery[\s\S]*?## How it works today/.exec(conv)
   assert.ok(rec, 'CONVERSATION §The record lacks ## Discovery between Intent and How it works today')
   assert.match(rec[0], /Concept: </)
+  assert.match(rec[0], /^Research: /m)
   assert.match(conv, /^## Discovery recon$/m)
+  assert.match(conv, /not run \(auto\)/)
   assert.match(conv, /let's explore/)
   assert.match(conv, /skip discovery/)
   assert.match(skill, /^## Discovery$/m)
   assert.match(skill, /CONVERSATION §Discovery recon/)
-  assert.match(skill, /No AskUserQuestion in discovery/)
+  assert.match(skill, /No AskUserQuestion in discovery, except the research offer/)
+  assert.match(skill, /^### Research$/m)
+  assert.match(skill, /mcp__mobbin__search_screens/)
   assert.match(read('skills/spec/SKILL.md'), /§Discovery/)
   for (const f of ['skills/help/SKILL.md', 'README.md']) assert.match(read(f), /explore/i, f)
 })
@@ -111,8 +118,9 @@ In `skills/brainstorm/CONVERSATION.md` §The record, the fenced record template 
 ## Discovery
 Frame: for <who> · pain/outcome: <what is hard, slow, missing — or what becomes possible> · today: <how it is handled now> · better: <what the user would notice>   — each "(assumed)" until the user confirms it
 What the product already has: <plain prose — the capabilities near the idea, the components, layouts and UX patterns in use with where each is used, prior art, constraints; file:line only as footnotes>
+Research: <skipped (<why>) | not run (auto) | on <resource> / online — what others do, what is common, what is worth borrowing and what is not, each with where it was seen>
 Concepts:
-- <name> — <what the user would experience, one line> · built from: <the existing patterns, named> · standing: chosen | open | rejected (<why>)
+- <name> — <what the user would experience, one line> · built from: <the product's own patterns, named; a borrowed one marked "(from research: <where>)"> · standing: chosen | open | rejected (<why>)
 Concept: <the chosen one — two lines: what it is, and the patterns it uses>
 ```
 
@@ -168,9 +176,10 @@ for the tree, the concept taken as the one the input implies). Each steer is rec
 In the `**Under `--auto`**` paragraph, after `play the intent back as `(assumed)`;` insert:
 
 ```
-when discovery runs, the frame is written as `(assumed)` from the input, recon runs, the concepts
-are written to §Discovery, and the recommended concept is taken — `Concept:` carries it with
-`auto (recommended) YYYY-MM-DD`;
+when discovery runs, the frame is written as `(assumed)` from the input, recon runs, no research
+runs — nothing outside the repo without a person's yes — and §Discovery · *Research* reads
+`not run (auto)`, the concepts are written to §Discovery, and the recommended concept is taken —
+`Concept:` carries it with `auto (recommended) YYYY-MM-DD`;
 ```
 
 so the paragraph reads `play the intent back as `(assumed)`; when discovery runs, … `auto (recommended) YYYY-MM-DD`; every question settles on its recommendation …`.
@@ -237,7 +246,8 @@ Insert a new section between the paragraph `Write the record (`status: exploring
 
 For a vague idea, the decision tree is the wrong first move: it asks the user to choose before they
 know what they want. Discovery comes first — a frame, recon aimed at what the product already has,
-and concepts built from it — and ends when the user names the concept. The record's §Discovery
+research outside the repo when the user allows it, and concepts built from all of it — and ends
+when the user names the concept. The record's §Discovery
 (CONVERSATION §The record) is rewritten after every turn.
 
 ### The frame
@@ -258,15 +268,48 @@ answers it (then stated as `assumed`, with what it was taken from):
   them back to the next scripted question while they are mid-thought.
 - **Four is the ceiling**; the user ends it sooner with "that's the problem" or similar.
 
+### Research
+
+After the frame is played back and before concepts — once, every discovery:
+
+1. **What the session has.** Read your own tool list. A tool that searches a library of real product
+   screens, flows or patterns — Mobbin's `mcp__mobbin__search_screens`, `mcp__mobbin__search_flows`,
+   `mcp__mobbin__search_sections`, or another plugin or MCP server of that kind — is a **community
+   resource**. `WebSearch` / `WebFetch` are **online research**. Nothing is configured for this; a
+   session with neither says so in one line and moves on to concepts, recording
+   `Research: skipped (no research tools in this session)`.
+2. **Weigh it, out loud.** One or two lines: would research help this idea, and why — a user-facing
+   surface, a flow other products have solved, an unfamiliar domain → likely yes, and name what you
+   would look for ("how other apps let people filter a list by tags"); an internal refactor, a CLI
+   flag, a data migration → likely no, said so.
+3. **Offer it — the one closed question in discovery**, an AskUserQuestion (consent to go outside the
+   repo is a closed choice): options built from what the session has — *Research on <resource>*
+   when a community resource is present, *Search the web* when online tools are, both when both are,
+   and *Skip* — your evaluation marking the recommended one `(Recommended)`, each description naming
+   what it would search for. *Other* carries the user's own search terms.
+4. **Do it, bounded.** A community resource: a handful of searches around the frame's terms, read as
+   patterns — how a flow is laid out, what a screen offers, what is common and what is rare — never
+   as designs to copy. Online: a few searches and the pages that answer them — how products in the
+   domain solve it, the common UX patterns and their names, libraries or standards that exist — with
+   sources kept. Write §Discovery · *Research* in plain words: what others do, what is common, what
+   is worth borrowing and what is not, each with where it was seen.
+5. **It feeds the concepts.** A concept may be built from a pattern research found as well as from
+   the product's own, and says which is which — a borrowed pattern is one the product does not have
+   yet, marked "(from research: <where>)" in *built from*.
+
+🔴 **Never research outside the repo unasked.** Under `--auto` the evaluation is written, no research
+runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and --auto).
+
 ### Concepts
 
-When the frame is played back and recon (CONVERSATION §Discovery recon) is in, propose **two to four
-concepts** in chat. Each:
+When the frame is played back, research (if any) is in and recon (CONVERSATION §Discovery recon) is
+in, propose **two to four concepts** in chat. Each:
 
 - a short name
 - what the user would experience, as a paragraph, from their point of view
 - **the existing patterns it is built from, named** — "the filter chips the certificate list uses",
-  "a side panel like the owner view" — and anything it needs that the product does not have
+  "a side panel like the owner view" — a borrowed one marked "(from research: <where>)", and
+  anything it needs that the product does not have
 - what it is good at, and what it closes off
 - a rough feel for size (a day, a week, a program) — never a sized estimate
 
@@ -276,7 +319,7 @@ ASCII layout or mermaid diagram when parts move); add their own; or say none fit
 frame with what was learned. Every turn rewrites §Discovery · *Concepts* with each concept's
 standing and why.
 
-🔴 **No AskUserQuestion in discovery.** The exit is the user naming the concept, in their words;
+🔴 **No AskUserQuestion in discovery, except the research offer.** The exit is the user naming the concept, in their words;
 confirm it in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
 Right?" — and a yes ends discovery. "That's enough" converges on your recommended concept, stated
 as such. Under `--auto`, CONVERSATION §Steering and --auto takes the recommended concept without a
@@ -348,13 +391,13 @@ and the rejected concepts join the approaches considered with the reason each lo
 `skills/help/SKILL.md` — the intro paragraph's clause `explores an idea with you — your intent played back, how the code works today, questions in rounds, approaches — and` becomes:
 
 ```
-explores an idea with you — a vague idea framed and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
+explores an idea with you — a vague idea framed, researched outside the repo when you allow it (Mobbin or the web), and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
 ```
 
 The brainstorm row `| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. The normal way in |` becomes:
 
 ```
-| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. The normal way in |
+| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, research on Mobbin or the web offered, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. The normal way in |
 ```
 
 `README.md` — the same intro clause as help's (`explores an idea with you — your intent played back, how the code works today, questions in rounds, approaches — and`) gets the same replacement.
@@ -370,7 +413,9 @@ The brainstorm row `| **An idea, a request, or something to think through** | `/
 - **`/builder:brainstorm` explores before it decides.** A vague idea now enters a discovery phase in
   front of the decision tree: the problem is framed in open questions (who, pain or outcome, how it
   is handled today, what better looks like — one per turn, no option lists), recon finds the design
-  system, UX patterns and prior art the product already has, and two to four concepts built from
+  system, UX patterns and prior art the product already has, the agent weighs whether outside
+  research would help and offers it — a community resource such as Mobbin when the session has one,
+  otherwise online research — running it only on your yes, and two to four concepts built from
   those patterns are proposed and explored in plain conversation until the user names one. The
   concept then seeds the rounds, which run as before. A directed request or brief is unaffected;
   "let's explore" opens discovery for any input, "skip discovery" leaves it. `--auto` takes the
@@ -431,10 +476,12 @@ Check, turn by turn:
 
 1. The first turn plays the intent back and asks the frame's first open question, in chat, with no option list and no AskUserQuestion.
 2. Any frame question the idea already answered is stated as assumed, not asked.
-3. After at most four frame turns, two to four concepts are proposed, each naming real components or patterns from that repo by name, with what each is good at and closes off.
-4. Say "combine the first two": the agent writes the combination as a new concept and asks whether that is it, in two lines, still with no AskUserQuestion.
-5. Say yes: the tree starts seeded from the concept (the first round's question is one the concept left open), and the record under `.builder/<feature>/brainstorm.md` has a filled §Discovery.
-6. Stop there ("park it"), so nothing is built in that repo.
+3. After the frame, the research step: the agent says whether research would help and why, and offers it as one AskUserQuestion whose options match the tools this session actually has (this machine has the Mobbin MCP server, so *Research on Mobbin* must be offered, with *Search the web* and *Skip*). Pick Mobbin: a handful of searches run, and §Discovery · *Research* is written in plain words with where each pattern was seen.
+4. Two to four concepts are proposed, each naming real components or patterns from that repo by name, at least one marked "(from research: Mobbin …)", with what each is good at and closes off.
+5. Say "combine the first two": the agent writes the combination as a new concept and asks whether that is it, in two lines, still with no AskUserQuestion.
+6. Say yes: the tree starts seeded from the concept (the first round's question is one the concept left open), and the record under `.builder/<feature>/brainstorm.md` has a filled §Discovery including its *Research* line.
+7. Stop there ("park it"), so nothing is built in that repo.
+8. Once more with research declined: a second vague idea, answer *Skip* at the offer; *Research* reads `skipped (<the user's choice>)` and the concepts carry no "(from research …)" marks.
 
 - [ ] **Step 2: A directed request does not enter discovery**
 
