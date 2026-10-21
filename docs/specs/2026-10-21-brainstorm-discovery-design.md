@@ -23,6 +23,7 @@ That machinery converges; nothing in it diverges. The six complaints, and where 
 | Questions too closed | §Rounds mandates 2–4 options and a recommendation on every question |
 | Not enough exploration | the only open-ended move is "explain X", on request |
 | Ignores the design system and UX patterns | recon is briefed to describe how the code works, not what the product already has to build solutions from |
+| No outside research | nothing looks beyond the repo: no community resource (Mobbin and the like) is consulted, no online research of how others solve it |
 
 **Success:** a user who opens brainstorm with a vague idea is asked what problem it solves before
 anything else, sees two to four concepts built from the product's own components and patterns, can
@@ -40,6 +41,11 @@ decision rounds that exist today. A directed request or a brief is unaffected. `
   patterns in use and prior art, and every concept names the existing patterns it is built from.
 - **D4 — Release.** A patch (4.11.1): an existing skill behaves differently; nothing new is
   reached for by name.
+- **D5 — Research is a discovery step.** After the frame and before the concepts, the agent weighs
+  whether outside research would help and offers it: a community resource when one is available to
+  the session (a plugin or MCP server that searches real product screens, flows and patterns, such
+  as Mobbin), otherwise deeper online research of the topic and possible solutions. The user
+  permits it; the agent never researches outside the repo unasked.
 
 ## Design
 
@@ -97,9 +103,42 @@ footnotes; they are the material the concepts are built from and they also feed 
 today*, which from here on only has to cover what discovery did not. Recon never holds up a turn:
 the frame proceeds while it runs, and the concepts step waits for it.
 
-### 4. Concepts
+### 4. Research
 
-Once the frame is played back and recon is in, the agent proposes **two to four concepts** in chat,
+After the frame is played back and before concepts, one research step:
+
+- **What is available.** The agent looks at the tools the session has: a tool that searches a
+  library of real product screens, flows or patterns — Mobbin's `mcp__mobbin__search_screens`,
+  `search_flows`, `search_sections`, or another plugin or MCP server of that kind — is a *community
+  resource*; `WebSearch` / `WebFetch` are *online research*. Nothing is configured; the agent reads
+  its own tool list.
+- **The evaluation, said out loud.** One or two lines on whether research would help this idea and
+  why: a user-facing surface, a flow other products have solved, an unfamiliar domain → likely
+  helpful, and what the agent would look for ("how other apps let people filter a list by tags",
+  "onboarding flows that ask for a goal first"); an internal refactor, a CLI flag, a data migration →
+  likely not, said so.
+- **The offer — the one closed question in discovery**, an AskUserQuestion, because consent to go
+  outside the repo is a closed choice: the options are built from what is available — *Research on
+  <resource>* (the community resource, when present), *Search the web*, both when both exist, and
+  *Skip* — the agent's evaluation marking the recommended one, and the question naming what it
+  would search for. The user may also answer with their own terms to search.
+- **The research itself, bounded.** A community resource: a handful of searches around the frame's
+  terms, read as patterns — how a flow is laid out, what a screen offers, what is common and what is
+  rare — never as designs to copy. Online: a few searches and the pages that answer them — how
+  products in the domain solve it, common UX patterns and their names, libraries or standards that
+  exist — with sources kept. Both are summarised under §Discovery · *Research* in plain words:
+  what others do, what is common, what is worth borrowing and what is not, each with where it was
+  seen. Research never holds the frame up and is done before concepts are proposed.
+- **It feeds the concepts.** A concept may be built from a pattern research found as well as from
+  the product's own ("a tag filter like the one Mobbin shows in most note apps: chips above the
+  list"), and says which is which, since a borrowed pattern is something the product does not have
+  yet.
+- Under `--auto`: the evaluation is written, no research runs (nothing outside the repo without a
+  person's yes), and *Research* records `not run (auto)`.
+
+### 5. Concepts
+
+Once the frame is played back, research (if any) is in and recon is in, the agent proposes **two to four concepts** in chat,
 each with:
 
 - a short name
@@ -115,12 +154,12 @@ flow in prose, or an ASCII layout or mermaid diagram when parts move); add their
 fit, which reopens the frame with what was learned. Every turn rewrites §Discovery · *Concepts*
 with each concept's standing and why.
 
-**No AskUserQuestion in discovery.** The exit is the user naming the concept, in their words; the
+**No AskUserQuestion in discovery, except the research offer (§4).** The exit is the user naming the concept, in their words; the
 agent confirms it in two lines ("**Concept:** <name> — <what it is, in one sentence>. <The patterns
 it uses.> Right?") and a yes ends discovery. Steering: "that's enough" converges on the agent's
 recommended concept, stated as such.
 
-### 5. Hand-off and the record
+### 6. Hand-off and the record
 
 - The chosen concept **seeds the tree**: each choice it embodies becomes a `settled` branch with its
   Why and the user as Who; the other concepts go to *Rejected* with the reason each lost; the
@@ -133,6 +172,7 @@ recommended concept, stated as such.
   ## Discovery
   Frame: for <who> · pain/outcome: <…> · today: <…> · better: <…>   (each "(assumed)" until confirmed)
   What the product already has: <plain prose; patterns named with where they are used; file:line as footnotes>
+  Research: <skipped (why) | not run (auto) | on <resource> / online — what others do, what is common, what is worth borrowing, each with where it was seen>
   Concepts:
   - <name> — <one line> · built from: <patterns> · standing: chosen | open | rejected (<why>)
   Concept: <the chosen one, two lines>
@@ -147,10 +187,10 @@ recommended concept, stated as such.
   recorded `auto (recommended) YYYY-MM-DD`. No extra turns. The human reads the concepts and the
   ruling at the go-ahead, as with every other auto ruling.
 
-### 6. Where the text changes
+### 7. Where the text changes
 
 - `skills/brainstorm/SKILL.md`: §Intent gains the fork (D2 and §1 above); a new §Discovery section
-  between §Intent and §How it works today holding §2–§4 in the skill's voice; §Rounds notes that the
+  between §Intent and §How it works today holding §2–§5 in the skill's voice; §Rounds notes that the
   tree is seeded from the concept when discovery ran; the `description:` says discovery in one clause.
 - `skills/brainstorm/CONVERSATION.md`: §The record gains the §Discovery body section; §Steering and
   --auto gains the discovery rulings; a new §Discovery recon brief beside §Grounding.
@@ -171,7 +211,8 @@ recommended concept, stated as such.
 - **The behaviour, read:** this is a plugin made of instructions, so the change is proven by reading
   the skill end to end for the rule it adds and by one real conversation from a vague idea, in a
   repo with a design system, checking that the frame is asked openly, the concepts name real
-  patterns, and the tree starts only after the concept is named.
+  patterns, the research offer names what it would look for and runs only on a yes, and the tree
+  starts only after the concept is named.
 
 ## Out of scope
 
@@ -179,6 +220,8 @@ recommended concept, stated as such.
 - Changing the rounds, approaches, confirm or size mechanics.
 - Discovery for `/builder:intake`: a worked-out spec has had its discovery.
 - Visual mockups beyond ASCII and mermaid sketches.
+- Configuring research sources in `.claude/builder.md`; the agent uses the tools the session has.
+- Research in `--auto` runs: nothing outside the repo without a person's yes.
 
 ## Release
 
