@@ -508,3 +508,40 @@ test('brainstorm discovery: resume lands back in discovery, the steers are brain
   // Minor 8: spec quotes the record's label.
   assert.match(read('skills/spec/SKILL.md'), /the frame's \*for <who>\*/)
 })
+
+test('4.11.2: brainstorm quick path — decided after grounding, one question that is the approval, never under --auto', () => {
+  const skill = read('skills/brainstorm/SKILL.md')
+  const conv = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(skill, /^## Quick path$/m)
+  assert.ok(skill.indexOf('## Quick path') < skill.indexOf('## Discovery'), 'the quick path comes before discovery')
+  assert.ok(skill.indexOf('3. **The quick check**') > skill.indexOf('2. **🔴 Ground it in the code'), 'the quick check follows grounding')
+  assert.match(skill, /A\. Build it \(recommended\)/)
+  assert.match(skill, /B\. Brainstorm it first/)
+  assert.match(skill, /Picking a Build entry is the small path's one approval/)
+  assert.match(skill, /never under `--auto`/)
+  assert.match(skill, /quick path offered \(<xs\|sm>\)/)
+  assert.match(conv, /the quick path is never offered/)
+  assert.match(conv, /\*\*"just build it"\*\* \(brainstorm only — leave the conversation, wherever it is/)
+  assert.match(conv, /Build it in chat anyway/)
+  assert.match(conv, /quick path — offered/)
+})
+
+test('4.11.2: brainstorm ways on are a lettered list, "go" is A, at every pause but the frame', () => {
+  const skill = read('skills/brainstorm/SKILL.md')
+  const conv = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(conv, /^## Ways on$/m)
+  assert.ok(conv.indexOf('## Ways on') < conv.indexOf('## Rounds'), 'Ways on comes before Rounds')
+  assert.match(conv, /Letters, never numbers/)
+  assert.match(conv, /A is the default path/)
+  assert.match(conv, /"just build it" still works/)
+  // every round carries the same three ways on
+  assert.match(conv, /A\. Answer below \(recommended\)[\s\S]*B\. Build it now[\s\S]*C\. That's enough/)
+  // confirm, the small path's approval and the md+ hand-off are lettered
+  assert.match(conv, /`A\. Build it \(recommended\)` · `B\. Park it` ·\s+`C\. Stop here`/)
+  assert.match(conv, /A\. Write the spec \(recommended\)/)
+  assert.match(conv, /`B\. Talk it through more/)
+  // the quick path, the playback and the concepts
+  assert.doesNotMatch(skill.slice(skill.indexOf('## Quick path'), skill.indexOf('## Discovery')), /AskUserQuestion/)
+  assert.match(skill, /`A\. That's right — carry on \(recommended\)`/)
+  assert.match(skill, /A letter \(or a concept's name\) names it outright/)
+})
