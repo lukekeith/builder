@@ -16,19 +16,14 @@ import { pathToFileURL } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 
-export const PRESETS = {
+// The old `profile:` presets and levers — read only to map an old manifest onto the test plan (spec §6).
+const PRESETS = {
   rush:           { testing: 'none',       review: 'final',           models: 'economy', verify: 'floors',     persist: 'low',     unruled: 'recommend', landing: 'local' },
   standard:       { testing: 'risky',      review: 'per-task',        models: 'default', verify: 'full',       persist: 'default', unruled: 'recommend', landing: 'local' },
   thorough:       { testing: 'full',       review: 'per-task',        models: 'default', verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
   'thorough-you': { testing: 'full+human', review: 'per-task',        models: 'default', verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
 }
-export const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local'] }
-// Thorough is today's pipeline; `strong` and `per-task+second` are Customize-only. PR + CI landing is
-// deferred (the fleet never pushes), so `landing` keeps its key with one value and old manifests stay valid.
-/** How a resolved preset name reads in a table; one map for every status view. */
-export const PROFILE_LABELS = { rush: 'rush', standard: 'standard', thorough: 'thorough', 'thorough-you': 'thorough + you', custom: 'custom', here: 'here' }
-/** preset → its label; none → `—`, an unknown name → `thorough`. */
-export const profileLabel = (preset) => (preset ? (PROFILE_LABELS[preset] ?? 'thorough') : '—')
+const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local'] }
 /** What holds under every test plan: the touched apps' type-check, and the final whole-branch review. */
 export const FLOORS = { typecheck: true, finalReview: true }
 
@@ -51,8 +46,8 @@ const atLeast = (end, floor) => (END_RANK.indexOf(end) >= END_RANK.indexOf(floor
 
 const result = (preset, levers, warning) => ({ preset, levers: { ...levers }, floors: { ...FLOORS }, warning })
 
-/** 'standard' | 'custom testing=risky review=final' | undefined → { preset, levers, floors, warning|null } */
-export function parseProfile(value) {
+/** An old `profile:` value — 'standard' | 'custom testing=risky review=final' | undefined → { preset, levers, floors, warning|null } */
+function parseProfile(value) {
   const v = typeof value === 'string' ? value.trim() : ''
   if (v === '' || v === 'none') return result('thorough', PRESETS.thorough, null)
   if (Object.hasOwn(PRESETS, v)) return result(v, PRESETS[v], null)
@@ -270,8 +265,12 @@ const median = (xs) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-/** An archive row's plan label: its `tests` value, else its old `profile` preset mapped; null when neither. */
-function rowLabel(r) {
+/**
+ * An archive row's (or a fleet entry's noted facts') plan label: its `tests` value, else its old
+ * `profile` preset mapped; null when neither.
+ */
+export function rowLabel(r) {
+  if (!r) return null
   if (isSet(r.tests)) return planLabel(parseTests(r.tests).levers)
   if (r.profile === 'here') return 'here'
   return isSet(r.profile) ? planLabel(presetLevers(r.profile)) : null

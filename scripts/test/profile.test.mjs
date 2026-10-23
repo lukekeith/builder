@@ -1,8 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import * as profile from '../profile.mjs'
 import {
-  PRESETS, LEVERS, TEST_LEVERS, RECOMMENDED, FLOORS, parseProfile, parseTests, parseTestPlan, formatTests,
-  planLabel, recommend, cost, estimate, planSize,
+  TEST_LEVERS, RECOMMENDED, FLOORS, parseTests, parseTestPlan, formatTests,
+  planLabel, recommend, cost, estimate, planSize, rowLabel,
 } from '../profile.mjs'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -372,13 +373,26 @@ test('estimate: a feature with no plan yet (0 tasks) has no number, never 0 minu
   assert.equal(estimate([row(10), row(10), row(20)], OWN, undefined), null)
 })
 
-// ── the old preset API, kept for Task 4's consumers ─────────────────────────────────────────────
+// ── the old preset API is gone: an old profile: is read only through parseTestPlan / rowLabel ──
 
-test('parseProfile: still resolves presets and custom levers', () => {
-  assert.equal(parseProfile(undefined).preset, 'thorough')
-  assert.match(parseProfile('thorogh').warning, /unknown profile/)
-  assert.deepEqual(parseProfile('custom testing=risky review=final').levers, { ...PRESETS.standard, testing: 'risky', review: 'final' })
-  assert.ok(LEVERS.review.includes('per-task+second'))
+test('the old preset API is no longer exported', () => {
+  for (const name of ['parseProfile', 'PRESETS', 'LEVERS', 'profileLabel', 'PROFILE_LABELS']) assert.equal(name in profile, false, name)
+})
+
+test('parseTestPlan: an unknown old profile reads as thorough, with the old warning', () => {
+  const p = parseTestPlan({ profile: 'thorogh' })
+  assert.match(p.warning, /unknown profile/)
+  assert.equal(p.label, 'own+app · everything · slice')
+})
+
+test('rowLabel: an archive row (or fleet facts) by its tests, else its old profile mapped; here; null', () => {
+  assert.equal(rowLabel({ tests: 'slice=own end=risk review=end', profile: 'rush' }), 'own · risk · end')
+  assert.equal(rowLabel({ profile: 'rush' }), 'own+app · touched · end')
+  assert.equal(rowLabel({ profile: 'thorough-you' }), 'own+app · everything · slice · you')
+  assert.equal(rowLabel({ profile: 'custom' }), 'own+app · risk · slice')
+  assert.equal(rowLabel({ profile: 'here' }), 'here')
+  assert.equal(rowLabel({ profile: null }), null)
+  assert.equal(rowLabel(undefined), null)
 })
 
 // ── the CLI ─────────────────────────────────────────────────────────────────────────────────────

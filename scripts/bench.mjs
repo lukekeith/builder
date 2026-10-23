@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * bench — run one feature through builder (rush / standard / thorough), superpowers and GSD,
- * unattended, and report time per step. Design: docs/specs/2026-10-13-benchmark-design.md.
+ * bench — run one feature through builder (the recommended test plan, and everything), superpowers
+ * and GSD, unattended, and report time per step. Design: docs/specs/2026-10-13-benchmark-design.md.
  *
  *   node scripts/bench.mjs run <feature> [--only a,b] [--repeat N] [--model m] [--dry-run] [--detach]
  *   node scripts/bench.mjs report <run-id>
@@ -185,13 +185,15 @@ export function superpowersDir() {
 const GSD_INSTALL = process.env.BENCH_GSD_INSTALL || 'npx -y @opengsd/gsd-core@latest --claude --local'
 
 /**
- * A driver: (ctx) → the sessions to run, in order. ctx = { copy, request, profile, flags }.
+ * A driver: (ctx) → the sessions to run, in order. ctx = { copy, request, tests, flags }.
  * A session is { name, prompt, system?: extra owner line, lane?: 'brainstorm'|…, fleet?: true }.
  * `fleet: true` is builder's third step: the fleet engine, not a claude -p (see runFleet).
  */
 export const DRIVERS = {
-  builder: ({ request, profile }) => {
-    const system = `When asked for a build profile, choose **${profile}**. After /builder:spec has committed SPEC.md and MANIFEST.md, stop: do not run /builder:agent, /builder:fleet or any agent — the benchmark runs the fleet itself.`
+  builder: ({ request, tests }) => {
+    // No `tests` → the go-ahead takes the recommended test plan, as a user who says "go" gets.
+    const pick = tests ? `At the go-ahead, choose the test plan **tests: ${tests}**. ` : ''
+    const system = `${pick}After /builder:spec has committed SPEC.md and MANIFEST.md, stop: do not run /builder:agent, /builder:fleet or any agent — the benchmark runs the fleet itself.`
     return [
       { name: 'brainstorm', prompt: `/builder:brainstorm --auto ${request}`, system },
       { name: 'spec', prompt: '/builder:spec --auto', system },
@@ -209,13 +211,34 @@ export const DRIVERS = {
   ],
 }
 
+/**
+ * `tests` is the test plan a builder config pre-sets on the manifest before the fleet runs (as
+ * /builder:agent writes it ahead); null takes the go-ahead's recommendation. Results from before the
+ * test plan (builder-rush / -standard / -thorough, with a `profile` key) still render: a report reads
+ * configs by name.
+ */
 export const MATRIX = [
-  { config: 'builder-rush', pipeline: 'builder', profile: 'rush' },
-  { config: 'builder-standard', pipeline: 'builder', profile: 'standard' },
-  { config: 'builder-thorough', pipeline: 'builder', profile: 'thorough' },
-  { config: 'superpowers', pipeline: 'superpowers', profile: null },
-  { config: 'gsd', pipeline: 'gsd', profile: null },
+  { config: 'builder', pipeline: 'builder', tests: null },
+  { config: 'builder-everything', pipeline: 'builder', tests: 'slice=own+app end=everything review=slice' },
+  { config: 'superpowers', pipeline: 'superpowers', tests: null },
+  { config: 'gsd', pipeline: 'gsd', tests: null },
 ]
+
+/** Write `tests: <value>` into the feature's MANIFEST.md in the copy (replacing one there) and commit it. */
+export function presetTests(copy, feature, tests) {
+  const file = join(copy, 'docs', 'features', feature, 'MANIFEST.md')
+  if (!tests || !existsSync(file)) return false
+  const text = readFileSync(file, 'utf8')
+  const line = `tests: ${tests}`
+  const next = /^tests:.*$/m.test(text) ? text.replace(/^tests:.*$/m, line) : `${text.replace(/\n*$/, '\n')}${line}\n`
+  if (next === text) return false
+  writeFileSync(file, next)
+  try {
+    git(copy, 'add', '--', file)
+    git(copy, 'commit', '-qm', `bench(${feature}): test plan ${tests}`, '--', file)
+  } catch {}
+  return true
+}
 
 /** The claude flags every session of a pipeline gets: permissions, the plugin under test, the settings. */
 export function flagsFor(pipeline, copy) {
@@ -396,7 +419,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   const flags = flagsFor(m.pipeline, copy)
   prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: [...flags, ...(plan.model ? ['--model', plan.model] : [])].join(' ') })
   if (m.pipeline === 'gsd') writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
-  const run = { config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, installMs: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
+  const run = { config: m.config, pipeline: m.pipeline, tests: m.tests, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, installMs: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
   const progress = (session) => writeJson(join(outRoot, 'progress.json'), { config: m.config, rep, session, startedAt: Date.now() })
   if (m.pipeline === 'gsd') {
     progress('install gsd')
@@ -447,6 +470,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
         run.status = 'failed: spec left no manifest'
         break
       }
+      presetTests(copy, feature, m.tests)
       const f = runFleet({ copy, feature, outDir, env: {} })
       run.sessions.push(...f.sessions)
       run.status = f.status
@@ -522,7 +546,7 @@ export async function runAll(plan) {
       try {
         data.runs.push(await runConfig(plan, m, rep, data, outRoot))
       } catch (err) {
-        data.runs.push({ config: m.config, pipeline: m.pipeline, profile: m.profile, rep, status: `crashed: ${String(err?.message ?? err).split('\n')[0]}`, path: 'pipeline', startedAt: t0, endedAt: Date.now(), ms: Date.now() - t0, sessions: [], totals: runTotals([]), score: null, copy: null, gitLog: [] })
+        data.runs.push({ config: m.config, pipeline: m.pipeline, tests: m.tests, rep, status: `crashed: ${String(err?.message ?? err).split('\n')[0]}`, path: 'pipeline', startedAt: t0, endedAt: Date.now(), ms: Date.now() - t0, sessions: [], totals: runTotals([]), score: null, copy: null, gitLog: [] })
       }
       data.endedAt = Date.now()
       save()
@@ -560,7 +584,7 @@ function planRun() {
 /** The sessions a config would run in a copy, with the flags and the owner prompt each gets. */
 export function sessionsFor(m, copy, request) {
   const flags = flagsFor(m.pipeline, copy)
-  return DRIVERS[m.pipeline]({ copy, request, profile: m.profile }).map((s) => ({ ...s, flags, system: s.system ? `${OWNER_PROMPT}\n\n${s.system}` : OWNER_PROMPT }))
+  return DRIVERS[m.pipeline]({ copy, request, tests: m.tests }).map((s) => ({ ...s, flags, system: s.system ? `${OWNER_PROMPT}\n\n${s.system}` : OWNER_PROMPT }))
 }
 
 function dryRun(plan) {
@@ -573,7 +597,7 @@ function dryRun(plan) {
   for (const m of plan.configs) {
     const sessions = sessionsFor(m, dest, plan.request)
     console.log(`${m.config}: ${sessions.length} session${sessions.length === 1 ? '' : 's'}  (claude ${sessions[0].flags.join(' ')})`)
-    for (const s of sessions) console.log(`  ${s.name}: ${s.fleet ? `node ${process.env.BENCH_FLEET || join(BUILDER, 'scripts', 'fleet.mjs')} <feature> --parallel 1` : s.prompt.split('\n')[0].slice(0, 110)}${s.system.includes('choose **') ? `   [${/choose \*\*\w+\*\*/.exec(s.system)[0]}]` : ''}`)
+    for (const s of sessions) console.log(`  ${s.name}: ${s.fleet ? `node ${process.env.BENCH_FLEET || join(BUILDER, 'scripts', 'fleet.mjs')} <feature> --parallel 1` : s.prompt.split('\n')[0].slice(0, 110)}${m.pipeline === 'builder' ? `   [${m.tests ? `tests: ${m.tests}` : 'the recommended test plan'}]` : ''}`)
   }
   console.log('')
   for (const pipeline of [...new Set(plan.configs.map((m) => m.pipeline))]) {

@@ -429,9 +429,9 @@
       "skill": "agent",
       "title": "Hand work to agents: build profile and landing branch",
       "when": "Straight after the pick, for every pick whose manifest has no profile yet.",
-      "source": "skills/plan/SKILL.md §Picking the profile ahead — `/builder:agent` and `/builder:fleet`",
+      "source": "skills/plan/SKILL.md §Picking the test plan ahead — `/builder:agent` and `/builder:fleet`",
       "sources": [
-        "skills/plan/SKILL.md §The build profile (`agent_walk:` set)",
+        "skills/plan/SKILL.md §The go-ahead",
         "skills/agent/SKILL.md §3. Check, confirm, launch"
       ],
       "feature": "cert-tags",

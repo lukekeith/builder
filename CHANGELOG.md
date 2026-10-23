@@ -4,6 +4,30 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.12.0
+
+**New:**
+- **The test plan replaces Rush / Standard / Thorough.** The profiles barely differed where the time
+  goes (13 / 15 / 14 min on the benchmark), and nobody could see what they cost. The go-ahead now
+  shows the plan as **slices** — each task numbered, grouped by app, with the tests it adds — and
+  what the recommended test plan costs, in runs and, once the gates have run, minutes. Then
+  `A. Build it with this plan` (go) · `B. Change the test plan` · `C. Keep planning`. B asks three
+  questions, each option saying what it costs for this plan:
+  - **Testing per slice** — its own tests (recommended) · plus the app's suite when the app's slices
+    are done (the old behaviour) · the app's suite after every slice · none while building.
+  - **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
+    risky parts · everything (deep suites, cross-app E2E, full walk) · nothing, you'll test it.
+  - **Review** — once at the end (recommended) · once per app · after every slice.
+
+  The recommended plan is the fast one; a schema change, migration, released consumer, auth/delete
+  or 3+ apps raises only the *end* recommendation, and says why. Two floors hold under every plan:
+  a type-check of every touched app (gate lines marked `@typecheck`, run by `gate.mjs --typecheck`)
+  and the final whole-branch review. The plan is written to the manifest as `tests:` and governs
+  in-chat builds as well as agent builds. `/builder:agent` and `/builder:fleet` ask it ahead.
+  An old `profile:` line, and `build_profile_default`, are still read — mapped to the plan they
+  meant. `gate.mjs` now records each app's fast-set duration for the estimates. Design:
+  `docs/specs/2026-10-23-test-plan-design.md`.
+
 ## 4.11.3
 
 **Changed:**

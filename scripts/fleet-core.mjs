@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, appendF
 import { join } from 'node:path'
 import { parseManifest, isSet } from './manifest.mjs'
 import { ARCHIVE } from './registry.mjs'
-import { profileLabel } from './profile.mjs'
+import { rowLabel } from './profile.mjs'
 
 const BUILD_STATES = new Set(['spec', 'aligned', 'audited', 'planned', 'building'])
 const WALK_STATES = new Set(['built', 'signed-off'])
@@ -82,7 +82,7 @@ export function loadFleet(root) {
 }
 
 /** Atomic: a fleet killed mid-write leaves the previous fleet.json, never half of one. */
-export function saveFleet(root, fleet, progress = null, profileOf = null) {
+export function saveFleet(root, fleet, progress = null, testsOf = null) {
   const dir = fleetDir(root)
   mkdirSync(dir, { recursive: true })
   const ignore = join(root, '.builder', '.gitignore')
@@ -90,7 +90,7 @@ export function saveFleet(root, fleet, progress = null, profileOf = null) {
   const tmp = join(dir, 'fleet.json.tmp')
   writeFileSync(tmp, JSON.stringify(fleet, null, 2) + '\n')
   renameSync(tmp, join(dir, 'fleet.json'))
-  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), profileOf))
+  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), testsOf))
 }
 
 // ---- the archive -------------------------------------------------------------------------------
@@ -274,8 +274,8 @@ export function renderArchived(rows, total, now = Date.now()) {
     const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
     return ms ? duration(ms) : null
   }
-  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Profile | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
-  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${profileLabel(r.profile)} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
+  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Tests | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
+  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(rowLabel(r))} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
   return lines.join('\n') + '\n'
 }
 
@@ -340,10 +340,10 @@ export function progressBar(pct) {
  * Wide, always-empty columns were what squeezed `Runs` onto two lines in the CLI's table renderer.
  *
  * `progress(name, f)` → `{ pct, label }` adds a Progress column and an overall bar (the mean) to the
- * heading; without it the table is as before. `profileOf(name, f)` → a preset name is the Profile
- * for a row the fleet has noted no facts for yet (the caller reads the manifest). A `done` row is archive material — counted in the archived line, never listed.
+ * heading; without it the table is as before. `testsOf(name, f)` → a test-plan label is the Tests
+ * cell for a row the fleet has noted no facts for yet (the caller reads the manifest). A `done` row is archive material — counted in the archived line, never listed.
  */
-export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], profileOf = null) {
+export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
   const archived = (fleet.archived ?? 0) + (all.length - rows.length)
@@ -367,14 +367,14 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
     const col = prog ? ' Progress |' : ''
-    lines.push('', `| Feature | Status | Profile |${col} Runs | Time | Reason | Worktree |`, `|---|---|---|${prog ? '---|' : ''}---|---|---|---|`)
+    lines.push('', `| Feature | Status | Tests |${col} Runs | Time | Reason | Worktree |`, `|---|---|---|${prog ? '---|' : ''}---|---|---|---|`)
     for (const [name, f] of rows) {
       // A parked row's cell is its why; the next step is listed under ## Parked, where it has room.
       const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
-      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${profileLabel(f.facts?.profile ?? profileOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
+      lines.push(`| ${cell(name)} | ${cell(f.status)} | ${cell(rowLabel(f.facts) ?? testsOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
   const parked = rows.filter(([, f]) => f.status === 'parked')
