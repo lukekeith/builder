@@ -76,7 +76,8 @@ then the next question — except that `exploring` with a §Discovery whose `Con
 at the step the section shows (a frame line still `<open>` → the next frame question; concepts listed → the
 concepts step), never into the tree; `confirmed` → §Confirm's three ways on (a revision conversation: straight to its
 hand-off); `sized xs|sm` → §Size and the small path, from where the working tree shows it
-stopped; `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC,
+stopped (a quick-path record — `quick path — offered` under §Size — re-offers SKILL §Quick path's
+choice when nothing is built yet); `sized md|lg|xl` → `/builder:spec --path <folder>`; `handed-off` with no live SPEC,
 MANIFEST or PROGRAM → nothing to resume — say where the work went (built in chat, stopped at
 understanding, or a spec committed on another branch) and offer a new name for new work; with one →
 a new revision (brainstorm's §Where to start step 4).
@@ -141,6 +142,33 @@ The findings go under the record's §Discovery · *What the product already has*
 material the concepts are built from, and *How it works today* then covers only what discovery did
 not. Recon never holds up a turn: the frame goes on while it runs; the concepts step waits for it.
 
+## Ways on
+
+Every turn that waits on the user ends with the ways on as a **lettered list** — the user should
+never have to think up how to continue, or remember a phrase. A reply of one letter is enough.
+
+```
+A. <Label> (recommended) — <what happens if you pick it>
+B. <Label> — <what happens>
+C. <Label> — <what happens>
+Reply A, B or C — "go" is A.<  Or say what's wrong.>
+```
+
+- **Letters, never numbers** — the question picker numbers its answers and the pipeline's footers
+  are numbered; a letter is always a way on, never an answer to a product question.
+- **A is the default path**, marked `(recommended)`; a bare affirmative ("go", "yes", "ok") picks it.
+- **2–4 entries.** Labels are 1–4 words; each description says what happens next, in plain words.
+- **Replies:** the letter in any form (`b`, `B.`, "option B"), the label's words, or the matching
+  steer from §Steering — "just build it" still works and picks the build entry. Anything else is
+  the user's own words: a correction, an answer, a question — handle it as such.
+- **Plain chat, not AskUserQuestion** — the list sits above the 📍 footer, which still follows it.
+  In a round (below) the list sits between the briefing and the picker, and a letter typed into the
+  picker's *Other* counts the same.
+- **Where:** the quick path (SKILL §Quick path), the intent playback, the concepts (each concept
+  lettered), every round, §Confirm, the small path's approval and the md+ hand-off (§Size and the
+  small path). The frame's open questions in discovery are the exception — they end in the
+  question, so the user answers in their own words.
+
 ## Rounds
 
 - **The frontier** is every `open` branch whose prerequisites are settled. A question whose answer
@@ -169,6 +197,19 @@ not. Recon never holds up a turn: the frame goes on while it runs; the concepts 
      better or worse. The tool adds *Other* for a custom answer, so never add a "something else"
      option. Options that differ in shape (a layout, a data shape, a message's wording) carry a
      `preview`.
+
+  Between the briefing and the picker, the round's ways on (§Ways on) — the same three every
+  round, so they become familiar:
+
+  ```
+  A. Answer below (recommended) — pick from the options; mine is first
+  B. Build it now — my recommendations settle the <k> open questions, then it's sized and <built here | specced>
+  C. That's enough — straight to the summary, what's open listed as assumptions
+  Reply in the picker — a letter in Other works too.
+  ```
+
+  B says where it lands: *built here* when the work looks xs/sm so far, *specced* otherwise — it is
+  the "just build it" steer (§Steering and --auto). C is "that's enough".
 
   Every option must be a real, defensible answer the user could pick — never a filler to reach two.
   A question with only one defensible answer is not a question: state it as `assumed` (below). A
@@ -208,7 +249,8 @@ lost. No fork → no approaches step, and say so in one line.
 When the frontier is empty: **"Here's the shared understanding — <intent in two lines>, <the approach>,
 <n> decisions, <k> assumptions. Is anything missing or wrong?"** List every `assumed` branch. Nothing
 leaves the workspace before a yes; a correction reopens its branch. Set `status: confirmed`, then
-offer three ways on:
+offer the three ways on as §Ways on's list — `A. Build it (recommended)` · `B. Park it` ·
+`C. Stop here` — with "Or say what's missing or wrong." as its last line:
 
 - **Build it** → §Size and the small path.
 - **Park it** → `status: parked`. With `--keep`, also write `<registry>/<feature>/NOTES.md` — a
@@ -233,11 +275,24 @@ for lg or xl, one AskUserQuestion — §Rounds' format — whose options are:
 Recommend the fewest specs whose each slice ships value — usually one or two. The answer decides
 the size: one spec → lg; two or more → xl, its children those slices.
 
-- **md · lg · xl** → hand off: `📍 <feature>: concept confirmed (<size>) — next: /builder:spec --path <registry>/<feature> · or say go`.
+- **md · lg · xl** → hand off, with §Ways on's list above the footer:
+
+  ```
+  A. Write the spec (recommended) — /builder:spec --path <registry>/<feature>
+  B. Build it in chat anyway — md only: no spec, no walk record; you take it as sm
+  C. Park it — keep the conversation, build nothing yet
+  Reply A, B or C — "go" is A.
+  📍 <feature>: concept confirmed (<size>) — next: /builder:spec --path <registry>/<feature> · or say go
+  ```
+
+  B appears only at md (lg and xl list A and *B. Park it*); picking it records the override and
+  runs the small path from step 1, sm.
 - **xs · sm** — no spec, no folder:
   1. **Design in chat.** xs: one sentence. sm: the app · approach · files touched · the recipe skills
      it will read · tests · what you will see in the running app.
-  2. **One approval.** Stop until yes. Presenting and starting in the same turn skips the gate.
+  2. **One approval.** Stop until yes — §Ways on's list: `A. Build it (recommended) — <what
+     changes>` · `B. Talk it through more — back to the rounds`, and "Or say what to change." Presenting
+     and starting in the same turn skips the gate.
   3. **Implement in the main context.** Read the named recipe skills FIRST (the config's §Companion
      skills); TDD where behaviour changes; that app's §House rules and §Environment landmines.
      🔴 **In an app the config marks `commit: manual`, stage and stop** — that commit is the human's.
@@ -254,11 +309,19 @@ recs" (settle every open branch on its recommendation, recorded as the user's ru
 (jump to §Confirm, listing what is still open as assumed — or, inside discovery, converge on the
 recommended concept, stated as such), **"let's explore" / "explore this"** (brainstorm only — enter SKILL §Discovery for
 any input, or return to its concepts step; intake answers that a worked-out spec has had its discovery and
-carries on), **"skip discovery" / "just build it"** (brainstorm only — leave discovery for the tree; the
+carries on), **"skip discovery"** (brainstorm only — leave discovery for the tree; the
 `Concept:` line is written as "<the one the input implies> (skipped discovery)" so §Idea still has a
-concept to read). Each steer is recorded under *Steering* in the record with the user as Who.
+concept to read), **"just build it"** (brainstorm only — leave the conversation, wherever it is:
+discovery ends as "skip discovery" ends it, every open branch settles on its
+recommendation recorded as the user's ruling, and §Size runs straight away — no §Confirm turn. xs or
+sm → the design and the build in this turn: the steer is the small path's one approval. md and up →
+the size stands, said with its evidence, and the md+ hand-off's lettered list (§Size and the small
+path) — *A. Write the spec* · *B. Build it in chat anyway*, the user's override to sm, recorded as
+such). Each steer is recorded
+under *Steering* in the record with the user as Who.
 
-**Under `--auto`**: play the intent back as `(assumed)`; when discovery runs, the frame is written as
+**Under `--auto`**: the quick path is never offered (SKILL §Quick path) — the run is the one it has
+always been; play the intent back as `(assumed)`; when discovery runs, the frame is written as
 `(assumed)` from the input, recon runs, no research runs — nothing outside the repo without a
 person's yes — and §Discovery · *Research* reads `not run (auto)`, the concepts are written to
 §Discovery, and the recommended concept is taken — `Concept:` carries it with

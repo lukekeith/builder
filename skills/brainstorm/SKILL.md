@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, offers research outside the repo (a community resource such as Mobbin when the session has one, otherwise the web) and runs it only on your yes, and proposes two to four concepts built from all of it until you name one; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
+description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, offers research outside the repo (a community resource such as Mobbin when the session has one, otherwise the web) and runs it only on your yes, and proposes two to four concepts built from all of it until you name one; offers a small change in existing code a quick path — the change proposed in the first turn and built on one yes, no rounds; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
 ---
 
 # `/builder:brainstorm` — understand it together, then decide what to build
@@ -65,7 +65,8 @@ Take these in order; the first that applies wins.
      `go-ahead:` in the manifest it hands to `/builder:spec --path <folder>`; after a go-ahead, set
      `status: handed-off` and hand each settled change to `/builder:revise --path <folder> <the
      ruling>` — one run per ruling.
-5. Otherwise it is new: confirm the derived kebab-case name in the first turn.
+5. Otherwise it is new: confirm the derived kebab-case name in the first turn (the quick path
+   states it instead — §Quick path).
 
 ## Intent — the first turn
 
@@ -77,25 +78,93 @@ Take these in order; the first that applies wins.
    read the few hits that matter. That takes seconds and settles most terms; only a term it leaves
    unclear goes deeper. A user who says "look up issue date" and gets back questions about what an
    issue date is has been failed — `issue_date` was one grep away.
-3. **Map it into the tree** (CONVERSATION §The record): the branches the input already settles, the
+3. **The quick check** — §Quick path. A request the grounding shows is a small change in existing
+   code is offered the quick path *instead of* the rest of this list; everything below runs only when
+   it doesn't qualify, or the user picks the full conversation.
+4. **Map it into the tree** (CONVERSATION §The record): the branches the input already settles, the
    ones grounding settled (`assumed`, with evidence), and the ones still open. Say the depth plainly:
    "Your brief settles 9 of 12 decisions — 3 open" or "This is an open idea — I'll explore it with you."
-4. **Play back the intent, grounded**: the outcome, who it is for, what success looks like — what the
+5. **Play back the intent, grounded**: the outcome, who it is for, what success looks like — what the
    user said kept apart from what you assume, the user's key rules quoted in their words — and **what
    each of their terms turned out to be**: "*issue date* is `Certificate.issue_date` — set when the
    cert is generated (`certs/generate.ts:88`), shown on the PDF header and the cert list, read by the
-   expiry report." The user corrects a finding; they never explain their own product to you. Ask
-   what is wrong.
-5. **Recon of the wider area carries on in parallel** (Explore agents, `sonnet`, one per app the
+   expiry report." The user corrects a finding; they never explain their own product to you. End
+   with the ways on (CONVERSATION §Ways on): `A. That's right — carry on (recommended)` ·
+   `B. Build it now — my recommendations on everything still open` · `C. Explore it first` (a
+   directed request or brief) or `C. Skip exploring — straight to the questions` (an abstract idea)
+   — and "Or say what's wrong."
+6. **Recon of the wider area carries on in parallel** (Explore agents, `sonnet`, one per app the
    idea plausibly touches) — how the neighbouring parts work, for *How it works today*; for an
    abstract idea, the wider brief of CONVERSATION §Discovery recon. It never holds up this turn.
-6. **Where it goes next.** An **abstract idea** → §Discovery, then §How it works today. A **directed
+7. **Where it goes next.** An **abstract idea** → §Discovery, then §How it works today. A **directed
    request** or a **brief** → §How it works today, then §Rounds. The user overrides either in words
    at any point — "let's explore" enters discovery for any input; "skip discovery" / "just build it"
    leaves it (CONVERSATION §Steering and --auto). A revision conversation never enters discovery.
+   "Just build it" at any later point skips the rest of the conversation too (CONVERSATION
+   §Steering and --auto).
 
 Write the record (`status: exploring`, `source: brainstorm`). The intent stays `(assumed)` until the
 user confirms or corrects it.
+
+## Quick path
+
+Most requests that reach brainstorm in a chat are edits: a label, a guard, a column moved, a
+form reworked. The full conversation — playback, how it works today, rounds, confirm, size — is
+due diligence they do not need. The grounding already done in the first turn is enough to see that,
+so the quick path is decided there, before any of the ceremony starts.
+
+**It qualifies** when the fast pass (and, for the terms the change touches, the follow pass) shows
+all of these — REFERENCE §The classifier read against the grounding, not against a settled tree:
+
+- a **directed request** or a **brief** — never an abstract idea, never a revision conversation
+  (a live SPEC), never under `--auto`;
+- the flow it changes **exists and was read** (classifier rule 1);
+- **one app**, and no new model, schema row, endpoint, permission, contract, route, screen or
+  shared component (rules 2–4);
+- **at most one** product choice left open with more than one defensible answer;
+- it fits one sitting.
+
+Any doubt → it does not qualify (the heavier size wins, as everywhere). Not qualifying is silent:
+the conversation goes on from §Intent step 4 as it always has.
+
+**When it qualifies, the first turn is the proposal** — no intent playback, no rounds, no name to
+confirm (the derived name is stated):
+
+```
+Quick path — this is a small change in existing code (<xs|sm>: <the evidence, one line>).
+
+<What you asked, grounded: each of your terms → what it is in the code, one line each.>
+<The change. xs: one sentence. sm: the app · the approach · files touched · the recipe skills
+it will read · tests · what you will see in the running app.>
+```
+
+Then the ways on, as a lettered list (CONVERSATION §Ways on) — no picker:
+
+```
+A. Build it (recommended) — <what gets changed and what you will see>
+B. Brainstorm it first — the full conversation: intent, how it works today, questions, confirm
+Reply A or B — "go" is A. Or say what's wrong.
+```
+
+With one open product choice, the build entry becomes one entry per defensible answer —
+`A. Build it: <answer> (recommended)` · `B. Build it: <answer>` · … — and *Brainstorm it first*
+takes the last letter; never a second question.
+
+A reply in the user's own words is a correction ("the badge on the owner view, not the list"):
+revise the proposal and offer the list again. **Picking a Build entry is the small path's one approval** (CONVERSATION §Size and the
+small path, step 2) — there is no second one. Then steps 3–6 of the small path run: recipe skills,
+TDD where behaviour changes, `commit: manual` respected, the fast gates, the human's look for
+anything visual, and the closing footer.
+
+**Brainstorm it first** → §Intent step 4 onward, unchanged, with nothing lost: the grounding stands.
+
+**The record**, written before the question so `/clear` cannot lose it: the header with
+`status: sized <xs|sm>` and `input:`, a one-line §Intent (`(assumed)`), and §Size with its evidence
+plus `quick path — offered <date>`. Resuming it lands in the small path (CONVERSATION §The record).
+
+**Found bigger mid-build** — a schema row, a second app, a contract the grounding missed: stop, say
+what was found, and offer §Intent step 4 onward with the work so far kept. Nothing downgrades; the
+size only ratchets up.
 
 ## Discovery
 
@@ -160,9 +229,11 @@ runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and --auto)
 ### Concepts
 
 When the frame is played back, research (if any) is in and recon (CONVERSATION §Discovery recon) is
-in, propose **two to four concepts** in chat. Each:
+in, propose **two to four concepts** in chat, lettered — **A** is the one you recommend, marked
+`(recommended)`, and the turn closes with `Reply with a letter — "go" is A. Or combine them, ask
+"what if …", or say none fit.` (CONVERSATION §Ways on). Each:
 
-- a short name
+- its letter and a short name
 - what the user would experience, as a paragraph, from their point of view
 - **the existing patterns it is built from, named** — "the filter chips the certificate list uses",
   "a side panel like the owner view" — a borrowed one marked "(from research: <where>)", and
@@ -176,8 +247,10 @@ ASCII layout or mermaid diagram when parts move); add their own; or say none fit
 frame with what was learned. Every turn rewrites §Discovery · *Concepts* with each concept's
 standing and why.
 
-🔴 **No AskUserQuestion in discovery, except the research offer.** The exit is the user naming the concept, in their words;
-confirm it in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
+🔴 **No AskUserQuestion in discovery, except the research offer.** The exit is the user naming the
+concept. **A letter (or a concept's name) names it outright**: state the two-line confirmation below
+and go on in the same turn — no "Right?". A combination, or a concept in the user's own words,
+is confirmed in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
 Right?" — and a yes ends discovery. "That's enough" converges on your recommended concept, stated
 as such. Under `--auto`, CONVERSATION §Steering and --auto takes the recommended concept without a
 turn.
@@ -233,5 +306,11 @@ End each turn that waits on the user with the resume footer:
 ```
 📍 <feature>: brainstorming (<n>/<m> settled) — resume with /builder:brainstorm --path <registry>/<feature>
 ```
+
+The quick path's proposal ends with
+`📍 <feature>: quick path offered (<xs|sm>) — reply A to build, or resume with /builder:brainstorm --path <registry>/<feature>`.
+
+Every pause puts its ways on above that footer as a lettered list (CONVERSATION §Ways on) — the
+frame's open questions excepted.
 
 **Continuing:** a bare "go", "yes" or "proceed" after a hand-off footer runs its command yourself.

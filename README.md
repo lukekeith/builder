@@ -10,7 +10,9 @@ is the card.
 **Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea
 with you — a vague idea framed, researched outside the repo when you allow it (Mobbin or the web), and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
 `/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is
-confirmed it is sized: **xs/sm** are designed and built in chat writing nothing under `docs/`; **md/lg** earn
+confirmed it is sized: **xs/sm** are designed and built in chat writing nothing under `docs/`
+(a small change in existing code takes the **quick path** — proposed in the first turn, built on
+one yes, no rounds; every pause ends in a lettered list of ways on — reply a letter, "go" is A); **md/lg** earn
 one write-once `SPEC.md` plus a ~12-line `MANIFEST.md` and run the pipeline; **xl** becomes a program
 of children. A spec is audited against the codebase **once** before any code, built **one app per
 phase**, then 🔒 **walked by a human** before the one deep verify pass and a single PR.
