@@ -346,7 +346,7 @@
       "when": "PLAN.md is committed; the same turn takes the one approval that covers the whole build, then the build profile.",
       "source": "skills/plan/SKILL.md §Hand off",
       "sources": [
-        "skills/plan/SKILL.md §The build profile (`agent_walk:` set)",
+        "skills/plan/SKILL.md §The go-ahead",
         "skills/plan/SKILL.md §🔴 One app per phase, the producer before its consumers"
       ],
       "feature": "cert-tags",
@@ -486,7 +486,7 @@
       "when": "The same plan step when the manifest says build: here, or in a project whose config has no agent_walk: block.",
       "source": "skills/plan/SKILL.md §Build here (`build: here`)",
       "sources": [
-        "skills/plan/SKILL.md §Picking the profile ahead — `/builder:agent` and `/builder:fleet`"
+        "skills/plan/SKILL.md §Picking the test plan ahead — `/builder:agent` and `/builder:fleet`"
       ],
       "feature": "cert-tags",
       "turns": [

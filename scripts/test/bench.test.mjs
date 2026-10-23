@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync, cpSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -109,9 +109,12 @@ test('--dry-run prepares one copy, prints the sessions per config with their pro
   const root = makeRoot()
   const r = runBench(root, ['run', 'tags', '--dry-run'])
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /builder-rush: 3 sessions/)
+  assert.match(r.stdout, /^builder: 3 sessions/m)
+  assert.match(r.stdout, /^builder-everything: 3 sessions/m)
+  assert.doesNotMatch(r.stdout, /builder-(rush|standard|thorough)/)
+  assert.match(r.stdout, /\[the recommended test plan\]/)
+  assert.match(r.stdout, /\[tests: slice=own\+app end=everything review=slice\]/)
   assert.match(r.stdout, /\/builder:brainstorm --auto/)
-  assert.match(r.stdout, /choose \*\*rush\*\*/)
   assert.match(r.stdout, /superpowers: 1 session/)
   assert.match(r.stdout, /gsd: 4 sessions/)
   assert.match(r.stdout, /\/gsd-new-project --auto @REQUEST\.md/)
@@ -156,9 +159,9 @@ test('run: superpowers only — one session, scored, runs.json and REPORT.md wri
   assert.ok(!existsSync(join(root, 'tmp', id, 'superpowers', 'REQUEST.md')))
 })
 
-test('run: builder — brainstorm, spec, then the fleet; its logs become sessions; the profile is in the owner prompt', () => {
+test('run: builder — brainstorm, spec, then the fleet; its logs become sessions; the go-ahead takes the recommendation', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
   assert.equal(r.status, 0, r.stderr)
   const dir = join(root, '.builder', 'bench')
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
@@ -172,11 +175,42 @@ test('run: builder — brainstorm, spec, then the fleet; its logs become session
   assert.equal(run.totals.turns, 1 + 1 + 3)
   assert.match(r.calls[0], /\/builder:brainstorm --auto/)
   assert.ok(r.calls.length === 2, `expected 2 claude calls, got ${r.calls.length}`)
+  assert.equal(run.tests, null)
+  assert.equal('profile' in run, false)
+  assert.doesNotMatch(r.calls.join('\n'), /choose the test plan/)
+  assert.doesNotMatch(readFileSync(join(root, 'tmp', id, 'builder', 'docs', 'features', 'tags', 'MANIFEST.md'), 'utf8'), /^tests:/m, 'no plan pre-set')
+})
+
+test('run: builder-everything pre-sets its test plan on the manifest before the fleet, and names it in the owner prompt', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'tags', '--only', 'builder-everything'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
+  assert.equal(r.status, 0, r.stderr)
+  const dir = join(root, '.builder', 'bench')
+  const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
+  const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
+  assert.equal(run.config, 'builder-everything')
+  assert.equal(run.tests, 'slice=own+app end=everything review=slice')
+  assert.match(r.calls[0], /choose the test plan \*\*tests: slice=own\+app end=everything review=slice\*\*/)
+  const copy = join(root, 'tmp', id, 'builder-everything')
+  assert.match(readFileSync(join(copy, 'docs', 'features', 'tags', 'MANIFEST.md'), 'utf8'), /^tests: slice=own\+app end=everything review=slice$/m)
+  assert.match(git(copy, 'log', '--format=%s', 'main'), /bench\(tags\): test plan slice=own\+app end=everything review=slice/)
+})
+
+test('presetTests replaces a tests: line already there and is a no-op without a plan or a manifest', async () => {
+  const { presetTests } = await import('../bench.mjs')
+  const copy = makeRoot()
+  mkdirSync(join(copy, 'docs', 'features', 'a'), { recursive: true })
+  const mf = join(copy, 'docs', 'features', 'a', 'MANIFEST.md')
+  writeFileSync(mf, 'state: spec\ntests: slice=own end=touched review=end\nnext: x\n')
+  assert.equal(presetTests(copy, 'a', null), false)
+  assert.equal(presetTests(copy, 'missing', 'slice=full'), false)
+  assert.equal(presetTests(copy, 'a', 'slice=own+app end=everything review=slice'), true)
+  assert.equal(readFileSync(mf, 'utf8'), 'state: spec\ntests: slice=own+app end=everything review=slice\nnext: x\n')
 })
 
 test('run: builder config sized xs/sm in the brainstorm record is in-chat — spec and fleet are not run', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized sm', files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' }, '/builder:spec': { skills: [] } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized sm', files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' }, '/builder:spec': { skills: [] } })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1, 'spec and fleet are skipped')
   const dir = join(root, '.builder', 'bench')
@@ -196,13 +230,13 @@ const readRun = (root) => {
 
 test('run: builder — the owner line forbids running the fleet from a session', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: [] } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: [] } })
   assert.match(r.calls[0], /do not run \/builder:agent, \/builder:fleet or any agent/)
 })
 
 test('run: builder — a brainstorm that launches the fleet itself is waited on and its record taken', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm', 'builder:spec', 'builder:agent'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true } }, { STUB_FLEET_DELAY_MS: '3000', BENCH_FLEET_POLL_MS: '100' })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm', 'builder:spec', 'builder:agent'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true } }, { STUB_FLEET_DELAY_MS: '3000', BENCH_FLEET_POLL_MS: '100' })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1)
   const { run } = readRun(root)
@@ -213,7 +247,7 @@ test('run: builder — a brainstorm that launches the fleet itself is waited on 
 
 test('run: builder — a fleet that finished before the session ended is found by its record (rule d)', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true } }, { STUB_FLEET_DELAY_MS: '0', BENCH_FLEET_POLL_MS: '100' })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true } }, { STUB_FLEET_DELAY_MS: '0', BENCH_FLEET_POLL_MS: '100' })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1)
   const { run } = readRun(root)
@@ -224,18 +258,18 @@ test('run: builder — a fleet that finished before the session ended is found b
 
 test('run: builder — a dead fleet (stale lock, entry still walking) is failed, and no second fleet starts', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', fleetState: { lock: 'dead', entry: { status: 'walking' } } } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', fleetState: { lock: 'dead', entry: { status: 'walking' } } } })
   assert.equal(r.status, 0, r.stderr)
   const { run } = readRun(root)
   assert.match(run.status, /^failed: fleet stopped \(walking\)/)
   assert.deepEqual(run.sessions.map((s) => s.name), ['brainstorm'])
   const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
-  assert.ok(!existsSync(join(root, 'tmp', id, 'builder-rush', '.builder', 'fleet', 'logs', '_archive')), 'the stub fleet must not have run')
+  assert.ok(!existsSync(join(root, 'tmp', id, 'builder', '.builder', 'fleet', 'logs', '_archive')), 'the stub fleet must not have run')
 })
 
 test('run: builder — a session cut by the idle timeout while waiting on its fleet still yields the fleet record', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true, hang: true } }, { STUB_FLEET_DELAY_MS: '2000', BENCH_FLEET_POLL_MS: '100', BENCH_IDLE_TIMEOUT_MS: '700' })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec', launchFleet: true, hang: true } }, { STUB_FLEET_DELAY_MS: '2000', BENCH_FLEET_POLL_MS: '100', BENCH_IDLE_TIMEOUT_MS: '700' })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1)
   const { run, report } = readRun(root)
@@ -248,7 +282,7 @@ test('run: builder — a session cut by the idle timeout while waiting on its fl
 
 test('run: builder — a manifest after brainstorm skips the spec session', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec' } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md', manifest: 'tags', commit: 'spec' } })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1)
   assert.match(r.calls[0], /^\/builder:brainstorm/)
@@ -259,7 +293,7 @@ test('run: builder — a manifest after brainstorm skips the spec session', () =
 
 test('run: builder — a brainstorm record handed-off with no manifest, archive or fleet record is in-chat', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'handed-off', files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'handed-off', files: { 'src/tags.mjs': 'x' }, commit: 'feat: tags in chat' } })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.calls.length, 1)
   const { run } = readRun(root)
@@ -270,7 +304,7 @@ test('run: builder — a brainstorm record handed-off with no manifest, archive 
 
 test('run: a spec session that leaves no manifest on a sized md feature is a failure, not in-chat', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: [] } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: [] } })
   assert.equal(r.status, 0, r.stderr)
   const dir = join(root, '.builder', 'bench')
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
@@ -282,7 +316,7 @@ test('run: a spec session that leaves no manifest on a sized md feature is a fai
 
 test('run: a parked fleet feature ends the config as parked with the reason', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { STUB_FLEET_PARK: '1' })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { STUB_FLEET_PARK: '1' })
   assert.equal(r.status, 0, r.stderr)
   const dir = join(root, '.builder', 'bench')
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
@@ -354,10 +388,10 @@ test('run: --repeat 2 gives two reps and the report says median of 2', () => {
 
 test('run: --model reaches every session, the fleet\'s included', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush', '--model', 'm1'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder', '--model', 'm1'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } })
   assert.equal(r.status, 0, r.stderr)
   const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
-  const cfg = readFileSync(join(root, 'tmp', id, 'builder-rush', '.claude', 'builder.md'), 'utf8')
+  const cfg = readFileSync(join(root, 'tmp', id, 'builder', '.claude', 'builder.md'), 'utf8')
   const line = cfg.split('\n').find((l) => /claude_args/.test(l))
   assert.equal(line.split('--model m1').length - 1, 1, line)
   assert.match(r.calls[0], /--model/)
@@ -365,7 +399,7 @@ test('run: --model reaches every session, the fleet\'s included', () => {
 
 test('run: a fleet script that cannot start is a failed row', () => {
   const root = makeRoot()
-  const r = runBench(root, ['run', 'tags', '--only', 'builder-rush'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { BENCH_FLEET: '/nonexistent/fleet.mjs' })
+  const r = runBench(root, ['run', 'tags', '--only', 'builder'], { '/builder:brainstorm': { skills: ['builder:brainstorm'], brainstormRecord: 'sized md' }, '/builder:spec': { skills: ['builder:spec'], manifest: 'tags', commit: 'spec(tags)' } }, { BENCH_FLEET: '/nonexistent/fleet.mjs' })
   assert.equal(r.status, 0, r.stderr)
   const id = readdirSync(join(root, '.builder', 'bench')).find((n) => n.endsWith('-tags'))
   const run = JSON.parse(readFileSync(join(root, '.builder', 'bench', id, 'runs.json'), 'utf8')).runs[0]
@@ -402,6 +436,20 @@ test('status after a run shows the table and not running; report rebuilds REPORT
   assert.equal(rp.status, 0, rp.stderr)
   assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /^# benchmark/)
   assert.match(rp.stdout, /\| superpowers \| done \|/)
+})
+
+test('report rebuilds a run from before the test plan (builder-rush / -standard / -thorough, a profile key)', () => {
+  const root = makeRoot()
+  const id = '2026-10-14-0136-tags'
+  const dir = join(root, '.builder', 'bench', id)
+  mkdirSync(dir, { recursive: true })
+  cpSync(join(REPO, 'bench', 'results', id, 'runs.json'), join(dir, 'runs.json'))
+  assert.ok(JSON.parse(readFileSync(join(dir, 'runs.json'), 'utf8')).runs.some((x) => x.profile === 'rush'), 'the old run carries profile keys')
+  const rp = runBench(root, ['report', id])
+  assert.equal(rp.status, 0, rp.stderr)
+  const md = readFileSync(join(dir, 'REPORT.md'), 'utf8')
+  assert.match(md, /^# benchmark/)
+  assert.match(md, /\| builder-rush/)
 })
 
 test('status with a dead lock says the run stopped; a second run refuses while a live lock is held', () => {

@@ -258,19 +258,19 @@ test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line;
   for (const f of ['tidy.mjs', 'inventory.mjs', 'tidy-core.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
 
-test('the go-ahead picks a build profile and launches the fleet; resume routes a go-ahead to the agents', () => {
+test('the go-ahead takes a test plan and launches the fleet; resume routes an agent go-ahead to the agents', () => {
   const plan = read('skills/plan/SKILL.md')
   assert.match(plan, /profile\.mjs --recommend <folder>/)
-  assert.match(plan, /profile\.mjs --estimate <folder> --profile/)
+  assert.match(plan, /profile\.mjs --cost <folder> --tests/)
   assert.match(plan, /fleet\.mjs <feature> --detach --into <target>/)
-  assert.match(plan, /Walk it yourself before it lands/)
+  assert.match(plan, /Walk it yourself before\s+it lands\?/)
   assert.match(plan, /\/builder:init --update/)
-  assert.match(plan, /profile: custom k=v/)
-  assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<profile>\)/)
+  assert.match(plan, /tests: slice=<v> end=<v> review=<v>/)
+  assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<test plan>\)/)
   // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
   assert.doesNotMatch(plan, /2\. agent/)
   const resume = read('skills/resume/SKILL.md')
-  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
+  assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `target:` or an old `profile:`[^\n]*`tests:` alone is an in-chat go-ahead[^\n]*\*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
   assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
 })
 
@@ -279,10 +279,10 @@ test('agents get the right target, no hand build in agent_walk projects, and the
   // I-1: under the fleet, the target is the --into the run was given.
   assert.match(plan, /^Invocation: [^\n]*\[--into <branch>\]/m)
   assert.match(plan, /`target: <the --into this run was given>`/)
-  // I-3: the target is a second question in the same call; Other on the profile question is only Customize.
+  // I-3: the target is its own question in the same call; Other on a testing question is the rest of the levers.
   assert.match(plan, /\*\*Land on\?\*\*/)
   assert.match(plan, /`<merge_into> \(Recommended\)`/)
-  assert.match(plan, /Other[^\n]*means only \*\*Customize\*\*/)
+  assert.match(plan, /The tool.s \*Other\* on any of the three testing questions is the rest of the levers/)
   // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
   const resume = read('skills/resume/SKILL.md')
   assert.match(resume, /^\| `state: planned` \*\*and\*\* `go-ahead: none` \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:plan --path <folder>/m)
@@ -302,8 +302,8 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   const build = read('skills/build/SKILL.md')
   assert.match(build, LEVERS)
   assert.match(build, FLOORS)
-  assert.match(build, /final`[^\n]*no per-task reviewer/)
-  assert.match(build, /`per-task\+second`[\s\S]{0,200}§Contract or §Schema/)
+  assert.match(build, /\*\*`end`\*\* → no task reviewer at all/)
+  assert.match(build, /`slice\+second`[\s\S]{0,200}§Contract or §Schema/)
   assert.match(build, /`unruled: park`/)
   assert.match(build, /\.builder\/fleet\/requests\/<feature>\.pause/)
   assert.match(build, /revising — next: \/builder:revise --path <folder>/)
@@ -315,15 +315,16 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   const walk = read('skills/agent-walk/SKILL.md')
   assert.match(walk, LEVERS)
   assert.match(walk, FLOORS)
-  for (const v of ['none', 'risky', 'full', 'full+human']) assert.ok(walk.includes(`\`testing: ${v}\``), `agent-walk names testing: ${v}`)
-  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(profile: rush\) — not human-tested/)
+  for (const v of ['end=none', 'end=touched', 'end=risk', 'end=everything', 'walk=you']) assert.ok(walk.includes(`\`${v}\``), `agent-walk names ${v}`)
+  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(tests: end=<none\|touched>\) — not human-tested/)
   assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
-  assert.match(walk, /`persist: low`[^\n]*1 failed round/)
+  assert.match(walk, /`persist=low`[^\n]*1 failed round/)
   const verify = read('skills/verify/SKILL.md')
   assert.match(verify, LEVERS)
   assert.match(verify, FLOORS)
-  assert.match(verify, /`verify: floors`/)
-  assert.match(verify, /consumer parity when[^\n]*`released_artifact`/)
+  assert.match(verify, /`end=touched`/)
+  assert.match(verify, /gate\.mjs <every\s+in-scope app> --typecheck/)
+  assert.match(verify, /consumer parity\s+when a `released_artifact`/)
   const revise = read('skills/revise/SKILL.md')
   assert.match(revise, /fleet\.mjs --pause <feature>/)
   assert.match(revise, /every 30 s[^\n]*20 min/)
@@ -333,12 +334,15 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   const init = read('skills/init/SKILL.md')
   assert.match(init, /build_profile_default/)
-  assert.match(read('skills/status/SKILL.md'), /Profile/)
+  assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}own · touched · end/)
   for (const f of ['skills/help/SKILL.md', 'README.md']) {
     const s = read(f)
-    for (const p of ['Rush', 'Standard', 'Thorough', 'Thorough + you']) assert.ok(s.includes(p), `${f} names ${p}`)
+    assert.match(s, /Testing per slice/, `${f} names the per-slice question`)
+    assert.match(s, /Testing at the end/, `${f} names the end question`)
+    assert.doesNotMatch(s, /\*\*Rush\*\*/, `${f} names no preset`)
     assert.match(s, /floors/, `${f} names the floors`)
-    assert.match(s, /How should agents build/, `${f} names the go-ahead's profile question`)
+    assert.match(s, /a type-check of every touched app/, `${f} names the type-check floor`)
+    assert.match(s, /Change the test plan/, `${f} names the go-ahead's B`)
   }
 })
 
@@ -371,7 +375,7 @@ test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise nev
   assert.match(walk, /between rounds[\s\S]{0,200}\.builder\/fleet\/requests\/<feature>\.pause[\s\S]{0,200}revising — next: \/builder:revise --path <folder>/i)
 })
 
-test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause requests are found, old go-aheads build by hand', () => {
+test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause requests are found, old and in-chat go-aheads build by hand', () => {
   const resume = read('skills/resume/SKILL.md')
   const signoff = read('skills/signoff/SKILL.md')
   const agent = read('skills/agent/SKILL.md')
@@ -391,12 +395,12 @@ test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause request
   assert.match(signoff, /whatever the verdict, hand it back[\s\S]{0,120}fleet\.mjs <feature> --detach --into <target>/)
   // C1.3: agent and resume's agent row never unpark a park waiting for your walk.
   assert.match(agent, /The one exception:\*\* a\s+park whose reason starts `waiting for your walk`[\s\S]{0,200}never unparked here/)
-  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`') && l.includes('`profile:` or `target:`'))
+  const agentRow = resume.split('\n').find((l) => l.startsWith('| `state: planned` with a go-ahead, or `state: building`') && l.includes('`target:` or an old `profile:`'))
   assert.match(agentRow, /`waiting for your walk …` is the walk row above, never this one/)
   // C1.4: the park's next step stays resume.
   assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
-  // I5: only a 4.9 go-ahead (profile: or target:) routes to agents; a 4.8 one builds by hand.
-  assert.match(agentRow, /carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/)
+  // I5: only an agent go-ahead (target:, or an old profile:) routes to agents; tests: alone or a 4.8 one builds by hand.
+  assert.match(agentRow, /carries `target:` or an old `profile:`[^\n]*`tests:` alone is an in-chat go-ahead[^\n]*\/builder:agent --path <folder>/)
   assert.match(agentRow, /Neither key \(a 4\.8 go-ahead\)/)
   assert.match(build, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `profile:` or `target:`[^\n]*\/builder:agent --path <folder>/m)
   // I2: the pause check reads the fleet dir the fleet exports.
@@ -409,14 +413,35 @@ test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause request
   assert.match(revise, /`awaiting-ship` or `shipping` too/)
 })
 
-test('4.9.1: agents ask the build profile before launching; a headless go-ahead keeps it', () => {
+test('4.9.1: agents ask the test plan before launching; a headless go-ahead keeps it', () => {
   const plan = read('skills/plan/SKILL.md'), agent = read('skills/agent/SKILL.md'), fleet = read('skills/fleet/SKILL.md')
-  assert.match(plan, /### Picking the profile ahead/)
-  assert.match(plan, /keep a `profile:` and\s+`target:` the manifest already carries/)
+  assert.match(plan, /### Picking the test plan ahead/)
+  assert.match(plan, /keep a `tests:` \(or an old\s+`profile:`\) and `target:` the manifest already carries/)
   for (const s of [agent, fleet]) {
-    assert.match(s, /§Picking the profile ahead/)
-    assert.match(s, /no\s+`profile:`/)
+    assert.match(s, /§Picking the test plan ahead/)
+    assert.match(s, /no\s+`tests:`/)
   }
+})
+
+test('4.12.0: the go-ahead shows slices and a test plan you can change', () => {
+  const plan = read('skills/plan/SKILL.md')
+  const g = plan.slice(plan.indexOf('## The go-ahead'), plan.indexOf('### Build here'))
+  assert.match(g, /node <builder>\/scripts\/plan-slices\.mjs <folder>/)
+  assert.match(g, /^A\. Build it with this plan \(recommended\)/m)
+  assert.match(g, /^B\. Change the test plan/m)
+  assert.match(g, /^C\. Keep planning/m)
+  assert.match(g, /"go" is A/)
+  // The three questions, each recommendation first.
+  assert.match(g, /\*\*Testing while building — after each slice:\*\* \*\*Its own tests\*\*/)
+  assert.match(g, /\*\*Testing at the end — once every slice is built:\*\* \*\*The touched apps' suites, once\*\*/)
+  assert.match(g, /\*\*Review:\*\* \*\*Once at the end\*\*/)
+  // The floors are never offered off.
+  assert.match(g, /\*\*The floors are not options\*\*/)
+  assert.match(g, /the type-check of every touched app before\s+the work lands, and the final whole-branch review/)
+  // Build reads the levers on every build.
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, /^## The test plan — read on every build$/m)
+  assert.match(build, /node <builder>\/scripts\/profile\.mjs --levers <folder>/)
 })
 
 test('4.9.1: splits are cut by value and "one spec" is always offered', () => {
