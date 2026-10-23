@@ -59,7 +59,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | **Build it yourself, without the ceremony** | Pick `3. here` (or `2.` without `agent_walk`) on a handoff before the build, or `/builder:resume --path <folder> --here`. The audit and plan still run in full; then this session works `PLAN.md` task by task, test first, fast gates at each phase close. No fleet, no reviewer agents, no walk lock, no sign-off or verify. It stops at `state: built`, so `/builder:resume` can still walk, verify and ship it later |
 | **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
-| **Is builder fast enough, and where does its time go?** | `/builder:benchmark` — one small feature through builder at rush, standard and thorough and through superpowers and GSD, unattended; a report of time per step, what each step did, tokens, cost and whether the feature works. `--status` while it runs |
+| **Is builder fast enough, and where does its time go?** | `/builder:benchmark` — one small feature through builder with the recommended test plan and with everything, and through superpowers and GSD, unattended; a report of time per step, what each step did, tokens, cost and whether the feature works. `--status` while it runs |
 | **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
 | **Which builder am I on?** | `/builder:version` — the version this session loaded, what's installed, the newest release known here, and the one step that brings it current. Never fetches |
 | **Watch it run** | `/builder:statusline` — adds a `builder` progress bar to your status line: fleet progress, a build in the chat, running gates. `idle` when nothing runs; `--off` removes it |
@@ -140,19 +140,21 @@ the repo grows a second app.
 ## The human gates (three, plus the PR lock)
 
 1. **Decisions gate** — the OPEN rows in SPEC §Decisions, asked in one message, recommendation first.
-2. **Build go-ahead** — one approval of `PLAN.md`'s `## Phases` table. One artifact, one approval —
-   an approved design is not re-approved as a plan. With an `agent_walk:` block, the go-ahead also
-   asks **How should agents build "<feature>"?** and launches agents on the answer — the build
-   profile, recorded as `profile:` on the manifest:
-   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands.
-   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
-   - **Thorough** — today's full pipeline: every task reviewed, full agent walk, deep verify with
-     cross-app E2E.
-   - **Thorough + you** — Thorough, then your own walk and `/builder:signoff` before it lands.
-   - *Customize* sets the levers one by one — stronger models and a second reviewer on contract and
-     schema tasks are only there. **The floors hold under every profile:** each
-     app's fast gates at its phase close, the final whole-branch review, and consumer parity when a
-     `released_artifact` consumer is affected.
+2. **Build go-ahead** — one approval of the plan, shown as numbered slices (one per task, grouped by
+   app) with what each one tests, and the **test plan** with what it costs — test runs, and minutes
+   once the gates have been timed. "go" builds with the recommended plan; *Change the test plan*
+   sets three things, recorded as `tests:` on the manifest:
+   - **Testing per slice** — its own tests (recommended) · plus the app's suite when its slices are
+     done · the app's suite after every slice · none while building.
+   - **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
+     risky parts · everything: deep set, cross-app E2E, the full walk · nothing — you test it.
+   - **Review** — once at the end (recommended) · once per app · after every slice.
+   The recommended plan is the fast one; a schema change or a released consumer raises only the end,
+   and says why. *Other* reaches models, persistence and parking. **The floors hold under every
+   plan:** a type-check of every touched app before the work lands, and the final whole-branch
+   review. The plan governs an in-chat build and an agent build alike; your walk before a PR is not
+   part of it. With an `agent_walk:` block, the go-ahead also launches agents on the answer. (An old
+   `profile:` line on a manifest is still read.)
 3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished
    feature and said, in your own words, that it works. A green gate run or a code review is evidence
    for you, never your sign-off. Spend it with `/builder:signoff`.

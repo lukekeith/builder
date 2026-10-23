@@ -1,6 +1,6 @@
 ---
 name: benchmark
-description: Run one small feature through builder at rush, standard and thorough and through superpowers and GSD, unattended, and report time per step, what happened in each step, turns, tokens, cost and whether the feature works (acceptance tests the agent never sees). Launches scripts/bench.mjs detached and reports its table; --status shows the run in progress or the last report; --report <run-id> rebuilds one. Use when the user asks to benchmark builder, compare it with superpowers or GSD, measure a pipeline, or find where agent builds spend their time.
+description: Run one small feature through builder with the recommended test plan and with everything, and through superpowers and GSD, unattended, and report time per step, what happened in each step, turns, tokens, cost and whether the feature works (acceptance tests the agent never sees). Launches scripts/bench.mjs detached and reports its table; --status shows the run in progress or the last report; --report <run-id> rebuilds one. Use when the user asks to benchmark builder, compare it with superpowers or GSD, measure a pipeline, or find where agent builds spend their time.
 ---
 
 # `/builder:benchmark` — where the time goes
@@ -11,16 +11,17 @@ The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it a
 `<builder>` per [REFERENCE](../resume/REFERENCE.md) §The scripts. Design and the report's meaning:
 `bench/README.md` in the plugin.
 
-**What it does:** for each configuration — `builder-rush`, `builder-standard`, `builder-thorough`,
-`superpowers`, `gsd` — it copies the fixture project (`bench/fixture/`, a notes CLI), makes it a
-repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
+**What it does:** for each configuration — `builder` (the recommended test plan: what a user who
+says "go" gets), `builder-everything` (`slice=own+app end=everything review=slice`: the full
+pipeline), `superpowers`, `gsd` — it copies the fixture project (`bench/fixture/`, a notes CLI), makes
+it a repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
 brainstorm → spec → the fleet engine (audit, plan, build, agent walk, verify, ship, merge);
 superpowers as one session from brainstorming to a merged branch; GSD as its four commands. Every
 session gets an owner prompt that answers every question with the recommendation and never waits;
-builder sessions are told which profile to pick. Afterwards the fixture's tests and the feature's
-hidden acceptance tests score what landed. Configs run one at a time — never in parallel — so one
-never skews another. Nothing in the user's Claude home changes: plugins load with `--plugin-dir`
-for the session only, and GSD installs into the copy.
+`builder-everything` sessions are told which test plan to pick. Afterwards the fixture's tests and
+the feature's hidden acceptance tests score what landed. Configs run one at a time — never in
+parallel — so one never skews another. Nothing in the user's Claude home changes: plugins load with
+`--plugin-dir` for the session only, and GSD installs into the copy.
 
 ## 1. `--status` and `--report`
 
@@ -49,7 +50,7 @@ node <builder>/scripts/bench.mjs run <feature> <the same flags> --dry-run
 ```
 
 Show it as a short table — one row per config: the sessions it will make, their first prompts,
-the profile a builder row is told to pick — plus the plugins a session loads (so a second builder
+the test plan a builder row is told to pick (`recommended` for `builder`) — plus the plugins a session loads (so a second builder
 sneaking in is caught here), the model, and the estimate: the sum of the last report's walls for
 these configs when `status` has one, else "no estimate yet".
 
