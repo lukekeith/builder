@@ -31,6 +31,9 @@
   { "group": "Variations", "id": "here", "title": "Build here", "short": "audit and plan, then built in this session",
     "blurb": "The `here` option: the audit and plan still run, then this session builds it without the ceremony.",
     "steps": ["plan-go-ahead-variants", "build-here-end"] },
+  { "group": "Variations", "id": "test-plan", "title": "Choosing a test plan", "short": "slices, the three questions, what each costs",
+    "blurb": "At the go-ahead the plan is shown as slices with the recommended test plan and its cost. **B. Change the test plan** asks three things — testing per slice, testing at the end, and when to review — each option leading with what it costs for this plan; the test-plan lines come back with the new counts, then **A** builds it.",
+    "steps": ["plan-go-ahead", "test-plan-change"] },
   { "group": "Variations", "id": "problems", "title": "When it isn't ready", "short": "not walkable, PROBLEMS, INCOMPLETE",
     "blurb": "The paths that loop back: a build not ready to walk, a walk that found problems, a verify that came back INCOMPLETE.",
     "steps": ["walk-not-ready", "signoff-problems", "verify-incomplete", "condense-standalone"] },
@@ -39,7 +42,7 @@
     "steps": ["revise-per-team"] },
 
   { "group": "Agents", "id": "agent", "title": "Hand it to agents", "short": "agent → fleet → agent walk → merge",
-    "blurb": "`/builder:agent` picks unfinished features, takes the build profile and landing branch, and runs them through the fleet; an agent walks and signs off in place of the human.",
+    "blurb": "`/builder:agent` picks unfinished features, takes the test plan and landing branch, and runs them through the fleet; an agent walks and signs off in place of the human.",
     "steps": ["agent-pick", "agent-profile", "agent-launch", "fleet-status", "agent-walk-pass", "fleet-report"] },
   { "group": "Agents", "id": "fleet", "title": "Adding to a running fleet", "short": "fleet: add, status, report",
     "blurb": "More specs joining a fleet that is already running, its status mid-run and its final report.",

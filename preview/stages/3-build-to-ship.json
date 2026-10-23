@@ -14,7 +14,7 @@
       "turns": [
         {
           "role": "note",
-          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken today launches agents (plan §The build profile) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead with no profile:/target: on the manifest — or what the fleet's log shows."
+          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken there launches agents (plan §The go-ahead) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead taken without one — or what the fleet's log shows. Either way it reads the manifest's tests:."
         },
         {
           "role": "user",
@@ -22,7 +22,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: planned · go-ahead: Luke Keith 2026-10-22 · contract: open"
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: planned · go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=risk review=end · contract: open"
         },
         {
           "role": "tool",
@@ -34,7 +34,7 @@
         },
         {
           "role": "claude",
-          "text": "Building cert-tags on `feat/ACME-412-cert-tags` — 4 phases · 12 tasks · phase 2 (api) freezes the contract. Pre-flight scan written to the ledger:\n\n```markdown\n# builder ledger — plan: docs/features/cert-tags/PLAN.md\n\n## Pre-flight\n| Row | Tasks | Shared | Finding |\n|---|---|---|---|\n| shared file | 4 · 5 | apps/api/src/routes/tags.ts | 5 extends the router 4 creates — ordered, no conflict |\n| shared file | 2 · 3 | apps/api/src/services/ownership.ts | 3 reuses the guard 2 writes — ordered |\n| interface | 6 → 7 · 8 · 9 | `CertificateListItem.tags`, `?tag=` | consumers read exactly the §Contract shape |\n| self-consistency | 1–12 | — | Files, Interfaces and steps agree |\n| stays in its app | 1–12 | — | every task's Files sit under its App: path |\n| unruled | 4 | §Decisions D3 \"no duplicate tags\" | case not said — Ruling below |\n\nRuling: tag names unique per owner, case-insensitive — D3 says \"no duplicate tags\" and \"Urgent\"/\"urgent\" would read as duplicates — costs one migration relaxing the index if wrong\n\n## env notes\n```\n\nPhase 1 (api) — Task 1.",
+          "text": "Building cert-tags on `feat/ACME-412-cert-tags` — 3 phases · 12 slices · phase 1 (api) freezes the contract · test plan own · risk · end: each slice runs its own tests, the suites wait for the end, one review at the end. Pre-flight scan written to the ledger:\n\n```markdown\n# builder ledger — plan: docs/features/cert-tags/PLAN.md\n\n## Pre-flight\n| Row | Tasks | Shared | Finding |\n|---|---|---|---|\n| shared file | 1 · 2 | apps/api/prisma/schema.prisma | 2 reads the models 1 migrates — ordered, no conflict |\n| shared file | 3 · 4 | apps/api/src/routes/certificates.ts | 4 extends the payload 3 filters — ordered |\n| interface | 4 → 5 · 7 · 10 · 11 · 12 | `CertificateListItem.tags`, `?tag=` | consumers read exactly the §Contract shape |\n| self-consistency | 1–12 | — | Files, Interfaces and steps agree |\n| stays in its app | 1–12 | — | every task's Files sit under its App: path |\n| unruled | 2 | §Decisions D3 \"no duplicate tags\" | case not said — Ruling below |\n\nRuling: tag names unique per owner, case-insensitive — D3 says \"no duplicate tags\" and \"Urgent\"/\"urgent\" would read as duplicates — costs one migration relaxing the index if wrong\n\n## env notes\n```\n\nPhase 1 (api) — Task 1.",
           "inferred": true
         },
         {
@@ -43,16 +43,16 @@
         }
       ],
       "stamp": {
-        "hash": "ada50b238ce9",
-        "version": "4.11.3",
+        "hash": "7c112ef27c8c",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
     {
       "id": "build-task-review",
       "skill": "build",
-      "title": "A task done, then its task review",
-      "when": "Every task in the build: a fresh implementer, then a task reviewer against the diff and §Contract, a fix round if it finds something, then the ledger line.",
+      "title": "A slice done — and its task review, when the test plan sets one",
+      "when": "Every task in the build: a fresh implementer running its own tests and the type-check. Under the recommended review=end no task reviewer runs and the ledger line says so; under review=slice a reviewer checks the diff against §Contract, with a fix round if it finds something.",
       "source": "skills/build/EXECUTION.md §5. Complete the task",
       "sources": [
         "skills/build/SKILL.md §The task loop",
@@ -63,11 +63,20 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(<builder>/scripts/task-brief docs/features/cert-tags/PLAN.md 4 \".builder/cert-tags/task-4-brief.md\") — + SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints"
+          "text": "⏺ Bash(<builder>/scripts/task-brief docs/features/cert-tags/PLAN.md 2 \".builder/cert-tags/task-2-brief.md\") — + SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(implementer — Task 4: GET/POST /tags, DELETE /tags/:id) — DONE · 1 commit"
+          "text": "⏺ Agent(implementer — Task 2: Tag create / rename / delete endpoints) — DONE · 1 commit · its 6 new tests and api typecheck green"
+        },
+        {
+          "role": "claude",
+          "text": "Task 2: complete (commits 3f2a1c0..6e81b0d, no task review (tests: review=end))\n\nTask 3 — ?tag= filter on GET /certificates.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "tests: review=end — the recommended plan. A DONE report goes straight to the ledger; the one review is the final whole-branch review when the last phase signs. The implementer runs its own tests and the type-check, never the app's suite (under slice=full the gate runner runs that after the task). Under review=slice the same task looks like this:"
         },
         {
           "role": "tool",
@@ -75,42 +84,42 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(task reviewer — Task 4) — spec ✅ · quality: 1 Important, 1 Minor"
+          "text": "⏺ Agent(task reviewer — Task 2) — spec ✅ · quality: 1 Important, 1 Minor"
         },
         {
           "role": "claude",
-          "text": "Task 4: minor (deferred): the route's body schema repeats the Tag zod type instead of importing it",
+          "text": "Task 2: minor (deferred): the route's body schema repeats the Tag zod type instead of importing it",
           "inferred": true
         },
         {
           "role": "tool",
-          "text": "⏺ SendMessage(implementer — Task 4, fix round 1: DELETE /tags/:id doesn't check owner_id)"
+          "text": "⏺ SendMessage(implementer — Task 2, fix round 1: DELETE /tags/:id doesn't check owner_id)"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(re-review — Task 4, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
+          "text": "⏺ Agent(re-review — Task 2, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
         },
         {
           "role": "claude",
-          "text": "Task 4: fix round 1/5 (1 addressed, 0 open — DELETE /tags/:id now scoped to owner_id; commits 6e81b0d..b20c4f7)\nTask 4: complete (commits 3f2a1c0..b20c4f7, review clean)\n\nTask 5 — PUT /certificates/:id/tags.",
+          "text": "Task 2: fix round 1/5 (1 addressed, 0 open — DELETE /tags/:id now scoped to owner_id; commits 6e81b0d..b20c4f7)\nTask 2: complete (commits 3f2a1c0..b20c4f7, review clean)\n\nTask 3 — ?tag= filter on GET /certificates.",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "The ledger lines are verbatim templates; the reviewer gets §Contract too and judges the diff against it. Minor findings never enter the loop — they go to the ledger for the final review. Five fix rounds max, then the controller adjudicates."
+          "text": "The ledger lines are verbatim templates; the reviewer gets §Contract too and judges the diff against it. Minor findings never enter the loop — they go to the ledger for the final review. Five fix rounds max, then the controller adjudicates. Under review=app the same review runs once over each phase's whole diff at its close."
         }
       ],
       "stamp": {
-        "hash": "65fe6b89c2ad",
-        "version": "4.11.3",
+        "hash": "7f9d892fe8a3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
     {
       "id": "build-phase-close-freeze",
       "skill": "build",
-      "title": "Phase close — the app's fast gates, and the contract freeze",
-      "when": "When every task of a phase is complete; the producer's (api) last phase also freezes the contract.",
+      "title": "Phase close — gates deferred, and the contract freeze",
+      "when": "When every task of a phase is complete. Under the recommended slice=own no fast set runs here — the suites run once at the end; the producer's phase (api, phase 1) also freezes the contract.",
       "source": "skills/build/SKILL.md §Phase close — the controller's own work",
       "sources": [
         "skills/resume/REFERENCE.md §Quality gates — the mechanism"
@@ -118,22 +127,31 @@
       "feature": "cert-tags",
       "turns": [
         {
+          "role": "claude",
+          "text": "Phase 1 was the producer's — contract frozen: `contract: frozen 2026-10-22` on the manifest, committed `chore(ACME-412): cert-tags — contract frozen at phase 1`.\n\nSC1–SC3 ticked with migration `20261022093000_add_tags` — `docs(ACME-412): cert-tags — SC# landed`.\n\nPhase 1 (api): closed — gates deferred to the end (tests: slice=own) · 8b7d2e4\n\nPhase 2 (web) — every consumer task from here is briefed against the frozen contract: a mismatch is reported, never worked around.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Under slice=own or none, no fast set runs at a phase close — the api, web and mobile suites run once, when the last phase signs. Under own+app (or full, which also runs it after every task) the app's fast set runs here first, through the gate runner:"
+        },
+        {
           "role": "tool",
           "text": "⏺ Bash(node <builder>/scripts/gate.mjs api)"
         },
         {
           "role": "claude",
-          "text": "```\n▶ api — fast at 8b7d2e4\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS · 8b7d2e4 · 53s\n```\n\nPhase 2 was the producer's last — contract frozen: `contract: frozen 2026-10-22` on the manifest, committed `chore(ACME-412): cert-tags — contract frozen at phase 2`.\n\nSC1–SC3 ticked with migration `20261022093000_add_tags` — `docs(ACME-412): cert-tags — SC# landed`.\n\nPhase 2 (api): closed — gates api fast PASS · 8b7d2e4\n\nPhase 3 (mobile) — every consumer task from here is briefed against the frozen contract: a mismatch is reported, never worked around.",
+          "text": "```\n▶ api — fast at 8b7d2e4\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS · 8b7d2e4 · 53s\n```\n\nPhase 1 (api): closed — gates api fast PASS · 8b7d2e4",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "The gate output is gate.mjs's own format. No cross-app walk and no deep set at a phase close — those run once, in /builder:verify. A red gate keeps the phase open: each failure becomes a fix dispatch, never a controller fix. The next phase starts in the same turn."
+          "text": "The gate output is gate.mjs's own format. No cross-app walk and no deep set at a phase close — those run once, in /builder:verify. A red gate keeps the phase open: each failure becomes a fix dispatch, never a controller fix. Under review=app the phase's whole diff is reviewed here too. The next phase starts in the same turn."
         }
       ],
       "stamp": {
-        "hash": "ce0dfbcc8132",
-        "version": "4.11.3",
+        "hash": "6fb33b82d780",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -147,15 +165,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Agent(implementer — Task 7: tag chips on the list and owner view) — DONE · staged, not committed"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Agent(task reviewer — Task 7) — spec ✅ · quality ✅"
+          "text": "⏺ Agent(implementer — Task 10: Tag store and API client) — DONE · its 2 new tests and mobile typecheck green · staged, not committed"
         },
         {
           "role": "claude",
-          "text": "mobile is `commit: manual` — Task 7 is staged, review clean, and not committed:\n\n```\n apps/mobile/src/components/TagChip.tsx                 |  42 +++++\n apps/mobile/src/features/certificates/CertificateRow.tsx |  18 ++-\n apps/mobile/src/features/certificates/OwnerView.tsx      |  11 +-\n apps/mobile/src/components/__tests__/TagChip.test.tsx    |  57 ++++++\n 4 files changed, 121 insertions(+), 7 deletions(-)\n```\n\nProposed message:\n\n```\nfeat(ACME-412): tag chips on the mobile list and owner view (cert-tags task 7)\n```",
+          "text": "mobile is `commit: manual` — Task 10 is staged and not committed (tests: review=end, so no task review — the final review covers it):\n\n```\n apps/mobile/src/api/tags.ts                         |  38 +++++\n apps/mobile/src/stores/tagStore.ts                  |  46 ++++++\n apps/mobile/src/stores/__tests__/tagStore.test.ts   |  52 ++++++\n 3 files, 136 insertions(+)\n```\n\nProposed message:\n\n```\nfeat(ACME-412): mobile tag store and API client (cert-tags task 10)\n```",
           "inferred": true
         },
         {
@@ -166,11 +180,11 @@
           "options": [
             {
               "label": "Approve this task",
-              "description": "Commit Task 7 with the proposed message; Task 8 comes back to you the same way."
+              "description": "Commit Task 10 with the proposed message; Tasks 11 and 12 come back to you the same way."
             },
             {
               "label": "Approve the phase",
-              "description": "Commit Task 7 now and Task 8 when its review is clean, each with its proposed message."
+              "description": "Commit Task 10 now, and Tasks 11 and 12 as each is done, each with its proposed message."
             },
             {
               "label": "Leave it staged",
@@ -185,21 +199,21 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"feat(ACME-412): tag chips on the mobile list and owner view (cert-tags task 7)\") — a4e7c20"
+          "text": "⏺ Bash(git commit -m \"feat(ACME-412): mobile tag store and API client (cert-tags task 10)\") — a4e7c20"
         },
         {
           "role": "claude",
-          "text": "Task 7: complete (commits 8b7d2e4..a4e7c20, review clean) — Task 8 commits on this approval once its review is clean. Building or releasing the mobile app stays yours.",
+          "text": "Task 10: complete (commits c3d9e12..a4e7c20, no task review (tests: review=end)) — Tasks 11 and 12 commit on this approval as each is done. Building or releasing the mobile app stays yours.",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "The skill names the two approvals (per task / per phase) and that declining is fine; the picker wording is a rendering. mobile's gates still run at its phase close, and a red one still blocks it. Under agent mode this phase parks instead — agents never commit in a commit: manual app."
+          "text": "The skill names the two approvals (per task / per phase) and that declining is fine; the picker wording is a rendering. mobile's suite still runs as the plan places it — once at the end under slice=own, at this phase's close under own+app — and a red one still blocks. Under agent mode this phase parks instead — agents never commit in a commit: manual app."
         }
       ],
       "stamp": {
         "hash": "36896602419c",
-        "version": "4.11.3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -207,7 +221,7 @@
       "id": "build-complete",
       "skill": "build",
       "title": "Build complete — readiness, the walk script, the rulings",
-      "when": "The last phase closes: fast gates for every app, the final whole-branch review, walk readiness against the dev environment, then the hand-off with the walk script.",
+      "when": "The last phase closes: the end's gates by the test plan (under own · risk · end, every touched app's suite — their first run on this branch), the final whole-branch review, walk readiness against the dev environment, then the hand-off with the walk script.",
       "source": "skills/build/SKILL.md §When the last phase signs",
       "sources": [
         "skills/build/SKILL.md §Exit handoff",
@@ -218,11 +232,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api mobile web)"
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api web mobile)"
         },
         {
           "role": "claude",
-          "text": "```\n⏩ api — fast: inputs unchanged since the green run at 8b7d2e4 (2026-10-22 10:41) — quoted, not re-run:\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS (quoted) · 6f2c8a5\n⏩ mobile — fast: inputs unchanged since the green run at c19f4b7 (2026-10-22 12:20) — quoted, not re-run:\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS (quoted) · 6f2c8a5\n⏩ web — fast: inputs unchanged since the green run at 6f2c8a5 (2026-10-22 14:02) — quoted, not re-run:\n   ✓ pnpm -F web test (28s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS (quoted) · 6f2c8a5\n```",
+          "text": "```\n▶ api — fast at 6f2c8a5\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS · 6f2c8a5 · 53s\n▶ web — fast at 6f2c8a5\n   ✓ pnpm -F web test (28s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS · 6f2c8a5 · 37s\n▶ mobile — fast at 6f2c8a5\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS · 6f2c8a5 · 36s\n```",
           "inferred": true
         },
         {
@@ -271,21 +285,21 @@
         },
         {
           "role": "claude",
-          "text": "**cert-tags is built.**\n\n**What landed** — 4 phases (api, api, mobile, web) · 12 tasks · 13 commits; mobile's 2 approved by you for the phase. Final review: 2 findings in web (the tag filter didn't reset to page 1; `TagChip` had no accessible name) — one fix wave, re-review: both addressed (9c41e7a).\n\n**Contract** — frozen 2026-10-22 at phase 2 (api).\n\n**Walk readiness** — migration `20261022093000_add_tags` applied to acme_dev (status: up to date). Prisma client regenerated; the api dev server is yours, so you restarted it. Smoke: `GET /tags`, `PUT /certificates/:id/tags`, `GET /certificates?tag=…&tag=…` all 200, server log clean; `/certificates` in web loaded with a clean console; mobile's list screen up in the iOS simulator, Metro log clean.\n\n**Staged commits awaiting approval** — none. **Blockers** — none.\n\n**Rulings I made**\n1. Tag names unique per owner, case-insensitive — §Decisions D3 says \"no duplicate tags\" without saying case. *If wrong:* one migration relaxing the unique index.\n2. Task 8's build-time risk: mobile's offline list cache now keys on the sorted tag ids, and deleting a tag clears cached filtered lists. *If wrong:* a stale filtered list on mobile after a delete, until the next refresh.\n3. A tag with no colour renders neutral grey — §Contract allows `color: null` and the spec shows no default. *If wrong:* a default in the migration and a one-line change in both chips.\n\n**Walk script** — `.builder/cert-tags/walk.md`:\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\nNothing here has been human-tested yet — agents built it, ran each app's fast gates and smoked the running stack. The walk is yours, on web and on mobile; record the verdict with `/builder:signoff --path docs/features/cert-tags <your words>`.",
+          "text": "**cert-tags is built.**\n\n**What landed** — 3 phases (api, web, mobile) · 12 slices · 13 commits; mobile's 3 approved by you for the phase. Test plan own · risk · end: each slice ran its own tests; the api, web and mobile suites ran once, above. Final review: 2 findings in web (the tag filter didn't reset to page 1; `TagChip` had no accessible name) — one fix wave, re-review: both addressed (9c41e7a).\n\n**Contract** — frozen 2026-10-22 at phase 1 (api).\n\n**Walk readiness** — migration `20261022093000_add_tags` applied to acme_dev (status: up to date). Prisma client regenerated; the api dev server is yours, so you restarted it. Smoke: `GET /tags`, `PUT /certificates/:id/tags`, `GET /certificates?tag=…&tag=…` all 200, server log clean; `/certificates` in web loaded with a clean console; mobile's list screen up in the iOS simulator, Metro log clean.\n\n**Staged commits awaiting approval** — none. **Blockers** — none.\n\n**Rulings I made**\n1. Tag names unique per owner, case-insensitive — §Decisions D3 says \"no duplicate tags\" without saying case. *If wrong:* one migration relaxing the unique index.\n2. Slice 10's build-time risk: mobile's offline list cache now keys on the sorted tag ids, and deleting a tag clears cached filtered lists. *If wrong:* a stale filtered list on mobile after a delete, until the next refresh.\n3. A tag with no colour renders neutral grey — §Contract allows `color: null` and the spec shows no default. *If wrong:* a default in the migration and a one-line change in both chips.\n\n**Walk script** — `.builder/cert-tags/walk.md`:\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\nNothing here has been human-tested yet — agents built it, ran each app's suite once at the end and smoked the running stack. The walk is yours, on web and on mobile; record the verdict with `/builder:signoff --path docs/features/cert-tags <your words>`.",
           "inferred": true
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built (4 phases across api, mobile, web, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+          "text": "```\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
         },
         {
           "role": "note",
-          "text": "Readiness asks before touching the dev database (apply_mode: ask). A smoke error on a changed surface is a fix dispatch, not a walk item. Still pending → no walk script and no state: built; the footer becomes '📍 cert-tags: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path …'. Manifest: state: built · ready: yes 2026-10-22 9c41e7a · next: 🔒 your walk → /builder:signoff …, committed 'chore(ACME-412): cert-tags — built, awaiting the walk'."
+          "text": "Under slice=own these are the suites' first run on this branch — nothing to quote; under own+app the runner would quote each app unchanged since its phase close. Under end=none only the type-check runs here (gate.mjs … --typecheck). The test plan doesn't touch the walk: an in-chat build always ends on yours. Readiness asks before touching the dev database (apply_mode: ask). A smoke error on a changed surface is a fix dispatch, not a walk item. Still pending → no walk script and no state: built; the footer becomes '📍 cert-tags: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path …'. Manifest: state: built · ready: yes 2026-10-22 9c41e7a · next: 🔒 your walk → /builder:signoff …, committed 'chore(ACME-412): cert-tags — built, awaiting the walk'."
         }
       ],
       "stamp": {
-        "hash": "4210da3065b6",
-        "version": "4.11.3",
+        "hash": "0c48b98c7936",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -307,7 +321,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/gate.mjs web) — gate fast-web: PASS · 71d0e3a"
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api web mobile) — gate fast-api · fast-web · fast-mobile: PASS · 71d0e3a"
         },
         {
           "role": "tool",
@@ -319,7 +333,7 @@
         },
         {
           "role": "claude",
-          "text": "All 12 tasks are in, worked here in this session, test-first, one commit per task.\n\n- **Gates at each phase close** — api ✓ (phases 1, 2) · mobile ✓ · web ✓, through `gate.mjs`.\n- **Contract** — frozen in the manifest when phase 2 (api) closed.\n- **Staged, not committed — yours** (mobile is `commit: manual`):\n  - Task 7 — `feat(ACME-412): tag chips on the mobile list and owner view`\n  - Task 8 — `feat(ACME-412): mobile tag filter sheet`\n- **Skipped, as `--here` does:** implementer and reviewer agents, the final whole-branch review, the deep set, walk readiness, the walk, sign-off and verify.\n\nManifest: `state: built` · `walk: none` · `ready: none` — committed `chore(cert-tags): built here — not walked`.",
+          "text": "All 12 slices are in, worked here in this session, test-first, one commit per slice.\n\n- **Gates by the test plan** (`own · risk · end`) — each slice ran its own tests; the api, web and mobile suites ran once when the last slice was in ✓, through `gate.mjs`. Review and the agent walk don't apply here.\n- **Contract** — frozen in the manifest when phase 1 (api) closed.\n- **Staged, not committed — yours** (mobile is `commit: manual`):\n  - Task 10 — `feat(ACME-412): mobile tag store and API client`\n  - Task 11 — `feat(ACME-412): mobile tag filter sheet`\n  - Task 12 — `feat(ACME-412): tag chips on the mobile certificate card`\n- **Skipped, as `--here` does:** implementer and reviewer agents, the final whole-branch review (the one floor *here* gives up), the deep set, walk readiness, the walk, sign-off and verify.\n\nManifest: `state: built` · `walk: none` · `ready: none` — committed `chore(cert-tags): built here — not walked`.",
           "inferred": true
         },
         {
@@ -332,8 +346,8 @@
         }
       ],
       "stamp": {
-        "hash": "06299b0565fd",
-        "version": "4.11.3",
+        "hash": "60153d25ab0f",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -359,16 +373,16 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api mobile web)"
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api web mobile)"
         },
         {
           "role": "claude",
-          "text": "cert-tags is built and waiting for your walk.\n\n```\n⏩ api — fast: inputs unchanged since the green run at 8b7d2e4 (2026-10-22 10:41) — quoted, not re-run:\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS (quoted) · 9c41e7a\n⏩ mobile — fast: inputs unchanged since the green run at c19f4b7 (2026-10-22 12:20) — quoted, not re-run:\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS (quoted) · 9c41e7a\n▶ web — fast at 9c41e7a\n   ✓ pnpm -F web test (29s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS · 9c41e7a · 38s\n```\n\nReadiness: `ready: yes 2026-10-22 9c41e7a` at HEAD — no migration or restart-class change since, so the dev environment is running this build.\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\n**What has been human-tested:** nothing yet. Agents built it, ran each app's gates and smoked api, web and the mobile simulator — none of that is your walk. It lives in two places: walk web **and** mobile.\n\nWhen you've walked it, record the verdict yourself — `/builder:signoff --path docs/features/cert-tags <your verdict in your own words>`. PASS condenses the folder and unlocks verify; `--hold \"<reason>\"` signs off but parks the PR; problems become `## Fixes` tasks and the lock stays closed.",
+          "text": "cert-tags is built and waiting for your walk.\n\n```\n⏩ api — fast: inputs unchanged since the green run at 6f2c8a5 (2026-10-22 14:02) — quoted, not re-run:\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS (quoted) · 9c41e7a\n▶ web — fast at 9c41e7a\n   ✓ pnpm -F web test (29s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS · 9c41e7a · 38s\n⏩ mobile — fast: inputs unchanged since the green run at 6f2c8a5 (2026-10-22 14:02) — quoted, not re-run:\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS (quoted) · 9c41e7a\n```\n\nReadiness: `ready: yes 2026-10-22 9c41e7a` at HEAD — no migration or restart-class change since, so the dev environment is running this build.\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\n**What has been human-tested:** nothing yet. Agents built it, ran each app's gates and smoked api, web and the mobile simulator — none of that is your walk. It lives in two places: walk web **and** mobile.\n\nWhen you've walked it, record the verdict yourself — `/builder:signoff --path docs/features/cert-tags <your verdict in your own words>`. PASS condenses the folder and unlocks verify; `--hold \"<reason>\"` signs off but parks the PR; problems become `## Fixes` tasks and the lock stays closed.",
           "inferred": true
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built (4 phases across api, mobile, web, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+          "text": "```\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
         },
         {
           "role": "user",
@@ -386,7 +400,7 @@
       ],
       "stamp": {
         "hash": "02198e67be96",
-        "version": "4.11.3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -428,7 +442,7 @@
         },
         {
           "role": "claude",
-          "text": "All 4 phases are closed and the final review is clean — the dev database is the one thing left. Apply it with:\n\n```\npnpm -F api exec prisma migrate deploy\n```\n\nManifest: `state: building` · `ready: pending \"1 migrations\"` · `next: apply the migration to acme_dev, then /builder:resume --path docs/features/cert-tags`.\n\n```\n📍 cert-tags: built, not walkable yet — 1 migration pending on acme_dev — next: pnpm -F api exec prisma migrate deploy, then /builder:resume --path docs/features/cert-tags\n```",
+          "text": "All 3 phases are closed and the final review is clean — the dev database is the one thing left. Apply it with:\n\n```\npnpm -F api exec prisma migrate deploy\n```\n\nManifest: `state: building` · `ready: pending \"1 migrations\"` · `next: apply the migration to acme_dev, then /builder:resume --path docs/features/cert-tags`.\n\n```\n📍 cert-tags: built, not walkable yet — 1 migration pending on acme_dev — next: pnpm -F api exec prisma migrate deploy, then /builder:resume --path docs/features/cert-tags\n```",
           "inferred": true
         },
         {
@@ -447,7 +461,7 @@
       ],
       "stamp": {
         "hash": "dcf1c5573a64",
-        "version": "4.11.3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -651,7 +665,7 @@
         },
         {
           "role": "claude",
-          "text": "**cert-tags — verify READY (api, mobile, web).** Walked by Luke Keith 2026-10-23 (✅ SIGNED OFF at 9c41e7a).\n\n| # | Check | Evidence |\n|---|---|---|\n| 1 | The walk | `✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith`; web and mobile walked, api through both |\n| 2 | Every task landed | ledger pre-flight: 12 tasks, 12 `complete`, 4 phases closed; mobile's commits approved; no open `## Fixes` |\n| 3 | Gates now | api, mobile, web fast — quoted from the green runs at 9c41e7a (the sign-off commit touched only the registry) · deep `pnpm e2e` @scoped — ran, 7 of 44 specs, `.builder/gates/impact.md` |\n| 4 | Schema | SC1 Tag, SC2 CertificateTag, SC3 cascade → `20261022093000_add_tags`; re-applied cleanly on an empty database |\n| 5 | Consumer parity | `contract: frozen 2026-10-22`. `GET /tags` `apps/api/src/routes/tags.ts:22` → mobile `apps/mobile/src/api/tags.ts:11`, web `apps/web/src/api/tags.ts:9` — same shape, `color` nullable in both. Released mobile 3.2: `tags` on the list is a new optional field it ignores; nothing renamed, removed or narrowed |\n| 6 | Decisions | no OPEN rows; nothing replaced |\n| 7 | House rules | api: zod on every route, no Prisma in handlers ✓ · web: no `fetch` outside `src/api` ✓ · mobile: strings through i18n ✓ |\n| 8 | §Testing | all 11 named tests exist and pass (api 5, mobile 3, web 3) |\n| 9 | Deep set prose | nothing beyond the deep block |\n| 10 | Cross-app E2E | ran live, first verify: E1–E5 ✓ — tag on web → filter on web → chip and filter on mobile → delete cascades |\n| 11 | Spec parity | owner-only tag writes `apps/api/src/routes/certificate-tags.ts:31`; `?tag=` repeatable, owner-scoped `apps/api/src/services/certificates.ts:88`; case-insensitive uniqueness `apps/api/prisma/schema.prisma:142` |\n\nRecorded: `verify: READY 2026-10-23` · `state: verified` · `next: /builder:resume --path docs/features/cert-tags` — committed `docs(ACME-412): cert-tags — verify READY`. READY isn't shipped: no PR is open yet.",
+          "text": "**cert-tags — verify READY (api, mobile, web).** Walked by Luke Keith 2026-10-23 (✅ SIGNED OFF at 9c41e7a).\n\n| # | Check | Evidence |\n|---|---|---|\n| 1 | The walk | `✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith`; web and mobile walked, api through both |\n| 2 | Every task landed | ledger pre-flight: 12 tasks, 12 `complete`, 3 phases closed; mobile's commits approved; no open `## Fixes` |\n| 3 | Gates now | api, mobile, web fast — quoted from the green runs at 9c41e7a (the sign-off commit touched only the registry) · deep `pnpm e2e` @scoped — ran, 7 of 44 specs, `.builder/gates/impact.md` |\n| 4 | Schema | SC1 Tag, SC2 CertificateTag, SC3 cascade → `20261022093000_add_tags`; re-applied cleanly on an empty database |\n| 5 | Consumer parity | `contract: frozen 2026-10-22`. `GET /tags` `apps/api/src/routes/tags.ts:22` → mobile `apps/mobile/src/api/tags.ts:11`, web `apps/web/src/api/tags.ts:9` — same shape, `color` nullable in both. Released mobile 3.2: `tags` on the list is a new optional field it ignores; nothing renamed, removed or narrowed |\n| 6 | Decisions | no OPEN rows; nothing replaced |\n| 7 | House rules | api: zod on every route, no Prisma in handlers ✓ · web: no `fetch` outside `src/api` ✓ · mobile: strings through i18n ✓ |\n| 8 | §Testing | all 11 named tests exist and pass (api 5, mobile 3, web 3) |\n| 9 | Deep set prose | nothing beyond the deep block |\n| 10 | Cross-app E2E | ran live, first verify: E1–E5 ✓ — tag on web → filter on web → chip and filter on mobile → delete cascades |\n| 11 | Spec parity | owner-only tag writes `apps/api/src/routes/certificate-tags.ts:31`; `?tag=` repeatable, owner-scoped `apps/api/src/services/certificates.ts:88`; case-insensitive uniqueness `apps/api/prisma/schema.prisma:142` |\n\nRecorded: `verify: READY 2026-10-23` · `state: verified` · `next: /builder:resume --path docs/features/cert-tags` — committed `docs(ACME-412): cert-tags — verify READY`. READY isn't shipped: no PR is open yet.",
           "inferred": true
         },
         {
@@ -665,7 +679,7 @@
       ],
       "stamp": {
         "hash": "874049f0cda5",
-        "version": "4.11.3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -846,7 +860,7 @@
       "turns": [
         {
           "role": "note",
-          "text": "This runs headless in the fleet's worktree for cert-tags (profile thorough → testing: full); the hand-off below is what its log shows. Agents never commit in mobile (commit: manual), so a fleet run parks at the start of that phase — this is the run after the build got past it. Under --agent-walk, walk.md also carries a ## Cross-app (verify E2E) section, walked as rows E1…En so verify can quote them."
+          "text": "This runs headless in the fleet's worktree for cert-tags (tests: own · risk · end — the agent walks the [risk] items and the cross-app section); the hand-off below is what its log shows. Agents never commit in mobile (commit: manual), so a fleet run parks at the start of that phase — this is the run after the build got past it. Under --agent-walk, walk.md also carries a ## Cross-app (verify E2E) section, walked as rows E1…En so verify can quote them."
         },
         {
           "role": "tool",
@@ -854,7 +868,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --levers docs/features/cert-tags) — testing: full"
+          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --levers docs/features/cert-tags) — slice: own · end: risk · review: end"
         },
         {
           "role": "tool",
@@ -862,7 +876,7 @@
         },
         {
           "role": "claude",
-          "text": "**AGENT-PASS** — cert-tags, agent walk round 1 · 13 pass · 0 fail · 0 unverifiable. Evidence: `.builder/cert-tags/agent-walk/round-1/`.\n\n```\nsha: 9c41e7a\n```\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | web | [risk] add/duplicate/remove tags on the owner view | PASS | 01-web-tag-editor.png · 02-web-dup-refused.png |\n| 2 | web | [risk] delete a tag — chips gone everywhere | PASS | 03-web-delete-tag.png · server.log L412–418 |\n| 3 | web | [risk] ListFilters: two tags, URL carries ?tag=…&tag=…, empty state | PASS | 04-web-filter.png · 05-web-empty.png |\n| 4 | web | chips coloured, grey when none, wrap narrow | PASS | 06-web-chips-375.png |\n| 5 | mobile | [risk] filter sheet narrows; clears after the tag is deleted | PASS | 07-mobile-filter.png · 08-mobile-after-delete.png |\n| 6 | mobile | [risk] new tag shows after pull to refresh | PASS | 09-mobile-refresh.png |\n| 7 | mobile | chips fit on iPhone SE; VoiceOver reads \"Tag: Urgent\" | PASS | 10-mobile-se.png · a11y-tree.txt |\n| 8 | api | [risk] viewer refused on PATCH and PUT tags (403) | PASS | server.log L501–506 |\n| E1 | cross-app | owner tags a certificate \"Urgent\" on web | PASS | 11-e1.png |\n| E2 | cross-app | web filter by Urgent lists it | PASS | 12-e2.png |\n| E3 | cross-app | mobile row shows the Urgent chip after refresh | PASS | 13-e3.png |\n| E4 | cross-app | mobile filter by Urgent lists the same certificates | PASS | 14-e4.png |\n| E5 | cross-app | deleting Urgent on web removes it on mobile | PASS | 15-e5.png · server.log L620–624 |\n\n`verdict: PASS`\n\n**Recorded — the agent's sign-off, not a human's:**\n- MANIFEST: `walk: agent-pass 2026-10-23 9c41e7a` · `state: signed-off` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > 🤖 AGENT SIGNED OFF 2026-10-23 — 9c41e7a · agent walk round 1 · not human-tested · evidence: .builder/cert-tags/agent-walk/round-1/\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- Committed `docs(ACME-412): cert-tags agent signed off (not human-tested)`",
+          "text": "**AGENT-PASS** — cert-tags, agent walk round 1 · 11 pass · 0 fail · 0 unverifiable. Evidence: `.builder/cert-tags/agent-walk/round-1/`.\n\n```\nsha: 9c41e7a\n```\n\nUnder `end=risk`: every `[risk]` item and the cross-app section — items 4 (web chips) and 7 (mobile chips on iPhone SE) carry no `[risk]` and were not walked.\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | web | [risk] add/duplicate/remove tags on the owner view | PASS | 01-web-tag-editor.png · 02-web-dup-refused.png |\n| 2 | web | [risk] delete a tag — chips gone everywhere | PASS | 03-web-delete-tag.png · server.log L412–418 |\n| 3 | web | [risk] ListFilters: two tags, URL carries ?tag=…&tag=…, empty state | PASS | 04-web-filter.png · 05-web-empty.png |\n| 5 | mobile | [risk] filter sheet narrows; clears after the tag is deleted | PASS | 07-mobile-filter.png · 08-mobile-after-delete.png |\n| 6 | mobile | [risk] new tag shows after pull to refresh | PASS | 09-mobile-refresh.png |\n| 8 | api | [risk] viewer refused on PATCH and PUT tags (403) | PASS | server.log L501–506 |\n| E1 | cross-app | owner tags a certificate \"Urgent\" on web | PASS | 11-e1.png |\n| E2 | cross-app | web filter by Urgent lists it | PASS | 12-e2.png |\n| E3 | cross-app | mobile row shows the Urgent chip after refresh | PASS | 13-e3.png |\n| E4 | cross-app | mobile filter by Urgent lists the same certificates | PASS | 14-e4.png |\n| E5 | cross-app | deleting Urgent on web removes it on mobile | PASS | 15-e5.png · server.log L620–624 |\n\n`verdict: PASS`\n\n**Recorded — the agent's sign-off, not a human's:**\n- MANIFEST: `walk: agent-pass 2026-10-23 9c41e7a` · `state: signed-off` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > 🤖 AGENT SIGNED OFF 2026-10-23 — 9c41e7a · agent walk round 1 · not human-tested · evidence: .builder/cert-tags/agent-walk/round-1/\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- Committed `docs(ACME-412): cert-tags agent signed off (not human-tested)`",
           "inferred": true
         },
         {
@@ -875,8 +889,8 @@
         }
       ],
       "stamp": {
-        "hash": "3d1c913e974c",
-        "version": "4.11.3",
+        "hash": "ae26897d018c",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     }
