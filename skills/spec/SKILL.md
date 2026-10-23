@@ -14,6 +14,15 @@ Invocation: **`/builder:spec [--path <folder>] [--auto] [--help]`**.
 §Size) with a live `SPEC.md` and no `go-ahead:` in its manifest. Otherwise say in one line what is
 missing and name `/builder:brainstorm` or `/builder:intake`, and stop.
 
+**An `--auto` stub record** (`auto: stub` in its header — brainstorm under `--auto` writes the spec
+itself and keeps only a stub, CONVERSATION §Steering and --auto, its `--auto` stub record): its SPEC already committed
+(`git log -1 --oneline -- <registry>/<feature>/SPEC.md`) → set `status: handed-off` and print the
+footer (§3), nothing rewritten. Not committed (the run died before its commit) → write from the stub:
+its `Request:` line verbatim and §Size, plus your own recon of the code the request names — what the
+full record would have held. Under `--auto` every choice takes its recommendation as below; without
+it, §1's questions are asked as usual. Re-running after a crash is always safe: the files are written
+whole and the commit is made once.
+
 **Where things go.** `--path <registry>/<feature>` names the feature; the record is
 `.builder/<feature>/brainstorm.md` and the output folder is `<registry>/<feature>/`, created if new.
 Without `--path`: if exactly one record is at `sized md|lg|xl`, use it; otherwise run
@@ -24,9 +33,10 @@ in one AskUserQuestion.
 rows — supersede a row in place with a date, never delete one (REFERENCE's rule) — and add rows for
 the newly settled branches.
 
-**Load REFERENCE and `.claude/builder.md` before writing anything**: REFERENCE §SPEC.md,
-§MANIFEST.md and §PROGRAM.md hold every shape this step produces; the config holds every fact about
-the project. Read the whole record.
+**Load REFERENCE and `.claude/builder.md` before writing anything, in one call:**
+`node <builder>/scripts/docs.mjs spec` — REFERENCE §SPEC.md, §MANIFEST.md and §PROGRAM.md hold every
+shape this step produces, §Prototype mode the design-ref material, §The review and §The two-way footer
+how it closes; the config holds every fact about the project. Read the whole record.
 
 ## 1. Settle what the record left open — no section approvals
 

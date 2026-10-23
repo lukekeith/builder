@@ -72,6 +72,11 @@ Subagent (general-purpose):
     verdict. Every line is a verdict, a finding with file:line, or a check you
     ran — no preamble, no process narration.
 
+    **Write the same report to [FINDINGS_FILE]** (create or overwrite it —
+    the one file you write; it is in the git-ignored workspace, not the
+    checkout). If findings remain open, the controller hands that file to
+    the next fix round as it is.
+
     ### Finding verdicts
 
     For each finding, in order:
@@ -96,4 +101,6 @@ Subagent (general-purpose):
 
 **Placeholders:** `[MODEL]` · `[BRIEF_FILE]` · `[FINDINGS]` (verbatim, one per bullet) ·
 `[REPORT_FILE]` · `[FIX_BASE_SHA]` (the head the previous review saw) · `[HEAD_SHA]` ·
-`[DIFF_FILE]` (what `scripts/review-package FIX_BASE HEAD OUTFILE` printed).
+`[DIFF_FILE]` (what `scripts/review-package FIX_BASE HEAD OUTFILE` printed) · `[FINDINGS_FILE]`
+(where the report is written — `<WS>/task-N-re-review-R.md`, or `final-re-review.md`).
+`scripts/dispatch.mjs re-review` fills every one of them, `[FINDINGS]` from the previous review's file.

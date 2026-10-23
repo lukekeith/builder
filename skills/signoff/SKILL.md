@@ -15,6 +15,10 @@ re-offers the walk.
 Invocation: **`/builder:signoff --path <folder> [--hold "<reason>"] <verdict in your own words>`** —
 without the verdict it is taken by one question. Flags: [REFERENCE](../resume/REFERENCE.md) §Flags.
 
+**The docs this step reads, in one call:** `node <builder>/scripts/docs.mjs signoff` — ship §At
+sign-off, REFERENCE §Condense, §Walk readiness, §The two-way footer, §Continuing on "go" and
+`.claude/builder.md`.
+
 **`--path` inside a fleet worktree** — an absolute path into a row's `worktree` in
 `.builder/fleet/fleet.json`, as `/builder:resume`'s `waiting for your walk` row prints it — §A fleet
 worktree.
@@ -106,6 +110,23 @@ record it without spin.**
 What was exercised **on which app**, what was skipped and every caveat from step 2 go in the **commit
 body** and in one ledger line; the header line stays one line.
 
+**Each row is one script call** — the manifest keys, the ledger line, the SPEC and the commit
+together; after a crash, re-run the same command — it finishes what's missing or says
+`already applied` (REFERENCE §The scripts):
+
+```bash
+# PASS / PASS + HOLD — the condense (§The condense) does the SPEC; the manifest keys ride along
+node <builder>/scripts/condense.mjs <folder> --signoff human --name "<name>" --words "<their words, verbatim>" \
+  [--hold "<reason>"] --set "walk=<name YYYY-MM-DD>" --set state=signed-off --set hold=none \
+  --set verify=none --set "next=/builder:verify --path <folder>" --head \
+  --ledger "<what was exercised on which app>" --commit "docs({key}): {feature} signed off" --body "<step 2's caveats>"
+# PROBLEMS / PARTIAL — the ## Fixes rows written to SPEC.md first
+node <builder>/scripts/advance.mjs <folder> --set "next=/builder:resume --path <folder>" \
+  --ledger "<…>" --add <folder>/SPEC.md --commit "docs({key}): {feature} — walk found <n> problems" --body "<…>"
+```
+
+Under HOLD, `--set 'hold="<reason>"'` and the held `next:` replace `hold=none` and the plain one.
+
 **Over an agent pass.** `walk:` becomes the human line (the `agent-pass` value is replaced, not kept
 beside it), `agent-walk:` becomes `off` — the rest of the way is the human's, asked, not unattended —
 and the SPEC's `> 🤖 AGENT SIGNED OFF …` (or older `> 🤖 AGENT-VERIFIED …`) header line is replaced
@@ -118,7 +139,11 @@ since the agent's verify, so it runs again.
 
 **On PASS, held or not, condense in the same sitting** — run [`builder:ship`](../ship/SKILL.md)
 §At sign-off: it strips the §Plan index by its `## Plan` heading, runs `git rm <folder>/PLAN.md`, and
-writes the header line(s). Fold it into the one commit above. The walk is the moment the plan stops
+writes the header line(s). Fold it into the one commit above — `condense.mjs --signoff human`, as
+§What gets written shows, does all three and that commit in one call. What stays yours is the
+judgment: that this IS a PASS, the human's name and their words verbatim, and — over an agent pass —
+whether `verify: READY` still stands at HEAD (pass `--set verify=…` / `--set next=…` accordingly,
+and `--set agent-walk=off`). The walk is the moment the plan stops
 earning its keep: the feature is built, a human has accepted it, and everything the remaining steps
 need is in the SPEC, the manifest, the ledger and `git log`.
 
@@ -133,7 +158,9 @@ runs against, and the §Plan index still points at them; both stay.
 A manifest at `state: planned` with `go-ahead: none` is not a walk: it is the **build go-ahead**,
 recorded here because the same "a human typed it" rule applies. Written exactly as `/builder:plan`
 writes it: `go-ahead: <name YYYY-MM-DD>`, `head`, `next: /builder:resume --path <folder>`, commit
-`chore(<ticket-or-feature>): <feature> — go-ahead`. Label it **GO-AHEAD (build)** wherever printed,
+`chore(<ticket-or-feature>): <feature> — go-ahead` — `node <builder>/scripts/advance.mjs <folder>
+--set "go-ahead=<name YYYY-MM-DD>" --set "next=/builder:resume --path <folder>" --head --commit
+"chore({key}): {feature} — go-ahead"`. Label it **GO-AHEAD (build)** wherever printed,
 **never as a sign-off**: no header line, no condense, the PR lock untouched.
 
 ```
@@ -149,7 +176,9 @@ writes it: `go-ahead: <name YYYY-MM-DD>`, `head`, `next: /builder:resume --path 
 `- [ ] re-walk: <surface> (<app>) — voided by <sha>` under `## Fixes` when the human declines to
 re-walk right then. When they do walk it, this command **appends a second `> ✅ SIGNED OFF …` line
 under the first** — the header is a stack of dated lines, never an overwrite — ticks that row, and
-sets `walk:` to the new date.
+sets `walk:` to the new date. (`condense.mjs` replaces the header, so the appended line is written by
+hand; the manifest and commit still go through `advance.mjs <folder> --set "walk=<name YYYY-MM-DD>"
+--head --add <folder>/SPEC.md --commit "docs({key}): {feature} re-signed"`.)
 
 ## Sha binding
 
