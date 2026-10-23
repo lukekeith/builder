@@ -149,7 +149,7 @@ the repo grows a second app.
    - **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
      risky parts · everything: deep set, cross-app E2E, the full walk · nothing — you test it.
    - **Review** — once at the end (recommended) · once per app · after every slice.
-   The recommended plan is the fast one; a schema change or a released consumer raises only the end,
+   The recommended plan is the fast one; a breaking schema change, a migration or a released consumer raises only the end,
    and says why. *Other* reaches models, persistence and parking. **The floors hold under every
    plan:** a type-check of every touched app before the work lands, and the final whole-branch
    review. The plan governs an in-chat build and an agent build alike; your walk before a PR is not
