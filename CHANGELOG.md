@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.12.1
+
+**Changed:**
+- **The benchmark can be trusted.** With `--repeat N` every figure reads `median (min–max)`, so a
+  one-minute effect is no longer lost in one rep's noise. A new column splits each run's time into
+  **orchestrator** (the controlling session thinking, reading and writing its records), **agents**
+  (subagents doing the work) and **tools** — rebuilt into old reports from their raw streams. It
+  shows where builder's time actually goes: on the tags run, 73% orchestrator, 24% agents, 3% tools.
+- **A bigger benchmark feature, `share`**, on a new two-app fixture, `notes-hub` (a notes CLI and a
+  `node:http` server, test suites slow on purpose at ~35 s): ~10–12 slices across both apps, with 9
+  hidden acceptance tests. Features now name their fixture (`features/<f>/feature.json`); `tags`
+  keeps the original, moved to `bench/fixtures/notes/`. Design:
+  `docs/specs/2026-10-23-benchmark-trust-design.md`.
+
 ## 4.12.0
 
 **New:**

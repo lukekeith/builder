@@ -41,7 +41,7 @@ test('prepareCopy: a git repo on main with the fixture committed, settings writt
   const { prepareCopy } = await import('../bench.mjs')
   const root = makeRoot()
   process.env.BENCH_INSTALLED_PLUGINS = '/nonexistent'
-  const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c1'), claudeArgs: '--permission-mode bypassPermissions --plugin-dir /p --settings /s' })
+  const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixtures', 'notes'), dest: join(root, 'c1'), claudeArgs: '--permission-mode bypassPermissions --plugin-dir /p --settings /s' })
   assert.equal(copy, join(root, 'c1'))
   assert.equal(git(copy, 'branch', '--show-current'), 'main')
   assert.equal(git(copy, 'log', '--format=%s'), 'fixture')
@@ -58,7 +58,7 @@ test('prepareCopy: a git repo on main with the fixture committed, settings writt
 test('prepareCopy refuses a destination with a space in it', async () => {
   const { prepareCopy } = await import('../bench.mjs')
   const root = makeRoot()
-  assert.throws(() => prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'has space'), claudeArgs: '' }), /no spaces/)
+  assert.throws(() => prepareCopy({ fixture: join(REPO, 'bench', 'fixtures', 'notes'), dest: join(root, 'has space'), claudeArgs: '' }), /no spaces/)
 })
 
 test('runSession streams to the file, passes the flags, and sessionRecord reads it back', async () => {
@@ -375,7 +375,7 @@ test('run: a timed-out session ends the config as timed out; runs.json is still 
   assert.equal(run.sessions[0].totals.ended, 'cut')
 })
 
-test('run: --repeat 2 gives two reps and the report says median of 2', () => {
+test('run: --repeat 2 gives two reps and the report says median (min–max) of 2', () => {
   const root = makeRoot()
   const r = runBench(root, ['run', 'tags', '--only', 'superpowers', '--repeat', '2'], { '/superpowers:brainstorming': SP })
   assert.equal(r.status, 0, r.stderr)
@@ -383,7 +383,7 @@ test('run: --repeat 2 gives two reps and the report says median of 2', () => {
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
   const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
   assert.deepEqual(data.runs.map((x) => x.rep), [1, 2])
-  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /median of 2 reps/)
+  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /median \(min–max\) of 2 reps/)
 })
 
 test('run: --model reaches every session, the fleet\'s included', () => {
@@ -450,6 +450,33 @@ test('report rebuilds a run from before the test plan (builder-rush / -standard 
   const md = readFileSync(join(dir, 'REPORT.md'), 'utf8')
   assert.match(md, /^# benchmark/)
   assert.match(md, /\| builder-rush/)
+})
+
+test('report backfills the time split of a run from before it, from the raw stream beside runs.json', () => {
+  const root = makeRoot()
+  const id = '2026-10-23-0000-tags'
+  const dir = join(root, '.builder', 'bench', id)
+  mkdirSync(join(dir, 'builder'), { recursive: true })
+  const at = (s) => new Date(Date.parse('2026-10-23T10:00:00Z') + s * 1000).toISOString()
+  const line = (s, content, type = 'assistant') => JSON.stringify({ type, parent_tool_use_id: null, timestamp: at(s), message: { content } })
+  writeFileSync(join(dir, 'builder', 'session-01-x.jsonl'), [line(0, [{ type: 'text', text: 'go' }]), line(10, [{ type: 'tool_use', id: 'a', name: 'Agent', input: {} }]), line(70, [{ type: 'tool_result', tool_use_id: 'a' }], 'user'), line(80, [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'ls' } }]), line(110, [{ type: 'tool_result', tool_use_id: 'b' }], 'user'), line(120, [{ type: 'text', text: 'done' }])].join('\n'))
+  const totals = { ms: 120000, turns: 3, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0 }
+  const session = (file) => ({ name: 'x', file, prompt: 'p', totals, steps: [{ name: 'p', start: Date.parse(at(0)), end: Date.parse(at(120)), ms: 120000, turns: 3, toolCalls: {}, files: [], commands: [], tests: [], subagents: [], gaps: [] }] })
+  const runs = [
+    { config: 'builder', rep: 1, status: 'done', ms: 120000, sessions: [session('/gone/elsewhere/builder/session-01-x.jsonl')], totals, score: null },
+    { config: 'gsd', rep: 1, status: 'done', ms: 120000, sessions: [session('/gone/gsd/session-01-x.jsonl')], totals, score: null },
+  ]
+  writeFileSync(join(dir, 'runs.json'), JSON.stringify({ runId: id, feature: 'tags', startedAt: 1, versions: {}, runs }))
+  const rp = runBench(root, ['report', id])
+  assert.equal(rp.status, 0, rp.stderr)
+  const data = JSON.parse(readFileSync(join(dir, 'runs.json'), 'utf8'))
+  assert.deepEqual(data.runs[0].totals.split, { ms: 120000, orchestrator: 30000, agents: 60000, tools: 30000 })
+  assert.deepEqual(data.runs[0].sessions[0].steps[0].split, data.runs[0].totals.split)
+  assert.equal(data.runs[1].sessions[0].split, undefined)
+  const md = readFileSync(join(dir, 'REPORT.md'), 'utf8')
+  assert.match(md, /\| 0\.5m 25% · 1\.0m 50% · 0\.5m 25% \|/)
+  assert.match(md, /^split: orchestrator 0\.5m \(25%\) · agents 1\.0m \(50%\) · tools 0\.5m \(25%\)$/m)
+  assert.match(md, /\| gsd \| done \|.*\| — \|$/m)
 })
 
 test('status with a dead lock says the run stopped; a second run refuses while a live lock is held', () => {
@@ -527,10 +554,10 @@ test('prepareCopy disables every user-scope plugin in the installed list, and on
   writeFileSync(f, JSON.stringify({ version: 2, plugins: { 'figma@claude-plugins-official': [{ scope: 'user' }], 'railway@claude-plugins-official': [{ scope: 'project' }], 'builder@claude-builder': [{ scope: 'project' }, { scope: 'user' }] } }))
   process.env.BENCH_INSTALLED_PLUGINS = f
   try {
-    const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c2'), claudeArgs: '' })
+    const { copy } = prepareCopy({ fixture: join(REPO, 'bench', 'fixtures', 'notes'), dest: join(root, 'c2'), claudeArgs: '' })
     assert.deepEqual(JSON.parse(readFileSync(join(copy, '.claude', 'bench-settings.json'), 'utf8')).enabledPlugins, { 'figma@claude-plugins-official': false, 'builder@claude-builder': false })
     process.env.BENCH_INSTALLED_PLUGINS = '/nonexistent'
-    const c3 = prepareCopy({ fixture: join(REPO, 'bench', 'fixture'), dest: join(root, 'c3'), claudeArgs: '' }).copy
+    const c3 = prepareCopy({ fixture: join(REPO, 'bench', 'fixtures', 'notes'), dest: join(root, 'c3'), claudeArgs: '' }).copy
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(c3, '.claude', 'bench-settings.json'), 'utf8')).enabledPlugins), ['builder@claude-builder', 'superpowers@claude-plugins-official'])
   } finally {
     delete process.env.BENCH_INSTALLED_PLUGINS
@@ -565,4 +592,38 @@ test('run refuses a feature name that is not a plain directory name', () => {
   const r = runBench(root, ['run', '../x', '--dry-run'])
   assert.notEqual(r.status, 0)
   assert.match(r.stderr, /feature must be a plain directory name/)
+})
+
+test('fixtureOf: no feature.json → notes; a named fixture; a bad name refused', async () => {
+  const { fixtureOf } = await import('../bench.mjs')
+  const root = makeRoot()
+  assert.equal(fixtureOf(root), 'notes')
+  writeFileSync(join(root, 'feature.json'), '{ "fixture": "notes-hub" }')
+  assert.equal(fixtureOf(root), 'notes-hub')
+  writeFileSync(join(root, 'feature.json'), '{}')
+  assert.equal(fixtureOf(root), 'notes')
+  writeFileSync(join(root, 'feature.json'), '{ "fixture": "../x" }')
+  assert.throws(() => fixtureOf(root), /plain directory name/)
+  writeFileSync(join(root, 'feature.json'), '{ nope')
+  assert.throws(() => fixtureOf(root), /not valid JSON/)
+  assert.equal(fixtureOf(join(REPO, 'bench', 'features', 'tags')), 'notes')
+  assert.equal(fixtureOf(join(REPO, 'bench', 'features', 'share')), 'notes-hub')
+})
+
+test('fixtureTests: every *.test.mjs of a fixture, its helpers and dot-dirs left out', async () => {
+  const { fixtureTests } = await import('../bench.mjs')
+  assert.deepEqual(fixtureTests(join(REPO, 'bench', 'fixtures', 'notes')), ['test/cli.test.mjs'])
+  const hub = fixtureTests(join(REPO, 'bench', 'fixtures', 'notes-hub'))
+  assert.ok(hub.length >= 6)
+  assert.ok(hub.every((f) => /^apps\/(cli|server)\/test\/[^/]+\.test\.mjs$/.test(f)), hub.join(', '))
+})
+
+test('--dry-run of a feature on another fixture copies that fixture', () => {
+  const root = makeRoot()
+  const r = runBench(root, ['run', 'share', '--only', 'builder', '--dry-run'], {}, { BENCH_RUN_ID: 'dry-share' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /feature share on fixture notes-hub/)
+  const dry = join(root, 'tmp', 'dry-share', '_dry')
+  assert.ok(existsSync(join(dry, 'apps', 'server', 'src', 'server.mjs')))
+  assert.doesNotMatch(readFileSync(join(dry, '.claude', 'builder.md'), 'utf8'), /\{claude_args\}/)
 })

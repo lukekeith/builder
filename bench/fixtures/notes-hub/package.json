@@ -1,0 +1,12 @@
+{
+  "name": "notes-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm test --prefix apps/cli && npm test --prefix apps/server",
+    "test:cli": "npm test --prefix apps/cli",
+    "test:server": "npm test --prefix apps/server",
+    "start:server": "npm start --prefix apps/server"
+  }
+}
