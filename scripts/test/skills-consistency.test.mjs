@@ -484,9 +484,8 @@ test('brainstorm discovery: the record, the skill, spec and the listings agree o
   assert.match(conv, /skip discovery/)
   assert.match(skill, /^## Discovery$/m)
   assert.match(skill, /CONVERSATION §Discovery recon/)
-  assert.match(skill, /No AskUserQuestion in discovery, except the research offer/)
+  assert.match(skill, /No AskUserQuestion in discovery\*\* — the research offer and the concepts are lettered lists/)
   assert.match(skill, /^### Research$/m)
-  assert.match(skill, /mcp__mobbin__search_screens/)
   assert.match(read('skills/spec/SKILL.md'), /§Discovery/)
   for (const f of ['skills/help/SKILL.md', 'README.md']) assert.match(read(f), /explore/i, f)
 })
@@ -544,4 +543,28 @@ test('4.11.2: brainstorm ways on are a lettered list, "go" is A, at every pause 
   assert.doesNotMatch(skill.slice(skill.indexOf('## Quick path'), skill.indexOf('## Discovery')), /AskUserQuestion/)
   assert.match(skill, /`A\. That's right — carry on \(recommended\)`/)
   assert.match(skill, /A letter \(or a concept's name\) names it outright/)
+})
+
+test('the response preview: every stage cites a skill section that exists, every path step is a stage', async () => {
+  const { load } = await import('../../preview/preview.mjs')
+  const { stages, paths } = load()
+  const ids = new Set(stages.map((s) => s.id))
+  assert.equal(ids.size, stages.length, 'stage ids are unique')
+  for (const s of stages) assert.notEqual(s.status, 'broken', `${s.id}: missing section ${s.missing?.join(', ')} — fix its source`)
+  for (const p of paths) for (const id of p.steps) assert.ok(ids.has(id), `${p.id} → ${id} is not a stage`)
+})
+
+test('4.11.3: research starts from the design system, offers what is installed, names no product', () => {
+  const skill = read('skills/brainstorm/SKILL.md'), conv = read('skills/brainstorm/CONVERSATION.md')
+  const research = skill.slice(skill.indexOf('### Research'), skill.indexOf('### Concepts'))
+  for (const f of ['skills/brainstorm/SKILL.md', 'skills/brainstorm/CONVERSATION.md', 'skills/help/SKILL.md', 'README.md']) assert.doesNotMatch(read(f), /mobbin/i, f)
+  assert.match(research, /Always start with\s+what is already here, and how it should be used/)
+  assert.ok(research.indexOf("The project's own design system") < research.indexOf('What this session has installed'), 'the design system comes before installed tools')
+  assert.ok(research.indexOf('*Stay with what we have*') < research.indexOf('*Look at <installed tool>*') &&
+    research.indexOf('*Look at <installed tool>*') < research.indexOf('*Search the web*') &&
+    research.indexOf('*Search the web*') < research.indexOf('*Suggest a plugin*'), 'the offer runs here → installed → web → suggest')
+  assert.match(research, /Builder names no product/)
+  assert.match(research, /Never look outside the repo unasked/)
+  assert.match(conv, /^Design system: </m)
+  assert.match(conv, /how the design system says to\s+use them/)
 })

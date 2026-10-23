@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.11.3
+
+**Changed:**
+- **Brainstorm's research starts from what the project already has, and names no product.** Discovery
+  no longer looks for one particular screen library. For anything with a UI it first states the
+  project's own design system — what it offers for the idea and how it should be used here — before
+  anything else is offered. Then it reads what the session actually has installed (any plugin, MCP
+  server or skill that could help) and offers, as a lettered list: *Stay with what we have* · *Look
+  at <installed tool>* · *Search the web* · *Suggest a plugin* (only when nothing installed covers
+  a reference that would help — installing it is yours). Patterns found outside are described in
+  the design system's terms. A UI change's design and *How it works today* name the design-system
+  components to use, and the record gains a *Design system* line. Design:
+  `docs/specs/2026-10-23-brainstorm-design-system-first-design.md`.
+
 ## 4.11.2
 
 **Changed:**
