@@ -343,8 +343,8 @@
         }
       ],
       "stamp": {
-        "hash": "84e5ab063abe",
-        "version": "4.12.1",
+        "hash": "0f25d1f381a0",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -608,7 +608,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(cert-tags): test plan own · risk · end → main\") · Bash(git commit -m \"chore(cert-history): test plan own · risk · end → main\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"tests=slice=own end=risk review=end\" --set target=main --commit \"chore({feature}): test plan own · risk · end → main\") · Bash(node <builder>/scripts/advance.mjs docs/features/cert-history … --commit \"chore({feature}): test plan own · risk · end → main\")"
         },
         {
           "role": "note",
@@ -616,7 +616,7 @@
         }
       ],
       "stamp": {
-        "hash": "05d92555e246",
+        "hash": "b6cc1588ec8a",
         "version": "4.12.2",
         "date": "2026-10-23"
       }

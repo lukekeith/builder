@@ -643,3 +643,79 @@ test('4.13.0: every approval shows the review — REFERENCE defines it, the appr
   assert.match(read('skills/brainstorm/CONVERSATION.md'), /exactly four REFERENCE sections[^)]*§The review/)
   for (const f of ['skills/brainstorm/SKILL.md', 'skills/intake/SKILL.md']) assert.match(read(f), /the four sections CONVERSATION\.md/, f)
 })
+
+test('lean orchestrator: the skills call the scripts instead of typing what they write — dispatch, advance, condense, docs, handoff, walk-script, the §Plan index', async () => {
+  const { STEPS } = await import('../docs.mjs')
+  const build = read('skills/build/SKILL.md'), exec = read('skills/build/EXECUTION.md'), walk = read('skills/agent-walk/SKILL.md'), resume = read('skills/resume/SKILL.md')
+  // P1 — every subagent dispatch is rendered; the Agent call is one line
+  for (const k of ['implementer <folder> --task N', 'task-review <folder> --task N', 're-review <folder> --task N --round R', 'task-review <folder> --phase N', 'final-review <folder>', 'implementer <folder> --final'])
+    assert.ok(build.includes(`dispatch.mjs ${k}`), `build names dispatch.mjs ${k}`)
+  assert.match(build, /`Read <file> and do what it says\.`/)
+  assert.match(exec, /dispatch\.mjs implementer <folder> --task N/)
+  assert.match(exec, /dispatch\.mjs task-review <folder> --task N/)
+  assert.match(exec, /dispatch\.mjs re-review <folder> --task N --round R/)
+  assert.match(exec, /dispatch\.mjs final-review <folder>/)
+  assert.match(walk, /dispatch\.mjs agent-walk <folder>/)
+  // findings travel as files: every reviewer template writes its report where the dispatch says
+  for (const f of ['task-reviewer.md', 're-review.md', 'final-reviewer.md']) assert.match(read(`skills/build/prompts/${f}`), /\*\*Write the same report to \[FINDINGS_FILE\]\*\*/, f)
+  for (const s of [build, exec]) assert.match(s, /--findings-file/)
+  assert.doesNotMatch(build, /`<builder>\/scripts\/review-package BASE HEAD/, 'the review package comes from dispatch.mjs, not a hand call')
+  // P2 — state changes through advance.mjs / condense.mjs / plan-slices --index --write
+  for (const [f, re] of [
+    ['skills/build/SKILL.md', /advance\.mjs <folder> --set "contract=frozen <YYYY-MM-DD>"/],
+    ['skills/build/SKILL.md', /advance\.mjs <folder> --set state=built .*--commit built/],
+    ['skills/build/SKILL.md', /--commit walk-lane/],
+    ['skills/build/EXECUTION.md', /advance\.mjs <folder> --ledger/],
+    ['skills/audit/SKILL.md', /advance\.mjs/],
+    ['skills/align/SKILL.md', /advance\.mjs/],
+    ['skills/plan/SKILL.md', /plan-slices\.mjs <folder> --index --write/],
+    ['skills/plan/SKILL.md', /advance\.mjs/],
+    ['skills/verify/SKILL.md', /verify-ready/],
+    ['skills/verify/SKILL.md', /verify-incomplete/],
+    ['skills/signoff/SKILL.md', /condense\.mjs <folder> --signoff human/],
+    ['skills/ship/SKILL.md', /condense\.mjs <folder> --ship --pr <N>/],
+    ['skills/ship/SKILL.md', /condense\.mjs <folder> --ship --into <branch>/],
+    ['skills/agent-walk/SKILL.md', /condense\.mjs <folder> --signoff agent\b/],
+    ['skills/agent-walk/SKILL.md', /condense\.mjs <folder> --signoff agent --no-walk/],
+    ['skills/resume/SKILL.md', /advance\.mjs/],
+  ]) assert.match(read(f), re, `${f} ${re}`)
+  // P5 — one docs.mjs call per step, and every step a skill names exists in the map
+  for (const [f, step] of [['build', 'build'], ['audit', 'audit'], ['plan', 'plan'], ['align', 'align'], ['verify', 'verify'], ['signoff', 'signoff'], ['ship', 'ship'], ['revise', 'revise'], ['agent-walk', 'agent-walk'], ['resume', 'resume'], ['brainstorm', 'brainstorm'], ['intake', 'intake'], ['spec', 'spec']])
+    assert.ok(read(`skills/${f}/SKILL.md`).includes(`docs.mjs ${step}`), `${f} reads its docs through docs.mjs ${step}`)
+  for (const dir of readdirSync(join(ROOT, 'skills'))) {
+    for (const file of readdirSync(join(ROOT, 'skills', dir)).filter((x) => x.endsWith('.md'))) {
+      const text = read(`skills/${dir}/${file}`)
+      for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
+      // zsh reads a word starting with = as a filename expansion: no `echo =====` separator anywhere
+      assert.doesNotMatch(text, /echo +["']?={3,}/, `skills/${dir}/${file} has an echo === separator`)
+    }
+  }
+  // P6 — build writes the hand-off; resume's walk lane reads it and falls back on stale (exit 3)
+  assert.match(build, /handoff\.mjs write <folder>/)
+  assert.match(resume, /handoff\.mjs read <folder>/)
+  assert.match(resume, /\*\*`stale: …` \(exit 3\)\*\*[^|]*derive it as before/)
+  // P7 — walk.md from walk-script.mjs, the orchestrator filling only the marked blocks
+  assert.match(build, /walk-script\.mjs <folder>/)
+  assert.match(build, /you fill only each app's marked `<!-- orchestrator: … -->` block/)
+  // the crash rule: every changed skill says to re-run the same command
+  for (const f of ['skills/build/SKILL.md', 'skills/build/EXECUTION.md', 'skills/agent-walk/SKILL.md', 'skills/resume/SKILL.md', 'skills/audit/SKILL.md', 'skills/plan/SKILL.md', 'skills/align/SKILL.md', 'skills/verify/SKILL.md', 'skills/signoff/SKILL.md', 'skills/ship/SKILL.md', 'skills/revise/SKILL.md', 'skills/brainstorm/SKILL.md'])
+    assert.match(read(f), /re-run the same\s+command/i, `${f} says to re-run the same command after a crash`)
+  // REFERENCE §The scripts lists them and owns the idempotence rule
+  const ref = read('skills/resume/REFERENCE.md')
+  const scripts = ref.slice(ref.indexOf('## The scripts'), ref.indexOf('## Sizes'))
+  for (const s of ['docs.mjs', 'advance.mjs', 'condense.mjs', 'plan-slices.mjs', 'dispatch.mjs', 'walk-script.mjs', 'handoff.mjs']) assert.ok(scripts.includes(s), s)
+  assert.match(scripts, /Every one of these is idempotent — after a crash, a `\/clear` or a session that died, re-run the/)
+  assert.match(scripts, /Separate outputs with `echo ---`/)
+})
+
+test('lean orchestrator: under --auto brainstorm writes the spec itself behind a stub record that resume, brainstorm and spec all route', () => {
+  const b = read('skills/brainstorm/SKILL.md'), c = read('skills/brainstorm/CONVERSATION.md'), s = read('skills/spec/SKILL.md'), r = read('skills/resume/SKILL.md')
+  assert.match(b, /^## Spec under `--auto`$/m)
+  assert.match(b, /docs\.mjs spec-auto/)
+  assert.match(c, /^### The `--auto` stub record \(brainstorm only\)$/m)
+  assert.match(c, /^auto: stub — the design is written straight into SPEC\.md$/m)
+  assert.match(c, /^Request: "<the user's request, verbatim/m)
+  assert.match(c, /re-run the same\s+command/)
+  for (const t of [b, s, r]) assert.match(t, /auto:\s+stub/)
+  assert.match(read('skills/intake/SKILL.md'), /Intake keeps its\s+full record under `--auto`/)
+})

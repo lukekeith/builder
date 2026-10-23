@@ -12,9 +12,12 @@ use.
 **`--help` first.** If present, render the `builder:help` card and stop.
 
 **The mechanics live in [../brainstorm/CONVERSATION.md](../brainstorm/CONVERSATION.md)** — the
-record, rounds, confirm, size, steering. Read it now. Read `.claude/builder.md`. Load REFERENCE
-§Prototype mode only for a design ref, and the four sections CONVERSATION.md names, when the
-conversation reaches them — never REFERENCE wholesale.
+record, rounds, confirm, size, steering. Read it now, in one call with what else intake reads:
+`node <builder>/scripts/docs.mjs intake` prints CONVERSATION.md, the four sections CONVERSATION.md
+names (REFERENCE §Sizes · §The classifier · §The review · §Walk readiness), REFERENCE §Prototype mode
+(used only for a design ref) and `.claude/builder.md` — never REFERENCE wholesale. Intake keeps its
+full record under `--auto` too: the `--auto` stub is brainstorm's alone (CONVERSATION §Steering and
+--auto).
 
 **The difference from brainstorm:** brainstorm draws out what the user wants; intake takes what is
 written as the requirements and finds where it meets reality. Intent is still played back — in one

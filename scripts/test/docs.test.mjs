@@ -39,11 +39,13 @@ test('docs walk-lane: §Walk readiness and build §When the last phase signs —
   assert.doesNotMatch(s, /project: notes/)
 })
 
-test('docs brainstorm: CONVERSATION.md plus exactly §Sizes and §The classifier', () => {
+test('docs brainstorm: CONVERSATION.md plus exactly the four sections it names — §Sizes, §The classifier, §The review, §Walk readiness', () => {
   const s = run('docs.mjs', ['brainstorm', '--no-config'], { cwd: leanRepo('note-tags').root }).stdout
   assert.match(s, /--- skills\/brainstorm\/CONVERSATION\.md/)
   assert.match(s, /\n## Sizes\n/)
   assert.match(s, /\n## The classifier\n/)
+  assert.match(s, /\n## The review — what an approval shows\n/)
+  assert.match(s, /\n## Walk readiness\n/)
   assert.doesNotMatch(s, /\n## Flags\n/)
 })
 

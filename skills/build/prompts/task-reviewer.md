@@ -136,6 +136,11 @@ Subagent (general-purpose):
     verdict. Every line is a verdict, a finding with file:line, or a check you
     ran — no preamble, no process narration, no closing summary.
 
+    **Write the same report to [FINDINGS_FILE]** (create or overwrite it —
+    the one file you write; it is in the git-ignored workspace, not the
+    checkout). The controller hands that file to the fix round as it is, so
+    the findings in it are the ones that get fixed.
+
     ## Calibration
 
     Categorize by actual severity. Not everything is Critical. **Important**
@@ -181,7 +186,9 @@ Subagent (general-purpose):
 **Placeholders:** `[MODEL]` · `[BRIEF_FILE]` (the same file the implementer worked from) ·
 `[GLOBAL_CONSTRAINTS]` (the config's block, verbatim — not process rules, which this template
 already carries) · `[SPEC_CONTRACT]` (SPEC §Contract plus whether it is frozen) · `[REPORT_FILE]` ·
-`[APP]` · `[BASE_SHA]` · `[HEAD_SHA]` · `[DIFF_FILE]`.
+`[APP]` · `[BASE_SHA]` · `[HEAD_SHA]` · `[DIFF_FILE]` · `[FINDINGS_FILE]` (where the report is
+written — `<WS>/task-N-review.md`, or `review-phase-N.md` under `review=app`; a fix round passes it as
+`--findings-file`). `scripts/dispatch.mjs task-review` fills every one of them.
 
 **Returns:** a spec-compliance verdict (✅/❌/⚠️), Strengths, Issues (Critical/Important/Minor), and a
 task-quality verdict.

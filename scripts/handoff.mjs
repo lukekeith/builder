@@ -86,6 +86,9 @@ export function compose(f, notes = []) {
   const readiness = configSection(f.cfg, 'Walk readiness').trim()
   const env = aw?.env && Object.keys(aw.env).length ? Object.entries(aw.env).map(([k, v]) => `${k}=${v}`).join(' ') : null
   const walkLane = m.state === 'building' && /^pending\b/.test(m.ready ?? '')
+  const agent = /^on\b/.test(m['agent-walk'] ?? '')
+  const walkWritten = read(join(ws, 'walk.md')) != null
+  const next = agent ? `/builder:agent-walk --path ${rel}` : `🔒 your walk → /builder:signoff --path ${rel}`
   const lines = [
     `# ${f.feature} — handoff from the build lane`,
     '',
@@ -97,8 +100,10 @@ export function compose(f, notes = []) {
     walkLane
       ? [
           `1. Walk readiness — REFERENCE §Walk readiness, against the walk env${aw?.start ? ' the fleet started (never start or restart it here)' : ''}: migrations, regenerate, the smoke.`,
-          `2. Record it: \`node <builder>/scripts/advance.mjs ${rel} --set state=built --set "ready=yes <YYYY-MM-DD> <sha>" --set "next=/builder:agent-walk --path ${rel}" --head --commit built\``,
-          `3. Then \`/builder:agent-walk --path ${rel}\` — walk.md is already written; don't re-run the final review.`,
+          `2. Record it: \`node <builder>/scripts/advance.mjs ${rel} --set state=built --set "ready=yes <YYYY-MM-DD> <sha>" --set "next=${next}" --head --commit built\``,
+          agent
+            ? `3. Then \`/builder:agent-walk --path ${rel}\` — ${walkWritten ? 'walk.md is already written' : 'write walk.md first: `node <builder>/scripts/walk-script.mjs ' + rel + '`'}; don't re-run the final review.`
+            : `3. Then 🔒 the human's walk (resume §🔒 The walk) — ${walkWritten ? 'walk.md is already written' : 'write walk.md first: `node <builder>/scripts/walk-script.mjs ' + rel + '`'}; don't re-run the final review.`,
         ].join('\n')
       : `The manifest says state ${m.state ?? '?'}, ready ${m.ready ?? '?'} — not the walk lane's entry (building + ready pending). Route on the manifest's next: ${m.next ?? '?'}`,
     '',

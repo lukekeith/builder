@@ -104,6 +104,10 @@ Subagent (general-purpose):
     **Ready for the human's walk?** [Yes | No | With fixes]
     **Reasoning:** [1-2 sentences]
 
+    **Write the same report to [FINDINGS_FILE]** (create or overwrite it —
+    the one file you write; it is in the git-ignored workspace, not the
+    checkout). The fix wave works from that file as it is.
+
     **DO:** categorize by actual severity · be specific (file:line, not vague)
     · explain WHY each issue matters · acknowledge strengths · give a clear
     verdict.
@@ -114,7 +118,9 @@ Subagent (general-purpose):
 
 **Placeholders:** `[MODEL]` (the most capable available) · `[DESCRIPTION]` · `[SPEC_PATH]` ·
 `[DEFERRED_AND_PARKED]` (the ledger's minor and parked lines) · `[DIFF_FILE]`
-(`scripts/review-package <merge-base> HEAD OUTFILE`) · `[BASE_SHA]` · `[HEAD_SHA]`.
+(`scripts/review-package <merge-base> HEAD OUTFILE`) · `[BASE_SHA]` · `[HEAD_SHA]` ·
+`[FINDINGS_FILE]` (`<WS>/final-review.md` — the fix wave's `--findings-file`).
+`scripts/dispatch.mjs final-review` fills every one of them.
 
 **Returns:** Strengths, Issues (Critical/Important/Minor), carried findings triaged, and an
 assessment. Its findings get **ONE** fix dispatch and **one** scoped re-review — there is no second

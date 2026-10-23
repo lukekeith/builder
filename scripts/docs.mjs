@@ -29,20 +29,24 @@ const CONFIG = ['<config>', null]
 
 /** step → [file, section|null (= the whole file)] — and the skill line each list comes from. */
 export const STEPS = {
-  // brainstorm SKILL: "the conversation reads only the three sections CONVERSATION.md names" — §Sizes and
-  // §The classifier at sizing (§Walk readiness only at the small path's look: walk-lane prints it).
-  brainstorm: [FILE('skills/brainstorm/CONVERSATION.md'), ...R('Sizes', 'The classifier'), CONFIG],
-  // intake SKILL: CONVERSATION.md, the config, "the three sections CONVERSATION.md names", §Prototype mode for a design ref.
-  intake: [FILE('skills/brainstorm/CONVERSATION.md'), ...R('Sizes', 'The classifier', 'Prototype mode'), CONFIG],
-  // spec SKILL: "REFERENCE §SPEC.md, §MANIFEST.md and §PROGRAM.md hold every shape this step produces".
-  spec: [...R('SPEC.md', 'MANIFEST.md', 'PROGRAM.md'), CONFIG],
-  // align SKILL: §Prototype mode's "Then align …", §SPEC.md, §Contract and the contract freeze.
-  align: [...R('Prototype mode', 'SPEC.md', 'Contract and the contract freeze'), CONFIG],
+  // brainstorm SKILL: "the conversation reads only the four sections CONVERSATION.md names" — §Sizes and
+  // §The classifier at sizing, §The review at §Confirm, §Walk readiness at the small path's look.
+  brainstorm: [FILE('skills/brainstorm/CONVERSATION.md'), ...R('Sizes', 'The classifier', 'The review', 'Walk readiness'), CONFIG],
+  // intake SKILL: CONVERSATION.md, the config, "the four sections CONVERSATION.md names", §Prototype mode for a design ref.
+  intake: [FILE('skills/brainstorm/CONVERSATION.md'), ...R('Sizes', 'The classifier', 'The review', 'Walk readiness', 'Prototype mode'), CONFIG],
+  // spec SKILL: "REFERENCE §SPEC.md, §MANIFEST.md and §PROGRAM.md hold every shape this step produces",
+  // §Prototype mode step 5, §The review (the design approval), §The two-way footer.
+  spec: [...R('SPEC.md', 'MANIFEST.md', 'PROGRAM.md', 'Prototype mode', 'The review', 'The two-way footer'), CONFIG],
+  // brainstorm SKILL §Spec under --auto: spec's own steps, in the same turn, with no Skill handoff.
+  'spec-auto': [FILE('skills/spec/SKILL.md'), ...R('SPEC.md', 'MANIFEST.md', 'PROGRAM.md', 'The two-way footer'), CONFIG],
+  // align SKILL: §Prototype mode's "Then align …", §SPEC.md, §Contract and the contract freeze, §Continuing on "go".
+  align: [...R('Prototype mode', 'SPEC.md', 'Contract and the contract freeze', 'Continuing on "go"'), CONFIG],
   // audit SKILL: §SPEC.md, §Apps, §Contract and the contract freeze, §MANIFEST.md, §Prototype mode,
-  // §Agent model tiering; SURFACE-CHECK.md for surfaces.
-  audit: [...R('SPEC.md', 'MANIFEST.md', 'Prototype mode', 'Agent model tiering'), FILE('skills/resume/SURFACE-CHECK.md'), CONFIG],
-  // plan SKILL: PLAN-FORMAT.md · REFERENCE (§Sizes · §Contract and the contract freeze · §MANIFEST.md · §Branch and ticket).
-  plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket'), CONFIG],
+  // §Agent model tiering; SURFACE-CHECK.md for surfaces; §The review's delta form, the footer.
+  audit: [...R('SPEC.md', 'MANIFEST.md', 'Prototype mode', 'Agent model tiering', 'The review', 'The two-way footer', 'Continuing on "go"'), FILE('skills/resume/SURFACE-CHECK.md'), CONFIG],
+  // plan SKILL: PLAN-FORMAT.md · REFERENCE (§Sizes · §Contract and the contract freeze · §MANIFEST.md · §Branch and ticket),
+  // §The review (the go-ahead's recap), §Flags (--here), §Continuing on "go".
+  plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket', 'The review', 'Flags', 'Continuing on "go"'), CONFIG],
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
   // §MANIFEST.md · §Branch and ticket), and §Quality gates, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'Quality gates — the mechanism', 'Walk readiness', 'The craft skills'), CONFIG],
@@ -59,7 +63,7 @@ export const STEPS = {
   // ship SKILL: "REFERENCE §Condense says what each writes".
   ship: [...R('Condense', 'Continuing on "go"'), CONFIG],
   // revise SKILL: §Contract and the contract freeze (the one way a frozen contract re-opens), §SPEC.md.
-  revise: [...R('Contract and the contract freeze', 'SPEC.md', 'Continuing on "go"'), CONFIG],
+  revise: [...R('Contract and the contract freeze', 'SPEC.md', 'The review', 'Continuing on "go"'), CONFIG],
   // resume SKILL: §Flags, §MANIFEST.md, §Condense (state detection), §The two-way footer, §Continuing on "go".
   resume: [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), CONFIG],
 }
