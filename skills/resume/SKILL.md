@@ -168,7 +168,7 @@ to answer a question.
 ## The go-ahead (human, unconditional)
 
 One approval covers the whole build, and it belongs to the plan step: `/builder:plan` ends by
-presenting the plan as numbered slices — `scripts/plan-slices.mjs`, one per task, grouped by app —
+presenting a one-part recap of what it builds (REFERENCE §The review) and the plan as numbered slices — `scripts/plan-slices.mjs`, one per task, grouped by app —
 with the test plan and what it costs, the path to read the plan at, and anything riding along as a
 named risk, and takes the approval with the test plan (plan §The go-ahead). A manifest left at `state: planned` with `go-ahead: none` is
 picked up by **`/builder:build`**, which presents that same table itself before its first dispatch.
@@ -189,6 +189,13 @@ touches neither the SPEC header nor the PR lock.
    `yes` at the current HEAD, or anything since could have left the dev environment behind (a new
    migration, a restart-class change). Pending → hand off the one step that's left; ⛔ **never print
    the walk script or name `/builder:signoff` over a pending readiness.**
+1c. **After an `--auto` run, the review first.** When the manifest carries `auto: on` or
+   `agent-walk: on` — no human approved the design, the audit or the go-ahead, because nobody was
+   asked — open the hand-off with **the full review of what was built**: REFERENCE §The review,
+   sections 1–8, written from `SPEC.md` as it now stands, every ruling an autopilot took marked
+   `(auto)`, in parts with `A. Looks right — next part` · `B. Change something — say what`. B → the
+   change goes through `/builder:revise --path <folder>` before the walk. The last part ends with the
+   walk script below. This is where an unattended run is checked: nothing lands unseen.
 2. **Print the walk script.** The build wrote it to `walk.md` in the workspace
    (`<builder>/scripts/workspace <feature>` prints the directory; re-resolve it inline in every
    command). Missing → write it now: **per app**, since a multi-app feature is walked in more than
@@ -262,11 +269,12 @@ Autopilot for work whose shape is already agreed. Recorded on the manifest as
 | Scope | must already be settled by the ref or the free text; an open scope question refuses to start and prints the resolution instead |
 | Committing a step's docs | commit them, with the work they describe |
 | Ticket | `--ticket`, else the key in the current branch name; neither → say so in the hand-off and keep going |
-| **The decisions gate** | every OPEN row takes its **Recommended** ruling, written as an implementable statement with decider `auto (recommended) YYYY-MM-DD`; a row with no recommendation gets one first. The human reads these at the go-ahead, which is where an autopilot run is checked |
+| **The decisions gate** | every OPEN row takes its **Recommended** ruling, written as an implementable statement with decider `auto (recommended) YYYY-MM-DD`; a row with no recommendation gets one first. The human reads these in the review at the walk (§🔒 The walk step 1c), which is where an autopilot run is checked |
+| **Every review** (REFERENCE §The review) | not printed at §Confirm, spec, audit, the go-ahead or revise — nobody approves; each says in one line what it did. The full review of what was built opens the walk hand-off |
 | A prototype gap | the recommended one of REFERENCE §Prototype mode's three options — "fix it in the design" only for a bounded, mechanical fix, **never a design change** |
 | The audit finds a code defect | it becomes a build task carried as a `build-time risk` row naming the task that settles it — never silently fixed before the go-ahead |
 | **The go-ahead** | the slice table is presented in the hand-off with the recommended test plan, recorded `tests:` with `go-ahead: auto (recommended)`, and the run proceeds |
-| **The walk** | ⛔ **the terminal state.** Print the walk script, land everything, stop |
+| **The walk** | ⛔ **the terminal state.** The review of what was built (§🔒 The walk step 1c), the walk script, land everything, stop |
 | A commit in an app the config marks `commit: manual` | ⛔ **never** — staged and left for the human under every flag |
 
 `--auto` never writes a sign-off, opens or pushes a PR, lifts a `hold:`, drops a capability users
@@ -402,9 +410,15 @@ first (`git switch <branch>`) if the tree is clean; otherwise stop and name the 
    Offered, not assumed — the human has already walked it. Skipped = say why.
 2. **Open ONE PR for the whole feature**, base the config's `base_branch`:
    `gh pr create --base <base_branch> --title "<type>(<ticket-or-feature>): <feature>" --body "<the
-   SPEC header's sign-off line + what changed per app>"`.
+   PR body>"`. The body is REFERENCE §The review, written from the condensed `SPEC.md`: the SPEC
+   header's sign-off line; what changes for users; added · changed · removed; the data, migrations
+   named; what changes in each app (a released app's transition); how it was tested — the walk, by
+   whom, and the verify verdict; then `Spec: <registry>/<feature>/SPEC.md` as a reference line.
+   🔴 **Print the body in full in the chat first** — the human approves what the PR will say, never a
+   title and a path.
    🔴 Only on a sign-off with no hold, and only on a branch that is not the base. **Ask once first**
-   — one AskUserQuestion, **Open the PR** / **Not yet** — even when an affirmative brought you here:
+   — one AskUserQuestion, **Open the PR** / **Not yet** — under the printed body (an edit they ask
+   for is made, the body printed again, and the question asked again) — even when an affirmative brought you here:
    "go" continued the pipeline, it did not name an outward-facing action. **One PR for the
    feature, never one per phase** — a phase is one app, and the apps ship together or the contract
    is live with only half its consumers.
