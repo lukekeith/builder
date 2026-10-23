@@ -199,11 +199,19 @@ test('recommend: no signal is the recommended plan', () => {
   }
 })
 
-test('recommend: a schema row raises only end to risk, naming the signal', () => {
-  const r = recommend({ specText: spec({ schema: ['| 1 | ADD | User.age | int | why | open |'] }), planText: plan(3), cfg: {} })
-  assert.deepEqual(r.tests, { ...BASE, end: 'risk' })
-  assert.ok(r.signals.includes('schema change'))
-  assert.match(r.reason, /schema change/)
+test('recommend: an EDIT, RENAME or REMOVE schema row raises only end to risk, naming the signal', () => {
+  for (const kind of ['EDIT', 'RENAME', 'REMOVE']) {
+    const r = recommend({ specText: spec({ schema: [`| 1 | ${kind} | User.age | int | why | open |`] }), planText: plan(3), cfg: {} })
+    assert.deepEqual(r.tests, { ...BASE, end: 'risk' }, kind)
+    assert.ok(r.signals.includes('breaking schema change'), kind)
+    assert.match(r.reason, /breaking schema change/)
+  }
+})
+
+test('recommend: ADD-only schema rows are not a signal — new surface nothing relies on yet', () => {
+  const r = recommend({ specText: spec({ schema: ['| 1 | ADD | note.tags | string[] | why | planned |', '| 2 | ADD | CLI `notes tags` | stdout | why | planned |'] }), planText: plan(3), cfg: {} })
+  assert.deepEqual(r.tests, BASE)
+  assert.deepEqual(r.signals, [])
 })
 
 test('recommend: a migration task raises end', () => {
@@ -249,7 +257,7 @@ test('recommend: build_profile_default is its mapping when there is no signal', 
 })
 
 test('recommend: a signal raises end on the configured default, never lowers it', () => {
-  const schema = ['| 1 | ADD | User.age | int | why | open |']
+  const schema = ['| 1 | EDIT | User.age | int | why | open |']
   assert.equal(recommend({ specText: spec({ schema }), planText: plan(3), cfg: { buildProfileDefault: 'rush' } }).tests.end, 'risk')
   assert.equal(recommend({ specText: spec({ schema }), planText: plan(3), cfg: { buildProfileDefault: 'thorough' } }).tests.end, 'everything')
 })
