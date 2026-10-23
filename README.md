@@ -189,29 +189,32 @@ stop; a feature **parks** only when its spec leaves a product decision open, or 
 to yourself (a `commit: manual` app, a `hold:`, your uncommitted change in the way of the merge). Nothing waits on a question, and nothing runs in the background of a headless run:
 long gates go through `scripts/job.mjs`, and a run is killed only after 30 minutes of silence.
 
-With an `agent_walk:` block, **the plan's go-ahead hands every feature to agents.** It asks
-**How should agents build "<feature>"?**, recommends a profile from the spec, estimates each from
-past landings, and launches the fleet:
+With an `agent_walk:` block, **the plan's go-ahead hands every feature to agents.** Every go-ahead —
+in chat or for agents — shows the plan as numbered slices, one per task, grouped by app, with what
+each one tests, and the **test plan** with what it costs: test runs, and minutes once the gates have
+been timed. "go" takes the recommended plan; *Change the test plan* asks three questions, recorded as
+`tests:` on the manifest:
 
-| Profile | What runs |
+| Question | Options (recommended first) |
 |---|---|
-| **Rush** | final review and fast gates only; no agent walk — you test it once it lands |
-| **Standard** | every task reviewed, the agent walks the `[risk]` items, full verify |
-| **Thorough** | today's full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E |
-| **Thorough + you** | Thorough, then your own walk and `/builder:signoff` before it lands |
+| **Testing per slice** | its own tests · plus the app's suite when its slices are done · the app's suite after every slice · none while building |
+| **Testing at the end** | the touched apps' suites once · plus an agent tries the risky parts · everything: deep set, cross-app E2E, the full agent walk · nothing — you test it |
+| **Review** | once at the end · once per app · after every slice |
 
 **Measuring it.** `/builder:benchmark` runs one small feature (a notes CLI gaining tags) through
-builder at each profile and through superpowers and GSD, unattended, and writes
+builder with the recommended test plan and with everything, and through superpowers and GSD,
+unattended, and writes
 `bench/results/<run>/REPORT.md`: wall time, time per step, what each step did, turns, tokens, cost,
 and whether the feature passes acceptance tests the agent never saw. Configs run one at a time;
 nothing in your Claude home changes. `/builder:benchmark --status` while it runs.
 
-*Customize* sets the levers one by one (testing, review, models, verify, persistence, open choices) —
-stronger models and a second reviewer on contract and schema tasks are Customize options. Landing is
-always the local merge; PR + CI landing is deferred, since the fleet never pushes. **The floors hold under every profile:** each app's fast gates at its phase
-close, the final whole-branch review, and consumer parity when a `released_artifact` consumer is
-affected. `build_profile_default` in the config sets the profile pre-selected when the spec doesn't
-call for Thorough.
+The recommended plan is the fast one; a schema change or a released consumer raises only the end, and
+says why. *Other* reaches the rest (models, persistence, open choices), and an agent build that tests
+the risky parts or everything can add your own walk before it lands. Landing is always the local
+merge; PR + CI landing is deferred, since the fleet never pushes. **The floors hold under every
+plan:** a type-check of every touched app before the work lands, and the final whole-branch review.
+An old `profile:` line on a manifest is still read, and `build_profile_default` in the config still
+sets the project's default plan.
 
 Needs an `agent_walk:` block in `.claude/builder.md` — `/builder:init --update` offers to add one when
 the config has none. Headless runs need permissions set explicitly (`claude_args`), because nobody is

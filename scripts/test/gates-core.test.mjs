@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders } from '../gates-core.mjs'
+import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -409,4 +409,83 @@ test('gate.mjs marks a running set in .builder/gates/running.json and removes it
   assert.ok(marker.pid > 0)
   assert.ok(!Number.isNaN(Date.parse(marker.startedAt)))
   assert.ok(!existsSync(join(root, '.builder/gates/running.json')), 'removed when the gate exits')
+})
+
+// ---- @typecheck and durations ---------------------------------------------------------------
+
+test('parseGates reads @typecheck off a line beside the other markers; unmarked lines carry no flag', () => {
+  const g = parseGates('## Quality gates\n\n### server — fast\n\n```\nnpm run typecheck   # the workspace type-checks @typecheck\nnpx tsc 2>&1 | grep -c "error TS"   # errors @delta @typecheck\nnpm test   # the suite\n```\n')
+  assert.deepEqual(g.fast.server[0], { cmd: 'npm run typecheck', note: 'the workspace type-checks', delta: false, knownRed: false, typecheck: true })
+  assert.deepEqual(g.fast.server[1], { cmd: 'npx tsc 2>&1 | grep -c "error TS"', note: 'errors', delta: true, knownRed: false, typecheck: true })
+  assert.equal(g.fast.server[2].typecheck, undefined)
+})
+
+test('runGateSet returns each run command its ms, and says whether a @scoped line ran a subset', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-dur-'))
+  const whole = runGateSet([{ cmd: 'true', note: '', delta: false, knownRed: false }, { cmd: 'echo 3', note: '', delta: true, knownRed: false }], { cwd: dir, logDir: join(dir, 'logs'), baseline: {} })
+  assert.deepEqual(Object.keys(whole.durations), ['true', 'echo 3'])
+  assert.ok(Object.values(whole.durations).every((ms) => Number.isInteger(ms) && ms >= 0))
+  assert.equal(whole.partial, false)
+  const scoped = { cmd: 'true {tests}', note: '', delta: false, knownRed: false, scope: 'e2e/**' }
+  const some = runGateSet([scoped], { cwd: dir, logDir: join(dir, 'logs'), scope: () => ({ mode: 'some', tests: ['x.spec.ts'], why: {}, reason: null }) })
+  assert.equal(some.partial, true, 'a subset is not the whole set')
+  const none = runGateSet([scoped], { cwd: dir, logDir: join(dir, 'logs'), scope: () => ({ mode: 'none', tests: [], why: {}, reason: 'nothing reaches it' }) })
+  assert.equal(none.partial, true, 'a skipped scoped line is not the whole set')
+  const all = runGateSet([scoped], { cwd: dir, logDir: join(dir, 'logs'), scope: () => ({ mode: 'whole', tests: [], why: {}, reason: 'a lockfile changed' }) })
+  assert.equal(all.partial, false, 'a scoped line run over its whole suite is whole')
+})
+
+test('writeDurations merges per app into .builder/gates/durations.json; readDurations is {} when absent', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gates-dur-'))
+  assert.deepEqual(readDurations(root), {})
+  writeDurations(root, 'server', { total: 30, commands: { a: 10, b: 20 } })
+  writeDurations(root, 'web', { total: 5, commands: { c: 5 } })
+  writeDurations(root, 'server', { total: 12, commands: { a: 12 } })
+  const d = readDurations(root)
+  assert.deepEqual(Object.keys(d).sort(), ['server', 'web'])
+  assert.deepEqual(d.server.commands, { a: 12 }, 'an app is replaced whole by its latest green run')
+  assert.equal(d.server.total, 12)
+  assert.ok(!Number.isNaN(Date.parse(d.server.at)))
+  assert.equal(readFileSync(join(root, '.builder/.gitignore'), 'utf8'), '*\n')
+  writeFileSync(join(root, '.builder/gates/durations.json'), 'not json')
+  assert.deepEqual(readDurations(root), {})
+})
+
+test('gate.mjs records durations after a green whole app set — not a red one, a quoted one, or a --typecheck run', () => {
+  const root = configured('### server — fast\n\n```\ntrue   # types @typecheck\necho ok   # suite\n```\n\n### web — fast\n\n```\nfalse   # red\n```\n')
+  const r = run(root, 'server')
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const d = readDurations(root)
+  assert.deepEqual(Object.keys(d.server.commands), ['true', 'echo ok'])
+  assert.ok(Number.isInteger(d.server.total))
+  const before = JSON.stringify(d)
+  assert.equal(run(root, 'web').status, 1)
+  assert.equal(readDurations(root).web, undefined, 'a red set records nothing')
+  run(root, 'server')
+  assert.equal(JSON.stringify(readDurations(root)), before, 'a quoted set records nothing')
+  run(root, 'server', '--typecheck', '--force')
+  assert.equal(JSON.stringify(readDurations(root)), before, 'a --typecheck run is not the whole set')
+})
+
+test('gate.mjs --typecheck runs only the @typecheck lines, through the same runner; an app with none passes', () => {
+  const runs = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'runs.txt')
+  const root = configured(
+    `### server — fast\n\n\`\`\`\necho tc >> ${runs}   # types @typecheck\nsh flaky.sh   # flaky types @typecheck\nfalse   # debt @known-red @typecheck\necho suite >> ${runs}   # the suite\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho suite   # no typecheck line\n\`\`\`\n`,
+    { flaky: 'flaky:\n  - match: blip\n    rerun: echo fine\n' }
+  )
+  writeFileSync(join(root, 'flaky.sh'), 'echo blip; exit 1\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'fixtures')
+  const r = run(root, 'server', 'web', '--typecheck')
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assert.equal(readFileSync(runs, 'utf8'), 'tc\n', 'only the marked lines ran')
+  assert.match(r.stdout, /matched flaky "blip"/)
+  assert.match(r.stdout, /KNOWN-RED/)
+  assert.match(r.stdout, /no @typecheck line for web/)
+  assert.ok(readMemo(root, 'fast-server-typecheck'), 'its own memo')
+  assert.equal(readMemo(root, 'fast-server'), null, 'never stands in for the full set')
+  const again = run(root, 'server', '--typecheck')
+  assert.match(again.stdout, /PASS \(quoted\)/)
+  const red = configured('### server — fast\n\n```\nfalse   # types @typecheck\n```\n')
+  assert.equal(run(red, 'server', '--typecheck').status, 1)
 })

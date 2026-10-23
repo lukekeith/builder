@@ -19,7 +19,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 
 const COMMENT = /\s{2,}#(.*)$|\s+#\s(.*)$/
 
-/** One gate line: `<command>   # <what it proves> [@delta] [@known-red] [@scoped <glob>]`. */
+/** One gate line: `<command>   # <what it proves> [@delta] [@known-red] [@scoped <glob>] [@typecheck]`. */
 const parseLine = (raw) => {
   const line = raw.trimEnd()
   if (!line.trim() || /^\s*#/.test(line)) return null
@@ -28,12 +28,15 @@ const parseLine = (raw) => {
   const note = (m ? (m[1] ?? m[2] ?? '') : '').trim()
   if (!cmd) return null
   const scope = /@scoped\s+(\S+)/.exec(note)?.[1]
+  // @typecheck: the line type-checks the app — the floor the test plan keeps when nothing else runs.
+  const typecheck = /@typecheck\b/.test(note)
   return {
     cmd,
-    note: note.replace(/@scoped\s+\S+|@delta|@known-red/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
     ...(scope && { scope }),
+    ...(typecheck && { typecheck }),
   }
 }
 
@@ -220,7 +223,10 @@ function scopeLine(g, scope) {
 /**
  * Run a gate set. `flaky` is the config's list — `{ match, rerun? }` — and `baseline` maps a @delta
  * command to the count it must not exceed (null when unknown: the first measurement then becomes the
- * baseline, and the line says so). Returns `{ exit, lines }`; `log` gets each line as it happens.
+ * baseline, and the line says so). Returns `{ exit, lines, red, newBaselines, durations, partial }`:
+ * `durations` maps each line that ran (as written) to its ms, re-runs included; `partial` is true
+ * when a @scoped line ran a subset or was skipped — the set then says nothing about the whole
+ * suite's time. `log` gets each line as it happens.
  */
 export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, log = () => {} }) {
   const lines = []
@@ -229,7 +235,9 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     log(s)
   }
   let red = 0
+  let partial = false
   const newBaselines = {}
+  const durations = {}
   gates.forEach((g0, i) => {
     const logFile = logDir ? join(logDir, `${String(i + 1).padStart(2, '0')}.log`) : null
     let g = g0
@@ -246,13 +254,16 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     if (g0.scope) {
       scoped = scopeLine(g0, scope)
       if (scoped.skip) {
+        partial = true
         say(scoped.skip)
         return
       }
+      if (scoped.subset) partial = true
       if (scoped.say) say(scoped.say)
       g = { ...g0, cmd: scoped.cmd }
     }
     let r = runCommand(g.cmd, { cwd, env, logFile })
+    durations[g0.cmd] = r.ms
     const tail = (n) => r.output.trim().split('\n').slice(-n).join('\n    ')
     if (g.delta) {
       let value = lastInt(r.stdout)
@@ -262,6 +273,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       if (scoped?.subset && value !== null && value > 0) {
         say(`  ${value} in the subset — re-running the whole suite to judge it against the baseline`)
         r = runCommand(scoped.whole, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-whole.log') : null })
+        durations[g0.cmd] += r.ms
         g = { ...g0, cmd: scoped.whole }
         scoped = { ...scoped, subset: false } // a whole-suite count now: it can stand as a baseline
         value = lastInt(r.stdout)
@@ -295,6 +307,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     const hit = flaky.find((f) => matcher(f.match).test(r.output))
     if (hit) {
       const again = runCommand(hit.rerun || g.cmd, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
+      durations[g0.cmd] += again.ms
       if (again.exit === 0) {
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
         return
@@ -306,7 +319,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     red++
     say(`✗ ${g.cmd} exit ${r.exit} (${fmt(r.ms)})${logFile ? ` — ${logFile}` : ''}\n    ${tail(8)}`)
   })
-  return { exit: red ? 1 : 0, lines, red, newBaselines }
+  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial }
 }
 
 // ---- the memo ------------------------------------------------------------------------------
@@ -347,4 +360,32 @@ export function writeBaseline(root, values, head) {
   mkdirSync(join(dir, 'gates'), { recursive: true })
   if (!existsSync(join(dir, '.gitignore'))) writeFileSync(join(dir, '.gitignore'), '*\n')
   writeFileSync(baselinePath(root), JSON.stringify({ head, when: new Date().toISOString(), values }, null, 2) + '\n')
+}
+
+// ---- durations -----------------------------------------------------------------------------
+
+/**
+ * How long each app's whole fast set took on its last green run — `{ <app>: { total, commands:
+ * { <cmd>: ms }, at } }` — so the test plan can say what a slice costs. Written only for a green,
+ * run (not quoted), whole set: a subset or a --typecheck run would understate it.
+ */
+export const durationsPath = (root) => join(root, '.builder', 'gates', 'durations.json')
+
+export function readDurations(root) {
+  const p = durationsPath(root)
+  if (!existsSync(p)) return {}
+  try {
+    const d = JSON.parse(readFileSync(p, 'utf8'))
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch {
+    return {}
+  }
+}
+
+export function writeDurations(root, app, { total, commands }) {
+  const dir = join(root, '.builder')
+  mkdirSync(join(dir, 'gates'), { recursive: true })
+  if (!existsSync(join(dir, '.gitignore'))) writeFileSync(join(dir, '.gitignore'), '*\n')
+  const all = { ...readDurations(root), [app]: { total, commands, at: new Date().toISOString() } }
+  writeFileSync(durationsPath(root), JSON.stringify(all, null, 2) + '\n')
 }

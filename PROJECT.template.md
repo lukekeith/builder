@@ -109,7 +109,7 @@ beside it in `/builder:verify`, so a fast command repeated here runs twice.
 
 The runner quotes a set whose inputs (the app's path, shared code, the commands)
 are byte-identical to its last green run, so a gate is not re-run for an app
-nothing has touched. Two markers go at the end of a line's comment:
+nothing has touched. Markers go at the end of a line's comment:
 
 - `@known-red` — red for inherited debt on the base branch; run and reported,
   never counted against a feature. Say what makes it red.
@@ -123,6 +123,10 @@ nothing has touched. Two markers go at the end of a line's comment:
   all, and is skipped when it doesn't. A change the graph can't see past (a
   file beside the tests nothing loads, a runner config, a lockfile) runs the
   whole suite. An e2e suite that takes minutes should always be scoped.
+- `@typecheck` — the line type-checks the app. It is the floor the test plan
+  keeps when nothing else runs: `gate.mjs <app> --typecheck` runs only these
+  lines, and an app with none marked leaves it to each task's own type-check.
+  Combines with the others (`… @delta @typecheck`).
 
 🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
 `gate:all` that re-runs the typecheck, the unit suites and the e2e suite again

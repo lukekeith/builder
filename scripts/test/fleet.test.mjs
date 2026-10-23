@@ -65,7 +65,7 @@ function assertLanded(r, name) {
 
 const HAPPY = ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
 
-test('the archive row carries the plan’s size and the profile, though the ship removes both files', () => {
+test('the archive row carries the plan’s size and the test plan (an old profile mapped, kept beside it), though the ship removes both files', () => {
   const root = makeRepo(['a'])
   writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: spec\nprofile: rush\nnext: x\n')
   writeFileSync(join(root, 'docs/features/a/PLAN.md'), '# Plan\n\n## Phases\n\n| # | App | Goal |\n|---|---|---|\n| 1 | app | x |\n\n### Task 1: one\n\n### Task 2: two\n')
@@ -76,6 +76,7 @@ test('the archive row carries the plan’s size and the profile, though the ship
   const a = assertLanded(r, 'a')
   assert.equal(a.size.tasks, 2)
   assert.equal(a.profile, 'rush')
+  assert.equal(a.tests, 'slice=own+app end=touched review=end models=economy persist=low')
   assert.equal(existsSync(join(root, 'docs/features/_archive/a/PLAN.md')), false, 'the ship removed the plan')
 })
 
@@ -104,7 +105,7 @@ test('an older copy of the folder on the target is replaced by HEAD\u2019s', () 
   git(root, 'commit', '-qam', 'plan on work')
   const r = runFleet(root, ['a'], { a: HAPPY.slice(HAPPY.indexOf('building')) })
   assert.equal(r.status, 0, r.stderr + r.stdout)
-  assert.equal(assertLanded(r, 'a').profile, 'rush')
+  assert.equal(assertLanded(r, 'a').tests, 'slice=own+app end=touched review=end models=economy persist=low')
   assert.match(git(root, 'log', 'main', '--oneline'), /spec and plan from work/)
 })
 
@@ -130,7 +131,8 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
   assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
-  assert.equal(a.profile, 'thorough', 'the fixture manifest has no profile:')
+  assert.equal(a.profile, null, 'the fixture manifest has no profile:')
+  assert.equal(a.tests, 'slice=own+app end=everything review=slice', 'a go-ahead\'d feature with neither line: the thorough mapping')
   assert.equal(a.size, null, 'the fixture has no PLAN.md')
   assert.equal(a.tokens.input, 1000 * a.runs)
   assert.ok(a.costUsd > 0)
@@ -557,7 +559,10 @@ test('--status renders the table live, with progress read from each feature', ()
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
   writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\nnext: x\n')
   const r2 = runFleet(root, ['--status'], {})
-  assert.match(r2.stdout, /\| b \| building \| thorough \| ▓░░░░░░░░░ 10% · audited \| 1 \|/, 'no facts yet: the manifest\'s profile')
+  assert.match(r2.stdout, /\| Tests \|/)
+  assert.match(r2.stdout, /\| b \| building \| — \| ▓░░░░░░░░░ 10% · audited \| 1 \|/, 'no facts yet, no go-ahead: no plan')
+  writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\ntests: slice=own end=risk review=end\nnext: x\n')
+  assert.match(runFleet(root, ['--status'], {}).stdout, /\| b \| building \| own · risk · end \|/, 'no facts yet: the manifest\'s tests:')
 })
 
 test('--status says when the fleet process is gone with features mid-run, and how to resume', () => {
@@ -1254,11 +1259,13 @@ test('a human-step park is never retried automatically', () => {
 })
 
 test('low persistence (rush) gets no automatic retry', () => {
-  const root = makeRepo(['a'], { lines: ['auto_unpark: 2'], manifest: ['profile: rush'] })
-  const r = runFleet(root, ['a'], { a: ['BLOCK:stuck', 'audited'] })
-  assert.equal(r.fleet.features.a.status, 'parked')
-  assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 1)
-  assert.equal(r.calls.filter((l) => /unpark/.test(l)).length, 0)
+  for (const line of ['profile: rush', 'tests: slice=own end=touched review=end persist=low']) {
+    const root = makeRepo(['a'], { lines: ['auto_unpark: 2'], manifest: [line] })
+    const r = runFleet(root, ['a'], { a: ['BLOCK:stuck', 'audited'] })
+    assert.equal(r.fleet.features.a.status, 'parked', line)
+    assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 1, line)
+    assert.equal(r.calls.filter((l) => /unpark/.test(l)).length, 0, line)
+  }
 })
 
 test('a park waiting for your walk is a human step, never retried', () => {
@@ -1328,7 +1335,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, profile: 'thorough', tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1341,7 +1348,7 @@ test('--status --archived lists the latest landings', () => {
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
-  assert.match(ar.stdout, /\| [ab] \| thorough \| \d+s \| 9k \| [0-9a-f]{7,} \| — \| just now \|/)
+  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| 9k \| [0-9a-f]{7,} \| — \| just now \|/)
   const none = runFleet(makeRepo(['c']), ['--status', '--archived'], {})
   assert.match(none.stdout, /No feature has landed from this fleet yet\./)
 })

@@ -13,8 +13,8 @@ It reads four things, and **trusts nothing remembered from the build** — every
   consumer is checked against, §Testing names what must pass, §Decisions the load-bearing behaviours,
   §Schema & API changes the rows that had to land, §Findings the `repoint:` rows, and `## Fixes`
   whatever is still owed. In prototype mode, §Prototype and §Replaced surfaces as well.
-- **`<folder>/MANIFEST.md`** — `state:` · `apps:` · `contract:` · `walk:` · `verify:` · `hold:` ·
-  `head`.
+- **`<folder>/MANIFEST.md`** — `state:` · `apps:` · `contract:` · `tests:` · `walk:` · `verify:` ·
+  `hold:` · `head`.
 - **`.claude/builder.md`** — §Quality gates (the fast sets and the deep set), §House rules (item 7's
   checklist), §Environment landmines.
 - **the ledger** — the sign-off removed `PLAN.md`, so the ledger plus `git log` are the record of
@@ -31,21 +31,27 @@ may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it
 (resume §`--agent-walk`). A verify that ends its turn "waiting on the gates" is lost when the headless
 run exits.
 
-**The build profile (under `--agent-walk`).** Read the levers:
-`node <builder>/scripts/profile.mjs --levers <folder>`. The floors in its `floors` hold whatever
-the levers say — each in-scope app's fast set, and consumer parity when a `released_artifact`
-consumer is affected. Without `--agent-walk`, verify runs as written.
+**The test plan.** Read the levers on every verify, in chat and under `--agent-walk` alike:
+`node <builder>/scripts/profile.mjs --levers <folder>` — it reads the manifest's `tests:` line, and
+maps an old `profile:` line when there is no `tests:`. The floors in its `floors` hold whatever the
+levers say: **the type-check of every touched app** — `node <builder>/scripts/gate.mjs <every
+in-scope app> --typecheck`, the config's fast-set lines marked `@typecheck`; an app with none marked
+relies on the implementer's per-task type-check, and the verdict says so in one line — and **the
+final whole-branch review**, which the build ran. `end` sets the rest:
 
-- **`verify: floors`** → each app's fast set (item 3 without `--deep`), plus consumer parity
-  (item 5) when a `released_artifact` consumer is affected. No deep set, no E2E, no pattern sweep —
-  items 1, 2, 4, 6 and 8 still hold; the rest are named as skipped by the profile in the verdict.
-- **`verify: full`** → the checklist as written, with the cross-app E2E (item 10) only on the legs
+- **`end=none`** → the type-check above, plus items 2, 4 and 6. Every other item is named as skipped
+  by the test plan in the verdict, whose first line reads `nothing was tested (tests: end=none)`. A
+  feature with a `released_artifact` consumer affected or a schema change gets one more line saying
+  that ships untested — a warning, never a refusal.
+- **`end=touched`** → each app's fast set (item 3 without `--deep`), plus consumer parity
+  when a `released_artifact` consumer is affected (item 5). No deep set, no E2E, no pattern sweep —
+  items 1, 2, 4, 6 and 8 still hold; the rest are named as skipped by the test plan in the verdict.
+- **`end=risk`** → the checklist as written, with the cross-app E2E (item 10) only on the legs
   §A re-verify's table names for this feature's diff.
-- **`verify: everything`** → the checklist as written: a feature's first verify, every leg.
-- **`testing: none`** (no walk): item 1 holds on the `🤖 AGENT SIGNED OFF — no walk …` header, and
-  the verdict's first line says nothing walked it. There is no walk report, so when the verify level
-  calls for the cross-app E2E (item 10), verify drives the app for it itself. **`testing: risky`**: item 1 holds on the
-  report's `[risk]` and `E` rows.
+- **`end=everything`** → the checklist as written: a feature's first verify, every leg.
+- **No agent walk** (`end=none` or `end=touched` under `--agent-walk`): item 1 holds on the
+  `🤖 AGENT SIGNED OFF — no walk …` header, and the verdict's first line says nothing walked it.
+  **`end=risk`** under `--agent-walk`: item 1 holds on the report's `[risk]` and `E` rows.
 
 🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)
 applied to a feature.** Its iron law governs every line of the verdict: *no completion claim without

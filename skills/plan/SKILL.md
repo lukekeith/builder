@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Turn an audited feature spec into a committed implementation plan at the feature folder's PLAN.md — dependency-ordered phases, ONE APP PER PHASE with the producer before its consumers (contract + migrations → producer → consumers in parallel → tools → the cross-app E2E walk last), each task naming its app, its phase, the recipe skill to read first, its files and interfaces, and bite-sized steps carrying the actual code and tests. SPEC §Plan becomes a one-line-per-task index pointing at PLAN.md. Runs only after /builder:audit, with no OPEN decisions and no blocked findings. Ends by taking the build go-ahead and recording it on the manifest. Use when the user asks to plan a spec's implementation.
+description: Turn an audited feature spec into a committed implementation plan at the feature folder's PLAN.md — dependency-ordered phases, ONE APP PER PHASE with the producer before its consumers (contract + migrations → producer → consumers in parallel → tools → the cross-app E2E walk last), each task naming its app, its phase, the recipe skill to read first, its files and interfaces, and bite-sized steps carrying the actual code and tests. SPEC §Plan becomes a one-line-per-task index pointing at PLAN.md. Runs only after /builder:audit, with no OPEN decisions and no blocked findings. Ends by taking the build go-ahead — the plan shown as slices, each with the tests it adds, and a test plan the user can change (testing per slice, testing at the end, review cadence) with what each choice costs — and recording it on the manifest. Use when the user asks to plan a spec's implementation.
 ---
 
 # `/builder:plan` — the audited spec becomes phases
@@ -118,9 +118,10 @@ that is correct — a four-app `md` sitting at 5 phases is not oversized, it is 
 heading at any level**: any heading between two task blocks is swept into the earlier task's brief.
 
 **A one-task phase for a tiny change is the most expensive shape a plan can take.** A phase costs a
-brief, a fresh implementer, a fresh reviewer and a gate run whatever its size; measured on a real
-build, three consecutive phases of one small task each (a tool description, a rule line, a guard)
-cost as much as a phase of five real tasks. Before accepting one: fold the change into a task of the
+brief and a fresh implementer whatever its size, and a review and a gate run wherever the test plan
+closes phases on them; measured on a real build under per-task review and phase-close gates, three
+consecutive phases of one small task each (a tool description, a rule line, a guard) cost as much as
+a phase of five real tasks. Before accepting one: fold the change into a task of the
 same app that already exists, or — when the app has no other phase — write it as one task whose
 steps are exactly the edit and its test, and note `tiny` on its `Recipe:` line so the build picks the
 cheapest reviewer tier. Never fold across an app boundary to avoid a phase.
@@ -170,107 +171,169 @@ reads it by position. Never per-phase docs.
 **The manifest:** `state: planned`, `head`, `branch`, `next: /builder:resume --path <folder>`. Commit
 `PLAN.md`, the SPEC and the manifest together: `docs(<ticket-or-feature>): plan <feature>`.
 
-**Then take the go-ahead, in the same turn.** Present `PLAN.md`'s `## Phases` table as it stands —
-`Phase · App · Tasks · Goal · Gates` — with the totals, the path to read the plan at, and what rides
-along: the tasks carrying a `build-time risk`, **which phase freezes the contract**, and anything
-deferred with a decider. Take **one explicit approval** through plan mode's `ExitPlanMode`. That
-approval covers the whole build; no later phase re-asks.
-
-- **Yes, and the config has no `agent_walk:` block** → the hand-built path, as before: write
-  `go-ahead: <name YYYY-MM-DD>` and commit: `chore(<ticket-or-feature>): <feature> — go-ahead`.
-  Under `--auto` the table is presented and the run proceeds, recorded as
-  `go-ahead: auto (recommended) YYYY-MM-DD`.
-- **Yes, with an `agent_walk:` block** → §The build profile: agents build it.
-- **The manifest says `build: here`** → §Build here instead of the approval above.
-- **No** → leave `go-ahead: none`; `state: planned` stands. A scope objection routes to
-  `/builder:brainstorm --path <folder>`; a changed requirement or reversed ruling routes to
-  `/builder:revise --path <folder> <the change>`.
+**Then take the go-ahead, in the same turn** — §The go-ahead.
 
 **Nothing here creates a branch, a worktree or a ticket** — the fleet makes the feature's worktree
 when it launches. Given `--ticket`, check the branch name carries the key and warn once if not.
 
+## The go-ahead
+
+One approval covers the whole build; no later phase re-asks. It is taken the same way in chat and
+with an `agent_walk:` block — the slices, the test plan, A/B/C — and only what **A** starts differs.
+**The manifest says `build: here`** → §Build here instead.
+
+**1. The slices.** Run `node <builder>/scripts/plan-slices.mjs <folder>` — with `--tests "<value>"`
+when the manifest already carries `tests:` (chosen ahead, §Picking the test plan ahead) — and present
+its output **verbatim**: the feature, its slices and apps, where it lands, one line per task grouped by
+app with the tests it adds, then the test plan's two lines — what runs, and what it costs in runs and,
+when the gate runner has timed the suites, minutes. Never redraw it as a table, re-total it or add a
+column. The `## Phases` table stays in `PLAN.md` for the build; the human sees slices. Under the
+block, one line each for what rides along: the slices carrying a `build-time risk`, **which slice
+freezes the contract**, anything deferred with a decider, and the path to read the plan at. When
+`node <builder>/scripts/profile.mjs --recommend <folder>` returns `signals` (a schema change, a
+released consumer… raised the end to the risky parts), say its `reason` in one line — unless the
+block already does.
+
+**2. The ways on** — CONVERSATION §Ways on, plain chat:
+
+```
+A. Build it with this plan (recommended) — <what A starts, below>
+B. Change the test plan — how much to test per slice, at the end, and when to review
+C. Keep planning — nothing is built; say what to change
+Reply A, B or C — "go" is A.
+```
+
+A's description: no `agent_walk:` block → `build it now, in this session`; with one → `agents build it
+in its own worktree and land it on <target>`, the target being the config's `merge_into` (default
+`base_branch`). A reply naming another branch with A ("A, onto develop") lands it there.
+
+**3. B → one AskUserQuestion, three questions** (four with an `agent_walk:` block: **Land on?** last).
+Each option's description **leads with what it costs for this plan**: run
+`node <builder>/scripts/profile.mjs --cost <folder> --tests "<value>"` for each option — its own lever
+set, the other two held where they stand — → `{ ownRuns, suiteRuns, reviews, walk, minutes }`, and
+lead with the counts (`12 quick runs + 3 suite runs`, `4 reviews`), then `≈ N min` when `minutes` is
+not `null`. Then what it runs, in the words below. The recommendation's option is first, with
+` (Recommended)` on its label; the rest keep this order.
+
+- **Testing while building — after each slice:** **Its own tests** — the tests that slice adds, and
+  the type-check (`slice=own`) · **Its own, plus the app's suite when the app's slices are done**
+  (`own+app`) · **The app's suite after every slice** — slowest; `@scoped` lines still narrow it
+  (`full`) · **None while building** — tests are still written; they run at the end (`none`).
+- **Testing at the end — once every slice is built:** **The touched apps' suites, once** — every
+  touched app's fast set, the tests §Testing names, released-consumer parity (`end=touched`) · **Plus
+  an agent tries the risky parts** — the `[risk]` walk items in the running app, and `@scoped` deep
+  lines (`risk`) · **Everything** — the deep set, the cross-app E2E, the full walk (`everything`) ·
+  **Nothing — I'll test it** — the type-check only; the verdict says nothing was tested (`none`). On a
+  feature with a released consumer or a schema change, `none`'s description adds `⚠ This feature has
+  a <signal>: nothing tests it before it lands.` It warns; it never refuses.
+- **Review:** **Once at the end** — one whole-branch review (`review=end`) · **Once per app** — after
+  each app's slices (`app`) · **After every slice** (`slice`).
+- **Land on?** (`agent_walk:` set) — `<merge_into> (Recommended)`, then up to two likely branches:
+  `base_branch` when it differs, and the current branch when it differs from both. The tool's
+  *Other* takes any other branch name.
+
+**The floors are not options** and are never offered off: the type-check of every touched app before
+the work lands, and the final whole-branch review. The human walk is not a lever either — an in-chat
+build keeps the 🔒 walk before a PR whatever the test plan.
+
+The tool's *Other* on any of the three testing questions is the rest of the levers: one more
+AskUserQuestion — `models` (`default` · `economy` · `strong`), `persist` (`default` · `low`),
+`unruled` (`recommend` · `park`), each pre-filled from `profile.mjs --levers <folder>`. A value typed
+into *Other* that names one of the question's own options counts as that option. **With an
+`agent_walk:` block, and `end` set to `risk` or `everything` through B** → **Walk it yourself before
+it lands?** in that same follow-up call (or alone): **No (Recommended)** · **Yes** → `walk=you` (the
+fleet parks it for your walk after the agent's, and lands it after your `/builder:signoff`).
+
+Then run `plan-slices.mjs <folder> --tests "<the new value>"` again and present **only its test-plan
+lines**, with the same A/B/C — A now reads *Build it with this plan*, and "go" is still A.
+
+**4. A → record it.** The manifest gets `go-ahead: <name YYYY-MM-DD>` and
+`tests: slice=<v> end=<v> review=<v>`, plus any `models=`, `persist=`, `unruled=` or `walk=you` pair
+that is not its default — the recommendation taken unchanged is still written. `<test plan>` below is
+its label, the three values `·`-joined (`own · touched · end`, ` · you` with `walk=you`).
+
+- **No `agent_walk:` block** → commit `chore(<ticket-or-feature>): <feature> — go-ahead (<test plan>)`,
+  then run `/builder:build --path <folder>` through the Skill tool in the same turn — A was the go.
+- **An `agent_walk:` block** → write `target: <branch>` too, commit
+  `chore(<ticket-or-feature>): <feature> — go-ahead (<test plan>)`, then run
+  `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>`. A target that matches a
+  running fleet's joins its queue. A branch that doesn't exist → relay the fleet's refusal and ask
+  **Land on?** again.
+- **A running fleet with a different target refuses.** Relay its message as written, then one
+  AskUserQuestion: **Switch this feature to <the running target>** (rewrite `target:`, commit, launch
+  again) / **Launch it once that fleet ends** (leave the manifest as written; `/builder:agent --path
+  <folder>` then).
+
+**5. C → keep planning.** `go-ahead: none`; `state: planned` stands. Their words decide where it goes:
+a change to the plan itself (a slice split, merged or reordered) is made here — `PLAN.md` and the
+§Plan index edited, §Writing the plan's checks re-run, committed — and the go-ahead is taken again; a
+scope objection routes to `/builder:brainstorm --path <folder>`; a changed requirement or reversed
+ruling routes to `/builder:revise --path <folder> <the change>`.
+
+**An old manifest** — `profile:` and no `tests:` — is still read: `profile.mjs` maps it to levers. A
+new go-ahead writes `tests:`.
+
 ### Build here (`build: here`)
 
 The human chose to build it in this session without the ceremony (REFERENCE §Flags `--here`). Present
-the `## Phases` table and what rides along exactly as above — it is the plan they are about to watch
-being built — but **don't stop for an approval**: choosing *here* was the go-ahead. Write
+the slices and what rides along exactly as above — it is the plan they are about to watch being
+built — but **don't stop for an approval**: choosing *here* was the go-ahead. No A/B/C, no questions:
+the test plan is the manifest's `tests:`, or the recommendation, written as `tests:`. Write
 `go-ahead: <name YYYY-MM-DD> (here)`, commit `chore(<feature>): <feature> — go-ahead (here)`, and run
-`/builder:build --path <folder> --here` through the Skill tool in the same turn. No build profile, no
-**Land on?**, no fleet. Under `--agent-walk`, `build: here` is ignored.
+`/builder:build --path <folder> --here` through the Skill tool in the same turn. No **Land on?**, no
+fleet. Under `--agent-walk`, `build: here` is ignored.
 
-### The build profile (`agent_walk:` set)
-
-1. **Recommend and estimate.** `node <builder>/scripts/profile.mjs --recommend <folder>` →
-   `{ preset, signals }`; then `node <builder>/scripts/profile.mjs --estimate <folder> --profile <p>`
-   for each of `rush`, `standard`, `thorough` → `{ minutes, tokens, n }`, or `null` with fewer than 3
-   comparable landings. The target is the config's `merge_into` (default `base_branch`).
-2. **One AskUserQuestion call, two questions.** The first:
-   `How should agents build "<feature>"?  → lands on <target>`, then `Recommended: <Preset> — <signals, comma-joined>`. Options **Rush / Standard / Thorough**, the
-   recommended one first with ` (Recommended)` on its label. Each description leads with
-   `~N min · ~T tokens (n similar features)` — or, with no estimate, its place in the ladder: Rush
-   `fastest · fewest tokens`, Standard `faster`, Thorough `full pipeline` — then what the preset
-   skips:
-   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands. When the
-     recommendation is Thorough, add `⚠ This feature has a <signal>: nothing walks it before it
-     lands.` It warns; it never refuses.
-   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.
-   - **Thorough** — the full pipeline: every task reviewed, full agent walk, deep verify with
-     cross-app E2E.
-   The tool's own *Other* on this question means only **Customize**.
-   The second, in the same call: **Land on?** — `<merge_into> (Recommended)`, then up to two likely
-   branches: `base_branch` when it differs, and the current branch when it differs from both. The
-   tool's *Other* takes any other branch name.
-3. **Picked Thorough** → one more AskUserQuestion after that call:
-   **Walk it yourself before it lands?** — **No (Recommended)** → `thorough`; **Yes** →
-   `thorough-you` (the fleet parks it for your walk after the agent's, and lands it after your
-   `/builder:signoff`).
-4. **Other (Customize)** → two AskUserQuestion calls over the levers, each pre-filled from the
-   recommended preset (`profile.mjs --levers` keys): `testing`, `review`, `models`, `verify`; then
-   `persist`, `unruled`. Written as `profile: custom k=v …`. `models=strong` and
-   `review=per-task+second` (a second reviewer on contract and schema tasks) are offered only here.
-   `landing` is always `local` — PR + CI landing is deferred — so it is not asked. The floors — fast gates, the
-   final review, released-consumer parity — are not levers and hold under every profile.
-5. **The target** is the **Land on?** answer: `target: <branch>`.
-6. **Record and launch.** Write `go-ahead: <name YYYY-MM-DD>`, `profile: <preset or custom k=v …>`
-   and `target:` to the manifest, commit
-   `chore(<ticket-or-feature>): <feature> — go-ahead (<profile>)`, then run
-   `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>`. A target that matches a
-   running fleet's joins its queue. A branch that doesn't exist → relay the fleet's refusal and ask
-   **Land on?** again.
-7. **A running fleet with a different target refuses.** Relay its message as written, then one
-   AskUserQuestion: **Switch this feature to <the running target>** (rewrite `target:`, commit, launch
-   again) / **Launch it once that fleet ends** (leave the manifest as written; `/builder:agent --path
-   <folder>` then).
-
-### Picking the profile ahead — `/builder:agent` and `/builder:fleet`
+### Picking the test plan ahead — `/builder:agent` and `/builder:fleet`
 
 Agents can take a feature before it is planned, so its go-ahead then runs headless. **Before their
-one confirmation, `/builder:agent` and `/builder:fleet` ask steps 1–5 above for every pick whose
-manifest has no `profile:`** — the profile question once per pick (up to four picks per
-AskUserQuestion call), **Land on?** once for the run (one target per run), the Thorough follow-up
-and Customize as written. A pick with no `PLAN.md` yet has no task count, so `--estimate` returns
-`null` and its options show the ladder words. Write `profile:` and `target:` to each pick's manifest
-— never `go-ahead:`, which the plan still records — and commit
-`chore(<feature>): build profile <profile> → <target>` in this checkout before the dry run. The
-headless go-ahead keeps them (below). A pick that already carries `profile:` is not asked again.
+one confirmation, `/builder:agent` and `/builder:fleet` ask the test plan for every pick whose
+manifest has neither `tests:` nor an old `profile:`**:
 
-🔴 **`--auto` and `--agent-walk` never ask.** In an `agent_walk:` project they record
-`go-ahead: auto (recommended) YYYY-MM-DD` in the go-ahead commit and **keep a `profile:` and
-`target:` the manifest already carries** — chosen at §Picking the profile ahead. Only when one is
-missing do they write it: `profile: <recommended>`, and `target: <the --into this run was given>` —
-`<merge_into>` only without `--into`. Plain `--auto` then launches the fleet as in step 6;
+1. **One AskUserQuestion, one question per pick** (up to four picks per call): `Test plan for
+   "<feature>"?` — **The recommended plan (Recommended)**, described by `profile.mjs --recommend <folder>`'s
+   three values (`own · touched · end`) and, when it has `signals`, its `reason` · **Change it**. A pick with `PLAN.md` gets its slice
+   table (`plan-slices.mjs <folder>`) printed above the call.
+2. **Change it** → that pick's B questions (§The go-ahead step 3), one call per pick, *Other* and the
+   *Walk it yourself* follow-up as written there. A pick with no `PLAN.md` has no slices to count, so
+   `--cost` has nothing to say: each option leads with its place in the ladder instead — per slice:
+   own `quick — one small run per slice`, own+app `+ one suite run per app`, full `slowest — a suite
+   run per slice`, none `fastest — the type-check only`; at the end: touched `one suite run per app`,
+   risk `+ an agent walks the risky parts`, everything `slowest — deep set, cross-app E2E, full walk`,
+   none `fastest — the type-check only`; review: end `one review`, app `one per app`, slice `one per
+   slice`.
+3. **Land on?** once for the run (one target per run), in the first call.
+
+Write `tests:` and `target:` to each pick's manifest — never `go-ahead:`, which the plan still records
+— and commit `chore(<feature>): test plan <test plan> → <target>` in this checkout before the dry run.
+The headless go-ahead keeps them (below). A pick that already carries `tests:` or `profile:` is not
+asked again.
+
+🔴 **`--auto` and `--agent-walk` never ask.** They present the slices, record
+`go-ahead: auto (recommended) YYYY-MM-DD` in the go-ahead commit and **keep a `tests:` (or an old
+`profile:`) and `target:` the manifest already carries** — chosen at §Picking the test plan ahead.
+Only when one is missing do they write it: `tests: <the levers profile.mjs --recommend <folder>
+returns>`, and `target: <the --into this run was given>` — `<merge_into>` only without `--into`.
+Without an `agent_walk:` block, `--auto` returns here — the run that called this step carries on into
+the build. Plain `--auto` with the block then launches the fleet as in step 4;
 **`--agent-walk` launches nothing** — the fleet is already running it.
 
 ```
-📍 <feature>: planned, <n> phases across <apps>, <m> tasks, go-ahead <recorded|none> — next: /builder:resume --path <folder> · or say go
+📍 <feature>: planned — <m> slices in <apps>, test plan <test plan> — next: A builds it (/builder:build --path <folder>) · or say go
    Agents build features once agent_walk is set up — /builder:init --update adds it.
 ```
 
-That is the footer without an `agent_walk:` block, and on **No** — the second line only without the
-block. With it, the go-ahead ends on the fleet's launch line, verbatim, then:
+That is the footer under the A/B/C without an `agent_walk:` block — the second line only without the
+block. With it, the footer's `next:` is `A — agents build it, landing on <target>`; on A the go-ahead
+ends on the fleet's launch line, verbatim, then:
 
 ```
-📍 <feature>: go-ahead (<profile>) — agents are building it in its own worktree, landing on <target> — follow it: /builder:status
+📍 <feature>: go-ahead (<test plan>) — agents are building it in its own worktree, landing on <target> — follow it: /builder:status
+```
+
+On C:
+
+```
+📍 <feature>: planned, go-ahead none — next: say what to change, or /builder:resume --path <folder> to take the go-ahead
 ```
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never

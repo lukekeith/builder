@@ -4,8 +4,9 @@ Adapted from superpowers' `subagent-driven-development` (MIT — see
 [LICENSE-THIRD-PARTY.md](../../LICENSE-THIRD-PARTY.md), which lists what the adaptation changed).
 `builder:build` is the wrapper; this file is the loop.
 
-**Core principle:** a fresh implementer per task + a task review (spec + quality) after each + one
-broad review at the end = high quality, fast iteration.
+**Core principle:** a fresh implementer per task + the review the test plan sets (spec + quality —
+after each task, once per app, or none until the end; build §The test plan) + one broad review at the
+end, always = high quality, fast iteration.
 
 **Why subagents:** you delegate to agents with isolated context. By crafting their instructions
 precisely you keep them focused; they never inherit your session's history — you construct exactly
@@ -88,7 +89,7 @@ Use the least powerful model that can handle each role.
   `tiny` on its `Recipe:` line (a one-file edit with its test) — the review still happens, at the
   cheapest tier that can read a diff.
 - **Fix-loop escalation (rounds 4–5):** at least one tier above the implementer that got stuck.
-- **`models: economy`** (the build profile) → integration tasks drop to the cheapest tier that can do them.
+- **`models: economy`** (the test plan) → integration tasks drop to the cheapest tier that can do them.
 - **`models: strong`** → integration tasks and every review run on the most capable model.
   `default` is this section as written.
 
@@ -143,13 +144,15 @@ need it.
 - Record the implementer's agent identity — fix rounds 1–3 resume it.
 - **Never dispatch implementation subagents in parallel** (conflicts).
 - **Do not tell the implementer to run the app's suite or a gate block.** Its prompt limits it to
-  the tests of the code it changes plus the type-check; the suite runs once at the phase close.
+  the tests of the code it changes plus the type-check — under `slice=none`, the type-check only;
+  the suite runs where the test plan puts it (build §The test plan), through the gate runner.
 
 Template: [prompts/implementer.md](prompts/implementer.md)
 
 ### 2. Handle the report
 
-**DONE** → generate the review package and dispatch the task reviewer.
+**DONE** → generate the review package and dispatch the task reviewer — under `review=slice`. Under
+`review=app` or `end` there is no task review: go to §5.
 
 **DONE_WITH_CONCERNS** → read the concerns first. Correctness or scope concerns are addressed before
 review; observations are noted and you proceed.
@@ -165,9 +168,11 @@ If the implementer asks questions — before or mid-task — answer clearly and 
 
 ### 3. Review the task
 
-Per-task reviews are task-scoped gates; the broad review happens once at the end. **Never skip the
-task review, and never accept a report missing either verdict** — spec compliance AND task quality.
-Implementer self-review never replaces it.
+**Under `review=slice`** (and `slice+second`). Per-task reviews are task-scoped gates; the broad
+review happens once at the end. **Never skip a task review the test plan set, and never accept a
+report missing either verdict** — spec compliance AND task quality. Implementer self-review never
+replaces it. Under `review=app` the same review runs once over the phase's whole diff at its close
+(build §Phase close), its fix loop below, each finding against the task it names.
 
 - **Hand the reviewer its diff as a file:**
   `<plugin>/scripts/review-package BASE HEAD "<WS>/review-<base7>..<head7>.diff"`. Use the BASE you
@@ -246,10 +251,12 @@ name. Every adjudication is a ledger entry — a silent discard is forbidden.
 
 ### 5. Complete the task
 
-When the review is clean — or every open finding is parked with a ruling at the cap — append:
+When the review is clean — or every open finding is parked with a ruling at the cap, or the test
+plan sets no task review — append:
 
 - `Task <N>: complete (commits <base7>..<head7>, review clean)`
 - `Task <N>: complete (commits <base7>..<head7>, <K> parked)` after a tripped breaker
+- `Task <N>: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`
 
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.
@@ -258,7 +265,7 @@ Critical/Important issues** that are neither fixed nor parked-with-ruling at the
 
 ## The final whole-branch review
 
-After the last phase's tasks, not after each phase. Run
+After the last phase's tasks, not after each phase — under every test plan: it is a floor. Run
 `review-package <merge-base> HEAD "<WS>/review-final.diff"` and dispatch
 [prompts/final-reviewer.md](prompts/final-reviewer.md) **on the most capable available model**,
 pointed at the ledger's deferred-minor and parked lines and at SPEC §Contract.
@@ -295,7 +302,8 @@ secret.
 | "The reviewer will just find something new anyway" | Scoped re-reviews verify fixes; they cannot wander. New findings on untouched code go to the ledger. |
 | "This finding is obviously wrong, I'll drop it" | You adjudicate only at the cap, and every ruling is a ledger entry. Silent discards are forbidden. |
 | "The fix was small, skip the re-review" | Unreviewed fixes are how regressions land. Every round ends with a scoped re-review. |
-| "Reviews slow the loop down" | The loop without reviews is just unverified churn. Reviews are its brakes and steering. |
+| "Reviews slow the loop down" | How often to review is the human's choice at the go-ahead (`review=`), never yours mid-build. The reviews they chose run every time, and the final review always does. |
+| "The suite would have caught it, so I'll run it now" | Where the suite runs is the test plan's (`slice=`). Run it where the plan says; a red one there is a fix dispatch against the slice that caused it. |
 | "Ledger bookkeeping is overhead" | The ledger is what survives compaction. Controllers without one have re-dispatched entire completed sequences. |
 | "The implementer spawned its own reviewer — free extra assurance" | A duplicate seat reviewing the same diff. A worker-spawned reviewer is a defect to flag, not rigor. |
 | "This phase only touches two files in another app, I'll fold it in" | Then the phase has no gates — they are one app's commands. Split it. |

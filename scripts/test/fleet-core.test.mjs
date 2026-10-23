@@ -128,7 +128,7 @@ test('renderStatus keeps only informative columns, names the target and the work
     notes: ['a note'],
   })
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
-  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
@@ -208,7 +208,7 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     progress
   )
   assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
-  assert.match(out, /\| Feature \| Status \| Profile \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Tests \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| — \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
 })
@@ -291,12 +291,12 @@ test('renderArchived lists the latest landings newest first', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
   assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
-  assert.match(out, /\| Feature \| Profile \| Time \| Tokens \| Merged \| PR \| Landed \|/)
+  assert.match(out, /\| Feature \| Tests \| Time \| Tokens \| Merged \| PR \| Landed \|/)
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
   assert.match(out, /\| b \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
   assert.match(out, /\| a \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
-  const full = renderArchived([{ ...row('c'), profile: 'rush', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
-  assert.match(full, /\| c \| rush \| 12m \| 2\.1M \| abc1234 \|/)
+  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
+  assert.match(full, /\| c \| own · touched · end \| 12m \| 2\.1M \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -344,7 +344,7 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
     Date.now(),
     [{ feature: 'x', lanes: { build: 60 * 60000, walk: 30 * 60000 } }, { feature: 'y', lanes: { build: 40 * 60000, walk: 50 * 60000 } }]
   )
-  assert.match(out, /\| Feature \| Status \| Profile \| Runs \| Time \| Reason \| Worktree \|/)
+  assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| 42m \| — \| yes \|/)
   assert.match(out, /\| b \| queued \| — \| 0 \| — \| — \| — \|/)
   assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
@@ -374,28 +374,40 @@ test('specBringIn: a new branch takes HEAD\u2019s folder unless the target alrea
   assert.equal(specBringIn({ targetTree: 'old', headTree: 'h', worktreeHasFolder: true, isNewBranch: false }), false, 'a SPEC.md-only folder is not healed')
 })
 
-test('renderStatus shows each feature\'s build profile by display name', () => {
-  const f = (profile) => ({ status: 'building', runs: 1, facts: profile ? { size: 'md', profile } : undefined })
-  const out = renderStatus({ features: { a: f('rush'), b: f('thorough-you'), c: f('custom'), d: f('bogus'), e: f(null) } })
-  assert.match(out, /\| Profile \|/)
-  assert.match(out, /\| a \| building \| rush \|/)
-  assert.match(out, /\| b \| building \| thorough \+ you \|/)
-  assert.match(out, /\| c \| building \| custom \|/)
-  assert.match(out, /\| d \| building \| thorough \|/)
-  assert.match(out, /\| e \| building \| — \|/)
+test('renderStatus shows each feature\'s test plan as its label; an old profile in the facts maps onto it', () => {
+  const f = (facts) => ({ status: 'building', runs: 1, facts: facts ? { size: 'md', ...facts } : undefined })
+  const out = renderStatus({ features: {
+    a: f({ tests: 'slice=own end=touched review=end' }),
+    b: f({ tests: 'slice=own end=risk review=app walk=you' }),
+    c: f({ tests: 'slice=own+app end=everything review=slice', profile: 'rush' }),
+    d: f({ profile: 'rush' }),
+    e: f({ profile: 'thorough-you' }),
+    g: f({ profile: 'bogus' }),
+    h: f(null),
+  } })
+  assert.match(out, /\| Tests \|/)
+  assert.doesNotMatch(out, /\| Profile \|/)
+  assert.match(out, /\| a \| building \| own · touched · end \|/)
+  assert.match(out, /\| b \| building \| own · risk · app · you \|/)
+  assert.match(out, /\| c \| building \| own\+app · everything · slice \|/, 'tests wins over profile')
+  assert.match(out, /\| d \| building \| own\+app · touched · end \|/)
+  assert.match(out, /\| e \| building \| own\+app · everything · slice · you \|/)
+  assert.match(out, /\| g \| building \| own\+app · everything · slice \|/, 'an unknown old profile reads as thorough')
+  assert.match(out, /\| h \| building \| — \|/)
 })
 
-test('renderArchived labels the profile as every status view does', () => {
+test('renderArchived labels the test plan as every status view does — an old row by its profile', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
-  const out = renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now)
-  assert.match(out, /\| y \| thorough \+ you \|/)
+  assert.match(renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now), /\| y \| own\+app · everything · slice · you \|/)
+  assert.match(renderArchived([{ ...row('z'), tests: 'slice=own end=touched review=end', profile: null }], 1, now), /\| z \| own · touched · end \|/)
+  assert.match(renderArchived([{ ...row('h'), profile: 'here' }], 1, now), /\| h \| here \|/)
 })
 
-test('renderStatus: a row with no facts yet shows the profile the caller resolves for it', () => {
-  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { profile: 'rush' } } } }
-  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'thorough-you' : 'standard'))
-  assert.match(out, /\| a \| queued \| thorough \+ you \|/)
-  assert.match(out, /\| b \| building \| rush \|/, 'facts win over the fallback')
+test('renderStatus: a row with no facts yet shows the label the caller resolves for it', () => {
+  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { tests: 'slice=own end=touched review=end' } } } }
+  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'own · risk · end' : 'own · everything · end'))
+  assert.match(out, /\| a \| queued \| own · risk · end \|/)
+  assert.match(out, /\| b \| building \| own · touched · end \|/, 'facts win over the fallback')
   assert.match(renderStatus(fleet), /\| a \| queued \| — \|/, 'no fallback given: as before')
 })
 

@@ -63,7 +63,8 @@ Every plan starts with this, filled in:
 # <Feature> — implementation plan
 
 > **For agentic workers:** this plan is executed by `/builder:build`, one task at a time, with a
-> fresh implementer and a review per task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> fresh implementer per task, tested and reviewed as the go-ahead's test plan sets. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** <one sentence describing what this builds>
 
@@ -89,8 +90,9 @@ requirements implicitly include this section. Do not re-wrap the bullets.>
 ```
 
 **The `## Phases` table is this format's one addition to the original**, and it is load-bearing: it
-is the whole phase view, the thing the human approves at the go-ahead, and the membership source for
-what a phase closes on. `App` names ONE app. `Tasks` is the task-number range. `Gates` is that app's
+is the whole phase view and the membership source for what a phase closes on — the build's, not the
+human's: at the go-ahead the human sees slices, one per `### Task N`, which `plan-slices.mjs` prints
+from this file with the test cases each block's fences carry. `App` names ONE app. `Tasks` is the task-number range. `Gates` is that app's
 fast set — never another app's, never the deep set.
 
 ## Task structure

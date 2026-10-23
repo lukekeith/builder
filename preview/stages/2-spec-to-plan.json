@@ -165,8 +165,8 @@
         }
       ],
       "stamp": {
-        "hash": "2a51523d4e80",
-        "version": "4.11.3",
+        "hash": "dd64d326a318",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -342,11 +342,11 @@
     {
       "id": "plan-go-ahead",
       "skill": "plan",
-      "title": "Plan — the phase table and the build go-ahead",
-      "when": "PLAN.md is committed; the same turn takes the one approval that covers the whole build, then the build profile.",
+      "title": "Plan — the slices and the build go-ahead",
+      "when": "PLAN.md is committed; the same turn shows the plan as slices with the recommended test plan and its cost, and takes the one go-ahead that covers the whole build.",
       "source": "skills/plan/SKILL.md §Hand off",
       "sources": [
-        "skills/plan/SKILL.md §The build profile (`agent_walk:` set)",
+        "skills/plan/SKILL.md §The go-ahead",
         "skills/plan/SKILL.md §🔴 One app per phase, the producer before its consumers"
       ],
       "feature": "cert-tags",
@@ -360,55 +360,192 @@
           "text": "⏺ Bash(git commit -m \"docs(ACME-412): plan cert-tags\")"
         },
         {
-          "role": "claude",
-          "text": "The plan is written: `docs/features/cert-tags/PLAN.md`.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | api | 1–3 | Tag and CertificateTag migrated; tag service with owner scoping; PATCH /certificates/:id owner guard | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 2 | api | 4–6 | Tag endpoints and the `?tag=` filter live; contract frozen | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 3 | mobile | 7–8 | Tag chips on the list and owner view; tag filter sheet | `pnpm -F mobile test` |\n| 4 | web | 9–12 | Tag chips, `ListFilters` tag filter, tag editor on the owner view | `pnpm -F web test` · `pnpm -F web lint` |\n\n**4 phases across api, mobile and web · 12 tasks.** The producer goes first; mobile — the released app — is the first consumer, because its findings are the expensive ones.\n\n**Rides along**\n- **Phase 2 freezes the contract** — Task 6 writes `contract: frozen` to the manifest; no consumer task starts before it.\n- Build-time risk on **Task 8**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- **mobile is `commit: manual`** — its phase's commits are staged and left for you.\n- The cross-app E2E walk is authored in §Testing and run only by `/builder:verify`.\n- Deferred: renaming a tag across owners — out of scope, decider Luke."
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags) · Bash(node <builder>/scripts/profile.mjs --recommend docs/features/cert-tags) — signals: migration, 3 apps"
         },
         {
-          "role": "picker",
-          "question": "Approve the plan for cert-tags? One approval covers the whole build.",
-          "header": "Go-ahead",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "Yes",
-              "description": "Record the go-ahead and choose how agents build it."
-            },
-            {
-              "label": "No, keep planning",
-              "description": "Leave go-ahead: none; the plan stays at planned. Say what's wrong — a scope objection goes to /builder:brainstorm, a changed requirement to /builder:revise."
-            }
-          ],
-          "inferred": true
+          "role": "claude",
+          "text": "```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\n- Why the end includes the risky parts: this feature adds a migration and spans 3 apps.\n- **Slice 4 freezes the contract** — the certificate payload's `tags` is frozen when api's slices close; no web or mobile slice starts before it.\n- Build-time risk on **slice 10**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- Deferred: renaming a tag across owners — out of scope, decider Luke.\n- The plan: `docs/features/cert-tags/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-tags: planned — 12 slices in api, web, mobile, test plan own · risk · end — next: A — agents build it, landing on main · or say go\n```"
         },
         {
           "role": "note",
-          "text": "The approval is taken through plan mode's ExitPlanMode — rendered here as a two-way choice."
+          "text": "The slice block is plan-slices.mjs's output, verbatim — never redrawn as a table. The recommended plan is the fast one: each slice runs only its own tests, the suites run once at the end, one review at the end. Here the migration and the 3 apps raise only the end, to \"an agent tries the risky parts\", and the line under the block says why. Counts only: no suite has been timed by gate.mjs yet, so no minutes. The lines under the block are the rides-along; their wording is a rendering."
         },
         {
           "role": "user",
-          "text": "Yes"
+          "text": "go"
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --recommend docs/features/cert-tags) · --estimate × rush/standard/thorough"
+          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=risk review=end · target: main"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (own · risk · end)\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/fleet.mjs cert-tags --detach --into main)"
+        },
+        {
+          "role": "claude",
+          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-tags: go-ahead (own · risk · end) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
+        },
+        {
+          "role": "note",
+          "text": "The go-ahead is a plain-chat A/B/C, not a picker: \"go\" is A, and the recommendation taken unchanged is still written as tests:. B opens the three questions — the \"Choosing a test plan\" path. Without an agent_walk: block, A builds it in this session instead. Nothing here creates a branch or worktree: the fleet makes the worktree when it launches."
+        }
+      ],
+      "stamp": {
+        "hash": "2f5c64dd33b5",
+        "version": "4.12.0",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "plan-go-ahead-variants",
+      "skill": "plan",
+      "title": "The go-ahead's other endings — here, and no agent_walk",
+      "when": "The same plan step when the manifest says build: here, or in a project whose config has no agent_walk: block.",
+      "source": "skills/plan/SKILL.md §Build here (`build: here`)",
+      "sources": [
+        "skills/plan/SKILL.md §Picking the test plan ahead — `/builder:agent` and `/builder:fleet`"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "Variant A — the user picked '3. here' on an earlier footer, so the manifest carries build: here. The slices are shown the same way, but there is no A/B/C and no questions: choosing here was the go-ahead, and the test plan is the recommendation, written as tests:."
+        },
+        {
+          "role": "claude",
+          "text": "The plan is written — building it here, in this session, now.\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\n- Why the end includes the risky parts: this feature adds a migration and spans 3 apps.\n- **Slice 4 freezes the contract** — the certificate payload's `tags` is frozen when api's slices close; no web or mobile slice starts before it.\n- Build-time risk on **slice 10**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- Deferred: renaming a tag across owners — out of scope, decider Luke.\n- The plan: `docs/features/cert-tags/PLAN.md`",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 (here) · tests: slice=own end=risk review=end"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(cert-tags): cert-tags — go-ahead (here)\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:build --path docs/features/cert-tags --here)"
+        },
+        {
+          "role": "note",
+          "text": "Variant B — no agent_walk: block in the config. The go-ahead is taken the same way — the slices, then A/B/C — and only what A starts differs: it builds in this session. The footer's second line appears only without the block."
+        },
+        {
+          "role": "claude",
+          "text": "```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\n- Why the end includes the risky parts: this feature adds a migration and spans 3 apps.\n- **Slice 4 freezes the contract** — the certificate payload's `tags` is frozen when api's slices close; no web or mobile slice starts before it.\n- Build-time risk on **slice 10**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- Deferred: renaming a tag across owners — out of scope, decider Luke.\n- The plan: `docs/features/cert-tags/PLAN.md`\n\nA. Build it with this plan (recommended) — build it now, in this session\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-tags: planned — 12 slices in api, web, mobile, test plan own · risk · end — next: A builds it (/builder:build --path docs/features/cert-tags) · or say go\n   Agents build features once agent_walk is set up — /builder:init --update adds it.\n```"
+        },
+        {
+          "role": "user",
+          "text": "A"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (own · risk · end)\") · Skill(builder:build --path docs/features/cert-tags)"
+        },
+        {
+          "role": "note",
+          "text": "On C the footer is '📍 cert-tags: planned, go-ahead none — next: say what to change, or /builder:resume --path docs/features/cert-tags to take the go-ahead'. Without an agent_walk: block the in-chat build reads the same tests: — the end's agent walk is the only lever it has nothing to run for."
+        }
+      ],
+      "stamp": {
+        "hash": "9187a4505434",
+        "version": "4.12.0",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "test-plan-change",
+      "skill": "plan",
+      "title": "Changing the test plan — the three questions and what each costs",
+      "when": "At the go-ahead the user replies B: three questions (four with an agent_walk: block), each option leading with what it costs for this plan; then the test-plan lines again and the same A/B/C.",
+      "source": "skills/plan/SKILL.md §The go-ahead",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "Continues from the go-ahead: cert-tags' slices are on screen with the recommended plan, own · risk · end — 12 quick test runs + 3 suite runs."
+        },
+        {
+          "role": "user",
+          "text": "B"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --cost docs/features/cert-tags --tests \"…\") × 11 — one per option, the other two levers held where they stand"
         },
         {
           "role": "picker",
-          "question": "How should agents build \"cert-tags\"?  → lands on main\nRecommended: Thorough — 3 apps, schema change, released consumer (mobile)",
-          "header": "Profile",
+          "question": "Testing while building — after each slice:",
+          "header": "Per slice",
           "multiSelect": false,
           "options": [
             {
-              "label": "Thorough (Recommended)",
-              "description": "~95 min · ~4.1M tokens (4 similar features) — the full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E."
+              "label": "Its own tests (Recommended)",
+              "description": "12 quick runs + 3 suite runs — the tests that slice adds, and the type-check."
             },
             {
-              "label": "Standard",
-              "description": "~70 min · ~2.8M tokens (5 similar features) — every task reviewed, the agent walks the [risk] items, full verify."
+              "label": "Its own, plus the app's suite when the app's slices are done",
+              "description": "12 quick runs + 6 suite runs — and each app's suite once, when its last slice is in."
             },
             {
-              "label": "Rush",
-              "description": "~40 min · ~1.3M tokens (6 similar features) — final review and fast gates only; no agent walk — you test it once it lands. ⚠ This feature has a released consumer: nothing walks it before it lands."
+              "label": "The app's suite after every slice",
+              "description": "12 quick runs + 15 suite runs — slowest; @scoped lines still narrow it."
+            },
+            {
+              "label": "None while building",
+              "description": "0 quick runs + 3 suite runs — tests are still written; they run at the end."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Testing at the end — once every slice is built:",
+          "header": "At the end",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Plus an agent tries the risky parts (Recommended)",
+              "description": "12 quick runs + 3 suite runs + an agent walk of the risky parts — every touched app's suite, then the [risk] walk items in the running app and @scoped deep lines. Raised for this feature: a migration, 3 apps."
+            },
+            {
+              "label": "The touched apps' suites, once",
+              "description": "12 quick runs + 3 suite runs — every touched app's fast set, the tests §Testing names, released-consumer parity."
+            },
+            {
+              "label": "Everything",
+              "description": "12 quick runs + 3 suite runs + the full walk — the deep set, the cross-app E2E, the full walk."
+            },
+            {
+              "label": "Nothing — I'll test it",
+              "description": "12 quick runs + 0 suite runs ≈ 0 min — the type-check only; the verdict says nothing was tested. ⚠ This feature has a migration: nothing tests it before it lands."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Review:",
+          "header": "Review",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Once at the end (Recommended)",
+              "description": "1 review — one whole-branch review."
+            },
+            {
+              "label": "Once per app",
+              "description": "4 reviews — after each app's slices, and the final one."
+            },
+            {
+              "label": "After every slice",
+              "description": "13 reviews — a review after each slice, and the final one."
             }
           ]
         },
@@ -430,11 +567,11 @@
         },
         {
           "role": "note",
-          "text": "Both questions arrive in ONE AskUserQuestion call. 'Other' on the profile question means Customize (the levers: testing, review, models, verify, persist, unruled); 'Other' on Land on? takes any branch name."
+          "text": "All four arrive in ONE AskUserQuestion call. The counts lead each description, from profile.mjs --cost; \"≈ N min\" follows them once gate.mjs has timed the suites — only \"Nothing\" has a known time here (no suite runs). The recommended option is first; the rest keep their order. The floors — the type-check of every touched app and the final whole-branch review — are never options. Other on a testing question opens models, persist and unruled."
         },
         {
           "role": "user",
-          "text": "Thorough · main"
+          "text": "The app's suite after every slice · Plus an agent tries the risky parts · Once at the end · main"
         },
         {
           "role": "picker",
@@ -444,13 +581,18 @@
           "options": [
             {
               "label": "No (Recommended)",
-              "description": "thorough — the agent walk stands in for yours; it lands on main marked not human-tested."
+              "description": "The agent walk stands in for yours; it lands on main marked not human-tested."
             },
             {
               "label": "Yes",
-              "description": "thorough-you — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
+              "description": "walk=you — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
             }
-          ]
+          ],
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Asked because the end was set to the risky parts through B, with an agent_walk: block. The option descriptions are a rendering."
         },
         {
           "role": "user",
@@ -458,7 +600,27 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (thorough)\")"
+          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --tests \"slice=full end=risk review=end\")"
+        },
+        {
+          "role": "claude",
+          "text": "```\nTest plan: the app's suite after every slice · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 15 suite runs\n```\n\nA. Build it with this plan — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-tags: planned — 12 slices in api, web, mobile, test plan full · risk · end — next: A — agents build it, landing on main · or say go\n```"
+        },
+        {
+          "role": "note",
+          "text": "Only the test-plan lines come back — not the slice table again — with the new counts: 15 suite runs where the recommendation had 3. A drops \"(recommended)\"; \"go\" is still A."
+        },
+        {
+          "role": "user",
+          "text": "A"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 · tests: slice=full end=risk review=end · target: main"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (full · risk · end)\")"
         },
         {
           "role": "tool",
@@ -466,59 +628,12 @@
         },
         {
           "role": "claude",
-          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-tags: go-ahead (thorough) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
-        },
-        {
-          "role": "note",
-          "text": "Plan's go-ahead footer is never numbered — it launches the agents itself. Nothing here creates a branch or worktree: the fleet makes the worktree when it launches."
+          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-tags: go-ahead (full · risk · end) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
         }
       ],
       "stamp": {
-        "hash": "19c01d377ee5",
-        "version": "4.11.3",
-        "date": "2026-10-23"
-      }
-    },
-    {
-      "id": "plan-go-ahead-variants",
-      "skill": "plan",
-      "title": "The go-ahead's other endings — here, and no agent_walk",
-      "when": "The same plan step when the manifest says build: here, or in a project whose config has no agent_walk: block.",
-      "source": "skills/plan/SKILL.md §Build here (`build: here`)",
-      "sources": [
-        "skills/plan/SKILL.md §Picking the profile ahead — `/builder:agent` and `/builder:fleet`"
-      ],
-      "feature": "cert-tags",
-      "turns": [
-        {
-          "role": "note",
-          "text": "Variant A — the user picked '3. here' on an earlier footer, so the manifest carries build: here. The phase table is shown the same way, but there is no approval stop: choosing here was the go-ahead."
-        },
-        {
-          "role": "claude",
-          "text": "The plan is written: `docs/features/cert-tags/PLAN.md` — building it here, in this session, now.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | api | 1–3 | Tag and CertificateTag migrated; tag service with owner scoping; PATCH /certificates/:id owner guard | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 2 | api | 4–6 | Tag endpoints and the `?tag=` filter live; contract frozen | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 3 | mobile | 7–8 | Tag chips on the list and owner view; tag filter sheet | `pnpm -F mobile test` |\n| 4 | web | 9–12 | Tag chips, `ListFilters` tag filter, tag editor on the owner view | `pnpm -F web test` · `pnpm -F web lint` |\n\n**4 phases across api, mobile and web · 12 tasks.** Phase 2 freezes the contract; Task 8 carries the mobile offline-cache risk; mobile's commits are staged for you (`commit: manual`).",
-          "inferred": true
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(cert-tags): cert-tags — go-ahead (here)\")"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Skill(builder:build --path docs/features/cert-tags --here)"
-        },
-        {
-          "role": "note",
-          "text": "Variant B — no agent_walk: block in the config. 'Yes' records go-ahead: <name YYYY-MM-DD>, commits chore(ACME-412): cert-tags — go-ahead, and ends on this single-line footer. The same footer ends a 'No' (go-ahead none); its second line appears only when the config has no agent_walk: block."
-        },
-        {
-          "role": "claude",
-          "text": "```\n📍 cert-tags: planned, 4 phases across api+mobile+web, 12 tasks, go-ahead recorded — next: /builder:resume --path docs/features/cert-tags · or say go\n   Agents build features once agent_walk is set up — /builder:init --update adds it.\n```"
-        }
-      ],
-      "stamp": {
-        "hash": "ee591042dbbb",
-        "version": "4.11.3",
+        "hash": "732639b51689",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -651,81 +766,32 @@
         },
         {
           "role": "claude",
-          "text": "The plan is written: `docs/features/cert-history/PLAN.md`.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | web | 1–2 | `useCertificateEvents` hook and the `/certificates/:id/history` route | `pnpm -F web test` · `pnpm -F web lint` |\n| 2 | web | 3–5 | History tab: list, Load more, empty / error / permission-denied states | `pnpm -F web test` · `pnpm -F web lint` |\n\n**2 phases in web · 5 tasks.** No contract to freeze (`contract: none`). Nothing deferred."
-        },
-        {
-          "role": "picker",
-          "question": "Approve the plan for cert-history? One approval covers the whole build.",
-          "header": "Go-ahead",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "Yes",
-              "description": "Record the go-ahead and choose how agents build it."
-            },
-            {
-              "label": "No, keep planning",
-              "description": "Leave go-ahead: none."
-            }
-          ],
-          "inferred": true
+          "text": "```\ncert-history — 5 slices in 1 app · lands on main\n\nweb 1  useCertificateEvents hook                  +3 tests\n    2  The /certificates/:id/history route        +2 tests\n    3  History tab: the event list, newest first  +3 tests\n    4  Load more                                  +2 tests\n    5  Empty, error and permission-denied states  +3 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the web suite once · one review at the end\n  5 quick test runs + 1 suite run\n```\n\n- No contract to freeze (`contract: none`). Nothing deferred.\n- The plan: `docs/features/cert-history/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-history: planned — 5 slices in web, test plan own · touched · end — next: A — agents build it, landing on main · or say go\n```"
         },
         {
           "role": "user",
-          "text": "Yes"
+          "text": "go"
         },
         {
-          "role": "picker",
-          "question": "How should agents build \"cert-history\"?  → lands on main\nRecommended: Standard — one app, no schema change, reads an existing endpoint",
-          "header": "Profile",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "Standard (Recommended)",
-              "description": "~30 min · ~0.9M tokens (5 similar features) — every task reviewed, the agent walks the [risk] items, full verify."
-            },
-            {
-              "label": "Rush",
-              "description": "~15 min · ~0.4M tokens (7 similar features) — final review and fast gates only; no agent walk — you test it once it lands."
-            },
-            {
-              "label": "Thorough",
-              "description": "~45 min · ~1.5M tokens (3 similar features) — the full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E."
-            }
-          ]
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-history/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=touched review=end · target: main · Bash(git commit -m \"chore(cert-history): cert-history — go-ahead (own · touched · end)\")"
         },
         {
-          "role": "picker",
-          "question": "Land on?",
-          "header": "Land on",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "main (Recommended)",
-              "description": "Agents merge the finished feature into main, locally."
-            },
-            {
-              "label": "feat/cert-history",
-              "description": "Land it on the branch you're on now instead."
-            }
-          ]
-        },
-        {
-          "role": "user",
-          "text": "Standard · main"
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/fleet.mjs cert-history --detach --into main)"
         },
         {
           "role": "claude",
-          "text": "fleet started detached (pid 51877) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-history: go-ahead (standard) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
+          "text": "fleet started detached (pid 51877) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-history: go-ahead (own · touched · end) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
         },
         {
           "role": "note",
-          "text": "How md differs: no product questions when nothing is open; audit runs ONE agent instead of one per app; the plan dial is 2–4 phases (lg is 4–7) and a single-app feature needs no producer-before-consumer ordering or freeze; the manifest says apps: web, contract: none. The estimates and the Standard recommendation's signals are illustrative."
+          "text": "How md differs: no product questions when nothing is open; audit runs ONE agent instead of one per app; the plan dial is 2–4 phases (lg is 4–7) and a single-app feature needs no producer-before-consumer ordering or freeze; the manifest says apps: web, contract: none. One app, no schema change: no signal raises the end, so the recommendation is the plain one — own · touched · end, 5 quick test runs + 1 suite run. The slice names and test counts are illustrative; the block's shape is plan-slices.mjs's."
         }
       ],
       "stamp": {
-        "hash": "fcb608a0ba88",
-        "version": "4.11.3",
+        "hash": "f407da503c82",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     },
@@ -952,7 +1018,7 @@
         },
         {
           "role": "note",
-          "text": "2 or 'agent' runs /builder:agent --path <folder> in that turn — its own questions (build profile, Land on?) and its one confirmation still ask. 3 or 'here' runs /builder:resume --path <folder> --here."
+          "text": "2 or 'agent' runs /builder:agent --path <folder> in that turn — its own questions (the test plan, Land on?) and its one confirmation still ask. 3 or 'here' runs /builder:resume --path <folder> --here."
         },
         {
           "role": "claude",
@@ -987,7 +1053,7 @@
       ],
       "stamp": {
         "hash": "4405a0d7595d",
-        "version": "4.11.3",
+        "version": "4.12.0",
         "date": "2026-10-23"
       }
     }
