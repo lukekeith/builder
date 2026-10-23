@@ -27,6 +27,12 @@ agree — see [RELEASING.md](RELEASING.md).
   An old `profile:` line, and `build_profile_default`, are still read — mapped to the plan they
   meant. `gate.mjs` now records each app's fast-set duration for the estimates. Design:
   `docs/specs/2026-10-23-test-plan-design.md`.
+  Measured on the benchmark (`bench/results/2026-10-23-1336-tags`, a 3-slice, one-app feature):
+  the recommended plan and `everything` both took 14 min ($5.24 / $5.34), all acceptance tests
+  passing. The recommended build ran no task reviewers (5 min vs 6) and its final review caught
+  what they would have. On a feature this small the fixed steps — brainstorm, spec, audit, plan,
+  the walk lane, verify, ship, about 8 min — dominate; the levers pay off with many slices and slow
+  suites, which the go-ahead's cost line now shows before you choose.
 
 ## 4.11.3
 
