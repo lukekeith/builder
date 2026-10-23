@@ -4,7 +4,7 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
-## Unreleased
+## 4.13.0
 
 **Changed:**
 - **Every approval shows what you are approving — in the chat, never a file to open.** A new shared
