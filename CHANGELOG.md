@@ -4,6 +4,29 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.11.2
+
+**Changed:**
+- **`/builder:brainstorm` has a quick path for small changes.** A directed request or brief that the
+  first-turn grounding shows is a small change in existing code — one app, the flow already there,
+  no new model, endpoint, permission, contract, route, screen or shared component, at most one open
+  product choice — no longer starts the full conversation. The first turn proposes the change (xs: a
+  sentence; sm: app, approach, files, tests, what you'll see) and asks once: **Build it** or
+  **Brainstorm it first**. Build it is the small path's approval, so the change is built, gated and
+  handed back with no rounds, no confirm and no sizing turn. Any doubt and the conversation runs as
+  before. **"just build it"** now leaves the conversation from anywhere, not only discovery: open
+  questions take their recommendations and it sizes straight away — xs/sm build in that turn, md and
+  up say so and offer the spec or building in chat anyway.
+- **Every brainstorm pause ends in a lettered list of ways on** — `A. … (recommended)`, `B. …`,
+  `C. …`, and "go" is A — so continuing is one letter, never a phrase to remember. The quick path,
+  the intent playback, the concepts, every round (*A. Answer below* · *B. Build it now* · *C.
+  That's enough*), the confirm (*Build it* · *Park it* · *Stop here*), the small path's approval and
+  the md+ hand-off (*Write the spec* · *Build it in chat anyway* · *Park it*) all use it. Letters,
+  not numbers, so a way on never collides with the question picker's numbered answers. Typed
+  phrases such as "just build it" still work. `--auto` never takes the quick path, so
+  `/builder:agent`, the fleet and the benchmark are unchanged. Design:
+  `docs/specs/2026-10-23-brainstorm-quick-path-design.md`.
+
 ## 4.11.1
 
 **Changed:**
