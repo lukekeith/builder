@@ -13,7 +13,7 @@ erroring on it.
 **`--help` first.** If present, render the `builder:help` card and stop.
 
 **The mechanics live in [CONVERSATION.md](CONVERSATION.md)** — the record, rounds, approaches,
-confirm, size, steering. Read it now. **Do not load REFERENCE wholesale** — the conversation reads only the three sections CONVERSATION.md
+confirm, size, steering. Read it now. **Do not load REFERENCE wholesale** — the conversation reads only the four sections CONVERSATION.md
 names, when it reaches them; the spec formats belong to `/builder:spec`. Read `.claude/builder.md`:
 the apps and the house-rule sources, and for the small path its companion skills, gates, landmines
 and `commit:` mode.
@@ -134,9 +134,19 @@ confirm (the derived name is stated):
 Quick path — this is a small change in existing code (<xs|sm>: <the evidence, one line>).
 
 <What you asked, grounded: each of your terms → what it is in the code, one line each.>
-<The change. xs: one sentence. sm: the app · the approach · the design-system components it uses
-(a UI change) · files touched · the recipe skills it will read · tests · what you will see.>
+
+What changes for users   <before → after, who notices>
+What you'll see          <the screen or command, and what is different on it>
+Added · Changed · Removed <one line each; "Removed: nothing" said>
+Data                     <only when anything stored changes>
+How                      <sm: the approach · the design-system components it uses (a UI change) ·
+                         the recipe skills it will read · tests>
+Files: <the files it touches — a reference line, not the approval>
 ```
+
+The change is shown as a compact review — REFERENCE §The review, sections 1–3 and 4 when anything
+stored changes, one part (xs: a line each). It is what the user approves, so it is never just a list
+of files.
 
 Then the ways on, as a lettered list (CONVERSATION §Ways on) — no picker:
 

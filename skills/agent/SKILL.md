@@ -113,8 +113,10 @@ review; never skip them because the run is unattended. Under `--auto`, take each
 say so in one line. A pick with an old `profile:` line and no `tests:` already has a plan —
 `profile.mjs` maps it — and is not asked again.
 
-Then `/builder:fleet` §3 (the one confirmation), §4 (launch detached, `--detach`) and §5 (the report
-when it finishes), with the picks as the arguments. **A pick whose manifest carries `target:`** (the
+Then `/builder:fleet` §3 (the one confirmation — above it, per pick, the line REFERENCE §The review
+asks for: what changes for users, in one plain line from its SPEC, and its test plan),
+§4 (launch detached, `--detach`) and §5 (the report when it finishes, with the review of what each merged
+feature built), with the picks as the arguments. **A pick whose manifest carries `target:`** (the
 go-ahead wrote it) launches with `--into <target>` — on the dry run too; a pick without `target:` counts as `merge_into`.
 Picks with different targets follow the one-target-per-run rule: launch those matching the first and
 name the rest to run once it ends.
