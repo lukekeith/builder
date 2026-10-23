@@ -503,3 +503,20 @@ test('sharedBranch: other unfinished features whose manifest names the same feat
   assert.deepEqual(sharedBranch('d', manifests, cfg), [], 'the base branch is everyone\'s, not shared work')
   assert.deepEqual(sharedBranch('g', manifests, cfg), [])
 })
+
+test('waitForCommand: found at once, found after the binary comes back, gives up after the timeout', async () => {
+  const { mkdtempSync, writeFileSync, chmodSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { waitForCommand, findOnPath } = await import('../fleet-core.mjs')
+  const dir = mkdtempSync(join(tmpdir(), 'wfc-'))
+  const env = { PATH: dir }
+  assert.equal(findOnPath('fakeclaude', env), null)
+  let ticks = 0
+  const sleep = async () => {
+    if (++ticks === 2) { writeFileSync(join(dir, 'fakeclaude'), '#!/bin/sh\n'); chmodSync(join(dir, 'fakeclaude'), 0o755) }
+  }
+  assert.equal(await waitForCommand('fakeclaude', { env, timeoutMs: 60000, everyMs: 5000, sleep }), true)
+  assert.equal(ticks, 2, 'it waited for the update to finish')
+  assert.equal(await waitForCommand('nope', { env, timeoutMs: 10000, everyMs: 5000, sleep: async () => {} }), false)
+})
