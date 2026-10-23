@@ -74,7 +74,7 @@ record nothing.
 
 ## A fleet worktree
 
-The feature is parked `waiting for your walk` (profile `thorough-you`), and the fleet's worktree
+The feature is parked `waiting for your walk` (test plan `walk=you`), and the fleet's worktree
 `<worktree>` holds the live copy — the main checkout's is stale. 🔴 **Everything happens there:**
 read and write `<worktree>/<registry>/<feature>/`, the walk script from
 `cd <worktree> && <builder>/scripts/workspace <feature>`, every git command as `git -C <worktree> …`,

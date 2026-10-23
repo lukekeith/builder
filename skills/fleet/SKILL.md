@@ -100,11 +100,13 @@ was asked for → stop here.
 
 ## 3. Confirm once
 
-**First, the build profile.** Every spec whose manifest has no `profile:` gets the profile questions
-— `/builder:plan` §Picking the profile ahead: the profile per spec (up to four per AskUserQuestion
-call), **Land on?** once for the run, the Thorough follow-up, Customize. Write and commit `profile:`
-and `target:`; the target becomes the run's `--into`. A spec already carrying `profile:` isn't asked
-again. These choices set how the agents work, so they are asked even though the run is unattended.
+**First, the test plan.** Every spec whose manifest has no `tests:` gets the test plan asked ahead
+— `/builder:plan` §Picking the test plan ahead: the slice table per spec when `PLAN.md` exists, the
+questions in plain words when it doesn't (up to four specs per AskUserQuestion call), **Land on?**
+once for the run, the *Walk it yourself before it lands?* follow-up. Write and commit `tests:` and
+`target:`; the target becomes the run's `--into`. A spec already carrying `tests:` — or an old
+`profile:` line, which `profile.mjs` maps — isn't asked again. These choices set how much the agents
+test and when they review, so they are asked even though the run is unattended.
 
 Then one AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
 worktree root, the permission args (`claude <claude_args>`), and "merges each finished feature
@@ -113,7 +115,7 @@ target is checked out here, mention uncommitted changes in this checkout (`git s
 fleet merges into this working tree, and a merge that would overwrite one of them parks that feature
 until it is out of the way. When it isn't, the merge is written onto the branch without touching
 your checkout.
-After the profile questions, this is the only question the fleet asks.
+After the test plan, this is the only question the fleet asks.
 
 **A fleet is already running** (the dry run said `adds to the running fleet`): the options are **Add
 to the running fleet** / **Not now**, and the question says how many specs join the queue and that

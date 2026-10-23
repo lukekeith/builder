@@ -83,7 +83,7 @@ Below, `<builder>/scripts/x` means that resolved path.
 |---|---|
 | `list-features.mjs` | every feature in the registry with its state and next command — the picker's data source. `--json` · `--check` · `--all` · `--status` (the `/builder:status` table) |
 | `check-obligations.mjs` | the cross-section gate on a `SPEC.md` (§SPEC.md). Exit 1 = a dangling obligation, and it names its own rows |
-| `gate.mjs <app>… \| --deep [<app>…] \| --all` | 🔴 **the only way a gate block is run** (§Quality gates — the mechanism): runs the config's fast set per app and/or its deep set, applies `flaky:`, `@delta` and `@known-red`, and quotes a set whose inputs are byte-identical to its last green run, naming the sha. Exit 0 green, 1 red. `--force` runs regardless; `--baseline` records the `@delta` counts (the fleet does this at start) |
+| `gate.mjs <app>… \| --deep [<app>…] \| --all` | 🔴 **the only way a gate block is run** (§Quality gates — the mechanism): runs the config's fast set per app and/or its deep set, applies `flaky:`, `@delta` and `@known-red`, and quotes a set whose inputs are byte-identical to its last green run, naming the sha. Exit 0 green, 1 red. `--force` runs regardless; `--baseline` records the `@delta` counts (the fleet does this at start); `<app>… --typecheck` runs only the lines marked `@typecheck` — the type-check floor every test plan keeps |
 | `workspace <feature>` | prints and ensures the git-ignored workspace for one feature. `--remove <feature>` deletes it — the ship step's call, because `rm -rf "$(…)"` is refused by the harness |
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
@@ -143,7 +143,7 @@ mid-task. When in doubt, the heavier size.
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
 | `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
-| `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (`3. here`). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the phase table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
+| `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (`3. here`). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm move the save button into the header` |
@@ -295,6 +295,7 @@ apps: <app>+<app>                                     # the in-scope apps, from 
 contract: frozen <YYYY-MM-DD> | open | none           # none = no producer change
 hold: none | "<reason>"                               # 🛑 PR HELD, in the human's words
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
+tests: slice=<v> end=<v> review=<v> [models=… persist=… unruled=… walk=you]  # the test plan (plan §The go-ahead); an old profile: line without it is still read
 walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: the agent sign-off, written by /builder:agent-walk — never a human's
 verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
@@ -680,6 +681,10 @@ The runner does what a controller used to do by hand at every close, in opus tur
 tails: it runs the block, re-runs a failure the config's `flaky:` list matches (once, the narrow
 `rerun:` when given), compares an `@delta` count against the baseline measured on the target branch,
 reports an `@known-red` gate without counting it, and prints one line per command and one per set.
+A fast-set line marked `@typecheck` is the app's type-check: `gate.mjs <app>… --typecheck` runs only
+those lines — the floor that holds under every test plan, `tests: end=none` included. An app with
+none marked prints `no @typecheck line for <app>` and exits green; the implementer's per-task
+type-check is then all there is, and verify says so.
 
 **The memo, and what "fresh" means.** The runner records each GREEN set against a content hash of
 its inputs — the app's path, every tracked path no other app owns (shared packages, the lockfile,

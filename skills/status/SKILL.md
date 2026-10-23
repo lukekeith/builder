@@ -26,8 +26,9 @@ over (`2 merged branches to delete · 1 dead worktree · 1 ready to merge → /b
 
 The script does all of the work — it reads each feature's `MANIFEST.md` (or the condensed SPEC
 header), maps its `state:` to the step last done and the step next, dates it from `git log`, and
-prints a finished markdown table. Its **Profile** column is the build profile the go-ahead recorded
-(`rush`, `standard`, `thorough`, `thorough + you`, `custom`), `—` before a go-ahead. **Do not open any SPEC, PLAN or manifest yourself** to add to it;
+prints a finished markdown table. Its **Tests** column is the test plan the go-ahead recorded, short —
+`own · touched · end` (testing per slice · at the end · review), `· you` when you walk it after the
+agents, `here` for a build done here — and `—` before a go-ahead. **Do not open any SPEC, PLAN or manifest yourself** to add to it;
 the manifest is the record, and a status view that reads specs is slow and drifts from what
 `/builder:resume` will actually do.
 

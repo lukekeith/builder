@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the project's merge_into branch (default base_branch) or the --into branch, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did (the one exception: a feature waiting for your walk goes to /builder:resume), with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, the build profile and landing branch for each pick that has none (the levers for how the agents work), one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written, or answers a two-way handoff footer with "2" or "agent".
+description: Pick one or more unfinished /builder:* features from a list and hand them to agents that run each one until it is done — merged into the project's merge_into branch (default base_branch) or the --into branch, after an agent walk, an agent sign-off and verify. Conflicts, red gates and failed walks are worked by agents, never parked; a feature parks only when its spec leaves a product decision open. Offers every unshipped feature at any step (written spec, audited, planned, part-built, built, signed off, verified, PR open), parked ones included — picking a parked feature always unparks it and retries, whatever parked it and whichever builder version did (the one exception: a feature waiting for your walk goes to /builder:resume), with the old reason handed to the run; each parked one is shown with why it parked and the recommended next step. One multi-select, the test plan and landing branch for each pick that has none (how much the agents test and when they review), one confirmation, then the /builder:fleet engine runs them in the background, continuing each on its own branch in its own worktree. Use when the user wants agents to take over, finish, or keep working on specs or plans that are already written, or answers a two-way handoff footer with "2" or "agent".
 ---
 
 # `/builder:agent` — pick the work, let agents finish it
@@ -104,12 +104,14 @@ node <builder>/scripts/fleet.mjs <picked features> --dry-run
 Print it verbatim. A `✗` pick → say what fixes it (a feature whose branch is checked out in this
 folder: switch branches, or just `/builder:resume` it here). If no pick survives, stop.
 
-🔴 **The build profile comes first.** Before the dry run, every pick whose manifest has no
-`profile:` gets the profile questions — `/builder:plan` §Picking the profile ahead (the profile per
-pick, **Land on?** once, the Thorough follow-up, Customize). Write and commit `profile:` and
-`target:`, then dry-run with `--into <target>`. These are the levers that decide how the agents
-work; never skip them because the run is unattended. Under `--auto`, take each recommendation and
-say so in one line.
+🔴 **The test plan comes first.** Before the dry run, every pick whose manifest has no `tests:` gets
+the test plan asked ahead — `/builder:plan` §Picking the test plan ahead (the slice table per pick
+when `PLAN.md` exists, the questions in plain words when it doesn't, **Land on?** once, the
+*Walk it yourself before it lands?* follow-up). Write and commit `tests:` and `target:`, then dry-run
+with `--into <target>`. These are the levers that decide how much the agents test and when they
+review; never skip them because the run is unattended. Under `--auto`, take each recommendation and
+say so in one line. A pick with an old `profile:` line and no `tests:` already has a plan —
+`profile.mjs` maps it — and is not asked again.
 
 Then `/builder:fleet` §3 (the one confirmation), §4 (launch detached, `--detach`) and §5 (the report
 when it finishes), with the picks as the arguments. **A pick whose manifest carries `target:`** (the
