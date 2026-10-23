@@ -108,6 +108,16 @@ once for the run, the *Walk it yourself before it lands?* follow-up. Write and c
 `profile:` line, which `profile.mjs` maps — isn't asked again. These choices set how much the agents
 test and when they review, so they are asked even though the run is unattended.
 
+Then, above the question, **one line per spec** — REFERENCE §The review at this point: what changes
+for users, in plain words from its SPEC §Idea, and its test plan:
+
+~~~
+cert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · touched · end
+cert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end
+~~~
+
+Never a list of folder paths: the human is confirming what the agents will build.
+
 Then one AskUserQuestion — **Start the fleet** / **Not now** — whose question restates: how many specs, the
 worktree root, the permission args (`claude <claude_args>`), and "merges each finished feature
 into <the target> (merge_into, or --into), one merge commit each; nothing is pushed". When the
@@ -179,6 +189,15 @@ When asked after the fleet has ended (`--status` shows no row in flight), reply 
   decision the spec left open or a step the config reserves — a conflict, a gate, a walk — is work
   the agents should have done; retrying it is the right next step.
 - **failed** — the log path.
+
+**Then the review of what landed** — REFERENCE §The review: nobody approved these designs, the audits
+or the go-aheads (the run asked nothing), so this is where the human sees them. For each merged
+feature, the full review of what was built, sections 1–8, written from its archived
+`<registry>/_archive/<feature>/SPEC.md`, every ruling the run took marked `(auto)` — in parts, one
+feature after another, each part but the last ending `A. Looks right — next part` · `B. Something's
+wrong — say what`. B on a merged feature → a fix is new work (`/builder:brainstorm`), or
+`git revert -m 1 <merge>` takes it back out; say which fits. A parked feature gets no review — it
+did not land.
 
 ~~~
 📍 fleet: <n> merged into <branch> · <m> parked · <k> failed — next: test <branch>; settle the parked ones, then /builder:fleet again

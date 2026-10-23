@@ -130,7 +130,10 @@ the run. The fleet treats it as a human step; your `/builder:signoff` lands it.
 
 ## Hand off
 
-The verdict, the round, the counts (pass · fail · unverifiable), and where the evidence is. Then:
+The verdict, the round, the counts (pass · fail · unverifiable), and where the evidence is. No
+review here — this runs headless and nobody reads it (REFERENCE §The review, under `--agent-walk`);
+the fleet's report (fleet §5) and, under `walk=you`, your walk (resume §🔒 The walk) show the full
+review of what was built. Then:
 
 ~~~
 📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: /builder:verify --path <folder> · or say go

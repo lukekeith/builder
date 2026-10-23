@@ -31,16 +31,16 @@
         },
         {
           "role": "claude",
-          "text": "Quick path — this is a small change in existing code (xs: one tone value in one web component — no new model, endpoint, route, screen or shared component).\n\n- *overdue badge* → the `overdue` case of `CertStatusBadge` (apps/web/src/certificates/CertStatusBadge.tsx:14), today `tone=\"warning\"` (amber).\n- *the certificate list* → `CertificateList` in web (apps/web/src/certificates/CertificateList.tsx:61), the one place that badge renders. Mobile's list shows status as plain text, so it isn't touched.\n- *red* → the design system's `danger` tone (`--color-danger`), already used by the Revoked badge.\n\nThe change: set the `overdue` case to `tone=\"danger\"`, so overdue certificates get a red badge on the list.\n\nA. Build it (recommended) — one line in `CertStatusBadge`; overdue rows on the list show a red badge\nB. Brainstorm it first — the full conversation: intent, how it works today, questions, confirm\nReply A or B — \"go\" is A. Or say what's wrong.\n\n📍 overdue-badge: quick path offered (xs) — reply A to build, or resume with /builder:brainstorm --path docs/features/overdue-badge"
+          "text": "Quick path — this is a small change in existing code (xs: one tone value in one web component — no new model, endpoint, route, screen or shared component).\n\n- *overdue badge* → the `overdue` case of `CertStatusBadge` (apps/web/src/certificates/CertStatusBadge.tsx:14), today `tone=\"warning\"` (amber).\n- *the certificate list* → `CertificateList` in web (apps/web/src/certificates/CertificateList.tsx:61), the one place that badge renders. Mobile's list shows status as plain text, so it isn't touched.\n- *red* → the design system's `danger` tone (`--color-danger`), already used by the Revoked badge.\n\n**What changes for users** — overdue certificates on the web list get a red badge instead of an amber one, so they stand out from *Expiring*. Everyone who opens the list sees it; mobile is unchanged.\n**What you'll see** — Certificates → the Status column: *Overdue* badges turn red, the same red as *Revoked*.\n**Added · Changed · Removed** — Changed: the overdue badge's colour. Added: nothing. Removed: nothing.\n\nFiles: `apps/web/src/certificates/CertStatusBadge.tsx`\n\nA. Build it (recommended) — overdue rows on the list show a red badge\nB. Brainstorm it first — the full conversation: intent, how it works today, questions, confirm\nReply A or B — \"go\" is A. Or say what's wrong.\n\n📍 overdue-badge: quick path offered (xs) — reply A to build, or resume with /builder:brainstorm --path docs/features/overdue-badge"
         },
         {
           "role": "note",
-          "text": "No name question on the quick path: the derived name (overdue-badge) is just stated in the footer. The ways on are a plain-chat lettered list, not a picker. The record (status: sized xs, quick path — offered) is written before this turn ends, so /clear can't lose it."
+          "text": "The change is shown as a compact review (REFERENCE §The review, one part) — what changes for users, what they'll see, added · changed · removed — and the file is a reference line under it, never the thing approved. No name question on the quick path: the derived name (overdue-badge) is just stated in the footer. The ways on are a plain-chat lettered list, not a picker. The record (status: sized xs, quick path — offered) is written before this turn ends, so /clear can't lose it."
         }
       ],
       "stamp": {
-        "hash": "f8e049fd2fff",
-        "version": "4.11.3",
+        "hash": "b88c1d1005d2",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -87,8 +87,8 @@
         }
       ],
       "stamp": {
-        "hash": "c604ffb1eb1f",
-        "version": "4.11.3",
+        "hash": "8094bcefdae0",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -257,7 +257,7 @@
     {
       "id": "confirm",
       "skill": "brainstorm",
-      "title": "Confirm the shared understanding",
+      "title": "Confirm the shared understanding — as a review",
       "when": "The frontier is empty: the understanding played back with every assumption, then Build / Park / Stop.",
       "source": "skills/brainstorm/CONVERSATION.md §Confirm",
       "sources": [
@@ -271,16 +271,16 @@
         },
         {
           "role": "claude",
-          "text": "4 of 6 settled — 0 open, 2 assumed.\n\nNo real fork in the design — the existing export endpoint already takes the filters, so there's one way to wire it. No approaches step.\n\nHere's the shared understanding — Export moves into the certificate list's toolbar as a visible button at the right end, and exports every row that matches the current search and status filters, not just the page on screen; web sends the filters to the export endpoint it already calls, 4 decisions, 2 assumptions. Is anything missing or wrong?\n\n**Decisions**\n1. Export leaves the page header — *you*\n2. It exports only the filtered rows — *you*\n3. \"Filtered\" means every matching row, not the visible page — *you*: the CSV is a report to hand on\n4. A visible button at the right end of the toolbar — *you*: it matches *Invite* on the owners list\n\n**Assumed (say if not)**\n- A1: the filters travel as the export's existing `q` / `status` / `owner_id` params — `parseCertificateFilters` already runs there (filters.ts:5).\n- A2: with no filter on, Export still exports everything, as today.\n\nA. Build it (recommended) — it's sized next; if it's small it's designed and built here\nB. Park it — keep the conversation to pick up later; nothing built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A. Or say what's missing or wrong.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+          "text": "4 of 6 settled — 0 open, 2 assumed.\n\nNo real fork in the design — the existing export endpoint already takes the filters, so there's one way to wire it. No approaches step.\n\n**Here's the shared understanding** — Export moves into the certificate list's toolbar and exports what your filters show.\n\n**What changes for users**\n- Before: Export sits in the page header and always downloads every certificate, whatever the list is filtered to.\n- After: Export is a button at the right end of the list's toolbar, and the CSV holds every row matching the current search and status filters — all of them, not just the page on screen.\n- Who: everyone who exports from the web certificate list. Mobile has no export; nothing changes there.\n\n**What they'll see**\n```\n[ 🔍 Search…        ] (All)(Active)(Expiring)(Overdue)(Revoked)     [⤓ Export]\n```\nThe page header loses its Export link.\n\n**Added · Changed · Removed**\n- Added: nothing new — the same export, in a new place\n- Changed: Export moves from the header to the toolbar, and sends the active filters\n- Removed: Export in the page header\n\n**Decisions**\n1. Export leaves the page header — *you*\n2. It exports only the filtered rows — *you*\n3. Every matching row, not the visible page — *you*: the CSV is a report to hand on — not \"only the visible page\", which silently drops rows past the first 25\n4. A visible button at the right end of the toolbar — *you*: it matches *Invite* on the owners list — not a ⋯ menu, two clicks and easy to miss\n5. The filters travel as the export's existing `q` / `status` / `owner_id` params — `parseCertificateFilters` already runs there (filters.ts:5) (assumed)\n6. With no filter on, Export still exports everything, as today (assumed)\n\n**Risks and open questions** — none open. A big filtered export takes no longer than today's full one.\n\n**Not included** — choosing columns; export on mobile.\n\nA. Build it (recommended) — it's sized next; if it's small it's designed and built here\nB. Park it — keep the conversation to pick up later; nothing built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A. Or say what's missing or wrong.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
         },
         {
           "role": "note",
-          "text": "No fork → no approaches step, said in one line. Nothing leaves the workspace before a yes; a correction reopens its branch."
+          "text": "The confirm is the review (REFERENCE §The review — sections 1, 2, 3, 6, 7, 8 from the record): what changes for users, what they'll see, added · changed · removed, every decision with what lost and every assumption marked (assumed), the risks, what's not included. It fits on one screen, so it's one part; a longer one would come in parts, each ending A. Looks right — next part · B. Change something. No fork → no approaches step, said in one line. Nothing leaves the workspace before a yes; a correction reopens its branch."
         }
       ],
       "stamp": {
-        "hash": "1dd5f10416fc",
-        "version": "4.11.3",
+        "hash": "5c68eeff28e8",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -302,16 +302,16 @@
         },
         {
           "role": "claude",
-          "text": "**Size: sm** — evidence:\n- the flow exists and was read (the list page, `ExportButton`, the export route);\n- no new model, schema row, endpoint, permission or contract change — `GET /certificates/export` already accepts the filters;\n- no new route, screen or shared component — `ListToolbar`'s `actions` slot exists;\n- one app (web); ~4 files; fits one sitting.\n\nSay if you'd size it differently.\n\n**The design**\n- **App:** web\n- **Approach:** move `ExportButton` out of the `CertificatesPage` header into `ListToolbar`'s `actions` slot; `ExportButton` reads `useCertificateFilters()` and passes `q` / `status` / `owner_id` to `exportCertificates()`, which adds them to the request's query string\n- **Design-system components:** `Button` (secondary, download icon) from `packages/ui`, moved into `ListToolbar`'s `actions` slot as `docs/design/README.md` places table actions; `FilterChips` and `DataTable` unchanged\n- **Files:** CertificatesPage.tsx, ExportButton.tsx, api/certificates.ts, ExportButton.test.tsx\n- **Recipe skills:** `/acme-web-ui`, `/acme-web-data`\n- **Tests:** the export request carries the active filters; with no filter it carries none (test first — behaviour changes)\n- **What you'll see:** the header has no Export; the toolbar ends in an Export button; filtering by *Overdue* and exporting gives a CSV of just the overdue certificates — all of them, not the first 25\n\nA. Build it (recommended) — Export moves into the toolbar and exports the filtered rows\nB. Talk it through more — back to the rounds\nReply A or B — \"go\" is A. Or say what to change.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+          "text": "**Size: sm** — evidence:\n- the flow exists and was read (the list page, `ExportButton`, the export route);\n- no new model, schema row, endpoint, permission or contract change — `GET /certificates/export` already accepts the filters;\n- no new route, screen or shared component — `ListToolbar`'s `actions` slot exists;\n- one app (web); ~4 files; fits one sitting.\n\nSay if you'd size it differently.\n\n**The design**\n\n**What changes for users** — Export moves from the page header to the right end of the list's toolbar, and the CSV holds every row your search and status filters match — all of them, not the first 25. With no filter on it exports everything, as today.\n**What you'll see** — the header has no Export; the toolbar ends in an Export button; filter by *Overdue*, export, and the CSV has just the overdue certificates.\n**Added · Changed · Removed** — Changed: where Export sits, and that it sends the filters. Removed: Export in the page header. Added: nothing.\n\n**How** — web only. `ExportButton` moves into `ListToolbar`'s `actions` slot as the design system's secondary `Button` with the download icon (`packages/ui`), where `docs/design/README.md` places table actions; it reads `useCertificateFilters()` and passes `q` / `status` / `owner_id` to `exportCertificates()`. Recipes: `/acme-web-ui`, `/acme-web-data`. Tests first — behaviour changes: the export request carries the active filters; with no filter it carries none.\n\nFiles: CertificatesPage.tsx · ExportButton.tsx · api/certificates.ts · ExportButton.test.tsx\n\nA. Build it (recommended) — Export moves into the toolbar and exports the filtered rows\nB. Talk it through more — back to the rounds\nReply A or B — \"go\" is A. Or say what to change.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
         },
         {
           "role": "note",
-          "text": "One approval, and the turn stops here: presenting the design and starting the build in the same turn would skip the gate. The record now reads status: sized sm."
+          "text": "The design is a compact review (REFERENCE §The review: sections 1–3, and Data only when something stored changes — nothing does here), then how it's built; the files are a reference line, never the thing approved. One approval, and the turn stops here: presenting the design and starting the build in the same turn would skip the gate. The record now reads status: sized sm."
         }
       ],
       "stamp": {
-        "hash": "81c03bfe2c31",
-        "version": "4.11.3",
+        "hash": "273ca4339e75",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -357,8 +357,8 @@
         }
       ],
       "stamp": {
-        "hash": "931d902238b9",
-        "version": "4.11.3",
+        "hash": "2c2e0d2d062d",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -380,7 +380,7 @@
         },
         {
           "role": "claude",
-          "text": "Settled on my recommendation, recorded as your ruling: **Q2 — Export is a visible button at the right end of the toolbar.** Steer recorded.\n\n**Size: sm** — one app (web); the flow exists and was read; no new model, endpoint, route, screen or shared component — `GET /certificates/export` already parses the filters and `ListToolbar` already has an `actions` slot. ~4 files, one sitting.\n\n**The design:** web · move `ExportButton` from the page header into `ListToolbar`'s `actions` slot as the design system's secondary `Button` (`packages/ui`), and pass `useCertificateFilters()`'s params to `exportCertificates()` · files: CertificatesPage.tsx, ExportButton.tsx, api/certificates.ts, ExportButton.test.tsx · recipes: `/acme-web-ui`, `/acme-web-data` · tests: the export request carries the active filters; none when no filter is on · you'll see: Export at the right of the toolbar, and a CSV of exactly the rows your filters match.\n\nYour \"just build it\" is the one approval — building now.\n\n…"
+          "text": "Settled on my recommendation, recorded as your ruling: **Q2 — Export is a visible button at the right end of the toolbar.** Steer recorded.\n\n**Size: sm** — one app (web); the flow exists and was read; no new model, endpoint, route, screen or shared component — `GET /certificates/export` already parses the filters and `ListToolbar` already has an `actions` slot. ~4 files, one sitting.\n\n**What changes for users** — Export moves to the right end of the list's toolbar and exports every row your filters match, not the whole table. **What you'll see** — no Export in the header; an Export button ending the toolbar. **Changed:** where Export sits and what it exports · **Removed:** Export in the page header · **Added:** nothing.\n**How:** the design system's secondary `Button` (`packages/ui`) in `ListToolbar`'s `actions` slot, passing `useCertificateFilters()`'s params to `exportCertificates()` · recipes `/acme-web-ui`, `/acme-web-data` · tests: the export request carries the active filters; none when no filter is on.\nFiles: CertificatesPage.tsx · ExportButton.tsx · api/certificates.ts · ExportButton.test.tsx\n\nYour \"just build it\" is the one approval — building now.\n\n…"
         },
         {
           "role": "note",
@@ -388,8 +388,8 @@
         }
       ],
       "stamp": {
-        "hash": "31338e1c4956",
-        "version": "4.11.3",
+        "hash": "e96a8c0d9259",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -619,8 +619,8 @@
         }
       ],
       "stamp": {
-        "hash": "185723bb8b8a",
-        "version": "4.11.3",
+        "hash": "9ad75405bba9",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -673,8 +673,8 @@
         }
       ],
       "stamp": {
-        "hash": "bf63592c9710",
-        "version": "4.11.3",
+        "hash": "c9fbf68b22d1",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -732,8 +732,8 @@
         }
       ],
       "stamp": {
-        "hash": "185723bb8b8a",
-        "version": "4.11.3",
+        "hash": "9ad75405bba9",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     }

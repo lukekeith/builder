@@ -182,7 +182,14 @@ One approval covers the whole build; no later phase re-asks. It is taken the sam
 with an `agent_walk:` block — the slices, the test plan, A/B/C — and only what **A** starts differs.
 **The manifest says `build: here`** → §Build here instead.
 
-**1. The slices.** Run `node <builder>/scripts/plan-slices.mjs <folder>` — with `--tests "<value>"`
+**0. The recap — what is being built.** REFERENCE §The review, one part, above the slices: what
+changes for users (1), added · changed · removed (3) and the data (4), each in a few lines from the
+SPEC; then **what the audit changed since the design was approved** — the audit's review delta, or
+`The audit changed nothing in the design you approved.` — and every ruling taken at the decisions
+gate, one line each (`(auto)` when an autopilot took it). The human approves the build here, so they
+see what it builds, not only how it is sliced.
+
+**1. The slices** — section 9 of the review. Run `node <builder>/scripts/plan-slices.mjs <folder>` — with `--tests "<value>"`
 when the manifest already carries `tests:` (chosen ahead, §Picking the test plan ahead) — and present
 its output **verbatim**: the feature, its slices and apps, where it lands, one line per task grouped by
 app with the tests it adds, then the test plan's two lines — what runs, and what it costs in runs and,
@@ -308,7 +315,8 @@ Write `tests:` and `target:` to each pick's manifest — never `go-ahead:`, whic
 The headless go-ahead keeps them (below). A pick that already carries `tests:` or `profile:` is not
 asked again.
 
-🔴 **`--auto` and `--agent-walk` never ask.** They present the slices, record
+🔴 **`--auto` and `--agent-walk` never ask**, and print no recap (REFERENCE §The review — the walk
+shows it). They present the slices, record
 `go-ahead: auto (recommended) YYYY-MM-DD` in the go-ahead commit and **keep a `tests:` (or an old
 `profile:`) and `target:` the manifest already carries** — chosen at §Picking the test plan ahead.
 Only when one is missing do they write it: `tests: <the levers profile.mjs --recommend <folder>

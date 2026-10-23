@@ -18,7 +18,7 @@
         },
         {
           "role": "note",
-          "text": "The owner already approved the design at brainstorm's confirm — spec never walks sections for approval. It drafts every section, then asks only choices the record never ruled on that change what the owner sees or what data is kept."
+          "text": "The owner approved the concept at brainstorm's confirm, and approves the design once, at the end, through the review. Spec never walks the spec's sections for approval: it drafts every section, then asks only choices the record never ruled on that change what the owner sees or what data is kept."
         },
         {
           "role": "claude",
@@ -78,16 +78,16 @@
         }
       ],
       "stamp": {
-        "hash": "8e9a1c54282f",
-        "version": "4.11.3",
+        "hash": "d9f45d07d54a",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
     {
       "id": "spec-summary-footer",
       "skill": "spec",
-      "title": "Spec written — the plain summary and the numbered footer",
-      "when": "Once SPEC.md and MANIFEST.md are written, proven by check-obligations, and committed.",
+      "title": "Spec written — the review in parts is the design approval",
+      "when": "Once SPEC.md and MANIFEST.md are written, proven by check-obligations, and committed: the design approval, shown in the chat as a review in screen-sized parts.",
       "source": "skills/spec/SKILL.md §3. Prove it, commit, hand on",
       "sources": [
         "skills/spec/SKILL.md §2. Write the files",
@@ -109,7 +109,27 @@
         },
         {
           "role": "claude",
-          "text": "Written to `docs/features/cert-tags/SPEC.md` (with its `MANIFEST.md`), committed as `docs(ACME-412): design cert-tags`.\n\n**What it does.** Owners can put their own tags on a certificate — \"audit 2026\", \"site B\", anything — and filter the certificate list down to one or more tags, on the web and in the mobile app. Tags are private to the owner: other viewers never see them. Deleting a tag takes it off every certificate, after a confirm that says how many.\n\n**What it touches.** `api` — a Tag model, a CertificateTag join, tag endpoints and a tag filter on the certificate list (the producer; the contract starts open). `web` — tag chips on the list, a tag filter, a tag editor on the owner view. `mobile` — the same chips, filter and editor; mobile is a released app, so every change to what it reads is additive.\n\n**The choices we settled just now**\n- Deleting a tag removes it from every certificate, after a confirm naming the count.\n- Tags are returned only to the certificate's owner.\n\n**Details assumed at spec** — say if any is wrong\n- A tag name is 1–32 characters, trimmed, unique per owner case-insensitively.\n- An owner can have at most 200 tags; a certificate at most 20.\n- Creating a duplicate tag returns `409 TAG_EXISTS` with the existing tag.\n- Tag colours are picked from the existing 8-colour chip palette, not free hex.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+          "text": "Written and committed as `docs(ACME-412): design cert-tags`. Here's what cert-tags will do — 3 parts, one at a time.\n\n**Part 1 of 3 — What users get**\n\n**What changes for users**\n- Before: an owner finds \"everything for the site B audit\" by scrolling the certificate list.\n- After: an owner tags certificates with their own labels (\"audit 2026\", \"site B\") and filters the list by one or more tags — on the web and in the mobile app.\n- Who: certificate owners. Other viewers see nothing new — tags are private to the owner.\n\n**What they'll see**\n- Certificate list (web, mobile) — chips under each name, a Tags filter beside Status:\n```\n┌ Certificates ─────────────────── [Status ▾] [Tags ▾] ┐\n│ Boiler 3 — gas safety                  due 12 Nov    │\n│   (audit 2026) (site B)                              │\n└──────────────────────────────────────────────────────┘\n```\n- Owner view — a Tags row with *+ Add tag*; typing offers the tags you already have.\n- Settings → Tags — rename, recolour, delete. Delete asks first: *\"Remove 'site B' from 14 certificates?\"*\n\n**Added · Changed · Removed**\n- Added: tags on certificates · the Tags filter · Settings → Tags · tag endpoints in api\n- Changed: the certificate list takes an optional tag filter\n- Removed: nothing\n\nA. Looks right — next part\nB. Change something — say what\nReply A or B — \"go\" is A."
+        },
+        {
+          "role": "note",
+          "text": "The review is the design approval (REFERENCE §The review): plain words and the product's own names — screens, buttons, fields — never §-shorthand, and no file to open. Too long for one screen, so it comes in parts, one per turn, each ending in A/B."
+        },
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Part 2 of 3 — Data and apps**\n\n**Data**\n- New: a tag (name, colour, owner) and a link between tags and certificates.\n- Existing: certificates are untouched — every one starts with no tags.\n- Migration: one, additive — two new tables, nothing altered; undone by dropping them.\n- Deleting a tag deletes its links only; the certificates are never touched.\n\n**Apps**\n- **api** — stores tags, returns them to the owner only, filters the list. Built first.\n- **web** — the chips, the filter, the owner-view editor, Settings → Tags.\n- **mobile** — the same chips, filter and editor. Released app: people on today's version see no change and nothing breaks — every field it reads stays as it is.\n\nA. Looks right — next part\nB. Change something — say what\nReply A or B — \"go\" is A."
+        },
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Part 3 of 3 — Decisions and risks**\n\n**Decisions**\n- Deleting a tag takes it off every certificate, after a confirm naming the count — not blocking the delete while in use (owners stuck untagging one by one).\n- Only the certificate's owner sees its tags — not every viewer (private notes made public).\n- A tag name is 1–32 characters, unique per owner ignoring case *(assumed)*\n- Up to 200 tags per owner, 20 per certificate *(assumed)*\n- Adding a tag name you already have reuses that tag *(assumed)*\n- Colours come from the 8 chip colours already in use — no free colour picker *(assumed)*\n\n**Risks and open questions**\n- Filtering a long list by several tags could be slow — an index on the link is planned; the audit checks the query.\n- Nothing open.\n\n**Not included**\n- Tags shared between owners or across a team.\n- Tagging many certificates at once.\n- Tags in exports and reports.\n\nFull spec: `docs/features/cert-tags/SPEC.md`"
         },
         {
           "role": "claude",
@@ -117,12 +137,12 @@
         },
         {
           "role": "note",
-          "text": "The summary ends in no question — it's the owner's chance to object. Three options because the config has an agent_walk: block; without it 'here' is 2 and the reply line reads Reply 1 or 2 (or \"resume\" / \"here\"; \"go\" is 1)."
+          "text": "The last part ends with the reference line and then spec's own footer — 1/2/3, \"go\" is 1. A B, or the owner's own words, at any part amends the record and the SPEC, re-runs check-obligations, commits, and shows that part again. Assumed details are marked (assumed) in Decisions so a wrong one stands out. Three footer options because the config has an agent_walk: block; without it 'here' is 2. Under --auto no review is printed — nobody approves; the walk shows it."
         }
       ],
       "stamp": {
-        "hash": "f0da0c986f26",
-        "version": "4.11.3",
+        "hash": "30d3643c67bc",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -230,7 +250,7 @@
         },
         {
           "role": "claude",
-          "text": "The audit read the spec against all three apps once, plus a scoped second look at the one contract it changed. Two questions are left for you; nothing blocks the plan.\n\n**Data integrity — first**\n- Deleting a tag must remove its `CertificateTag` rows in the same transaction; the spec said \"untag everywhere\" but no cascade was written. Fixed: `onDelete: Cascade` on the join, §Schema row SC3.\n- Ownership: `PATCH /certificates/:id` has no owner check (`apps/api/src/routes/certificates.ts:88`). Per your call it's fixed in the api phase, and the new tag endpoints get the same guard (T4).\n\n**Released build (mobile)**\n- `tags` on `GET /certificates` is a new optional field — additive, safe for mobile 3.2 in the store, which ignores unknown keys (`apps/mobile/src/api/certificates.ts:14`). Stated in §Apps *Backward compatibility*.\n\n**Contract-changing**\n- The list filter was `?tag=<id>`; web's existing filter bar sends repeated params (`?status=a&status=b`). §Contract now reads `?tag=<id>` repeatable on `GET /certificates`. The scoped second pass checked this one row against both consumers: clean.\n\n**Design-affecting**\n- No empty state was specified for \"no certificates match these tags\" on either consumer — written into §web and §mobile, reusing `EmptyState`.\n\n**Stale spec**\n- The web filter component is `ListFilters` (`apps/web/src/features/certificates/ListFilters.tsx`), not `CertificateListFilter`. Fixed in place.\n\n**Nits** — two field names aligned to the API's camelCase transform.\n\n**Build-time risk** (not a blocker): mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted — settled by the mobile filter task.\n\n**Open decisions (2)** — multi-tag filtering ALL vs ANY; whether mobile can edit tags or only filter. Both carry a recommendation.\n\nREADY — contract sweep clean after the scoped second pass; no blocked items.\n\nNext: `/builder:resume --path docs/features/cert-tags` takes the two open decisions, then plans."
+          "text": "The audit read the spec against all three apps once, plus a scoped second look at the one contract it changed. Two questions are left for you; nothing blocks the plan.\n\n**What the audit changed in the design you approved**\n- **What they'll see** — + *\"No certificates match these tags\"* when a tag filter matches nothing, on web and mobile (nothing said what an empty result shows).\n- **Added · Changed · Removed** — Changed, new: renaming a certificate now checks that you own it. Today any signed-in user can rename anyone's certificate; the tag endpoints get the same check.\n- **Data** — before: deleting a tag removed it from certificates, but nothing said how. After: its links go in the same step as the tag, so no certificate ever points at a deleted tag.\n- **Risks** — + mobile's offline list can show a stale tag filter just after a tag is deleted — settled while building the mobile filter.\n- **Decisions** — two new, for you: several tags — match all or any; mobile — edit tags or only filter. Both carry a recommendation.\n\n**What the pass found**\n\n**Data integrity — first**\n- Deleting a tag must remove its `CertificateTag` rows in the same transaction; the spec said \"untag everywhere\" but no cascade was written. Fixed: `onDelete: Cascade` on the join, §Schema row SC3.\n- Ownership: `PATCH /certificates/:id` has no owner check (`apps/api/src/routes/certificates.ts:88`). Per your call it's fixed in the api phase, and the new tag endpoints get the same guard (T4).\n\n**Released build (mobile)**\n- `tags` on `GET /certificates` is a new optional field — additive, safe for mobile 3.2 in the store, which ignores unknown keys (`apps/mobile/src/api/certificates.ts:14`). Stated in §Apps *Backward compatibility*.\n\n**Contract-changing**\n- The list filter was `?tag=<id>`; web's existing filter bar sends repeated params (`?status=a&status=b`). §Contract now reads `?tag=<id>` repeatable on `GET /certificates`. The scoped second pass checked this one row against both consumers: clean.\n\n**Design-affecting**\n- No empty state was specified for \"no certificates match these tags\" on either consumer — written into §web and §mobile, reusing `EmptyState`.\n\n**Stale spec**\n- The web filter component is `ListFilters` (`apps/web/src/features/certificates/ListFilters.tsx`), not `CertificateListFilter`. Fixed in place.\n\n**Nits** — two field names aligned to the API's camelCase transform.\n\n**Build-time risk** (not a blocker): mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted — settled by the mobile filter task.\n\n**Open decisions (2)** — multi-tag filtering ALL vs ANY; whether mobile can edit tags or only filter. Both carry a recommendation.\n\nREADY — contract sweep clean after the scoped second pass; no blocked items.\n\nNext: `/builder:resume --path docs/features/cert-tags` takes the two open decisions, then plans."
         },
         {
           "role": "claude",
@@ -238,12 +258,12 @@
         },
         {
           "role": "note",
-          "text": "The pass cap: pass 2 runs only because pass 1 changed a contract row, and only over that row. Never 'another pass' in the hand-off. A BLOCKED verdict would append ' · BLOCKED: <n> items' after 'audited'."
+          "text": "The hand-off opens with the review delta (REFERENCE §The review §The delta form): only the sections the audit moved, before → after, in plain words, measured against the design approved at spec — nothing moved would be one line. Then the findings, grouped. The pass cap: pass 2 runs only because pass 1 changed a contract row, and only over that row. Never 'another pass' in the hand-off. A BLOCKED verdict would append ' · BLOCKED: <n> items' after 'audited'."
         }
       ],
       "stamp": {
-        "hash": "7e07dc37022d",
-        "version": "4.11.3",
+        "hash": "33a35c67dc21",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -365,11 +385,11 @@
         },
         {
           "role": "claude",
-          "text": "```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\n- Why the end includes the risky parts: this feature adds a migration and spans 3 apps.\n- **Slice 4 freezes the contract** — the certificate payload's `tags` is frozen when api's slices close; no web or mobile slice starts before it.\n- Build-time risk on **slice 10**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- Deferred: renaming a tag across owners — out of scope, decider Luke.\n- The plan: `docs/features/cert-tags/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-tags: planned — 12 slices in api, web, mobile, test plan own · risk · end — next: A — agents build it, landing on main · or say go\n```"
+          "text": "**What you're approving — the build of cert-tags**\n- **For users:** owners tag their certificates and filter the certificate list by tag, on web and mobile; Settings → Tags renames, recolours and deletes.\n- **Added:** tags on certificates · the Tags filter · Settings → Tags · tag endpoints in api · **Changed:** the list takes a tag filter; renaming a certificate checks you own it · **Removed:** nothing\n- **Data:** one additive migration — a tag table and a tag–certificate link; existing certificates untouched; undone by dropping the two tables.\n\n**Since you approved the design** — the audit added the \"no certificates match\" message, the owner check on renaming a certificate, and removing a deleted tag's links in the same step. At the decisions gate you ruled: several tags show certificates carrying **all** of them; mobile **filters only** — tags are edited on the web.\n\n**How it gets built and tested**\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\n- Why the end includes the risky parts: this feature adds a migration and spans 3 apps.\n- **Slice 4 freezes the contract** — the certificate payload's `tags` is frozen when api's slices close; no web or mobile slice starts before it.\n- Build-time risk on **slice 10**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- Deferred: renaming a tag across owners — out of scope, decider Luke.\n- The plan: `docs/features/cert-tags/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-tags: planned — 12 slices in api, web, mobile, test plan own · risk · end — next: A — agents build it, landing on main · or say go\n```"
         },
         {
           "role": "note",
-          "text": "The slice block is plan-slices.mjs's output, verbatim — never redrawn as a table. The recommended plan is the fast one: each slice runs only its own tests, the suites run once at the end, one review at the end. Here the migration and the 3 apps raise only the end, to \"an agent tries the risky parts\", and the line under the block says why. Counts only: no suite has been timed by gate.mjs yet, so no minutes. The lines under the block are the rides-along; their wording is a rendering."
+          "text": "The go-ahead opens with a one-part recap (REFERENCE §The review: sections 1, 3, 4) and what the audit and the decisions gate changed since the design was approved — so the build is approved knowing what it builds, not only how it's sliced. Then section 9: the slice block is plan-slices.mjs's output, verbatim — never redrawn as a table. The recommended plan is the fast one: each slice runs only its own tests, the suites run once at the end, one review at the end. Here the migration and the 3 apps raise only the end, to \"an agent tries the risky parts\", and the line under the block says why. Counts only: no suite has been timed by gate.mjs yet, so no minutes. The plan's path is a reference line among the rides-along."
         },
         {
           "role": "user",
@@ -397,8 +417,8 @@
         }
       ],
       "stamp": {
-        "hash": "2f5c64dd33b5",
-        "version": "4.12.0",
+        "hash": "b976d5759260",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -456,8 +476,8 @@
         }
       ],
       "stamp": {
-        "hash": "9187a4505434",
-        "version": "4.12.0",
+        "hash": "445fd8b937f3",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -632,8 +652,8 @@
         }
       ],
       "stamp": {
-        "hash": "732639b51689",
-        "version": "4.12.0",
+        "hash": "d2d04c039c3d",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -730,7 +750,7 @@
         },
         {
           "role": "claude",
-          "text": "Written to `docs/features/cert-history/SPEC.md` (with its `MANIFEST.md`), committed as `docs(cert-history): design cert-history`.\n\n**What it does.** A certificate gets a History tab on the web. It lists every change — who changed what, from what to what, and when — newest first, so an owner can see how a certificate got to where it is.\n\n**What it touches.** `web` only — a History tab and route reading the existing `GET /certificates/:id/events`. `api` and `mobile` don't change: the endpoint already returns everything the tab shows (`contract: none`).\n\n**Details assumed at spec** — say if any is wrong\n- 50 events per page, \"Load more\" for the rest.\n- Times show in the viewer's timezone, absolute, with a relative hint.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+          "text": "Written and committed as `docs(cert-history): design cert-history`. It fits on one screen, so here's the whole review.\n\n**What changes for users**\n- Before: an owner sees a certificate's current values, but not how it got there.\n- After: a certificate has a **History** tab on the web listing every change — who changed what, from what to what, and when — newest first.\n- Who: owners, on the web. Mobile is unchanged.\n\n**What they'll see** — certificate page → a new **History** tab after *Details*: one row per change, 50 at a time with *Load more*.\n\n**Added · Changed · Removed** — Added: the History tab and its page · Changed: nothing · Removed: nothing\n\n**Apps** — web only. api already returns every change the tab shows; mobile doesn't change.\n\n**Decisions**\n- 50 changes per page, *Load more* for the rest *(assumed)*\n- Times in the viewer's timezone, as a date with \"3 days ago\" beside it *(assumed)*\n\n**Not included** — History on mobile; searching or filtering the history.\n\nFull spec: `docs/features/cert-history/SPEC.md`"
         },
         {
           "role": "claude",
@@ -750,7 +770,7 @@
         },
         {
           "role": "claude",
-          "text": "One pass, web only. The spec mostly held.\n\n**Contract-checking** — §Apps said api is ⬜ not affected; re-derived and confirmed: `GET /certificates/:id/events` already returns `actor`, `field`, `from`, `to`, `at` (`apps/api/src/routes/events.ts:30`), the same shape the tab reads.\n**Design-affecting** — the endpoint returns 403 to non-owners; the tab's permission-denied state is now specified.\n**Stale spec** — the tabs component is `CertificateTabs`, not `DetailTabs`. Fixed in place.\n\n**Open decisions (1)** — whether non-owners see the History tab at all (recommended: hidden).\n\nREADY — contract unchanged; no blocked items."
+          "text": "One pass, web only. The spec mostly held.\n\n**What the audit changed in the design you approved**\n- **What they'll see** — + what a non-owner gets: the endpoint refuses them, and nothing said what the tab shows then.\n\n**What the pass found**\n\n**Contract-checking** — §Apps said api is ⬜ not affected; re-derived and confirmed: `GET /certificates/:id/events` already returns `actor`, `field`, `from`, `to`, `at` (`apps/api/src/routes/events.ts:30`), the same shape the tab reads.\n**Design-affecting** — the endpoint returns 403 to non-owners; the tab's permission-denied state is now specified.\n**Stale spec** — the tabs component is `CertificateTabs`, not `DetailTabs`. Fixed in place.\n\n**Open decisions (1)** — whether non-owners see the History tab at all (recommended: hidden).\n\nREADY — contract unchanged; no blocked items."
         },
         {
           "role": "claude",
@@ -766,7 +786,7 @@
         },
         {
           "role": "claude",
-          "text": "```\ncert-history — 5 slices in 1 app · lands on main\n\nweb 1  useCertificateEvents hook                  +3 tests\n    2  The /certificates/:id/history route        +2 tests\n    3  History tab: the event list, newest first  +3 tests\n    4  Load more                                  +2 tests\n    5  Empty, error and permission-denied states  +3 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the web suite once · one review at the end\n  5 quick test runs + 1 suite run\n```\n\n- No contract to freeze (`contract: none`). Nothing deferred.\n- The plan: `docs/features/cert-history/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-history: planned — 5 slices in web, test plan own · touched · end — next: A — agents build it, landing on main · or say go\n```"
+          "text": "**What you're approving** — a History tab on the web certificate page: every change, newest first. Added: the History tab · Changed, removed: nothing · No data changes.\n**Since you approved the design** — the audit added the not-the-owner case; at the decisions gate you ruled the tab is hidden from non-owners.\n\n```\ncert-history — 5 slices in 1 app · lands on main\n\nweb 1  useCertificateEvents hook                  +3 tests\n    2  The /certificates/:id/history route        +2 tests\n    3  History tab: the event list, newest first  +3 tests\n    4  Load more                                  +2 tests\n    5  Empty, error and permission-denied states  +3 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the web suite once · one review at the end\n  5 quick test runs + 1 suite run\n```\n\n- No contract to freeze (`contract: none`). Nothing deferred.\n- The plan: `docs/features/cert-history/PLAN.md`\n\nA. Build it with this plan (recommended) — agents build it in its own worktree and land it on main\nB. Change the test plan — how much to test per slice, at the end, and when to review\nC. Keep planning — nothing is built; say what to change\nReply A, B or C — \"go\" is A.\n\n```\n📍 cert-history: planned — 5 slices in web, test plan own · touched · end — next: A — agents build it, landing on main · or say go\n```"
         },
         {
           "role": "user",
@@ -786,12 +806,12 @@
         },
         {
           "role": "note",
-          "text": "How md differs: no product questions when nothing is open; audit runs ONE agent instead of one per app; the plan dial is 2–4 phases (lg is 4–7) and a single-app feature needs no producer-before-consumer ordering or freeze; the manifest says apps: web, contract: none. One app, no schema change: no signal raises the end, so the recommendation is the plain one — own · touched · end, 5 quick test runs + 1 suite run. The slice names and test counts are illustrative; the block's shape is plan-slices.mjs's."
+          "text": "How md differs: no product questions when nothing is open; the review fits on one screen, so it's one part with no A/B — the footer follows it; audit runs ONE agent instead of one per app; the plan dial is 2–4 phases (lg is 4–7) and a single-app feature needs no producer-before-consumer ordering or freeze; the manifest says apps: web, contract: none. One app, no schema change: no signal raises the end, so the recommendation is the plain one — own · touched · end, 5 quick test runs + 1 suite run. The slice names and test counts are illustrative; the block's shape is plan-slices.mjs's."
         }
       ],
       "stamp": {
-        "hash": "f407da503c82",
-        "version": "4.12.0",
+        "hash": "0da8e687e84e",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -855,7 +875,7 @@
         },
         {
           "role": "claude",
-          "text": "Written to `docs/features/customer-portal/PROGRAM.md` (with its program `MANIFEST.md`), committed as `docs(ACME-430): design customer-portal`.\n\n**What it does.** Customers get their own portal: they sign in with a link sent to their email, see every certificate issued to them, and download any of them as a PDF. It ships as three features, one after another, each useful on its own.\n\n**What it touches.** `api` and `web` in every child; `mobile` is out.\n\n**Details assumed at spec** — say if any is wrong\n- The sign-in link expires after 15 minutes and works once.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+          "text": "Written and committed as `docs(ACME-430): design customer-portal`. It fits on one screen, so here's the whole review.\n\n**What changes for users**\n- Before: customers get certificates by email from the owner, one at a time.\n- After: customers have their own portal — they sign in with a link sent to their email, see every certificate issued to them, and download any of them as a PDF.\n- Who: customers. Owners keep issuing in the web app as today.\n\n**What they'll see** — a sign-in page asking for an email; then a list of their certificates, each with *Download PDF*.\n\n**Added · Changed · Removed** — Added: the portal (sign-in, certificate list, downloads) under /portal in web, and the customer endpoints in api · Changed: nothing owners use · Removed: nothing\n\n**Data** — a customer, matched to certificates by verified email; no passwords stored.\n\n**Apps** — api and web in every child; mobile is out. It ships as three features, one after another, each useful on its own: sign-in, then the list, then downloads.\n\n**Decisions**\n- Customers sign in with an emailed link — no passwords (a second credential store to secure).\n- The portal lives in the web app — not a separate app (a second deploy for three screens).\n- The sign-in link expires after 15 minutes and works once *(assumed)*\n\n**Not included** — mobile; customers changing anything.\n\nFull program: `docs/features/customer-portal/PROGRAM.md`"
         },
         {
           "role": "claude",
@@ -952,7 +972,7 @@
         },
         {
           "role": "claude",
-          "text": "Route taken: **before the go-ahead** — nothing is built yet, so the docs change directly. It's a settled ruling, so no conversation first. The premise holds in code: `Team` exists and every user has a `teamId` (`apps/api/prisma/schema.prisma:41`), and the auth plugin already puts it on the request (`apps/api/src/plugins/auth.ts:19`).\n\n**What changed**\n\n*Spec* — `docs/features/cert-tags/SPEC.md`\n- §Decisions: **D4** \"Tags belong to their owner; names unique per owner\" superseded in place, 2026-10-23 → **D11**: a Tag belongs to a Team (`Tag.teamId`, required); every member of the team can see, apply and filter by the team's tags; names are unique per team, case-insensitively. Rejected: global tags — one owner's labels showed up in every team's picker.\n- §Contract: `GET /tags` returns the caller's team's tags; `POST /tags` creates in the caller's team; `409 TAG_EXISTS` is per team.\n- §Schema & API changes: SC1 gains `Tag.teamId` (FK Team, NOT NULL) and the unique index moves to `(teamId, lower(name))`. Data plan: none — the table is new.\n\n*api* — `PLAN.md` Task 1 (migration and model) and Task 4 (tag endpoints) amended, with their tests.\n*web* — `PLAN.md` Task 11 (tag editor): the picker lists the team's tags.\n*mobile* — nothing: it only filters, and the filter shape is unchanged.\n\n**What it invalidated** — nothing built. The audit already ran and a contract changed, so I re-checked that one contract against the code: the owner guard from T4 becomes a team guard on the tag endpoints; certificates still check `owner_id`. The released mobile build reads nothing new — additive, safe. The phase table's shape didn't change, so the go-ahead you haven't given yet is still the one to give."
+          "text": "Route taken: **before the go-ahead** — nothing is built yet, so the docs change directly. It's a settled ruling, so no conversation first. The premise holds in code: `Team` exists and every user has a `teamId` (`apps/api/prisma/schema.prisma:41`), and the auth plugin already puts it on the request (`apps/api/src/plugins/auth.ts:19`).\n\n**The change, against the design you approved**\n- **What changes for users** — before: each owner has their own tags, private to them. After: tags belong to the team — everyone in the team sees, applies and filters by the team's tags.\n- **What they'll see** — the tag picker and Settings → Tags list the team's tags; adding a name the team already has reuses that tag.\n- **Data** — a tag now belongs to a team, and names are unique per team instead of per owner. No existing data: the tag table is new.\n- **Apps** — **api**: tags are read and created in the caller's team. **web**: the picker lists the team's tags. **mobile**: nothing — it only filters, and the filter is unchanged; the released build reads nothing new.\n- **Decisions** — \"tags belong to their owner\" → \"tags belong to a team\" — not global tags (one owner's labels in every team's picker).\n- **Not included** — − \"tags shared across a team\": that is now the feature.\n\n**What it invalidated** — nothing built. The audit already ran and a contract changed, so I re-checked that one contract against the code: the owner check on the tag endpoints becomes a team check; certificates still check their owner. The phase table's shape didn't change, so the go-ahead you haven't given yet is still the one to give.\n\nWhere: SPEC §Decisions (D4 superseded by D11), §Contract (`/tags` per team, `409 TAG_EXISTS` per team), §Schema & API changes (SC1: `Tag.teamId`, unique on team + name) · PLAN.md Tasks 1 and 4 (api), Task 11 (web)."
         },
         {
           "role": "tool",
@@ -972,8 +992,8 @@
         }
       ],
       "stamp": {
-        "hash": "5d9c421f1ec8",
-        "version": "4.11.3",
+        "hash": "660060c00fd8",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },

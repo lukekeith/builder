@@ -245,7 +245,7 @@
     {
       "id": "intake-confirm",
       "skill": "intake",
-      "title": "Intake: the shared understanding",
+      "title": "Intake: the shared understanding, as a review",
       "when": "When every contradicted, unverifiable and open row is settled.",
       "source": "skills/brainstorm/CONVERSATION.md §Confirm",
       "sources": [
@@ -272,12 +272,24 @@
         },
         {
           "role": "claude",
-          "text": "No real fork in the design — one approach, so no approaches step.\n\n**Here's the shared understanding** — owners tick certificates on the web list (or take the \"renew expiring in 30 days\" shortcut) and renew them in one action; each renewal extends from its current expiry, exactly like single renew. A new `POST /certificates/bulk-renew` wraps the existing `renewCertificate`, skips revoked certificates and reports partial failures; mobile is untouched. **19 decisions, 2 assumptions.** Is anything missing or wrong?\n\nAssumed:\n- **B11** one `renewed` event per certificate, so each History tab shows its own renewal — `renewCertificate` already writes it (renew.service.ts:42). Say if not.\n- **B14** the 500 cap is enforced by the endpoint and the selection bar both — the web pattern for capped actions (apps/web/src/features/exports/ExportBar.tsx:30).\n\nA. Build it (recommended) — sized next, then the spec\nB. Park it — keep the conversation; nothing is built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A.  Or say what's missing or wrong.\n📍 bulk-renew: intake (0 contradicted, 19/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+          "text": "No real fork in the design — one approach, so no approaches step.\n\n**Here's the shared understanding** — 2 parts. Owners renew many certificates in one action on the web.\n\n**Part 1 of 2 — What users get**\n\n**What changes for users**\n- Before: an owner renews certificates one at a time from each owner view — the slow part of their year-end.\n- After: an owner ticks certificates on the web list, or takes *Renew expiring in 30 days*, and renews them all in one action. Each renewal extends from its current expiry, exactly like single renew.\n- Who: owners on the web. Mobile is untouched — it shows the new expiry dates as it does today.\n\n**What they'll see**\n```\n┌ Certificates ─────────────────────────────── [Renew expiring in 30 days] ┐\n│ [✓] Boiler 3 — gas safety        expires 12 Nov                        │\n│ [✓] Lift 2 — LOLER               expires 19 Nov                        │\n├─────────────────────────────────────────────────────────────────────────┤\n│ 2 selected                                     [Renew 2]  [Clear]       │\n└─────────────────────────────────────────────────────────────────────────┘\n```\n- After the run: \"Renewed 41 · skipped 1 revoked · 0 failed\", with the skipped ones named.\n\n**Added · Changed · Removed**\n- Added: selection on the certificate list · the selection bar · *Renew expiring in 30 days* · a bulk renew endpoint in api\n- Changed: nothing about single renew\n- Removed: nothing\n\nA. Looks right — next part\nB. Change something — say what\nReply A or B — \"go\" is A."
+        },
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Part 2 of 2 — Decisions and risks**\n\n**Decisions**\n- A renewal extends 12 months from the current expiry — *you*, keeping the code's rule — not \"from today\" as the ticket said, which throws away time owners paid for.\n- The list gains its own selection — the ticket said it had one; it doesn't — built on the design system's `Checkbox` column.\n- Revoked certificates in a selection are skipped and named, never renewed — *you*.\n- A run where some renewals fail renews the rest and reports the failures — *you* — not all-or-nothing.\n- One `renewed` event per certificate, so each History tab shows its own renewal — `renewCertificate` already writes it (renew.service.ts:42) *(assumed)*\n- The 500 cap is enforced by both the endpoint and the selection bar — the web pattern for capped actions (ExportBar.tsx:30) *(assumed)*\n- Confirmed as the ticket states them: owners only · status back to active · the 30-day window · mobile out of scope · …and 9 more, each with its evidence in the record.\n\n**Risks and open questions**\n- \"500 renewals in under 2 seconds\" couldn't be checked without real data — the build times it.\n\n**Not included** — mobile; renewing for anything but 12 months; undoing a bulk renewal.\n\nA. Build it (recommended) — sized next, then the spec\nB. Park it — keep the conversation; nothing is built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A.  Or say what's missing or wrong.\n📍 bulk-renew: intake (0 contradicted, 19/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+        },
+        {
+          "role": "note",
+          "text": "Intake's confirm is the same review as brainstorm's (REFERENCE §The review, sections 1, 2, 3, 6, 7, 8), plus the verification: each contradiction and how it was ruled, what the code confirmed, what stayed unverifiable. Over one screen, so two parts; the last ends with confirm's own A/B/C."
         }
       ],
       "stamp": {
-        "hash": "2a41414d484d",
-        "version": "4.11.3",
+        "hash": "c03e4c665d92",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -331,8 +343,8 @@
         }
       ],
       "stamp": {
-        "hash": "d88ae85a1b53",
-        "version": "4.11.3",
+        "hash": "84e5ab063abe",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -604,8 +616,8 @@
         }
       ],
       "stamp": {
-        "hash": "4454e93bbb8d",
-        "version": "4.12.0",
+        "hash": "372b91cc01d4",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -628,6 +640,10 @@
         {
           "role": "claude",
           "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
+        },
+        {
+          "role": "claude",
+          "text": "What the agents will build:\n\n```\ncert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · risk · end\ncert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end\n```"
         },
         {
           "role": "picker",
@@ -656,11 +672,15 @@
         {
           "role": "claude",
           "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet --status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet --status\n~~~"
+        },
+        {
+          "role": "note",
+          "text": "Above the one confirmation, one line per feature (REFERENCE §The review): what changes for users and its test plan — never a list of folder paths. Nothing else is asked: the reviews of what was built come in the fleet's report, once each feature has landed."
         }
       ],
       "stamp": {
-        "hash": "dc4994c61be6",
-        "version": "4.12.0",
+        "hash": "2488b08c412d",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -722,8 +742,8 @@
         }
       ],
       "stamp": {
-        "hash": "1fac53a610f4",
-        "version": "4.12.0",
+        "hash": "742b9c3f2a4d",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -776,16 +796,24 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 1 feature(s): 1 parked · ▓▓▓▓▓▓▓▓░░ 75%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · --status --archived for the latest 20\nlast 5 landed, mean per lane: build 1h04m · walk 22m\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
+          "text": "# builder fleet — 1 feature(s): 1 parked · ▓▓▓▓▓▓▓▓░░ 75%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · --status --archived for the latest 20\nlast 5 landed, mean per lane: build 1h04m · walk 22m\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**What landed** — nobody approved these runs, so here's what each merged feature built, one part at a time.\n\n**Part 1 of 3 — cert-history**\n\n- **What changes for users** — a certificate has a **History** tab on the web: every change — who, what, from what to what, when — newest first. Owners only; mobile is unchanged.\n- **What they'll see** — certificate page → *History* after *Details*: 50 changes at a time, *Load more*; non-owners don't see the tab.\n- **Added · Changed · Removed** — Added: the History tab · Changed: nothing · Removed: nothing\n- **Apps** — web only; api already served the changes.\n- **Decisions** — hidden from non-owners · 50 per page *(assumed)* · times in the viewer's timezone *(assumed)* · an event with no actor shows \"System\" *(auto)*\n- **Not included** — History on mobile; searching the history.\n\nSpec: `docs/features/_archive/cert-history/SPEC.md`\n\nA. Looks right — next part\nB. Something's wrong — say what\nReply A or B — \"go\" is A."
+        },
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Part 2 of 3 — portal-cert-list** …\n\n*(Part 3 of 3 — portal-downloads — follows the same way.)*\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
         },
         {
           "role": "note",
-          "text": "The table and its notes are STATUS.md verbatim; the two bullets after them are the skill's brief relay of done and parked."
+          "text": "The table and its notes are STATUS.md verbatim; the bullets after them are the skill's brief relay of done and parked. Then the review of what landed (REFERENCE §The review, fleet §5): the run asked nothing, so this is where the human sees each merged feature — the full review from its archived SPEC.md, rulings the run took marked (auto), one part per turn. B on a merged feature is new work (/builder:brainstorm) or git revert -m 1 <merge>. A parked feature gets no review — it didn't land. The footer ends the last part."
         }
       ],
       "stamp": {
-        "hash": "f3db3b544b56",
-        "version": "4.12.0",
+        "hash": "d4e885a3fc59",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },

@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), asks only the product choices the conversation left open (each as a real decision with its alternatives, never a section approval), records implementation details as assumed, then writes SPEC.md (§Idea first: why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered) + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, and hands on to /builder:resume. Also applies a brainstorm revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
+description: Write the feature's spec from a confirmed design conversation — reads the workspace record /builder:brainstorm or /builder:intake left (the intent, how it works today, every decision with its reasoning, the approaches, the size), asks only the product choices the conversation left open (each as a real decision with its alternatives, never a section approval), records implementation details as assumed, then writes SPEC.md (§Idea first: why, what success looks like, the owner's rules in their own words, the concept, how it fits today, the approaches considered) + MANIFEST.md (or PROGRAM.md at xl), proves the obligations, commits, shows the design as a plain-language review in screen-sized parts — what changes for users, what they'll see, added/changed/removed, data, apps, decisions, risks, not included — which is the design approval, and hands on to /builder:resume. Also applies a brainstorm revision to a spec that has no go-ahead yet. Use after a brainstorm or intake is sized md, lg or xl.
 ---
 
 # `/builder:spec` — the confirmed concept, written down
@@ -30,9 +30,11 @@ the project. Read the whole record.
 
 ## 1. Settle what the record left open — no section approvals
 
-🔴 **The owner already approved the design** — at the brainstorm's §Confirm (or intake's). Never
+🔴 **The owner already approved the concept** — at the brainstorm's §Confirm (or intake's) — and
+approves the design once, at the end, through the review (§3). Never
 present the spec section by section for approval, and never ask "Right?" about a section: an
-approval of a summary the owner can't evaluate protects nothing and costs a stop.
+approval of a format the owner can't evaluate protects nothing and costs a stop. The review is not
+that — it is about impact (what users get, what is stored, what was decided), which they can judge.
 
 Draft every section in your head from the record first (SPEC order: §Idea · §Apps and §Contract · the
 per-app sections · §Schema & API changes · §Testing · §Out of scope; in prototype mode §Prototype and
@@ -52,7 +54,7 @@ what is stored, kept or lost — and sort each one:
   settled: no question.
 - **An implementation detail** — how it is stored, a limit, an error code, a field's type, which
   internal module owns what. **Don't ask.** Write it as a §Decisions row marked
-  `(assumed at spec) YYYY-MM-DD`, and list it in the closing summary.
+  `(assumed at spec) YYYY-MM-DD`, and show it in the review's Decisions, marked `(assumed)`.
 
 Nothing open → no question at all; write the files. Pushback at any point amends the record's tree
 first, then the spec. Under `--auto` every product choice takes its recommendation, recorded
@@ -117,13 +119,23 @@ stranger could implement two ways is not written yet. Commit `docs(<ticket-or-fe
 <feature>` (scope from the manifest's `ticket`, otherwise the feature name), set the record's
 `status: handed-off`.
 
-**Close with one plain summary — and no question.** Where it was written; **what it does**, in two
-to four plain sentences for the owner (what they'll be able to do, not tables or field lists);
-**what it touches**, from §Apps; **the choices you settled with them** in step 1, one line each;
-**the details assumed at spec**, one line each, so a wrong one is easy to spot; the OPEN decisions
-with their recommendations, if any; in prototype mode the gap tally in its three buckets —
-fixed in the design · written into the SPEC · out of scope — and which items are not yet built. End the
-summary with `Anything wrong? Just say what — it's revised before anything is built.` Then:
+**Then the review — it is the design approval.** REFERENCE §The review (`../resume/REFERENCE.md`),
+in full: sections 1–8, written from the SPEC you just committed, in screen-sized parts — *Part 1 of
+3 — What users get* · *Part 2 — Data and apps* · *Part 3 — Decisions and risks* — each but the last
+ending `A. Looks right — next part` · `B. Change something — say what`, one part per turn (a
+review that fits in ~40 lines is one part). What spec adds to the sections:
+
+- **Decisions** — the choices settled with the owner in step 1, then every detail assumed at spec,
+  each ending `(assumed)`, so a wrong one is easy to spot.
+- **Risks and open questions** — the OPEN §Decisions rows with their recommendations (they block the
+  go-ahead; say so), and anything **(new)** the build must create.
+- **Prototype mode** — under Added · Changed · Removed, the gap tally in its three buckets —
+  fixed in the design · written into the SPEC · out of scope — and which design items are not yet
+  built.
+
+**B, or the owner's own words, at any part** → amend the record's tree and the SPEC, re-run
+`check-obligations.mjs`, commit, and show **that part again**. The last part ends with the reference
+line `Full spec: <registry>/<feature>/SPEC.md`, then the footer:
 
 ```
 📍 <feature>: designed (<size>, <apps>) — next:
@@ -136,3 +148,7 @@ summary with `Anything wrong? Just say what — it's revised before anything is 
 The numbered form is REFERENCE §The two-way footer (`../resume/REFERENCE.md`); without a config
 `agent_walk:` block there is no **agent** option, so **here** is `2.` and the reply line reads
 `Reply 1 or 2 (or "resume" / "here"; "go" is 1)`.
+
+**Under `--auto`** no review is printed — nobody approves (REFERENCE §The review): one line —
+written, committed, `<n>` rulings taken as `auto (recommended)` — then the footer. The human sees
+the full review at the walk.
