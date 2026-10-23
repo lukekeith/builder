@@ -1,0 +1,741 @@
+{
+  "stages": [
+    {
+      "id": "quick-path-proposal",
+      "skill": "brainstorm",
+      "title": "Quick path: the proposal",
+      "when": "A small change in existing code: the first turn is the proposal itself, with no playback and no rounds.",
+      "source": "skills/brainstorm/SKILL.md §Quick path",
+      "sources": [
+        "skills/brainstorm/SKILL.md §Every pause",
+        "skills/brainstorm/CONVERSATION.md §Ways on",
+        "skills/resume/REFERENCE.md §The classifier"
+      ],
+      "feature": "overdue-badge",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:brainstorm make the overdue badge red on the certificate list"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:brainstorm)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git grep -n -i -E 'overdue|status[ _-]?badge|certificate[ _-]?list' -- ':!*.lock' | head -60)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(apps/web/src/certificates/CertStatusBadge.tsx)"
+        },
+        {
+          "role": "claude",
+          "text": "Quick path — this is a small change in existing code (xs: one tone value in one web component — no new model, endpoint, route, screen or shared component).\n\n- *overdue badge* → the `overdue` case of `CertStatusBadge` (apps/web/src/certificates/CertStatusBadge.tsx:14), today `tone=\"warning\"` (amber).\n- *the certificate list* → `CertificateList` in web (apps/web/src/certificates/CertificateList.tsx:61), the one place that badge renders. Mobile's list shows status as plain text, so it isn't touched.\n- *red* → the design system's `danger` tone (`--color-danger`), already used by the Revoked badge.\n\nThe change: set the `overdue` case to `tone=\"danger\"`, so overdue certificates get a red badge on the list.\n\nA. Build it (recommended) — one line in `CertStatusBadge`; overdue rows on the list show a red badge\nB. Brainstorm it first — the full conversation: intent, how it works today, questions, confirm\nReply A or B — \"go\" is A. Or say what's wrong.\n\n📍 overdue-badge: quick path offered (xs) — reply A to build, or resume with /builder:brainstorm --path docs/features/overdue-badge"
+        },
+        {
+          "role": "note",
+          "text": "No name question on the quick path: the derived name (overdue-badge) is just stated in the footer. The ways on are a plain-chat lettered list, not a picker. The record (status: sized xs, quick path — offered) is written before this turn ends, so /clear can't lose it."
+        }
+      ],
+      "stamp": {
+        "hash": "f8e049fd2fff",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "quick-path-build",
+      "skill": "brainstorm",
+      "title": "Quick path: built on one letter",
+      "when": "The user replies A (or go): that letter is the small path's one approval, and the build runs in the same turn.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/brainstorm/SKILL.md §Quick path",
+        "skills/resume/REFERENCE.md §Walk readiness"
+      ],
+      "feature": "overdue-badge",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(.claude/skills/acme-web-ui/SKILL.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Update(apps/web/src/certificates/CertStatusBadge.tsx)  — 1 line changed"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(pnpm -F web test -- CertStatusBadge && pnpm -F web lint)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/certificates?status=overdue)"
+        },
+        {
+          "role": "claude",
+          "text": "Read the recipe skill first: `/acme-web-ui` (tones come from the `Badge` component — no raw colours).\n\n**Changed:** `CertStatusBadge` — the `overdue` case now uses `tone=\"danger\"` (apps/web/src/certificates/CertStatusBadge.tsx:14). No behaviour changed, so no new test; the badge's existing snapshot was updated.\n\n**Fast gates for web** (the ones this diff can turn red):\n- `pnpm -F web test` — 412 passed (1 snapshot updated, 0 new failures)\n- `pnpm -F web lint` — 0 problems, same as before\napi and mobile aren't touched, so their gates weren't run.\n\n**Ready for your look:** no migrations on this branch, nothing to regenerate, and the Vite dev server hot-reloads. I loaded `/certificates?status=overdue`: 200, no console errors, and the overdue badges render with the danger tone. Committed `fix(web): overdue badge uses the danger tone` (web is `commit: auto`).\n\nChecked by me: the gates and the page loading. **Not human-checked yet:** whether the red reads right next to the Revoked badge — that's your look.\n\n📍 overdue-badge: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running) and check the badge",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Picking a Build entry is the only approval: steps 3–6 of the small path run straight away (recipe skill, TDD where behaviour changes, the fast gates said out loud, the human's look, the closing 📍 footer). In an app marked commit: manual (mobile) it would stage and stop instead of committing."
+        }
+      ],
+      "stamp": {
+        "hash": "c604ffb1eb1f",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "intent-playback",
+      "skill": "brainstorm",
+      "title": "First turn: the grounded playback",
+      "when": "A directed request that doesn't qualify for the quick path: grounding, then the intent played back with what each term turned out to be.",
+      "source": "skills/brainstorm/SKILL.md §Intent — the first turn",
+      "sources": [
+        "skills/brainstorm/CONVERSATION.md §Grounding",
+        "skills/brainstorm/CONVERSATION.md §Ways on"
+      ],
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:brainstorm move the Export button into the list toolbar and let it export only the filtered rows"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:brainstorm)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git grep -n -i -E 'export|list[ _-]?toolbar|filter' -- apps ':!*.lock' | head -60)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(apps/web/src/certificates/CertificatesPage.tsx) · Read(apps/api/src/routes/certificates/export.ts)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Explore(recon: web certificate list and its filters)  — running in the background"
+        },
+        {
+          "role": "claude",
+          "text": "This is a directed request. Your request settles 2 of 6 decisions — grounding assumed 2, and 2 are open.\n\n**What you want:** the Export button moves off the page header into the certificate list's toolbar, and exporting gives you only the rows your filters show — so a filtered view can be handed on as a CSV without cleaning it up afterwards. For owners exporting their certificates in web. *(assumed — you said what, not who or why)*\n\nIn your words: \"move the Export button into the list toolbar\" · \"export only the filtered rows\"\n\n**What your terms turned out to be:**\n- *the Export button* → `ExportButton` in the page header of `CertificatesPage` (apps/web/src/certificates/CertificatesPage.tsx:42). It calls `exportCertificates()` (apps/web/src/api/certificates.ts:88) → `GET /certificates/export`, which streams a CSV of **all** the caller's certificates.\n- *the list toolbar* → `ListToolbar` (apps/web/src/components/ListToolbar.tsx), holding the search box and the status chips. It already has an `actions` slot — the owners list uses it for *Invite*.\n- *the filtered rows* → the search text and status chips, kept in the URL by `useCertificateFilters` (apps/web/src/certificates/useCertificateFilters.ts:9).\n\n**Assumed from the code:** the export endpoint already parses the same `q` / `status` / `owner_id` params as the list, through the shared `parseCertificateFilters` (apps/api/src/routes/certificates/filters.ts:5) — web just never sends them. So this stays inside web and inside the existing contract. With no filter on, Export keeps exporting everything, as it does today.\n\nI'll call this `export-in-toolbar` — say if you'd rather another name.\n\nA. That's right — carry on (recommended)\nB. Build it now — my recommendations on everything still open\nC. Explore it first\nReply A, B or C — \"go\" is A. Or say what's wrong.\n\n📍 export-in-toolbar: brainstorming (2/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+        },
+        {
+          "role": "note",
+          "text": "Not qualifying for the quick path is silent: two product choices are open here (what 'filtered' covers, where it sits), and the quick path allows at most one. A directed request gets 'C. Explore it first'; an abstract idea gets 'C. Skip exploring' instead."
+        }
+      ],
+      "stamp": {
+        "hash": "3a17ddec8bd4",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "how-it-works-today",
+      "skill": "brainstorm",
+      "title": "How it works today",
+      "when": "Once the intent is confirmed: what recon found, in plain words, before any question.",
+      "source": "skills/brainstorm/SKILL.md §How it works today",
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**How it works today**\n\nThe certificate list in web is one page, `CertificatesPage`. Its header holds the title and the Export button; under it, `ListToolbar` holds the search box and the status chips (All · Active · Expiring · Overdue · Revoked), and the table under that shows 25 rows a page.\n\nFilters live in the URL (`?q=…&status=overdue`), so a filtered view survives a reload and can be shared. The table's query sends those params to `GET /certificates`, which turns them into a Prisma `where` through `parseCertificateFilters`.\n\nExport is separate from all of that: the button calls `GET /certificates/export` with no params, and the API streams every certificate the caller can see — 38 columns, ordered by `expires_at`. The export route already runs the same `parseCertificateFilters`, so it would filter if it were asked to.\n\n```\nURL ?q&status ──► useCertificateFilters ──► GET /certificates?q&status ──► table (25/page)\n                                     ╳ (not wired)\nExportButton ───────────────────────────────► GET /certificates/export ──► CSV (everything)\n```\n\n**The design system:** the list is built from `packages/ui` — `DataTable` for the rows, `FilterChips` for the status chips (inside web's `ListToolbar`), and `EmptyState` when a filter matches nothing; the Export button is the design system's `Button` (secondary, download icon). `docs/design/README.md` says a page keeps one primary action in its header and actions that work on a table's rows belong with the table — which is the move you're asking for.\n\n**Already exists — don't rebuild:** the filter parsing in the API, the toolbar's `actions` slot, the `Button` and `FilterChips` components, and the CSV streaming.\n\nFootnotes: CertificatesPage.tsx:42 · ListToolbar.tsx:18 (`actions`) · useCertificateFilters.ts:9 · export.ts:12 · filters.ts:5 · docs/design/README.md (Actions)",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Scaled to the input: a paragraph and a small diagram for a directed request. For a change with a UI, what must not be rebuilt names the design-system components and how they are used here. file:line goes in footnotes, never instead of the explanation. The same turn goes straight on into Q1 (next stage)."
+        }
+      ],
+      "stamp": {
+        "hash": "b7d23f1f2f80",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "round-1",
+      "skill": "brainstorm",
+      "title": "A round: briefing, ways on, picker",
+      "when": "Every open question: one per turn, briefed in chat, the same three ways on, then one AskUserQuestion.",
+      "source": "skills/brainstorm/CONVERSATION.md §Rounds",
+      "sources": [
+        "skills/brainstorm/CONVERSATION.md §Ways on"
+      ],
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "claude",
+          "text": "2 of 6 settled — 2 open, 2 assumed.\n\n**Q1 of ~2 — What \"only the filtered rows\" covers**\n\nWhen a filter matches more rows than one page shows, should Export give every matching row, or just the 25 on screen?\n\n**Why it matters:** it decides what the CSV is for. \"Every match\" is a report you can hand on; \"this page\" quietly drops rows once a filter matches more than 25, and nobody notices until a number doesn't add up.\n**What it affects:** the export request in `exportCertificates()`, the CSV owners send on, and whether the table's paging leaks into the export.\n**Recommendation:** every matching row — the endpoint already filters server-side, so it's the same cost as today, and it's what \"the filtered rows\" means everywhere else (the result count says \"42 certificates\", not \"25\").\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 2 open questions, then it's sized and built here\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 export-in-toolbar: brainstorming (2/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+        },
+        {
+          "role": "picker",
+          "question": "When a filter matches more than one page, what should Export include?",
+          "header": "Export scope",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Every matching row (Recommended)",
+              "description": "Sends the current filters to the existing export endpoint; the CSV has all 42 matches, whatever page you're on."
+            },
+            {
+              "label": "Only the visible page",
+              "description": "Exports the 25 rows on screen; simpler to explain, but the CSV silently drops rows past the first page."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "The ways-on block sits between the briefing and the picker and is the same three entries every round. B is the 'just build it' steer and says where it lands (built here, since this looks sm so far); C is 'that's enough'. The 📍 footer's position inside a round (here, before the picker) is inferred."
+        }
+      ],
+      "stamp": {
+        "hash": "51dbd743b8d4",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "round-2",
+      "skill": "brainstorm",
+      "title": "The next round",
+      "when": "After an answer: the ruling recorded with its Why, one line of progress, then the next frontier question.",
+      "source": "skills/brainstorm/CONVERSATION.md §Rounds",
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "[picker] Every matching row (Recommended)"
+        },
+        {
+          "role": "claude",
+          "text": "3 of 6 settled — 1 open, 2 assumed.\n\n**Q2 of ~2 — Where Export sits in the toolbar**\n\nShould Export be a visible button at the right end of the toolbar, or an item in a \"⋯\" menu there?\n\n**Why it matters:** the move is about Export reading as part of the filtered view; tucked in a menu it stops being findable, which undoes the point of moving it.\n**What it affects:** `ListToolbar`'s `actions` slot on the certificate list, and the toolbar's wrap at narrow widths (it already wraps the chips under the search box below 640px).\n**Recommendation:** a visible button at the right end — the owners list puts *Invite* in exactly that slot, so it matches what people already see; the cost is one more control competing for width on small screens.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 1 open question, then it's sized and built here\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 export-in-toolbar: brainstorming (3/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+        },
+        {
+          "role": "picker",
+          "question": "Where should Export sit in the list toolbar?",
+          "header": "Placement",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Button at the right end (Recommended)",
+              "description": "A visible Export button in the toolbar's actions slot, like Invite on the owners list; always one click away.",
+              "preview": "[ 🔍 Search…        ] (All)(Active)(Expiring)(Overdue)(Revoked)     [⤓ Export]"
+            },
+            {
+              "label": "In a ⋯ menu",
+              "description": "A '⋯' menu at the right end with Export inside; tidier on small screens, but two clicks and easy to miss.",
+              "preview": "[ 🔍 Search…        ] (All)(Active)(Expiring)(Overdue)(Revoked)          [⋯]\n                                                              └ Export CSV"
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Options that differ in shape (a layout) carry a preview."
+        }
+      ],
+      "stamp": {
+        "hash": "3fb370bba472",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "confirm",
+      "skill": "brainstorm",
+      "title": "Confirm the shared understanding",
+      "when": "The frontier is empty: the understanding played back with every assumption, then Build / Park / Stop.",
+      "source": "skills/brainstorm/CONVERSATION.md §Confirm",
+      "sources": [
+        "skills/brainstorm/CONVERSATION.md §Approaches"
+      ],
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "[picker] Button at the right end (Recommended)"
+        },
+        {
+          "role": "claude",
+          "text": "4 of 6 settled — 0 open, 2 assumed.\n\nNo real fork in the design — the existing export endpoint already takes the filters, so there's one way to wire it. No approaches step.\n\nHere's the shared understanding — Export moves into the certificate list's toolbar as a visible button at the right end, and exports every row that matches the current search and status filters, not just the page on screen; web sends the filters to the export endpoint it already calls, 4 decisions, 2 assumptions. Is anything missing or wrong?\n\n**Decisions**\n1. Export leaves the page header — *you*\n2. It exports only the filtered rows — *you*\n3. \"Filtered\" means every matching row, not the visible page — *you*: the CSV is a report to hand on\n4. A visible button at the right end of the toolbar — *you*: it matches *Invite* on the owners list\n\n**Assumed (say if not)**\n- A1: the filters travel as the export's existing `q` / `status` / `owner_id` params — `parseCertificateFilters` already runs there (filters.ts:5).\n- A2: with no filter on, Export still exports everything, as today.\n\nA. Build it (recommended) — it's sized next; if it's small it's designed and built here\nB. Park it — keep the conversation to pick up later; nothing built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A. Or say what's missing or wrong.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+        },
+        {
+          "role": "note",
+          "text": "No fork → no approaches step, said in one line. Nothing leaves the workspace before a yes; a correction reopens its branch."
+        }
+      ],
+      "stamp": {
+        "hash": "1dd5f10416fc",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "size-small-path-design",
+      "skill": "brainstorm",
+      "title": "Size, then the small path's design",
+      "when": "The user picks Build it: the size is announced with its evidence, and an xs/sm change is designed in chat for one approval.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/resume/REFERENCE.md §Sizes",
+        "skills/resume/REFERENCE.md §The classifier"
+      ],
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Size: sm** — evidence:\n- the flow exists and was read (the list page, `ExportButton`, the export route);\n- no new model, schema row, endpoint, permission or contract change — `GET /certificates/export` already accepts the filters;\n- no new route, screen or shared component — `ListToolbar`'s `actions` slot exists;\n- one app (web); ~4 files; fits one sitting.\n\nSay if you'd size it differently.\n\n**The design**\n- **App:** web\n- **Approach:** move `ExportButton` out of the `CertificatesPage` header into `ListToolbar`'s `actions` slot; `ExportButton` reads `useCertificateFilters()` and passes `q` / `status` / `owner_id` to `exportCertificates()`, which adds them to the request's query string\n- **Design-system components:** `Button` (secondary, download icon) from `packages/ui`, moved into `ListToolbar`'s `actions` slot as `docs/design/README.md` places table actions; `FilterChips` and `DataTable` unchanged\n- **Files:** CertificatesPage.tsx, ExportButton.tsx, api/certificates.ts, ExportButton.test.tsx\n- **Recipe skills:** `/acme-web-ui`, `/acme-web-data`\n- **Tests:** the export request carries the active filters; with no filter it carries none (test first — behaviour changes)\n- **What you'll see:** the header has no Export; the toolbar ends in an Export button; filtering by *Overdue* and exporting gives a CSV of just the overdue certificates — all of them, not the first 25\n\nA. Build it (recommended) — Export moves into the toolbar and exports the filtered rows\nB. Talk it through more — back to the rounds\nReply A or B — \"go\" is A. Or say what to change.\n\n📍 export-in-toolbar: brainstorming (4/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+        },
+        {
+          "role": "note",
+          "text": "One approval, and the turn stops here: presenting the design and starting the build in the same turn would skip the gate. The record now reads status: sized sm."
+        }
+      ],
+      "stamp": {
+        "hash": "81c03bfe2c31",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "small-path-build",
+      "skill": "brainstorm",
+      "title": "Build and the done footer",
+      "when": "After the one approval: recipe skills, TDD, the fast gates said out loud, readiness for the human's look, the closing footer.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/resume/REFERENCE.md §Walk readiness"
+      ],
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(.claude/skills/acme-web-ui/SKILL.md) · Read(.claude/skills/acme-web-data/SKILL.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Write(apps/web/src/certificates/ExportButton.test.tsx)  ⏺ Bash(pnpm -F web test -- ExportButton)  — 2 failing"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Update(ExportButton.tsx) · Update(api/certificates.ts) · Update(CertificatesPage.tsx)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(pnpm -F web test && pnpm -F web lint)"
+        },
+        {
+          "role": "claude",
+          "text": "Read `/acme-web-ui` and `/acme-web-data` first.\n\n**Built, test first:** two tests in `ExportButton.test.tsx` — the export request carries the active `q` / `status`, and carries none with no filter on — failed, then passed once `ExportButton` read `useCertificateFilters()` and `exportCertificates()` forwarded the params. The button moved from the `CertificatesPage` header into `ListToolbar`'s `actions` slot.\n\n**Fast gates for web** (what this diff can turn red):\n- `pnpm -F web test` — 414 passed (+2 new), 0 failures\n- `pnpm -F web lint` — 0 problems\napi isn't changed, so its gates weren't run.\n\n**Ready for your look:** no migrations on this branch; nothing to regenerate; Vite hot-reloads. I loaded `/certificates?status=overdue`, pressed Export: `GET /certificates/export?status=overdue` → 200, a 7-row CSV matching the 7 overdue rows; no console errors, no server errors. Committed `feat(web): Export in the list toolbar, filtered rows only` (web is `commit: auto`).\n\nChecked by me: gates, the request and the CSV's row count. **Not human-checked yet:** how the toolbar looks and wraps with the button in it — at full width and on a narrow window.\n\n📍 export-in-toolbar: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running), press Export in the toolbar, and narrow the window",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The record is set to status: handed-off. Green gates aren't a walkable app: readiness (migrations, regenerate, smoke) runs before the human is asked to look."
+        }
+      ],
+      "stamp": {
+        "hash": "931d902238b9",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "just-build-it-steer",
+      "skill": "brainstorm",
+      "title": "Steer: \"just build it\" mid-rounds",
+      "when": "The user types \"just build it\" (or B) instead of answering: the rest of the conversation is skipped.",
+      "source": "skills/brainstorm/CONVERSATION.md §Steering and --auto",
+      "feature": "export-in-toolbar",
+      "turns": [
+        {
+          "role": "user",
+          "text": "just build it"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(.claude/skills/acme-web-ui/SKILL.md) · Read(.claude/skills/acme-web-data/SKILL.md)"
+        },
+        {
+          "role": "claude",
+          "text": "Settled on my recommendation, recorded as your ruling: **Q2 — Export is a visible button at the right end of the toolbar.** Steer recorded.\n\n**Size: sm** — one app (web); the flow exists and was read; no new model, endpoint, route, screen or shared component — `GET /certificates/export` already parses the filters and `ListToolbar` already has an `actions` slot. ~4 files, one sitting.\n\n**The design:** web · move `ExportButton` from the page header into `ListToolbar`'s `actions` slot as the design system's secondary `Button` (`packages/ui`), and pass `useCertificateFilters()`'s params to `exportCertificates()` · files: CertificatesPage.tsx, ExportButton.tsx, api/certificates.ts, ExportButton.test.tsx · recipes: `/acme-web-ui`, `/acme-web-data` · tests: the export request carries the active filters; none when no filter is on · you'll see: Export at the right of the toolbar, and a CSV of exactly the rows your filters match.\n\nYour \"just build it\" is the one approval — building now.\n\n…"
+        },
+        {
+          "role": "note",
+          "text": "'Just build it' (or B in a round) settles every open branch on its recommendation as the user's ruling and runs §Size straight away — no §Confirm turn. xs/sm: the design and the build happen in this same turn (the build continues as in 'Build and the done footer'). md and up: the size is stated and the md+ hand-off list is shown instead."
+        }
+      ],
+      "stamp": {
+        "hash": "31338e1c4956",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "discovery-first-turn",
+      "skill": "brainstorm",
+      "title": "Discovery: an open idea",
+      "when": "An abstract idea: grounded as usual, but named an open idea and explored before any decision.",
+      "source": "skills/brainstorm/SKILL.md §Intent — the first turn",
+      "sources": [
+        "skills/brainstorm/SKILL.md §Discovery",
+        "skills/brainstorm/CONVERSATION.md §Discovery recon"
+      ],
+      "feature": "find-certs",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:brainstorm certificates are hard to find"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git grep -n -i -E 'search|filter|find|sort[ _-]?by' -- apps ':!*.lock' | head -60)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Explore(discovery recon: web) · Explore(discovery recon: mobile) · Explore(discovery recon: api)  — running in the background"
+        },
+        {
+          "role": "claude",
+          "text": "This is an open idea — I'll explore it with you before we decide anything.\n\n**What you said:** \"certificates are hard to find\". Who struggles and when is still open — that's what the next few questions are for.\n\n**What your terms turned out to be:**\n- *certificates* → the `Certificate` model (id, title, owner_id, issue_date, expires_at, status — apps/api/prisma/schema.prisma:41), listed in web's `CertificateList` and mobile's `CertificatesScreen`.\n- *find* → what finding looks like today: web has a search box that matches **title only** (`parseCertificateFilters`, apps/api/src/routes/certificates/filters.ts:5) plus status chips; mobile has no search at all — one list sorted by `expires_at`, 25 at a time.\n\nI'll call this `find-certs` — say if you'd rather another name.\n\nA. That's right — carry on (recommended)\nB. Build it now — my recommendations on everything still open\nC. Skip exploring — straight to the questions\nReply A, B or C — \"go\" is A. Or say what's wrong.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "note",
+          "text": "Recon for an abstract idea is briefed wider: what the product already has near the idea, the design system and UX patterns in use, prior art, constraints. It never holds up a turn; only the concepts step waits for it."
+        }
+      ],
+      "stamp": {
+        "hash": "d7f6c1e85833",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "discovery-frame",
+      "skill": "brainstorm",
+      "title": "Discovery: the frame",
+      "when": "Open questions in plain chat, one per turn — no options, no recommendation — each answer reflected back.",
+      "source": "skills/brainstorm/SKILL.md §The frame",
+      "feature": "find-certs",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "Who's having trouble finding certificates — owners looking for their own, or someone looking across everyone's — and what are they in the middle of when it happens?\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "user",
+          "text": "owners mostly. they get an email from a customer asking for 'the fire safety one' and have to scroll through 200 certs on their phone"
+        },
+        {
+          "role": "claude",
+          "text": "So far:\n- **For:** owners, answering a customer who's asked for one particular certificate — often on their phone. *(you said)*\n- **Pain:** they know it by what it's *about* (\"the fire safety one\"), and the only way in is scrolling ~200 rows. *(you said)*\n- **Today:** web's search matches title only; mobile has no search, just the list by expiry date — so on the phone it really is scrolling. *(from the code)*\n- **Assumed:** customers rarely quote a certificate id.\n\nWhat would better look like — when you'd notice it worked, what would have happened instead of the scroll?\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "user",
+          "text": "I'd find it in a couple of seconds. honestly it's the same 3 or 4 kinds of question every time — expiring soon, fire safety, the ones for a particular site"
+        },
+        {
+          "role": "claude",
+          "text": "The frame:\n- **For:** owners answering a customer's request, often on mobile.\n- **Pain:** they think of a certificate by what it's about or where it's for; the product only knows titles and expiry order.\n- **Today:** title search on web only; mobile is a scroll. *(from the code)*\n- **Better:** found in a couple of seconds — and the questions repeat: expiring soon, a type (\"fire safety\"), a site.\n\nThat's the frame — no more questions on it."
+        },
+        {
+          "role": "note",
+          "text": "Frame item 3 (how it's handled today) is looked up and stated, never asked. Four questions at most; the user can end it sooner. These questions carry no lettered list — the only pauses without one — but still end in the 📍 footer."
+        }
+      ],
+      "stamp": {
+        "hash": "378f04700991",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "discovery-research-offer",
+      "skill": "brainstorm",
+      "title": "Discovery: the research offer",
+      "when": "After the frame, once per discovery: the project's own design system first, stated, then what the session has installed, then a lettered offer to look further.",
+      "source": "skills/brainstorm/SKILL.md §Research",
+      "feature": "find-certs",
+      "turns": [
+        {
+          "role": "claude",
+          "inferred": true,
+          "text": "**What we already have — the design system.** acme-certs has one: `packages/ui`, documented in `docs/design/README.md`. For finding certificates it already offers:\n- `FilterChips` — how lists filter here, above the table, as on the certificate list; the README says chips are for a handful of fixed values, never free text.\n- `Tabs` — switching between views of the same data, as on the owner view.\n- `DataTable` — the web list itself, with its toolbar slot for search and actions.\n- `EmptyState` — what a filter or search that matches nothing shows, with a way back.\nMobile uses the same components through `packages/ui`'s native exports, but its certificate screen uses none of the filtering ones yet.\n\n**What this session has:** web search. No screen-library or design-file plugin is installed.\n\nWorth weighing: the design system covers the building blocks — chips, tabs, an empty state — so concepts can be built from what's here. Looking further would only add how other apps lay out search and quick views on a long list on a phone, which `docs/design/README.md` has no pattern for.\n\nA. Stay with what we have (recommended) — concepts built from `packages/ui` and the product's own screens\nB. Search the web — a few searches on how mobile apps help people find one item in a long list (search scopes, quick views, recent searches), sources kept\nC. Suggest a plugin — a screen-library plugin (real app screens and flows) would show those layouts directly; installing it is your step, and we carry on with what's here\nReply A, B or C — \"go\" is A.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "note",
+          "text": "The design system is stated, never asked, before anything outside is offered. The installed tools are read from the session's tool list. Here there's no screen-library plugin, only web search, so the offer is Stay · Search the web · Suggest a plugin. The offer is a lettered list, not a picker; Stay is always first and recommended when the design system covers the idea. Nothing outside the repo runs without a yes."
+        }
+      ],
+      "stamp": {
+        "hash": "d603e32201df",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      },
+      "sources": [
+        "skills/brainstorm/CONVERSATION.md §Discovery recon",
+        "skills/brainstorm/CONVERSATION.md §Ways on"
+      ]
+    },
+    {
+      "id": "discovery-concepts",
+      "skill": "brainstorm",
+      "title": "Discovery: concepts",
+      "when": "Frame, research and recon are in: two to four lettered concepts, the recommended one as A.",
+      "source": "skills/brainstorm/SKILL.md §Concepts",
+      "sources": [
+        "skills/brainstorm/CONVERSATION.md §Ways on"
+      ],
+      "feature": "find-certs",
+      "turns": [
+        {
+          "role": "user",
+          "text": "b"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Web Search(\"mobile app search long list quick filters saved views pattern\") · Web Search(\"search scopes recent searches UX\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Fetch(https://www.nngroup.com/articles/filters-vs-facets/) · Fetch(https://m3.material.io/components/search/guidelines)"
+        },
+        {
+          "role": "claude",
+          "inferred": true,
+          "text": "**Research (web), in our design system's terms:** list apps mostly do one of two things. Either one search box matches everything a record has, with recent searches under it (Material's search guidelines) — we'd build that from `DataTable`'s toolbar search and `EmptyState`, but `packages/ui` has no search field with suggestions. Or a row of quick views answers the common questions in one tap (GitHub and Linear docs on saved views) — that's `Tabs` over the list, nothing new. Free-form tagging is rarer and needs upkeep (Nielsen Norman Group on filters vs facets).\n\n**A. Search everything (recommended)**\nYou type \"fire\" into one box on web or mobile and get every certificate whose title, owner, site or certificate number mentions it, the match highlighted, newest first. On mobile the box sits above the list, with your last few searches under it.\n- **Built from:** `DataTable`'s toolbar search (web's existing box) and `EmptyState` for no matches, from `packages/ui`; the API's `parseCertificateFilters`; recent searches *(from research: web — Material search guidelines)*, which needs a suggestions list `packages/ui` doesn't have yet. Also needs: search on mobile, and the search widened beyond title.\n- **Good at:** the \"the fire safety one\" request — one box, nothing new to learn. **Closes off:** nothing; views could come later on top.\n- **Feel:** a few days.\n\n**B. Quick views**\nAbove the list, a row of views — *Expiring soon*, *Overdue*, *By site*, *All* — each one tap. They're the questions you said repeat, answered without typing.\n- **Built from:** `Tabs` from `packages/ui` (as the owner view uses them) over `DataTable`, the status filters web keeps in the URL (`useCertificateFilters`), `EmptyState` for an empty view; views over a list as a pattern *(from research: web — GitHub and Linear docs on saved views)*, which `packages/ui` already covers with `Tabs`.\n- **Good at:** the repeat questions, especially on a phone. **Closes off:** a request that doesn't fit a view still means scrolling.\n- **Feel:** about a week.\n\n**C. Tags and a tag filter**\nOwners tag certificates (\"fire safety\", \"Site 4\") and filter the list by tag.\n- **Built from:** `FilterChips` from `packages/ui` for the tag filter; needs a new tag model and tagging UI in both apps — and overlaps `cert-tags`, which is already in the registry.\n- **Good at:** grouping that matches how owners think. **Closes off:** only as good as the tagging, and it duplicates `cert-tags`.\n- **Feel:** a program's worth with cert-tags.\n\nReply with a letter — \"go\" is A. Or combine them, ask \"what if …\", or say none fit.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "note",
+          "text": "The user picked B (Search the web) on the research offer, so the search runs, bounded, before the concepts. Every pattern found is described in the design system's terms: which components would build it, and what's missing. Each concept is built from the design system first; a pattern from outside is marked '(from research: <where>)', with what building it would take. Size is only a rough feel, never a sized estimate."
+        }
+      ],
+      "stamp": {
+        "hash": "3e5e8d0f1b91",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "discovery-concept-picked",
+      "skill": "brainstorm",
+      "title": "Discovery: the concept named, then rounds",
+      "when": "The user replies with a letter: the concept is stated in two lines and the tree starts from it, in the same turn.",
+      "source": "skills/brainstorm/SKILL.md §After discovery",
+      "sources": [
+        "skills/brainstorm/SKILL.md §Concepts",
+        "skills/brainstorm/CONVERSATION.md §Rounds"
+      ],
+      "feature": "find-certs",
+      "turns": [
+        {
+          "role": "user",
+          "text": "b"
+        },
+        {
+          "role": "claude",
+          "text": "**Concept:** Quick views — a row of one-tap views above the certificate list answering the questions owners repeat (expiring soon, overdue, by site). It uses `Tabs` over `DataTable` from `packages/ui` (as the owner view does), the status filters web already keeps in the URL, and views over a list as a pattern from GitHub's and Linear's docs (web research).\n\nSearch everything and Tags go to *Rejected* (search: you said the questions repeat, so one tap beats typing; tags: duplicates `cert-tags`). The views' open questions start the tree.\n\n**How it works today** — beyond what discovery covered: mobile's `CertificatesScreen` has no filter state at all; its list query (`useCertificates`, apps/mobile/src/certificates/useCertificates.ts:12) takes no params, so the views need the same filter params web sends. And there is no \"site\" on a certificate — sites live on the owner's `Location` rows (schema.prisma:77).\n\n1 of 5 settled — 4 open.\n\n**Q1 of ~4 — Fixed views or views owners save**\n\nAre the views a fixed set we ship, or can owners save their own filter combinations as views?\n\n**Why it matters:** fixed views need no new data; saved views need somewhere to keep them (a new model and endpoints), and that decides whether this is a spec in two apps or a small change.\n**What it affects:** the API (a `SavedView` model and endpoints, or none), both list screens, and the released mobile app, which has to understand any new data shape.\n**Recommendation:** a fixed set — you named the three or four questions that repeat, and a fixed set answers them without new data; owners' own views can be a later feature.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 4 open questions, then it's sized and specced\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 find-certs: brainstorming (1/5 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "picker",
+          "question": "Should the views be a fixed set, or can owners save their own?",
+          "header": "View kind",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "A fixed set (Recommended)",
+              "description": "Expiring soon, Overdue, By site and All ship built in; no new data, built from today's filters."
+            },
+            {
+              "label": "Owners save their own",
+              "description": "Owners save any filter combination as a named view; needs a SavedView model and endpoints in api."
+            },
+            {
+              "label": "Fixed set plus saved",
+              "description": "The fixed set now and saving on top; the most flexible, and the biggest build."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "A letter names the concept outright — no 'Right?'. A combination, or a concept in the user's own words, would get the same two lines ending in 'Right?' and wait for a yes. The chosen concept's choices become settled branches; the others go to Rejected with the reason each lost. Round B says 'specced' because two apps are already in play."
+        }
+      ],
+      "stamp": {
+        "hash": "9340f31aa063",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "handoff-md",
+      "skill": "brainstorm",
+      "title": "md: hand-off to the spec",
+      "when": "A confirmed concept that sizes md, lg or xl: no build in chat — the hand-off to /builder:spec.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/resume/REFERENCE.md §The classifier",
+        "skills/resume/REFERENCE.md §Sizes"
+      ],
+      "feature": "cert-history",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Size: md** — evidence:\n- rule 3: a new route and screen — the History tab at `/certificates/:id/history` in web;\n- the data already exists: `GET /certificates/:id/events` (apps/api/src/routes/certificates/events.ts:9) returns the change events, so no new endpoint, model or contract;\n- one app (web); ~12–15 files with the tab, the timeline, its empty and error states and tests.\n\nSay if you'd size it differently.\n\nA. Write the spec (recommended) — /builder:spec --path docs/features/cert-history\nB. Build it in chat anyway — md only: no spec, no walk record; you take it as sm\nC. Park it — keep the conversation, build nothing yet\nReply A, B or C — \"go\" is A.\n\n📍 cert-history: concept confirmed (md) — next: /builder:spec --path docs/features/cert-history · or say go"
+        },
+        {
+          "role": "note",
+          "text": "'go' runs A's command. B appears only at md: picking it records the override and runs the small path from step 1, as sm."
+        }
+      ],
+      "stamp": {
+        "hash": "185723bb8b8a",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "handoff-lg-split",
+      "skill": "brainstorm",
+      "title": "lg: the splitting question, then hand-off",
+      "when": "Before anything else at lg or xl: one question on how to split, where one spec is always an option.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/resume/REFERENCE.md §The classifier"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Size: lg** — evidence:\n- rule 2: a new `Tag` model and `CertificateTag` join, and tag endpoints in api;\n- rule 4: three apps — api (producer), web and mobile (consumers); mobile is a released app, so older builds must keep working against the new list response;\n- ~60–90 files.\n\n**Q — How to split cert-tags**\n\nOne spec, or two value-sized specs?\n\n**Why it matters:** each spec gets its own walk and sign-off; a split only helps when each slice gives owners something on its own.\n**What it affects:** the specs `/builder:spec` writes, how many walks you do, and when mobile users see tags.\n**Recommendation:** one spec — the only other value line is web first, mobile later, and tags on web alone already work; but the API contract is shared, so splitting mostly adds a second walk over the same data.\n\n📍 cert-tags: brainstorming (9/9 settled) — resume with /builder:brainstorm --path docs/features/cert-tags"
+        },
+        {
+          "role": "picker",
+          "question": "How should cert-tags be specced?",
+          "header": "Split",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "One spec (Recommended)",
+              "description": "Tags, the endpoints and chips + filter in web and mobile as one lg spec — one walk across all three apps."
+            },
+            {
+              "label": "2 value-sized specs",
+              "description": "Tags in web (api + web: owners tag and filter on the web), then tags on mobile (owners see and filter by tags on the phone)."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "[picker] One spec (Recommended)"
+        },
+        {
+          "role": "claude",
+          "text": "One spec — **lg**.\n\nA. Write the spec (recommended) — /builder:spec --path docs/features/cert-tags\nB. Park it — keep the conversation, build nothing yet\nReply A or B — \"go\" is A.\n\n📍 cert-tags: concept confirmed (lg) — next: /builder:spec --path docs/features/cert-tags · or say go"
+        },
+        {
+          "role": "note",
+          "text": "At lg and xl the hand-off has two ways on — no 'Build it in chat anyway'. A split is never by layer: each slice is named with what the user can do once it alone ships."
+        }
+      ],
+      "stamp": {
+        "hash": "bf63592c9710",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "handoff-xl-split",
+      "skill": "brainstorm",
+      "title": "xl: split into children, then hand-off",
+      "when": "A new area across several apps: the splitting question decides the children of a program.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/resume/REFERENCE.md §The classifier",
+        "skills/resume/REFERENCE.md §Sizes"
+      ],
+      "feature": "customer-portal",
+      "turns": [
+        {
+          "role": "user",
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Size: at least lg, xl if it splits** — evidence:\n- rules 2–3: a new `PortalUser` model, portal auth and endpoints, new routes and screens;\n- rule 4: three apps — api, web (the portal) and mobile (customers' app access); three slices each give customers something on their own;\n- 150+ files.\n\n**Q — How to split customer-portal**\n\nOne spec, or three value-sized specs run as a program?\n\n**Why it matters:** as one spec it's one very long build and one walk across three apps before customers see anything; split, each slice ships when it's walked.\n**What it affects:** whether `/builder:spec` writes a SPEC or a PROGRAM with children, the order they ship in, and the decisions they share (portal auth, which certificates a customer may see).\n**Recommendation:** three specs — each slice is usable alone, and together they are too big to walk in one sitting.\n\n📍 customer-portal: brainstorming (14/14 settled) — resume with /builder:brainstorm --path docs/features/customer-portal"
+        },
+        {
+          "role": "picker",
+          "question": "How should customer-portal be specced?",
+          "header": "Split",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "3 value-sized specs (Recommended)",
+              "description": "portal-auth: customers sign in and manage who in their company has access · portal-cert-list: customers see their certificates and status · portal-downloads: customers download a certificate's PDF."
+            },
+            {
+              "label": "One spec",
+              "description": "The whole portal as one lg spec — costs one long walk across api, web and mobile before anything ships."
+            },
+            {
+              "label": "2 value-sized specs",
+              "description": "Sign-in and the certificate list together (customers see their certificates), then downloads."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "[picker] 3 value-sized specs (Recommended)"
+        },
+        {
+          "role": "claude",
+          "text": "Three specs — **xl**, a program with three children:\n\n| Child | What customers can do once it ships |\n|---|---|\n| `portal-auth` | sign in, and manage who in their company has portal access |\n| `portal-cert-list` | see their certificates, with status and expiry |\n| `portal-downloads` | download a certificate's PDF |\n\nA. Write the spec (recommended) — /builder:spec --path docs/features/customer-portal\nB. Park it — keep the conversation, build nothing yet\nReply A or B — \"go\" is A.\n\n📍 customer-portal: concept confirmed (xl) — next: /builder:spec --path docs/features/customer-portal · or say go"
+        },
+        {
+          "role": "note",
+          "text": "The splitting answer decides the size: one spec → lg; two or more → xl, the children being those slices. /builder:spec then writes PROGRAM.md and the children run as their own md/lg."
+        }
+      ],
+      "stamp": {
+        "hash": "185723bb8b8a",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    }
+  ]
+}

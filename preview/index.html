@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Builder Response Preview</title>
+<style>
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6860; --line: #e2dfd6; --accent: #b4532a;
+  --chip: #efece4; --ok: #2f7d4f; --warn: #a86a00; --bad: #b3261e; --info: #3b6ea8;
+  --term-bg: #1b1b1d; --term-ink: #e6e3dc; --term-dim: #8d8a83; --term-code: #c9a6ff; --term-user-bg: #2a2a2e;
+  --term-dot: #e6e3dc; --term-tool: #7fbf8f; --term-accent: #f0a46c; --term-line: #3a3a40;
+  --note-bg: #fff6d6; --note-ink: #5a4500;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121212; --panel: #1a1a1b; --ink: #ecebe6; --muted: #9a978f; --line: #2c2c2e; --accent: #f0a46c;
+  --chip: #26262a; --note-bg: #2e2812; --note-ink: #f1dc95; --term-bg: #0d0d0f; --term-user-bg: #222226;
+} }
+:root[data-theme="dark"] {
+  --bg: #121212; --panel: #1a1a1b; --ink: #ecebe6; --muted: #9a978f; --line: #2c2c2e; --accent: #f0a46c;
+  --chip: #26262a; --note-bg: #2e2812; --note-ink: #f1dc95; --term-bg: #0d0d0f; --term-user-bg: #222226;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+a { color: inherit; }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+header .ver { color: var(--muted); font-size: 13px; }
+header .legend { margin-left: auto; display: flex; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+header button { font: inherit; font-size: 12px; background: var(--chip); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+.layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 50px); }
+nav { border-right: 1px solid var(--line); padding: 16px 12px; background: var(--panel); position: sticky; top: 50px; height: calc(100vh - 50px); overflow: auto; }
+nav h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 8px 6px; }
+nav h2:first-child { margin-top: 0; }
+nav a { display: block; padding: 6px 8px; border-radius: 6px; text-decoration: none; font-size: 14px; }
+nav a small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
+nav a.on { background: var(--chip); font-weight: 600; }
+nav a:hover { background: var(--chip); }
+nav .count { float: right; color: var(--muted); font-size: 12px; font-weight: 400; }
+main { padding: 24px 28px 80px; min-width: 0; max-width: 1240px; }
+.intro h2 { margin: 0 0 4px; font-size: 22px; }
+.intro p { margin: 0 0 14px; color: var(--muted); max-width: 820px; }
+.stepper { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; position: sticky; top: 50px; background: var(--bg); padding: 10px 0; z-index: 4; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.stepper a { font-size: 12px; text-decoration: none; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.stepper a b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.stage { margin: 0 0 34px; scroll-margin-top: 110px; }
+.stage .meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.stage .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.stage h3 { margin: 0; font-size: 17px; }
+.badge { font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid currentColor; }
+.skill { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+.st-current { color: var(--ok); } .st-stale { color: var(--warn); } .st-unstamped { color: var(--info); } .st-broken { color: var(--bad); }
+.stage .when { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+.stage .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-bottom: 10px; word-break: break-word; }
+.term { background: var(--term-bg); color: var(--term-ink); border-radius: 10px; padding: 16px 18px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-x: auto; border: 1px solid var(--term-line); }
+.turn { margin: 0 0 14px; } .turn:last-child { margin-bottom: 0; }
+.t-user { background: var(--term-user-bg); border-radius: 6px; padding: 8px 12px; white-space: pre-wrap; color: var(--term-ink); }
+.t-user::before { content: "> "; color: var(--term-dim); }
+.t-claude { display: grid; grid-template-columns: 18px 1fr; }
+.t-claude::before { content: "⏺"; color: var(--term-dot); }
+.t-tool { color: var(--term-dim); white-space: pre-wrap; }
+.t-tool .dot { color: var(--term-tool); }
+.md p { margin: 0 0 8px; } .md p:last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 13px; margin: 10px 0 6px; font-weight: 700; color: #fff; }
+.md code { color: var(--term-code); }
+.md strong { color: #fff; }
+.md pre { margin: 6px 0 10px; padding: 0 0 0 0; white-space: pre; color: var(--term-ink); }
+.md pre.fence { border-left: 2px solid var(--term-line); padding-left: 10px; }
+.md ul, .md ol { margin: 0 0 8px; padding-left: 22px; }
+.md table { border-collapse: collapse; margin: 6px 0 10px; font-size: 12.5px; }
+.md th, .md td { border: 1px solid var(--term-line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.md th { color: #fff; }
+.md a { color: var(--term-accent); }
+.md hr { border: 0; border-top: 1px solid var(--term-line); }
+.picker { border: 1px solid var(--term-accent); border-radius: 8px; padding: 10px 14px; }
+.picker .hd { display: inline-block; background: var(--term-accent); color: #1b1b1d; border-radius: 3px; padding: 0 6px; font-size: 12px; margin-bottom: 6px; }
+.picker .q { color: #fff; font-weight: 700; margin-bottom: 8px; }
+.picker .opt { margin: 0 0 6px; } .picker .opt .lb { color: var(--term-ink); }
+.picker .opt.first .lb { color: var(--term-accent); }
+.picker .opt .ds { color: var(--term-dim); padding-left: 3ch; }
+.picker .foot { color: var(--term-dim); font-size: 12px; margin-top: 8px; }
+.picker + .picker { margin-top: 8px; }
+.t-note { font: 13px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; background: var(--note-bg); color: var(--note-ink); border-radius: 6px; padding: 6px 10px; }
+.t-note::before { content: "Note — "; font-weight: 600; }
+body.hide-notes .t-note { display: none; }
+.inferred { color: var(--term-dim); font-size: 11px; font-style: italic; margin-top: 4px; }
+.empty { color: var(--muted); padding: 40px 0; }
+.err { color: var(--bad); white-space: pre-wrap; font-family: ui-monospace, monospace; }
+@media (max-width: 820px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 16px 16px 60px; }
+  .stepper { position: static; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>builder · response preview</h1><span class="ver" id="ver"></span>
+  <div class="legend" id="legend"></div>
+  <button id="notes" title="Show or hide the reader notes between turns">Hide notes</button>
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"><div class="empty">Loading…</div></main>
+</div>
+<script>
+const $ = (s) => document.querySelector(s)
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+// A small markdown renderer for what Claude prints in the terminal: fences, tables, headings,
+// lists, rules and the inline marks.
+function inline(s) {
+  const codes = []
+  s = esc(s).replace(/`([^`]+)`/g, (_, c) => (codes.push(c), `\u0000${codes.length - 1}\u0000`))
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+       .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\w)/g, '$1<em>$2</em>')
+       .replace(/(^|[\s(])_(?!\s)([^_]+?)_(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
+       .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>')
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[i]}</code>`)
+}
+function md(src) {
+  const lines = String(src ?? '').replace(/\r/g, '').split('\n'), out = []
+  let i = 0, para = []
+  const flush = () => { if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = [] } }
+  while (i < lines.length) {
+    const l = lines[i]
+    if (/^\s*```/.test(l)) {
+      flush(); const body = []; i++
+      while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++])
+      i++; out.push(`<pre class="fence">${esc(body.join('\n'))}</pre>`); continue
+    }
+    if (/^\s*\|.*\|\s*$/.test(l) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || '')) {
+      flush(); const row = (r) => r.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => c.trim())
+      const head = row(l); i += 2; const rows = []
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(row(lines[i++]))
+      out.push(`<table><tr>${head.map((h) => `<th>${inline(h)}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</table>`)
+      continue
+    }
+    let m
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) { flush(); out.push(`<h${Math.min(m[1].length, 4)}>${inline(m[2])}</h${Math.min(m[1].length, 4)}>`); i++; continue }
+    if (/^\s*(---|\*\*\*)\s*$/.test(l)) { flush(); out.push('<hr>'); i++; continue }
+    if ((m = /^(\s*)([-*•]|\d+[.)])\s+/.exec(l))) {
+      flush(); const ordered = /\d/.test(m[2]), items = []
+      while (i < lines.length && (m = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/.exec(lines[i]))) {
+        let text = m[3], depth = m[1].length; i++
+        while (i < lines.length && lines[i].trim() && !/^\s*([-*•]|\d+[.)])\s+/.test(lines[i]) && /^\s{2,}/.test(lines[i])) text += '\n' + lines[i++].trim()
+        items.push(`<li style="margin-left:${depth}ch">${inline(text).replace(/\n/g, '<br>')}</li>`)
+      }
+      out.push(ordered ? `<ol>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`); continue
+    }
+    if (!l.trim()) { flush(); i++; continue }
+    para.push(l); i++
+  }
+  flush()
+  return out.join('')
+}
+
+function turn(t) {
+  const inf = t.inferred ? '<div class="inferred">(inferred — the skill describes this output but gives no literal template)</div>' : ''
+  switch (t.role) {
+    case 'user': return `<div class="turn t-user">${esc(t.text)}</div>`
+    case 'tool': return `<div class="turn t-tool"><span class="dot">⏺</span> ${esc(String(t.text).replace(/^⏺\s*/, ''))}</div>`
+    case 'note': return `<div class="turn t-note">${inline(t.text)}</div>`
+    case 'picker': {
+      const qs = t.questions || [t]
+      return `<div class="turn">${qs.map((q) => `<div class="picker">${q.header ? `<span class="hd">${esc(q.header)}</span>` : ''}
+        <div class="q">${inline(q.question)}</div>
+        ${(q.options || []).map((o, n) => `<div class="opt${n ? '' : ' first'}"><div class="lb">${n ? '  ' : '❯ '}${q.multiSelect ? '☐ ' : ''}${n + 1}. ${inline(o.label)}</div>${o.description ? `<div class="ds">${inline(o.description)}</div>` : ''}${o.preview ? `<pre class="ds">${esc(o.preview)}</pre>` : ''}</div>`).join('')}
+        <div class="opt"><div class="lb">  ${(q.options || []).length + 1}. Type something.</div></div>
+        <div class="foot">Enter to select · ↑/↓ to navigate · Esc to cancel</div></div>`).join('')}${inf}</div>`
+    }
+    default: return `<div class="turn t-claude"><div class="md">${md(t.text)}${inf}</div></div>`
+  }
+}
+
+const STATUS = { current: 'matches skill', stale: 'skill changed — refresh', unstamped: 'not yet stamped', broken: 'source section missing' }
+function stage(s, n) {
+  const srcs = [s.source, ...(s.sources || [])].filter(Boolean)
+  return `<section class="stage" id="s-${esc(s.id)}">
+    <div class="meta"><span class="n">${n}.</span><h3>${esc(s.title)}</h3><span class="skill">/builder:${esc(s.skill)}</span>
+      ${s.feature ? `<span class="skill" style="color:var(--muted)">${esc(s.feature)}</span>` : ''}
+      <span class="badge st-${s.status}" title="${esc(s.stamp ? 'stamped at ' + s.stamp.version + ' on ' + s.stamp.date : '')}">${STATUS[s.status]}${s.stamp ? ' · ' + esc(s.stamp.version) : ''}</span></div>
+    ${s.when ? `<p class="when">${inline(s.when)}</p>` : ''}
+    <div class="src">${srcs.map(esc).join(' · ')}</div>
+    <div class="term">${(s.turns || []).map(turn).join('')}</div>
+  </section>`
+}
+
+let DATA
+function render() {
+  const h = new URLSearchParams(location.hash.slice(1))
+  const byId = Object.fromEntries(DATA.stages.map((s) => [s.id, s]))
+  const skills = [...new Set(DATA.stages.map((s) => s.skill))].sort()
+  const pathId = h.get('path') || (h.get('skill') ? null : DATA.paths[0]?.id)
+  const skill = h.get('skill')
+  const groups = [...new Set(DATA.paths.map((p) => p.group || 'Paths'))]
+  $('#nav').innerHTML = groups.map((g) => `<h2>${esc(g)}</h2>` + DATA.paths.filter((p) => (p.group || 'Paths') === g).map((p) =>
+    `<a href="#path=${p.id}" class="${p.id === pathId ? 'on' : ''}">${esc(p.title)}<span class="count">${p.steps.length}</span><small>${esc(p.short || '')}</small></a>`).join('')).join('') +
+    `<h2>By skill</h2>` + skills.map((k) => `<a href="#skill=${k}" class="${k === skill ? 'on' : ''}">/builder:${esc(k)}<span class="count">${DATA.stages.filter((s) => s.skill === k).length}</span></a>`).join('')
+  let title, blurb, list
+  if (skill) { title = `/builder:${skill}`; blurb = 'Every stage this skill produces, across all paths.'; list = DATA.stages.filter((s) => s.skill === skill) }
+  else {
+    const p = DATA.paths.find((x) => x.id === pathId)
+    if (!p) { $('#main').innerHTML = '<div class="empty">No such path.</div>'; return }
+    title = p.title; blurb = p.blurb; list = p.steps.map((id) => byId[id] || { id, title: `missing stage "${id}"`, skill: '?', status: 'broken', turns: [] })
+  }
+  $('#main').innerHTML = `<div class="intro"><h2>${esc(title)}</h2><p>${inline(blurb || '')}</p></div>
+    <div class="stepper">${list.map((s, n) => `<a href="#" data-to="s-${esc(s.id)}"><b>${n + 1}</b>${esc(s.title)}</a>`).join('')}</div>
+    ${list.map((s, n) => stage(s, n + 1)).join('') || '<div class="empty">No stages yet.</div>'}`
+  document.querySelectorAll('.stepper a').forEach((a) => a.onclick = (e) => { e.preventDefault(); document.getElementById(a.dataset.to)?.scrollIntoView({ behavior: 'smooth' }) })
+  window.scrollTo(0, 0)
+}
+
+async function boot() {
+  try {
+    const r = await fetch('data.json', { cache: 'no-store' })
+    if (!r.ok) throw new Error(await r.text())
+    DATA = await r.json()
+  } catch (e) {
+    $('#main').innerHTML = `<p>Run the preview server from the builder repo, then open the URL it prints:</p><pre class="err">node preview/preview.mjs --open</pre><p class="err">${esc(e.message)}</p>`
+    return
+  }
+  $('#ver').textContent = `builder ${DATA.version} · ${DATA.stages.length} stages · ${DATA.paths.length} paths`
+  const c = (k) => DATA.stages.filter((s) => s.status === k).length
+  $('#legend').innerHTML = ['current', 'stale', 'unstamped', 'broken'].filter((k) => c(k)).map((k) => `<span class="badge st-${k}">${c(k)} ${STATUS[k]}</span>`).join('')
+  render()
+}
+try { if (localStorage.getItem('preview-notes') === 'off') document.body.classList.add('hide-notes') } catch {}
+const syncNotes = () => $('#notes').textContent = document.body.classList.contains('hide-notes') ? 'Show notes' : 'Hide notes'
+$('#notes').onclick = () => { document.body.classList.toggle('hide-notes'); syncNotes(); try { localStorage.setItem('preview-notes', document.body.classList.contains('hide-notes') ? 'off' : 'on') } catch {} }
+syncNotes()
+addEventListener('hashchange', render)
+boot()
+</script>
+</body>
+</html>

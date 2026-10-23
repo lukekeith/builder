@@ -1,0 +1,884 @@
+{
+  "stages": [
+    {
+      "id": "build-start-ledger",
+      "skill": "build",
+      "title": "Build starts — the ledger and the pre-flight scan",
+      "when": "The build runs on a planned feature with a go-ahead: the first thing it does is set up its workspace ledger and scan the plan for conflicts before Task 1.",
+      "source": "skills/build/EXECUTION.md §Setup",
+      "sources": [
+        "skills/build/SKILL.md §Setup",
+        "skills/build/SKILL.md §Precondition — read `<folder>/MANIFEST.md` first"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken today launches agents (plan §The build profile) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead with no profile:/target: on the manifest — or what the fleet's log shows."
+        },
+        {
+          "role": "user",
+          "text": "/builder:build --path docs/features/cert-tags"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: planned · go-ahead: Luke Keith 2026-10-22 · contract: open"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(<builder>/scripts/workspace cert-tags) — .builder/cert-tags"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Write(.builder/cert-tags/progress.md) — # builder ledger — plan: docs/features/cert-tags/PLAN.md"
+        },
+        {
+          "role": "claude",
+          "text": "Building cert-tags on `feat/ACME-412-cert-tags` — 4 phases · 12 tasks · phase 2 (api) freezes the contract. Pre-flight scan written to the ledger:\n\n```markdown\n# builder ledger — plan: docs/features/cert-tags/PLAN.md\n\n## Pre-flight\n| Row | Tasks | Shared | Finding |\n|---|---|---|---|\n| shared file | 4 · 5 | apps/api/src/routes/tags.ts | 5 extends the router 4 creates — ordered, no conflict |\n| shared file | 2 · 3 | apps/api/src/services/ownership.ts | 3 reuses the guard 2 writes — ordered |\n| interface | 6 → 7 · 8 · 9 | `CertificateListItem.tags`, `?tag=` | consumers read exactly the §Contract shape |\n| self-consistency | 1–12 | — | Files, Interfaces and steps agree |\n| stays in its app | 1–12 | — | every task's Files sit under its App: path |\n| unruled | 4 | §Decisions D3 \"no duplicate tags\" | case not said — Ruling below |\n\nRuling: tag names unique per owner, case-insensitive — D3 says \"no duplicate tags\" and \"Urgent\"/\"urgent\" would read as duplicates — costs one migration relaxing the index if wrong\n\n## env notes\n```\n\nPhase 1 (api) — Task 1.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Narration between tool calls is one short line at most — the ledger and the tool results carry the record. On the base branch the build dispatches nothing and says the human cuts the branch."
+        }
+      ],
+      "stamp": {
+        "hash": "ada50b238ce9",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "build-task-review",
+      "skill": "build",
+      "title": "A task done, then its task review",
+      "when": "Every task in the build: a fresh implementer, then a task reviewer against the diff and §Contract, a fix round if it finds something, then the ledger line.",
+      "source": "skills/build/EXECUTION.md §5. Complete the task",
+      "sources": [
+        "skills/build/SKILL.md §The task loop",
+        "skills/build/EXECUTION.md §3. Review the task",
+        "skills/build/EXECUTION.md §4. The fix loop"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(<builder>/scripts/task-brief docs/features/cert-tags/PLAN.md 4 \".builder/cert-tags/task-4-brief.md\") — + SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(implementer — Task 4: GET/POST /tags, DELETE /tags/:id) — DONE · 1 commit"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(<builder>/scripts/review-package 3f2a1c0 6e81b0d \".builder/cert-tags/review-3f2a1c0..6e81b0d.diff\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(task reviewer — Task 4) — spec ✅ · quality: 1 Important, 1 Minor"
+        },
+        {
+          "role": "claude",
+          "text": "Task 4: minor (deferred): the route's body schema repeats the Tag zod type instead of importing it",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ SendMessage(implementer — Task 4, fix round 1: DELETE /tags/:id doesn't check owner_id)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(re-review — Task 4, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
+        },
+        {
+          "role": "claude",
+          "text": "Task 4: fix round 1/5 (1 addressed, 0 open — DELETE /tags/:id now scoped to owner_id; commits 6e81b0d..b20c4f7)\nTask 4: complete (commits 3f2a1c0..b20c4f7, review clean)\n\nTask 5 — PUT /certificates/:id/tags.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The ledger lines are verbatim templates; the reviewer gets §Contract too and judges the diff against it. Minor findings never enter the loop — they go to the ledger for the final review. Five fix rounds max, then the controller adjudicates."
+        }
+      ],
+      "stamp": {
+        "hash": "65fe6b89c2ad",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "build-phase-close-freeze",
+      "skill": "build",
+      "title": "Phase close — the app's fast gates, and the contract freeze",
+      "when": "When every task of a phase is complete; the producer's (api) last phase also freezes the contract.",
+      "source": "skills/build/SKILL.md §Phase close — the controller's own work",
+      "sources": [
+        "skills/resume/REFERENCE.md §Quality gates — the mechanism"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api)"
+        },
+        {
+          "role": "claude",
+          "text": "```\n▶ api — fast at 8b7d2e4\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS · 8b7d2e4 · 53s\n```\n\nPhase 2 was the producer's last — contract frozen: `contract: frozen 2026-10-22` on the manifest, committed `chore(ACME-412): cert-tags — contract frozen at phase 2`.\n\nSC1–SC3 ticked with migration `20261022093000_add_tags` — `docs(ACME-412): cert-tags — SC# landed`.\n\nPhase 2 (api): closed — gates api fast PASS · 8b7d2e4\n\nPhase 3 (mobile) — every consumer task from here is briefed against the frozen contract: a mismatch is reported, never worked around.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The gate output is gate.mjs's own format. No cross-app walk and no deep set at a phase close — those run once, in /builder:verify. A red gate keeps the phase open: each failure becomes a fix dispatch, never a controller fix. The next phase starts in the same turn."
+        }
+      ],
+      "stamp": {
+        "hash": "ce0dfbcc8132",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "build-manual-commit",
+      "skill": "build",
+      "title": "The mobile phase stops for a manual commit",
+      "when": "A phase in an app the config marks commit: manual (mobile, a released artifact): implementers stage and stop, and the commit is yours.",
+      "source": "skills/build/SKILL.md §🔴 A phase in a `commit: manual` app closes differently",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Agent(implementer — Task 7: tag chips on the list and owner view) — DONE · staged, not committed"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(task reviewer — Task 7) — spec ✅ · quality ✅"
+        },
+        {
+          "role": "claude",
+          "text": "mobile is `commit: manual` — Task 7 is staged, review clean, and not committed:\n\n```\n apps/mobile/src/components/TagChip.tsx                 |  42 +++++\n apps/mobile/src/features/certificates/CertificateRow.tsx |  18 ++-\n apps/mobile/src/features/certificates/OwnerView.tsx      |  11 +-\n apps/mobile/src/components/__tests__/TagChip.test.tsx    |  57 ++++++\n 4 files changed, 121 insertions(+), 7 deletions(-)\n```\n\nProposed message:\n\n```\nfeat(ACME-412): tag chips on the mobile list and owner view (cert-tags task 7)\n```",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "mobile is commit: manual — approve its commits per task, or once for the phase?",
+          "header": "Mobile",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Approve this task",
+              "description": "Commit Task 7 with the proposed message; Task 8 comes back to you the same way."
+            },
+            {
+              "label": "Approve the phase",
+              "description": "Commit Task 7 now and Task 8 when its review is clean, each with its proposed message."
+            },
+            {
+              "label": "Leave it staged",
+              "description": "Nothing is committed in apps/mobile; the build goes on and the walk runs from a dirty tree, said plainly."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "Approve the phase"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"feat(ACME-412): tag chips on the mobile list and owner view (cert-tags task 7)\") — a4e7c20"
+        },
+        {
+          "role": "claude",
+          "text": "Task 7: complete (commits 8b7d2e4..a4e7c20, review clean) — Task 8 commits on this approval once its review is clean. Building or releasing the mobile app stays yours.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The skill names the two approvals (per task / per phase) and that declining is fine; the picker wording is a rendering. mobile's gates still run at its phase close, and a red one still blocks it. Under agent mode this phase parks instead — agents never commit in a commit: manual app."
+        }
+      ],
+      "stamp": {
+        "hash": "36896602419c",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "build-complete",
+      "skill": "build",
+      "title": "Build complete — readiness, the walk script, the rulings",
+      "when": "The last phase closes: fast gates for every app, the final whole-branch review, walk readiness against the dev environment, then the hand-off with the walk script.",
+      "source": "skills/build/SKILL.md §When the last phase signs",
+      "sources": [
+        "skills/build/SKILL.md §Exit handoff",
+        "skills/resume/REFERENCE.md §Walk readiness",
+        "skills/resume/REFERENCE.md §The two-way footer"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api mobile web)"
+        },
+        {
+          "role": "claude",
+          "text": "```\n⏩ api — fast: inputs unchanged since the green run at 8b7d2e4 (2026-10-22 10:41) — quoted, not re-run:\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS (quoted) · 6f2c8a5\n⏩ mobile — fast: inputs unchanged since the green run at c19f4b7 (2026-10-22 12:20) — quoted, not re-run:\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS (quoted) · 6f2c8a5\n⏩ web — fast: inputs unchanged since the green run at 6f2c8a5 (2026-10-22 14:02) — quoted, not re-run:\n   ✓ pnpm -F web test (28s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS (quoted) · 6f2c8a5\n```",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(final whole-branch review — most capable model, + §Contract, deferred minors) — 2 findings"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(fix wave — 2 findings, web) · Agent(scoped re-review) — 2 ADDRESSED · 9c41e7a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git diff --name-only --diff-filter=A main...HEAD -- apps/api/prisma/migrations · pnpm -F api exec prisma migrate status) — 1 pending on acme_dev"
+        },
+        {
+          "role": "picker",
+          "question": "1 migration this branch adds is pending on the dev database: 20261022093000_add_tags → acme_dev (postgres://localhost:5432/acme_dev). Apply it?",
+          "header": "Migrations",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Apply them now (Recommended)",
+              "description": "Runs the config's apply command against acme_dev, then migrate status again and quotes it."
+            },
+            {
+              "label": "I'll apply them myself",
+              "description": "I print the command and stop at ready: pending \"1 migrations\" — the walk isn't offered until it's done."
+            },
+            {
+              "label": "Stop here",
+              "description": "Nothing applied; the build stops before the walk."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Apply them now"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(pnpm -F api exec prisma migrate deploy && pnpm -F api exec prisma migrate status) — Database schema is up to date!"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(curl GET /tags · PUT /certificates/:id/tags · GET /certificates?tag=… ) · Chrome(localhost:5173/certificates) · Bash(pnpm -F mobile ios) — smoke"
+        },
+        {
+          "role": "claude",
+          "text": "**cert-tags is built.**\n\n**What landed** — 4 phases (api, api, mobile, web) · 12 tasks · 13 commits; mobile's 2 approved by you for the phase. Final review: 2 findings in web (the tag filter didn't reset to page 1; `TagChip` had no accessible name) — one fix wave, re-review: both addressed (9c41e7a).\n\n**Contract** — frozen 2026-10-22 at phase 2 (api).\n\n**Walk readiness** — migration `20261022093000_add_tags` applied to acme_dev (status: up to date). Prisma client regenerated; the api dev server is yours, so you restarted it. Smoke: `GET /tags`, `PUT /certificates/:id/tags`, `GET /certificates?tag=…&tag=…` all 200, server log clean; `/certificates` in web loaded with a clean console; mobile's list screen up in the iOS simulator, Metro log clean.\n\n**Staged commits awaiting approval** — none. **Blockers** — none.\n\n**Rulings I made**\n1. Tag names unique per owner, case-insensitive — §Decisions D3 says \"no duplicate tags\" without saying case. *If wrong:* one migration relaxing the unique index.\n2. Task 8's build-time risk: mobile's offline list cache now keys on the sorted tag ids, and deleting a tag clears cached filtered lists. *If wrong:* a stale filtered list on mobile after a delete, until the next refresh.\n3. A tag with no colour renders neutral grey — §Contract allows `color: null` and the spec shows no default. *If wrong:* a default in the migration and a one-line change in both chips.\n\n**Walk script** — `.builder/cert-tags/walk.md`:\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\nNothing here has been human-tested yet — agents built it, ran each app's fast gates and smoked the running stack. The walk is yours, on web and on mobile; record the verdict with `/builder:signoff --path docs/features/cert-tags <your words>`.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: built (4 phases across api, mobile, web, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+        },
+        {
+          "role": "note",
+          "text": "Readiness asks before touching the dev database (apply_mode: ask). A smoke error on a changed surface is a fix dispatch, not a walk item. Still pending → no walk script and no state: built; the footer becomes '📍 cert-tags: built, not walkable yet — <what is left> — next: <the human's step>, then /builder:resume --path …'. Manifest: state: built · ready: yes 2026-10-22 9c41e7a · next: 🔒 your walk → /builder:signoff …, committed 'chore(ACME-412): cert-tags — built, awaiting the walk'."
+        }
+      ],
+      "stamp": {
+        "hash": "4210da3065b6",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "build-here-end",
+      "skill": "build",
+      "title": "Build here (--here) — how its end differs",
+      "when": "You chose --here: this session works PLAN.md itself without agents or reviews, and the end hands you a built, unwalked feature.",
+      "source": "skills/build/SKILL.md §Build here",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:resume --path docs/features/cert-tags --here"
+        },
+        {
+          "role": "note",
+          "text": "--here before the build writes build: here to the manifest; the plan's go-ahead then runs /builder:build --path … --here in the same turn. Everything below is this session working the tasks itself."
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs web) — gate fast-web: PASS · 71d0e3a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(.builder/cert-tags/ledger.md) — Task 12: done 71d0e3a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(cert-tags): built here — not walked\" -- docs/features/cert-tags/MANIFEST.md)"
+        },
+        {
+          "role": "claude",
+          "text": "All 12 tasks are in, worked here in this session, test-first, one commit per task.\n\n- **Gates at each phase close** — api ✓ (phases 1, 2) · mobile ✓ · web ✓, through `gate.mjs`.\n- **Contract** — frozen in the manifest when phase 2 (api) closed.\n- **Staged, not committed — yours** (mobile is `commit: manual`):\n  - Task 7 — `feat(ACME-412): tag chips on the mobile list and owner view`\n  - Task 8 — `feat(ACME-412): mobile tag filter sheet`\n- **Skipped, as `--here` does:** implementer and reviewer agents, the final whole-branch review, the deep set, walk readiness, the walk, sign-off and verify.\n\nManifest: `state: built` · `walk: none` · `ready: none` — committed `chore(cert-tags): built here — not walked`.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: built here, not walked — test it yourself. When you want the full finish:\n   /builder:resume --path docs/features/cert-tags (walk → sign-off → verify → ship)\n```"
+        },
+        {
+          "role": "note",
+          "text": "No numbered footer and no agent option: the human chose this session over the ceremony. Nothing has checked the dev database or the running app — the full finish starts with walk readiness."
+        }
+      ],
+      "stamp": {
+        "hash": "06299b0565fd",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "walk-handoff",
+      "skill": "resume",
+      "title": "🔒 The walk — gates, readiness, the script, and wait",
+      "when": "You come back to a built feature (after /clear, or the next day): resume re-checks the fast gates and readiness, prints the walk script, and stops for you.",
+      "source": "skills/resume/SKILL.md §🔒 The walk (before the deep pass)",
+      "sources": [
+        "skills/resume/REFERENCE.md §Walk readiness",
+        "skills/resume/REFERENCE.md §The two-way footer"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:resume --path docs/features/cert-tags"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: built · walk: none · ready: yes 2026-10-22 9c41e7a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs api mobile web)"
+        },
+        {
+          "role": "claude",
+          "text": "cert-tags is built and waiting for your walk.\n\n```\n⏩ api — fast: inputs unchanged since the green run at 8b7d2e4 (2026-10-22 10:41) — quoted, not re-run:\n   ✓ pnpm -F api test (41s)\n   ✓ pnpm -F api typecheck (12s)\ngate fast-api: PASS (quoted) · 9c41e7a\n⏩ mobile — fast: inputs unchanged since the green run at c19f4b7 (2026-10-22 12:20) — quoted, not re-run:\n   ✓ pnpm -F mobile test (36s)\ngate fast-mobile: PASS (quoted) · 9c41e7a\n▶ web — fast at 9c41e7a\n   ✓ pnpm -F web test (29s)\n   ✓ pnpm -F web lint (9s)\ngate fast-web: PASS · 9c41e7a · 38s\n```\n\nReadiness: `ready: yes 2026-10-22 9c41e7a` at HEAD — no migration or restart-class change since, so the dev environment is running this build.\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\n**What has been human-tested:** nothing yet. Agents built it, ran each app's gates and smoked api, web and the mobile simulator — none of that is your walk. It lives in two places: walk web **and** mobile.\n\nWhen you've walked it, record the verdict yourself — `/builder:signoff --path docs/features/cert-tags <your verdict in your own words>`. PASS condenses the folder and unlocks verify; `--hold \"<reason>\"` signs off but parks the PR; problems become `## Fixes` tasks and the lock stays closed.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: built (4 phases across api, mobile, web, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "claude",
+          "text": "The walk is yours — \"go\" can't take it, and a sign-off an agent starts is void. Once you've walked web and mobile, type: `/builder:signoff --path docs/features/cert-tags <what you saw, in your own words>`",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "On the walk line, 'go' and '1' both answer with the command to type — they never run /builder:signoff. '2' or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), verifies and merges locally."
+        }
+      ],
+      "stamp": {
+        "hash": "02198e67be96",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "walk-not-ready",
+      "skill": "build",
+      "title": "Built, but not walkable yet",
+      "when": "Walk readiness is still pending — e.g. you chose to apply the migration yourself — so no walk script is printed and sign-off can't record a PASS.",
+      "source": "skills/build/SKILL.md §Exit handoff",
+      "sources": [
+        "skills/resume/REFERENCE.md §Walk readiness",
+        "skills/resume/REFERENCE.md §Continuing on \"go\""
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "picker",
+          "question": "1 migration this branch adds is pending on the dev database: 20261022093000_add_tags → acme_dev (postgres://localhost:5432/acme_dev). Apply it?",
+          "header": "Migrations",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Apply them now (Recommended)",
+              "description": "Runs the config's apply command against acme_dev, then migrate status again and quotes it."
+            },
+            {
+              "label": "I'll apply them myself",
+              "description": "I print the command and stop at ready: pending \"1 migrations\" — the walk isn't offered until it's done."
+            },
+            {
+              "label": "Stop here",
+              "description": "Nothing applied; the build stops before the walk."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "I'll apply them myself"
+        },
+        {
+          "role": "claude",
+          "text": "All 4 phases are closed and the final review is clean — the dev database is the one thing left. Apply it with:\n\n```\npnpm -F api exec prisma migrate deploy\n```\n\nManifest: `state: building` · `ready: pending \"1 migrations\"` · `next: apply the migration to acme_dev, then /builder:resume --path docs/features/cert-tags`.\n\n```\n📍 cert-tags: built, not walkable yet — 1 migration pending on acme_dev — next: pnpm -F api exec prisma migrate deploy, then /builder:resume --path docs/features/cert-tags\n```",
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "claude",
+          "text": "That step is yours — run `pnpm -F api exec prisma migrate deploy`, then say go once it's done.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "A pending readiness never prints the walk script or names /builder:signoff. Resume at state: building + ready: pending reruns readiness only — not the final review."
+        }
+      ],
+      "stamp": {
+        "hash": "dcf1c5573a64",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "signoff-pass",
+      "skill": "signoff",
+      "title": "/builder:signoff — PASS, condensed",
+      "when": "You walked it and it works: you type /builder:signoff with your verdict; it records the sign-off, condenses the folder and unlocks verify.",
+      "source": "skills/signoff/SKILL.md §What gets written",
+      "sources": [
+        "skills/signoff/SKILL.md §Procedure",
+        "skills/signoff/SKILL.md §The condense",
+        "skills/signoff/SKILL.md §Handoff",
+        "skills/ship/SKILL.md §At sign-off"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:signoff --path docs/features/cert-tags works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: built · walk: none · ready: yes 2026-10-22 9c41e7a"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git rev-parse HEAD · git status --porcelain) — 9c41e7a · clean"
+        },
+        {
+          "role": "claude",
+          "text": "**The conditions this sign-off is made under**\n- Readiness: `ready: yes 2026-10-22 9c41e7a` — no migration since.\n- HEAD `9c41e7a` = the manifest's `head`: the gates were fresh on what you tested.\n- Working tree clean — mobile's two commits were approved in the build, so you walked committed code.\n- Least exercised: api's viewer refusal (walk api 1) — your verdict doesn't mention it.\n\n**Apps exercised:** web ✓ · mobile ✓ · api through both — your words name web and mobile.\n\n**Recorded — PASS**\n- MANIFEST: `walk: Luke Keith 2026-10-23` · `state: signed-off` · `head: 9c41e7a` · `hold: none` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- One commit — `docs(ACME-412): cert-tags signed off`. Its body carries what you exercised on which app and the caveats above.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: signed off + condensed — next: /builder:verify --path docs/features/cert-tags · or say go\n```"
+        },
+        {
+          "role": "note",
+          "text": "disable-model-invocation: only the human can run /builder:signoff — a sign-off whose commit didn't come from this command is void. A verdict that covers one app of a multi-app feature is PARTIAL, not PASS. --hold \"<reason>\" adds '> 🛑 PR HELD (<date>): \"<reason>\"' and the footer '— 🛑 held; local steps only —'."
+        }
+      ],
+      "stamp": {
+        "hash": "38aabef73cae",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "signoff-problems",
+      "skill": "signoff",
+      "title": "/builder:signoff — PROBLEMS",
+      "when": "Your walk found things to fix: each becomes a ## Fixes task naming its app, nothing condenses, and the PR lock stays closed.",
+      "source": "skills/signoff/SKILL.md §Procedure",
+      "sources": [
+        "skills/signoff/SKILL.md §What gets written",
+        "skills/signoff/SKILL.md §Handoff"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:signoff --path docs/features/cert-tags"
+        },
+        {
+          "role": "picker",
+          "question": "You ran the walk-through — what's the verdict?",
+          "header": "Verdict",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "PASS",
+              "description": "It works on every app you walked — records the sign-off, condenses the folder, unlocks verify."
+            },
+            {
+              "label": "PASS + HOLD the PR",
+              "description": "It works, but nothing pushes until you say so — local steps only."
+            },
+            {
+              "label": "PROBLEMS",
+              "description": "You found things to fix — each becomes a ## Fixes task naming its app; the lock stays closed."
+            },
+            {
+              "label": "PARTIAL",
+              "description": "You walked some of it — the unexercised items are recorded as owed, grouped by app."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "PROBLEMS"
+        },
+        {
+          "role": "claude",
+          "text": "What did you find? One line each, and which app it was on.",
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "web: the tag filter forgets the selection when I go back from a certificate. mobile: on the SE the chips push the expiry date off the row"
+        },
+        {
+          "role": "claude",
+          "text": "**Recorded — PROBLEMS (2).** `state` and `walk:` unchanged; the PR lock stays closed. `PLAN.md` and the §Plan index stay — the fixes run against them.\n\n```markdown\n## Fixes\n- [ ] web: the tag filter forgets the selected tags after going back from a certificate\n- [ ] mobile: on iPhone SE width the tag chips push the expiry date off the row\n```\n\nManifest `next: /builder:resume --path docs/features/cert-tags` — committed `docs(ACME-412): cert-tags — walk found 2 problems`. The mobile fix will be staged for you to commit (`commit: manual`); after both land, readiness runs again and you re-walk what changed.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: 2 fixes owed — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "A failed walk is a normal outcome, recorded without spin. PARTIAL writes the same way, minus any header line: each unexercised item a - [ ] grouped by app."
+        }
+      ],
+      "stamp": {
+        "hash": "71893f70e39b",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "condense-standalone",
+      "skill": "ship",
+      "title": "Condense at sign-off (standalone)",
+      "when": "Signoff runs this for you on PASS; you run it yourself only on a signed-off feature that was never condensed.",
+      "source": "skills/ship/SKILL.md §At sign-off",
+      "sources": [
+        "skills/resume/REFERENCE.md §Condense"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:ship --path docs/features/cert-tags"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: signed-off · walk: Luke Keith 2026-10-23"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) — cut ## Plan → ## Fixes · Bash(git rm docs/features/cert-tags/PLAN.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs) — cert-tags · signed-off · next: /builder:verify"
+        },
+        {
+          "role": "claude",
+          "text": "Signed off by Luke Keith 2026-10-23 — a PASS, so the plan has done its job. §Plan cut by its heading (§Testing, §Findings and `## Fixes` untouched), the header line written under the title, `PLAN.md` removed; `list-features` shows cert-tags `signed-off`, not done. Committed `docs(ACME-412): condense cert-tags at sign-off`.\n\n```\n📍 cert-tags: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path docs/features/cert-tags · or say go\n```",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "No PASS → it stops and says so: a PROBLEMS or PARTIAL walk keeps both the §Plan index and PLAN.md."
+        }
+      ],
+      "stamp": {
+        "hash": "cca92870bde4",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "verify-ready",
+      "skill": "verify",
+      "title": "/builder:verify — READY",
+      "when": "After the sign-off: the pipeline's one deep pass across every in-scope app, ending in a READY or INCOMPLETE verdict with evidence.",
+      "source": "skills/verify/SKILL.md §The checklist (all must hold for READY)",
+      "sources": [
+        "skills/verify/SKILL.md §The verdict"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:verify --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/gate.mjs --deep api mobile web)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(contract parity — opus) · Agent(spec-parity spot-check — opus) · Agent(house-rules sweep — sonnet)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(prisma migrate reset on a clean database) · Bash(node <builder>/scripts/check-obligations.mjs docs/features/cert-tags) — exit 0"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(pnpm e2e — §Testing walk E1–E5, all apps up)"
+        },
+        {
+          "role": "claude",
+          "text": "**cert-tags — verify READY (api, mobile, web).** Walked by Luke Keith 2026-10-23 (✅ SIGNED OFF at 9c41e7a).\n\n| # | Check | Evidence |\n|---|---|---|\n| 1 | The walk | `✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith`; web and mobile walked, api through both |\n| 2 | Every task landed | ledger pre-flight: 12 tasks, 12 `complete`, 4 phases closed; mobile's commits approved; no open `## Fixes` |\n| 3 | Gates now | api, mobile, web fast — quoted from the green runs at 9c41e7a (the sign-off commit touched only the registry) · deep `pnpm e2e` @scoped — ran, 7 of 44 specs, `.builder/gates/impact.md` |\n| 4 | Schema | SC1 Tag, SC2 CertificateTag, SC3 cascade → `20261022093000_add_tags`; re-applied cleanly on an empty database |\n| 5 | Consumer parity | `contract: frozen 2026-10-22`. `GET /tags` `apps/api/src/routes/tags.ts:22` → mobile `apps/mobile/src/api/tags.ts:11`, web `apps/web/src/api/tags.ts:9` — same shape, `color` nullable in both. Released mobile 3.2: `tags` on the list is a new optional field it ignores; nothing renamed, removed or narrowed |\n| 6 | Decisions | no OPEN rows; nothing replaced |\n| 7 | House rules | api: zod on every route, no Prisma in handlers ✓ · web: no `fetch` outside `src/api` ✓ · mobile: strings through i18n ✓ |\n| 8 | §Testing | all 11 named tests exist and pass (api 5, mobile 3, web 3) |\n| 9 | Deep set prose | nothing beyond the deep block |\n| 10 | Cross-app E2E | ran live, first verify: E1–E5 ✓ — tag on web → filter on web → chip and filter on mobile → delete cascades |\n| 11 | Spec parity | owner-only tag writes `apps/api/src/routes/certificate-tags.ts:31`; `?tag=` repeatable, owner-scoped `apps/api/src/services/certificates.ts:88`; case-insensitive uniqueness `apps/api/prisma/schema.prisma:142` |\n\nRecorded: `verify: READY 2026-10-23` · `state: verified` · `next: /builder:resume --path docs/features/cert-tags` — committed `docs(ACME-412): cert-tags — verify READY`. READY isn't shipped: no PR is open yet.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: verify READY (api, mobile, web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags (opens the PR)\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "Every line needs a command behind it run in this pass; anything quoted says from which run and on which tree. With a hold set the footer is single-line: '📍 cert-tags: verify READY (api, mobile, web) — 🛑 held — <the hold's words>'."
+        }
+      ],
+      "stamp": {
+        "hash": "874049f0cda5",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "verify-incomplete",
+      "skill": "verify",
+      "title": "/builder:verify — INCOMPLETE",
+      "when": "A check fails: each failing item becomes a ## Fixes task naming its app, and the next verify is scoped.",
+      "source": "skills/verify/SKILL.md §The verdict",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "claude",
+          "text": "**cert-tags — verify INCOMPLETE** — 2 items fail; everything else held (api, mobile gates ✓ · deep set ✓ · E2E ran ✓).\n\n- **5 · Consumer parity (mobile)** — `apps/mobile/src/components/TagChip.tsx:18` reads `tag.color` as a string; §Contract has `color: string | null`.\n- **3 · Gates (web)** — `✗ pnpm -F web lint exit 1` — unused import at `apps/web/src/features/certificates/ListFilters.tsx:40`, from the final review's fix wave.\n\n```markdown\n## Fixes\n- [ ] mobile: TagChip treats tag.color as non-null — handle null per §Contract (clears verify item 5)\n- [ ] web: lint error in ListFilters.tsx:40 (clears verify item 3)\n```\n\n`verify: INCOMPLETE 2026-10-23` · `state: signed-off` · `next: /builder:resume --path docs/features/cert-tags` — committed `docs(ACME-412): cert-tags — verify INCOMPLETE`.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: verify INCOMPLETE — 2 fixes owed — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "The re-verify after the fixes is scoped: by app first, and the cross-app walk re-runs only if the diff can change what a consumer does (a contract row here — so mobile's leg runs again)."
+        }
+      ],
+      "stamp": {
+        "hash": "8d5c0f5894be",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "ship-open-pr",
+      "skill": "resume",
+      "title": "Opening the PR — asked once",
+      "when": "Verify is READY with no hold: resume's §Ship asks once before anything outward-facing, even when 'go' brought you here.",
+      "source": "skills/resume/SKILL.md §Ship",
+      "sources": [
+        "skills/resume/REFERENCE.md §Continuing on \"go\"",
+        "skills/resume/REFERENCE.md §The two-way footer"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git merge-base --is-ancestor 9c41e7a origin/main) — exit 1: not shipped inside another PR"
+        },
+        {
+          "role": "claude",
+          "text": "cert-tags is verified READY, no hold, no PR yet. A local review first is on offer — the config's §Companion skills names `/code-review`; say so and it runs before the PR. Skipping it is fine: you walked it and verify swept the house rules.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "Open the PR for cert-tags? One PR for api, mobile and web: feat/ACME-412-cert-tags → main.",
+          "header": "Open PR",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Open the PR",
+              "description": "gh pr create --base main --title \"feat(ACME-412): cert-tags\" — the body is the sign-off line plus what changed per app."
+            },
+            {
+              "label": "Not yet",
+              "description": "Nothing is pushed; the manifest stays at verified and /builder:resume offers this again."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "Open the PR"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(gh pr create --base main --title \"feat(ACME-412): cert-tags\" --body …) — https://github.com/acme/acme-certs/pull/57"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(gh pr checks 57 --watch) — 4/4 passing"
+        },
+        {
+          "role": "claude",
+          "text": "**PR #57 is open** — `feat(ACME-412): cert-tags`, base `main`.\n\n> ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n- **api** — Tag and CertificateTag (`20261022093000_add_tags`), `GET`/`POST /tags`, `DELETE /tags/:id`, `PUT /certificates/:id/tags`, repeatable `?tag=` filter, `tags` on the list response; owner guard on `PATCH /certificates/:id`\n- **mobile** — tag chips on the list and owner view, tag filter sheet; released 3.2 unaffected (additive field)\n- **web** — tag chips, `ListFilters` tag filter, tag editor on the owner view\n\nManifest: `pr: #57` · `next: watch CI, then /builder:ship --path docs/features/cert-tags` — committed. CI is green; merging is your call.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: PR #57 open, CI green — next:\n   1. resume — continue here, step by step: /builder:ship --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "'go' continued the pipeline; it did not name an outward-facing action — so Open the PR / Not yet is always asked. One PR for the whole feature, never one per phase. Under --agent-walk no PR opens at all: agent mode ships and merges into the target branch locally."
+        }
+      ],
+      "stamp": {
+        "hash": "5bbfac56ae63",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "ship-shipped",
+      "skill": "ship",
+      "title": "SHIPPED — written on the open PR",
+      "when": "The PR is open and verify is READY: ship flips the header, removes the manifest and workspace, and archives the folder — on the PR branch, so the merge carries it.",
+      "source": "skills/ship/SKILL.md §At ship",
+      "sources": [
+        "skills/resume/REFERENCE.md §Condense"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:ship --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(gh pr view --json number,state) — 57 · OPEN · Bash(test -e docs/features/_archive/cert-tags) — no collision"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) · Bash(git rm docs/features/cert-tags/MANIFEST.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(<builder>/scripts/workspace --remove cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git mv docs/features/cert-tags docs/features/_archive/cert-tags) · Bash(git commit -m \"docs(ACME-412): cert-tags shipped in PR #57\")"
+        },
+        {
+          "role": "claude",
+          "text": "Shipped on PR #57 — the header now reads:\n\n> ✅ SHIPPED 2026-10-23 — PR #57 · ACME-412 · signed off by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n`MANIFEST.md` removed, the workspace `.builder/cert-tags` removed, the folder archived — one commit on the PR branch, `docs(ACME-412): cert-tags shipped in PR #57`, so it reaches `main` exactly when the merge does. If the PR closes unmerged, revert that commit.\n\nJira isn't touched: reporting back to ACME-412 is yours, with the command the config's §Companion skills names. Merging #57 is your call.",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: shipped — header flipped, manifest and workspace removed, archived at docs/features/_archive/cert-tags\n```"
+        },
+        {
+          "role": "note",
+          "text": "Never SHIPPED on a branch with no PR or a verify that isn't READY — that line is what every step reads as DONE. Agent form: '> ✅ SHIPPED <date> — merged into main · ACME-412 · 🤖 agent signed off (walk round <n>), not human-tested', no PR."
+        }
+      ],
+      "stamp": {
+        "hash": "19c1de6a18c8",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "agent-walk-pass",
+      "skill": "agent-walk",
+      "title": "/builder:agent-walk — AGENT-PASS (agent mode)",
+      "when": "Under agent mode (/builder:agent or /builder:fleet), an agent walks walk.md in place of you and writes a 🤖 sign-off — never a human one.",
+      "source": "skills/agent-walk/SKILL.md §4. Write it",
+      "sources": [
+        "skills/agent-walk/SKILL.md §Hand off",
+        "skills/agent-walk/SKILL.md §2. Dispatch the walker",
+        "skills/agent-walk/SKILL.md §3. Judge the report"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "This runs headless in the fleet's worktree for cert-tags (profile thorough → testing: full); the hand-off below is what its log shows. Agents never commit in mobile (commit: manual), so a fleet run parks at the start of that phase — this is the run after the build got past it. Under --agent-walk, walk.md also carries a ## Cross-app (verify E2E) section, walked as rows E1…En so verify can quote them."
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:agent-walk --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --levers docs/features/cert-tags) — testing: full"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(walker — round 1, most capable model, foreground) — .builder/cert-tags/agent-walk/round-1/report.md"
+        },
+        {
+          "role": "claude",
+          "text": "**AGENT-PASS** — cert-tags, agent walk round 1 · 13 pass · 0 fail · 0 unverifiable. Evidence: `.builder/cert-tags/agent-walk/round-1/`.\n\n```\nsha: 9c41e7a\n```\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | web | [risk] add/duplicate/remove tags on the owner view | PASS | 01-web-tag-editor.png · 02-web-dup-refused.png |\n| 2 | web | [risk] delete a tag — chips gone everywhere | PASS | 03-web-delete-tag.png · server.log L412–418 |\n| 3 | web | [risk] ListFilters: two tags, URL carries ?tag=…&tag=…, empty state | PASS | 04-web-filter.png · 05-web-empty.png |\n| 4 | web | chips coloured, grey when none, wrap narrow | PASS | 06-web-chips-375.png |\n| 5 | mobile | [risk] filter sheet narrows; clears after the tag is deleted | PASS | 07-mobile-filter.png · 08-mobile-after-delete.png |\n| 6 | mobile | [risk] new tag shows after pull to refresh | PASS | 09-mobile-refresh.png |\n| 7 | mobile | chips fit on iPhone SE; VoiceOver reads \"Tag: Urgent\" | PASS | 10-mobile-se.png · a11y-tree.txt |\n| 8 | api | [risk] viewer refused on PATCH and PUT tags (403) | PASS | server.log L501–506 |\n| E1 | cross-app | owner tags a certificate \"Urgent\" on web | PASS | 11-e1.png |\n| E2 | cross-app | web filter by Urgent lists it | PASS | 12-e2.png |\n| E3 | cross-app | mobile row shows the Urgent chip after refresh | PASS | 13-e3.png |\n| E4 | cross-app | mobile filter by Urgent lists the same certificates | PASS | 14-e4.png |\n| E5 | cross-app | deleting Urgent on web removes it on mobile | PASS | 15-e5.png · server.log L620–624 |\n\n`verdict: PASS`\n\n**Recorded — the agent's sign-off, not a human's:**\n- MANIFEST: `walk: agent-pass 2026-10-23 9c41e7a` · `state: signed-off` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > 🤖 AGENT SIGNED OFF 2026-10-23 — 9c41e7a · agent walk round 1 · not human-tested · evidence: .builder/cert-tags/agent-walk/round-1/\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- Committed `docs(ACME-412): cert-tags agent signed off (not human-tested)`",
+          "inferred": true
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: agent signed off (round 1, not human-tested) + condensed — next: /builder:verify --path docs/features/cert-tags · or say go\n```"
+        },
+        {
+          "role": "note",
+          "text": "Not numbered: no human reads a footer under --agent-walk, and the run goes straight on — verify, then ship and a local merge into main (no PR, no push). A failing round writes '- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)' fixes instead; five failed rounds in a row park it for a human walk."
+        }
+      ],
+      "stamp": {
+        "hash": "3d1c913e974c",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    }
+  ]
+}

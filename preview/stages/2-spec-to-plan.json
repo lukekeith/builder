@@ -1,0 +1,995 @@
+{
+  "stages": [
+    {
+      "id": "spec-product-choices",
+      "skill": "spec",
+      "title": "Spec asks only the product choices left open",
+      "when": "Right after brainstorm sized cert-tags lg and handed on — before SPEC.md is written.",
+      "source": "skills/spec/SKILL.md §1. Settle what the record left open — no section approvals",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:spec --path docs/features/cert-tags"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(.builder/cert-tags/brainstorm.md) · Read(.claude/builder.md) · Read(skills/resume/REFERENCE.md)"
+        },
+        {
+          "role": "note",
+          "text": "The owner already approved the design at brainstorm's confirm — spec never walks sections for approval. It drafts every section, then asks only choices the record never ruled on that change what the owner sees or what data is kept."
+        },
+        {
+          "role": "claude",
+          "text": "The design conversation settled most of cert-tags. Drafting the spec left two choices it never ruled on — both change what an owner sees or what data is kept, so they're yours. Everything else (limits, field types, error codes) I'll record as assumed and list at the end.\n\n**Q1 — What deleting a tag does**\n\nWhen an owner deletes a tag, what happens to the certificates that carry it?\n\n**Why it matters:** this decides whether a delete can silently lose information an owner put on many certificates, and whether a delete can fail.\n**What it affects:** the `CertificateTag` join rows in `api`, the tag manager in `web` and `mobile`, and the confirm dialog both consumers show.\n**Recommendation:** remove the tag from every certificate, after a confirm that names how many carry it — it's how the existing \"delete owner group\" flow behaves (`apps/web/src/features/owners/DeleteGroupDialog.tsx:22`), and it never leaves an owner stuck on a delete they can't finish."
+        },
+        {
+          "role": "picker",
+          "question": "When an owner deletes a tag, what happens to the certificates that carry it?",
+          "header": "Tag delete",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Untag everywhere (Recommended)",
+              "description": "Delete removes the tag from every certificate after a confirm showing the count. Simple, matches the owner-group delete; the tagging is gone for good."
+            },
+            {
+              "label": "Block while in use",
+              "description": "Delete is refused until no certificate carries the tag. Nothing is lost by accident, but the owner must untag each certificate first."
+            },
+            {
+              "label": "Archive instead",
+              "description": "The tag is hidden from pickers and filters but stays on certificates. Nothing is lost; adds an archived state and a way to restore it."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Untag everywhere"
+        },
+        {
+          "role": "claude",
+          "text": "**Q2 — Who sees a certificate's tags**\n\nShould a certificate's tags be visible to everyone who can see the certificate, or only to its owner?\n\n**Why it matters:** tags are free text owners type; showing them to other viewers makes a private note public.\n**What it affects:** the `tags` field on `GET /certificates` and `GET /certificates/:id` in `api`, the chips on the list in `web` and `mobile`, and the read-only owner view.\n**Recommendation:** owner only — the owner view already hides `notes` from non-owners (`apps/api/src/routes/certificates.ts:61`), and tags are the same kind of owner-authored text."
+        },
+        {
+          "role": "picker",
+          "question": "Who should see a certificate's tags?",
+          "header": "Visibility",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Owner only (Recommended)",
+              "description": "Tags are returned only to the certificate's owner; other viewers see no chips and can't filter by them. Matches how notes are treated today."
+            },
+            {
+              "label": "Everyone who can see it",
+              "description": "Tags show to every viewer of the certificate, and they can filter by them. Tags become shared labels — owners must not put private text in them."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Owner only"
+        },
+        {
+          "role": "note",
+          "text": "Never 'Right / Change something' — each question is a real decision with its alternatives. Under --auto each takes its recommendation, recorded auto (recommended) YYYY-MM-DD."
+        }
+      ],
+      "stamp": {
+        "hash": "8e9a1c54282f",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "spec-summary-footer",
+      "skill": "spec",
+      "title": "Spec written — the plain summary and the numbered footer",
+      "when": "Once SPEC.md and MANIFEST.md are written, proven by check-obligations, and committed.",
+      "source": "skills/spec/SKILL.md §3. Prove it, commit, hand on",
+      "sources": [
+        "skills/spec/SKILL.md §2. Write the files",
+        "skills/resume/REFERENCE.md §The two-way footer"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Write(docs/features/cert-tags/SPEC.md) · Write(docs/features/cert-tags/MANIFEST.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/check-obligations.mjs docs/features/cert-tags) — 0 FAIL · 0 WARN"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"docs(ACME-412): design cert-tags\")"
+        },
+        {
+          "role": "claude",
+          "text": "Written to `docs/features/cert-tags/SPEC.md` (with its `MANIFEST.md`), committed as `docs(ACME-412): design cert-tags`.\n\n**What it does.** Owners can put their own tags on a certificate — \"audit 2026\", \"site B\", anything — and filter the certificate list down to one or more tags, on the web and in the mobile app. Tags are private to the owner: other viewers never see them. Deleting a tag takes it off every certificate, after a confirm that says how many.\n\n**What it touches.** `api` — a Tag model, a CertificateTag join, tag endpoints and a tag filter on the certificate list (the producer; the contract starts open). `web` — tag chips on the list, a tag filter, a tag editor on the owner view. `mobile` — the same chips, filter and editor; mobile is a released app, so every change to what it reads is additive.\n\n**The choices we settled just now**\n- Deleting a tag removes it from every certificate, after a confirm naming the count.\n- Tags are returned only to the certificate's owner.\n\n**Details assumed at spec** — say if any is wrong\n- A tag name is 1–32 characters, trimmed, unique per owner case-insensitively.\n- An owner can have at most 200 tags; a certificate at most 20.\n- Creating a duplicate tag returns `409 TAG_EXISTS` with the existing tag.\n- Tag colours are picked from the existing 8-colour chip palette, not free hex.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: designed (lg, api+web+mobile) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "The summary ends in no question — it's the owner's chance to object. Three options because the config has an agent_walk: block; without it 'here' is 2 and the reply line reads Reply 1 or 2 (or \"resume\" / \"here\"; \"go\" is 1)."
+        }
+      ],
+      "stamp": {
+        "hash": "f0da0c986f26",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "resume-routes-to-audit",
+      "skill": "resume",
+      "title": "Resume reads the manifest — align skipped, audit runs",
+      "when": "The user answers the spec footer with \"go\" (or 1): resume routes on the manifest's state.",
+      "source": "skills/resume/SKILL.md §Step 1 — Detect state",
+      "sources": [
+        "skills/align/SKILL.md §`/builder:align` — can the app store this, and does everyone call it the same thing?",
+        "skills/resume/REFERENCE.md §Continuing on \"go\""
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: spec · design ref: none"
+        },
+        {
+          "role": "note",
+          "text": "Align runs only in prototype mode — when the manifest carries a design ref (a feature taken in through /builder:intake with a design). cert-tags came from a written brainstorm, so state: spec with no design ref routes straight to /builder:audit. With a ref, resume would run /builder:align first, which ends in its own '📍 <feature>: aligned — <n> fields aligned, <m> T# owed …' footer."
+        },
+        {
+          "role": "claude",
+          "text": "cert-tags is at `spec` with no design reference, so there's no design to align — next is the audit, which checks the spec against the code before anything is planned.",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:audit --path docs/features/cert-tags)"
+        }
+      ],
+      "stamp": {
+        "hash": "2a51523d4e80",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "audit-findings",
+      "skill": "audit",
+      "title": "Audit — one pass, findings grouped, READY line, footer",
+      "when": "The audit's single pass ends: one SPEC edit, the manifest at audited, committed.",
+      "source": "skills/audit/SKILL.md §Exit",
+      "sources": [
+        "skills/audit/SKILL.md §🔴 The pass cap",
+        "skills/audit/SKILL.md §A gap this pass finds in the design"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Agent(audit api) · Agent(audit web) · Agent(audit mobile) — pass 1, one agent per app (size lg)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(audit — pass 2, scoped to the changed GET /certificates row)"
+        },
+        {
+          "role": "claude",
+          "text": "One thing in the existing code needs your call before I write the pass up.\n\n**A defect in app code, not in the spec:** `PATCH /certificates/:id` never checks that the caller owns the certificate (`apps/api/src/routes/certificates.ts:88`) — any signed-in user can rename anyone's certificate. The new tag endpoints sit next to it and would copy the same handler shape.\n\n**Recommendation:** fix it in this feature — the tag endpoints need the same ownership guard, so writing it once covers both, and it's one task in the api phase.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "PATCH /certificates/:id has no ownership check — fix it in this feature, or only record it?",
+          "header": "Code defect",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Code fix here (Recommended)",
+              "description": "A task in the api phase adds the owner guard to PATCH /certificates/:id and the new tag endpoints, with a test for a non-owner. The spec gains one §Findings row."
+            },
+            {
+              "label": "Doc fix only",
+              "description": "The spec records it as a known risk and out of scope; the tag endpoints get their own guard but PATCH stays open until someone fixes it separately."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "Code fix here (Recommended)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) · Edit(MANIFEST.md) — state: audited"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/check-obligations.mjs docs/features/cert-tags) — exit 0"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"docs(ACME-412): cert-tags audited\")"
+        },
+        {
+          "role": "claude",
+          "text": "The audit read the spec against all three apps once, plus a scoped second look at the one contract it changed. Two questions are left for you; nothing blocks the plan.\n\n**Data integrity — first**\n- Deleting a tag must remove its `CertificateTag` rows in the same transaction; the spec said \"untag everywhere\" but no cascade was written. Fixed: `onDelete: Cascade` on the join, §Schema row SC3.\n- Ownership: `PATCH /certificates/:id` has no owner check (`apps/api/src/routes/certificates.ts:88`). Per your call it's fixed in the api phase, and the new tag endpoints get the same guard (T4).\n\n**Released build (mobile)**\n- `tags` on `GET /certificates` is a new optional field — additive, safe for mobile 3.2 in the store, which ignores unknown keys (`apps/mobile/src/api/certificates.ts:14`). Stated in §Apps *Backward compatibility*.\n\n**Contract-changing**\n- The list filter was `?tag=<id>`; web's existing filter bar sends repeated params (`?status=a&status=b`). §Contract now reads `?tag=<id>` repeatable on `GET /certificates`. The scoped second pass checked this one row against both consumers: clean.\n\n**Design-affecting**\n- No empty state was specified for \"no certificates match these tags\" on either consumer — written into §web and §mobile, reusing `EmptyState`.\n\n**Stale spec**\n- The web filter component is `ListFilters` (`apps/web/src/features/certificates/ListFilters.tsx`), not `CertificateListFilter`. Fixed in place.\n\n**Nits** — two field names aligned to the API's camelCase transform.\n\n**Build-time risk** (not a blocker): mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted — settled by the mobile filter task.\n\n**Open decisions (2)** — multi-tag filtering ALL vs ANY; whether mobile can edit tags or only filter. Both carry a recommendation.\n\nREADY — contract sweep clean after the scoped second pass; no blocked items.\n\nNext: `/builder:resume --path docs/features/cert-tags` takes the two open decisions, then plans."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "The pass cap: pass 2 runs only because pass 1 changed a contract row, and only over that row. Never 'another pass' in the hand-off. A BLOCKED verdict would append ' · BLOCKED: <n> items' after 'audited'."
+        }
+      ],
+      "stamp": {
+        "hash": "7e07dc37022d",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "decisions-gate",
+      "skill": "resume",
+      "title": "The decisions gate — every OPEN row in one question",
+      "when": "Resume finds state: audited with OPEN §Decisions rows — an unconditional human gate.",
+      "source": "skills/resume/SKILL.md §The decisions gate (human, unconditional)",
+      "sources": [
+        "skills/resume/REFERENCE.md §Continuing on \"go\""
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "1"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(MANIFEST.md) — state: audited · Read(SPEC.md §Decisions) — 2 OPEN"
+        },
+        {
+          "role": "note",
+          "text": "\"go\" or 1 continues to the next step; it never answers a gate that step raises. The decisions gate still asks."
+        },
+        {
+          "role": "claude",
+          "text": "The audit left two open decisions. Both are below in one question — the recommendation is first on each.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "1. When an owner filters by several tags, which certificates show?  (D9)",
+          "header": "Multi-tag",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Match all tags (Recommended)",
+              "description": "Only certificates carrying every selected tag show — each extra tag narrows the list, like the existing status + owner filters combine."
+            },
+            {
+              "label": "Match any tag",
+              "description": "Certificates carrying at least one selected tag show — each extra tag widens the list."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "2. Can owners edit tags in the mobile app, or only filter by them?  (D10)",
+          "header": "Mobile edit",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Filter and edit (Recommended)",
+              "description": "Mobile gets the tag editor on the owner view as well as chips and the filter — same as web. One more screen in the mobile phase."
+            },
+            {
+              "label": "Filter only",
+              "description": "Mobile shows chips and filters; tags are added and removed on the web. Smaller mobile phase; owners on the road can't tag."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Shown as two questions in ONE AskUserQuestion call. The ledger ids (D9, D10) are trailing notes — the user answers 1 and 2, never 'D9'."
+        },
+        {
+          "role": "user",
+          "text": "1: Match all tags · 2: Filter only"
+        },
+        {
+          "role": "claude",
+          "text": "Recorded, written so the build can check code against them:\n\n1. **D9** — `GET /certificates?tag=a&tag=b` returns only certificates carrying **every** listed tag (AND); web's `ListFilters` and mobile's filter sheet show the active tags as removable chips; zero matches renders `EmptyState` \"No certificates have all these tags\".\n2. **D10** — mobile shows tag chips on the list and the owner view and offers the tag filter; it has **no** tag create, rename, delete, add-to or remove-from control. Those exist only in web. *(Added in translation: rename and delete are web-only too — say if mobile should keep those.)*\n\n§mobile and §Testing updated to match. No open decisions left — planning now.",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:plan --path docs/features/cert-tags)"
+        },
+        {
+          "role": "note",
+          "text": "A step with no decision pending keeps going in the same turn — the gate's answers lead straight into the plan."
+        }
+      ],
+      "stamp": {
+        "hash": "8c97b0bb2d4f",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "plan-go-ahead",
+      "skill": "plan",
+      "title": "Plan — the phase table and the build go-ahead",
+      "when": "PLAN.md is committed; the same turn takes the one approval that covers the whole build, then the build profile.",
+      "source": "skills/plan/SKILL.md §Hand off",
+      "sources": [
+        "skills/plan/SKILL.md §The build profile (`agent_walk:` set)",
+        "skills/plan/SKILL.md §🔴 One app per phase, the producer before its consumers"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Write(docs/features/cert-tags/PLAN.md) · Edit(SPEC.md §Plan) · Edit(MANIFEST.md) — state: planned"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"docs(ACME-412): plan cert-tags\")"
+        },
+        {
+          "role": "claude",
+          "text": "The plan is written: `docs/features/cert-tags/PLAN.md`.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | api | 1–3 | Tag and CertificateTag migrated; tag service with owner scoping; PATCH /certificates/:id owner guard | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 2 | api | 4–6 | Tag endpoints and the `?tag=` filter live; contract frozen | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 3 | mobile | 7–8 | Tag chips on the list and owner view; tag filter sheet | `pnpm -F mobile test` |\n| 4 | web | 9–12 | Tag chips, `ListFilters` tag filter, tag editor on the owner view | `pnpm -F web test` · `pnpm -F web lint` |\n\n**4 phases across api, mobile and web · 12 tasks.** The producer goes first; mobile — the released app — is the first consumer, because its findings are the expensive ones.\n\n**Rides along**\n- **Phase 2 freezes the contract** — Task 6 writes `contract: frozen` to the manifest; no consumer task starts before it.\n- Build-time risk on **Task 8**: mobile's offline list cache keys on the query string, so a stale tag filter may show after a tag is deleted.\n- **mobile is `commit: manual`** — its phase's commits are staged and left for you.\n- The cross-app E2E walk is authored in §Testing and run only by `/builder:verify`.\n- Deferred: renaming a tag across owners — out of scope, decider Luke."
+        },
+        {
+          "role": "picker",
+          "question": "Approve the plan for cert-tags? One approval covers the whole build.",
+          "header": "Go-ahead",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Yes",
+              "description": "Record the go-ahead and choose how agents build it."
+            },
+            {
+              "label": "No, keep planning",
+              "description": "Leave go-ahead: none; the plan stays at planned. Say what's wrong — a scope objection goes to /builder:brainstorm, a changed requirement to /builder:revise."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The approval is taken through plan mode's ExitPlanMode — rendered here as a two-way choice."
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/profile.mjs --recommend docs/features/cert-tags) · --estimate × rush/standard/thorough"
+        },
+        {
+          "role": "picker",
+          "question": "How should agents build \"cert-tags\"?  → lands on main\nRecommended: Thorough — 3 apps, schema change, released consumer (mobile)",
+          "header": "Profile",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Thorough (Recommended)",
+              "description": "~95 min · ~4.1M tokens (4 similar features) — the full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E."
+            },
+            {
+              "label": "Standard",
+              "description": "~70 min · ~2.8M tokens (5 similar features) — every task reviewed, the agent walks the [risk] items, full verify."
+            },
+            {
+              "label": "Rush",
+              "description": "~40 min · ~1.3M tokens (6 similar features) — final review and fast gates only; no agent walk — you test it once it lands. ⚠ This feature has a released consumer: nothing walks it before it lands."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Land on?",
+          "header": "Land on",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "main (Recommended)",
+              "description": "Agents merge the finished feature into main, locally — the config's merge_into."
+            },
+            {
+              "label": "feat/ACME-412-cert-tags",
+              "description": "Land it on the branch you're on now instead."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Both questions arrive in ONE AskUserQuestion call. 'Other' on the profile question means Customize (the levers: testing, review, models, verify, persist, unruled); 'Other' on Land on? takes any branch name."
+        },
+        {
+          "role": "user",
+          "text": "Thorough · main"
+        },
+        {
+          "role": "picker",
+          "question": "Walk it yourself before it lands?",
+          "header": "Your walk",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "No (Recommended)",
+              "description": "thorough — the agent walk stands in for yours; it lands on main marked not human-tested."
+            },
+            {
+              "label": "Yes",
+              "description": "thorough-you — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "No"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (thorough)\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/fleet.mjs cert-tags --detach --into main)"
+        },
+        {
+          "role": "claude",
+          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-tags: go-ahead (thorough) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
+        },
+        {
+          "role": "note",
+          "text": "Plan's go-ahead footer is never numbered — it launches the agents itself. Nothing here creates a branch or worktree: the fleet makes the worktree when it launches."
+        }
+      ],
+      "stamp": {
+        "hash": "19c01d377ee5",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "plan-go-ahead-variants",
+      "skill": "plan",
+      "title": "The go-ahead's other endings — here, and no agent_walk",
+      "when": "The same plan step when the manifest says build: here, or in a project whose config has no agent_walk: block.",
+      "source": "skills/plan/SKILL.md §Build here (`build: here`)",
+      "sources": [
+        "skills/plan/SKILL.md §Picking the profile ahead — `/builder:agent` and `/builder:fleet`"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "Variant A — the user picked '3. here' on an earlier footer, so the manifest carries build: here. The phase table is shown the same way, but there is no approval stop: choosing here was the go-ahead."
+        },
+        {
+          "role": "claude",
+          "text": "The plan is written: `docs/features/cert-tags/PLAN.md` — building it here, in this session, now.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | api | 1–3 | Tag and CertificateTag migrated; tag service with owner scoping; PATCH /certificates/:id owner guard | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 2 | api | 4–6 | Tag endpoints and the `?tag=` filter live; contract frozen | `pnpm -F api test` · `pnpm -F api typecheck` |\n| 3 | mobile | 7–8 | Tag chips on the list and owner view; tag filter sheet | `pnpm -F mobile test` |\n| 4 | web | 9–12 | Tag chips, `ListFilters` tag filter, tag editor on the owner view | `pnpm -F web test` · `pnpm -F web lint` |\n\n**4 phases across api, mobile and web · 12 tasks.** Phase 2 freezes the contract; Task 8 carries the mobile offline-cache risk; mobile's commits are staged for you (`commit: manual`).",
+          "inferred": true
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(cert-tags): cert-tags — go-ahead (here)\")"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:build --path docs/features/cert-tags --here)"
+        },
+        {
+          "role": "note",
+          "text": "Variant B — no agent_walk: block in the config. 'Yes' records go-ahead: <name YYYY-MM-DD>, commits chore(ACME-412): cert-tags — go-ahead, and ends on this single-line footer. The same footer ends a 'No' (go-ahead none); its second line appears only when the config has no agent_walk: block."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: planned, 4 phases across api+mobile+web, 12 tasks, go-ahead recorded — next: /builder:resume --path docs/features/cert-tags · or say go\n   Agents build features once agent_walk is set up — /builder:init --update adds it.\n```"
+        }
+      ],
+      "stamp": {
+        "hash": "ee591042dbbb",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "resume-picker",
+      "skill": "resume",
+      "title": "Resume with no --path — the picker over in-flight features",
+      "when": "The user types /builder:resume with nothing after it, with several features in flight.",
+      "source": "skills/resume/SKILL.md §The picker (no `--path`, no text)",
+      "sources": [
+        "skills/resume/REFERENCE.md §Branch and ticket"
+      ],
+      "feature": "cert-history",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:resume"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs --json) — 5 offerable · 2 done"
+        },
+        {
+          "role": "picker",
+          "question": "Which feature do you want to pick up? 5 are in flight — the 4 most recently touched are below; type any other by name under Other (or describe new work).",
+          "header": "Feature",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "cert-tags (Recommended)",
+              "description": "Plan written → Approve the plan, then build"
+            },
+            {
+              "label": "cert-history",
+              "description": "Audit done → Settle open decisions, then plan · on feat/cert-history"
+            },
+            {
+              "label": "customer-portal",
+              "description": "0/3 children shipped → Continue child portal-auth (spec)"
+            },
+            {
+              "label": "bulk-renew",
+              "description": "Spec written → Audit the spec against the code"
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Label = feature, description = lastDone → nextStep, plus 'on <branch>' when it isn't the current branch. Recommended = the unblocked feature closest to done. The 2 shipped features appear only as a count. Text under Other that names no feature goes to /builder:brainstorm verbatim."
+        },
+        {
+          "role": "user",
+          "text": "cert-history"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git switch feat/cert-history) — tree clean"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(docs/features/cert-history/MANIFEST.md) — state: audited"
+        },
+        {
+          "role": "note",
+          "text": "A row on another branch is switched to first when the tree is clean; otherwise resume stops and names the git switch command. Then it continues at Step 1 with that row's path."
+        }
+      ],
+      "stamp": {
+        "hash": "f29b01fde568",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "md-compact-run",
+      "skill": "spec",
+      "title": "cert-history (md, web only) — the same steps, shorter",
+      "when": "A single-app md feature through spec → audit → plan → go-ahead.",
+      "source": "skills/plan/SKILL.md §Size dials",
+      "sources": [
+        "skills/spec/SKILL.md §3. Prove it, commit, hand on",
+        "skills/audit/SKILL.md §🔴 The pass cap",
+        "skills/resume/REFERENCE.md §MANIFEST.md"
+      ],
+      "feature": "cert-history",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:spec --path docs/features/cert-history"
+        },
+        {
+          "role": "note",
+          "text": "Nothing was left open by the brainstorm, so no question at all — spec writes the files straight away. md writes only the sections its work touches, but §Idea, §Apps and §Contract are never skipped."
+        },
+        {
+          "role": "claude",
+          "text": "Written to `docs/features/cert-history/SPEC.md` (with its `MANIFEST.md`), committed as `docs(cert-history): design cert-history`.\n\n**What it does.** A certificate gets a History tab on the web. It lists every change — who changed what, from what to what, and when — newest first, so an owner can see how a certificate got to where it is.\n\n**What it touches.** `web` only — a History tab and route reading the existing `GET /certificates/:id/events`. `api` and `mobile` don't change: the endpoint already returns everything the tab shows (`contract: none`).\n\n**Details assumed at spec** — say if any is wrong\n- 50 events per page, \"Load more\" for the rest.\n- Times show in the viewer's timezone, absolute, with a relative hint.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-history: designed (md, web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-history) → Skill(builder:audit --path docs/features/cert-history)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Agent(audit — pass 1, single agent at size md)"
+        },
+        {
+          "role": "claude",
+          "text": "One pass, web only. The spec mostly held.\n\n**Contract-checking** — §Apps said api is ⬜ not affected; re-derived and confirmed: `GET /certificates/:id/events` already returns `actor`, `field`, `from`, `to`, `at` (`apps/api/src/routes/events.ts:30`), the same shape the tab reads.\n**Design-affecting** — the endpoint returns 403 to non-owners; the tab's permission-denied state is now specified.\n**Stale spec** — the tabs component is `CertificateTabs`, not `DetailTabs`. Fixed in place.\n\n**Open decisions (1)** — whether non-owners see the History tab at all (recommended: hidden).\n\nREADY — contract unchanged; no blocked items."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-history: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume) — decisions gate: 1 OPEN → answered 'Hidden for non-owners' → Skill(builder:plan)"
+        },
+        {
+          "role": "claude",
+          "text": "The plan is written: `docs/features/cert-history/PLAN.md`.\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | web | 1–2 | `useCertificateEvents` hook and the `/certificates/:id/history` route | `pnpm -F web test` · `pnpm -F web lint` |\n| 2 | web | 3–5 | History tab: list, Load more, empty / error / permission-denied states | `pnpm -F web test` · `pnpm -F web lint` |\n\n**2 phases in web · 5 tasks.** No contract to freeze (`contract: none`). Nothing deferred."
+        },
+        {
+          "role": "picker",
+          "question": "Approve the plan for cert-history? One approval covers the whole build.",
+          "header": "Go-ahead",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Yes",
+              "description": "Record the go-ahead and choose how agents build it."
+            },
+            {
+              "label": "No, keep planning",
+              "description": "Leave go-ahead: none."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "picker",
+          "question": "How should agents build \"cert-history\"?  → lands on main\nRecommended: Standard — one app, no schema change, reads an existing endpoint",
+          "header": "Profile",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Standard (Recommended)",
+              "description": "~30 min · ~0.9M tokens (5 similar features) — every task reviewed, the agent walks the [risk] items, full verify."
+            },
+            {
+              "label": "Rush",
+              "description": "~15 min · ~0.4M tokens (7 similar features) — final review and fast gates only; no agent walk — you test it once it lands."
+            },
+            {
+              "label": "Thorough",
+              "description": "~45 min · ~1.5M tokens (3 similar features) — the full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Land on?",
+          "header": "Land on",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "main (Recommended)",
+              "description": "Agents merge the finished feature into main, locally."
+            },
+            {
+              "label": "feat/cert-history",
+              "description": "Land it on the branch you're on now instead."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Standard · main"
+        },
+        {
+          "role": "claude",
+          "text": "fleet started detached (pid 51877) — output in .builder/fleet/fleet.out · /builder:fleet --status\n\n```\n📍 cert-history: go-ahead (standard) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
+        },
+        {
+          "role": "note",
+          "text": "How md differs: no product questions when nothing is open; audit runs ONE agent instead of one per app; the plan dial is 2–4 phases (lg is 4–7) and a single-app feature needs no producer-before-consumer ordering or freeze; the manifest says apps: web, contract: none. The estimates and the Standard recommendation's signals are illustrative."
+        }
+      ],
+      "stamp": {
+        "hash": "fcb608a0ba88",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "xl-program",
+      "skill": "spec",
+      "title": "customer-portal (xl) — PROGRAM.md and walking the children",
+      "when": "A brainstorm sized xl: spec writes a program instead of one spec, and resume picks a child.",
+      "source": "skills/resume/REFERENCE.md §PROGRAM.md",
+      "sources": [
+        "skills/spec/SKILL.md §2. Write the files",
+        "skills/resume/SKILL.md §Programs (`tier: program`)"
+      ],
+      "feature": "customer-portal",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:spec --path docs/features/customer-portal"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Write(docs/features/customer-portal/PROGRAM.md) · Write(docs/features/customer-portal/MANIFEST.md) — tier: program"
+        },
+        {
+          "role": "claude",
+          "text": "Wrote `docs/features/customer-portal/PROGRAM.md`:\n\n```markdown\n# customer-portal — program\n> tier: program · ACME-430\n\n## Overview\nA portal where a customer signs in and sees the certificates issued to them, and downloads them.\nOwners keep issuing in the existing web app; the portal is read-only for customers.\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n| 1 | portal-auth | md | api+web | A customer can sign in to the portal with an emailed link | — |\n| 2 | portal-cert-list | md | api+web | A signed-in customer sees every certificate issued to them | 1 |\n| 3 | portal-downloads | md | api+web | A customer downloads any of their certificates as a PDF | 2 |\n\n## Shared decisions\n| # | Decision | Ruling | Who / date |\n|---|---|---|---|\n| D1 | Customer identity | A Customer is matched to certificates by verified email; no customer passwords. Rejected: accounts with passwords — a second credential store to secure | Luke 2026-10-23 |\n| D2 | Portal surface | The portal is routes under /portal in apps/web; mobile is out. Rejected: a separate app — a second deploy for three screens | Luke 2026-10-23 |\n\n## Out of scope\n- Customers editing or disputing a certificate.\n- The portal in the mobile app.\n```",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "~50 lines. Children are cut by value (each One line is something a customer can do once that child ships) and ordered by the contract — portal-auth produces the session the others consume. check-obligations is skipped at xl; spec self-reviews the PROGRAM instead."
+        },
+        {
+          "role": "picker",
+          "question": "Approve the program for customer-portal — three children, built in this order, one PR each?",
+          "header": "Program",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Yes",
+              "description": "Record the program go-ahead; each child then gets its own audit, plan, go-ahead and walk."
+            },
+            {
+              "label": "No",
+              "description": "Leave it unapproved and say what to change — the split, the order or a shared decision."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "spec takes 'the one program go-ahead' before committing; the skill gives no literal wording for it."
+        },
+        {
+          "role": "user",
+          "text": "Yes"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"docs(ACME-430): design customer-portal\")"
+        },
+        {
+          "role": "claude",
+          "text": "Written to `docs/features/customer-portal/PROGRAM.md` (with its program `MANIFEST.md`), committed as `docs(ACME-430): design customer-portal`.\n\n**What it does.** Customers get their own portal: they sign in with a link sent to their email, see every certificate issued to them, and download any of them as a PDF. It ships as three features, one after another, each useful on its own.\n\n**What it touches.** `api` and `web` in every child; `mobile` is out.\n\n**Details assumed at spec** — say if any is wrong\n- The sign-in link expires after 15 minutes and works once.\n\nNo OPEN decisions.\n\nAnything wrong? Just say what — it's revised before anything is built."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 customer-portal: designed (xl, api+web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/customer-portal\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/customer-portal\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/customer-portal --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "The footer template is spec's own, filled with xl. Whether a program (which has no state: of its own) gets the numbered form is not spelled out; rendered here as spec writes it."
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/customer-portal) — tier: program"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(MANIFEST.md) — child: portal-auth — spec · child: portal-cert-list — spec · child: portal-downloads — spec"
+        },
+        {
+          "role": "picker",
+          "question": "customer-portal — 0/3 children shipped. Which child next?",
+          "header": "Child",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "portal-auth (Recommended)",
+              "description": "spec — no dependencies; produces the customer session the other two consume"
+            },
+            {
+              "label": "portal-cert-list",
+              "description": "spec — waits on portal-auth"
+            },
+            {
+              "label": "portal-downloads",
+              "description": "spec — waits on portal-cert-list"
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Ordered by PROGRAM §Children's Depends on; the recommendation is the next unblocked child — every dependency reads '— shipped'."
+        },
+        {
+          "role": "user",
+          "text": "portal-auth (Recommended)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:brainstorm --path docs/features/portal-auth)"
+        },
+        {
+          "role": "note",
+          "text": "A child at '— spec' with no folder yet starts its own brainstorm, seeded from PROGRAM §Shared decisions — its grill is short and its audit treats those as settled. A child already in flight goes to /builder:resume --path docs/features/<child>. Each child keeps its own decisions gate, go-ahead and walk, and ships one PR, serially by default; the last child's ship flips PROGRAM's header."
+        }
+      ],
+      "stamp": {
+        "hash": "7e8102699d12",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "revise-per-team",
+      "skill": "revise",
+      "title": "Revise after the plan — \"tags should be per-team, not global\"",
+      "when": "The user turns the plan's go-ahead down with a changed requirement; plan routes it to /builder:revise.",
+      "source": "skills/revise/SKILL.md §Step 2 — Route it (the whole skill is this table)",
+      "sources": [
+        "skills/revise/SKILL.md §Step 1 — Is the change settled, and is it true?",
+        "skills/revise/SKILL.md §Hand off",
+        "skills/revise/SKILL.md §🔴 The contract row — the only way a freeze re-opens"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "At the go-ahead the user picked No. go-ahead stays none, state stays planned, and a changed requirement routes to /builder:revise."
+        },
+        {
+          "role": "user",
+          "text": "/builder:revise --path docs/features/cert-tags tags should be per-team, not global"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(MANIFEST.md) — state: planned · go-ahead: none · contract: open"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Grep(apps/api/prisma/schema.prisma: model Team, User.teamId) · Grep(apps/api/src/plugins/auth.ts: request.user.teamId)"
+        },
+        {
+          "role": "claude",
+          "text": "Route taken: **before the go-ahead** — nothing is built yet, so the docs change directly. It's a settled ruling, so no conversation first. The premise holds in code: `Team` exists and every user has a `teamId` (`apps/api/prisma/schema.prisma:41`), and the auth plugin already puts it on the request (`apps/api/src/plugins/auth.ts:19`).\n\n**What changed**\n\n*Spec* — `docs/features/cert-tags/SPEC.md`\n- §Decisions: **D4** \"Tags belong to their owner; names unique per owner\" superseded in place, 2026-10-23 → **D11**: a Tag belongs to a Team (`Tag.teamId`, required); every member of the team can see, apply and filter by the team's tags; names are unique per team, case-insensitively. Rejected: global tags — one owner's labels showed up in every team's picker.\n- §Contract: `GET /tags` returns the caller's team's tags; `POST /tags` creates in the caller's team; `409 TAG_EXISTS` is per team.\n- §Schema & API changes: SC1 gains `Tag.teamId` (FK Team, NOT NULL) and the unique index moves to `(teamId, lower(name))`. Data plan: none — the table is new.\n\n*api* — `PLAN.md` Task 1 (migration and model) and Task 4 (tag endpoints) amended, with their tests.\n*web* — `PLAN.md` Task 11 (tag editor): the picker lists the team's tags.\n*mobile* — nothing: it only filters, and the filter shape is unchanged.\n\n**What it invalidated** — nothing built. The audit already ran and a contract changed, so I re-checked that one contract against the code: the owner guard from T4 becomes a team guard on the tag endpoints; certificates still check `owner_id`. The released mobile build reads nothing new — additive, safe. The phase table's shape didn't change, so the go-ahead you haven't given yet is still the one to give."
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"docs(ACME-412): cert-tags — tags are per team (D11)\")"
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: revised (before the go-ahead) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "note",
+          "text": "revise's own template is the one-line '📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder> · or say go'; REFERENCE §The two-way footer turns any footer about a feature at planned that would end in '· or say go' into the numbered choice. 1 goes back through /builder:plan's go-ahead."
+        },
+        {
+          "role": "note",
+          "text": "Had the go-ahead already been given and the api phase closed, this would be the contract row instead: pause the running fleet (fleet.mjs --pause cert-tags), set contract: open (reopened 2026-10-23), name every consumer task to re-check, add new task blocks for built code, re-take the go-ahead if the phase table moved — and never re-audit."
+        }
+      ],
+      "stamp": {
+        "hash": "5d9c421f1ec8",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "go-and-numbered-replies",
+      "skill": "resume",
+      "title": "Replying \"go\" or \"2\" to a numbered footer — and when go doesn't continue",
+      "when": "Any time a builder message ends in a 📍 footer and the user's next message is a short reply.",
+      "source": "skills/resume/REFERENCE.md §Continuing on \"go\"",
+      "sources": [
+        "skills/resume/REFERENCE.md §The two-way footer"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+        },
+        {
+          "role": "note",
+          "text": "A bare affirmative — go, yes, proceed, continue, ok, next, do it — is option 1. It runs the footer's command itself through the Skill tool, with the run's flags; the user never pastes it. That step's own gates (decisions, go-ahead, a manual-commit app, a migration) still ask."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-history: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+        },
+        {
+          "role": "user",
+          "text": "2"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:agent --path docs/features/cert-history)"
+        },
+        {
+          "role": "note",
+          "text": "2 or 'agent' runs /builder:agent --path <folder> in that turn — its own questions (build profile, Land on?) and its one confirmation still ask. 3 or 'here' runs /builder:resume --path <folder> --here."
+        },
+        {
+          "role": "claude",
+          "text": "```\n📍 cert-tags: built (4 phases, 12 tasks) — next:\n   1. resume — continue here, step by step: 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```",
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "claude",
+          "text": "That one's yours — a sign-off an agent starts is void. Walk it, then type `/builder:signoff --path docs/features/cert-tags <what you saw, in your words>`.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Does not continue: the walk/sign-off. Same for a human's step ('say go once it's done'), a placeholder only the human can fill, 🛑 held, ⛔ parked, and more than one candidate (one AskUserQuestion instead). 'here' is gone from this footer because the build has started."
+        },
+        {
+          "role": "user",
+          "text": "go, but make the tag chips blue"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:revise --path docs/features/cert-tags make the tag chips blue)"
+        },
+        {
+          "role": "note",
+          "text": "Anything more than an affirmative is a change, taken through /builder:revise (or brainstorm before the audit). And a 'go' after the conversation moved on — no footer in the previous message — asks which feature, like the picker."
+        }
+      ],
+      "stamp": {
+        "hash": "4405a0d7595d",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    }
+  ]
+}
