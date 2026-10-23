@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStream, deriveSteps, sessionTotals, parseTap, runTotals, median, summarize, renderReport, renderStatusTable } from '../bench-core.mjs'
+import { parseStream, deriveSteps, sessionTotals, parseTap, runTotals, median, summarize, renderReport, renderStatusTable, callIntervals, splitOf, attachSplits } from '../bench-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STREAM = readFileSync(join(HERE, 'fixtures/bench/session.jsonl'), 'utf8')
@@ -219,7 +219,7 @@ test('renderReport has the summary table, the steps table and a section per conf
 test('renderReport flags an in-chat row and prints medians with n', () => {
   const md = renderReport({ ...DATA, runs: [run('builder-rush', 1, { path: 'in-chat' }), run('builder-rush', 2, { path: 'in-chat' })] })
   assert.match(md, /\| builder-rush ⚠ \| done \|/)
-  assert.match(md, /median of 2 reps/)
+  assert.match(md, /median \(min–max\) of 2 reps/)
   assert.match(md, /⚠ builder-rush: built in chat/)
 })
 
@@ -236,4 +236,91 @@ test('renderReport keeps a multi-line step name inside its table cell and prints
   assert.match(md, /\| Config \| line one line two \|/)
   assert.match(md, /^plugins: stub 1\.0$/m)
   assert.match(md, /install 5s/)
+})
+
+// ---- D1: spread · D2: the time split ----------------------------------------------------------
+
+const ev = (sec, blocks, parent = null) => JSON.stringify({ type: 'assistant', parent_tool_use_id: parent, timestamp: new Date(T0 + sec * 1000).toISOString(), message: { content: blocks } })
+const use = (id, name, input = {}) => ({ type: 'tool_use', id, name, input })
+const res = (id) => ({ type: 'tool_result', tool_use_id: id })
+const streamOf = (...lines) => parseStream(lines.join('\n'))
+
+test('callIntervals: each tool call runs from its tool_use to its tool_result; Agent/Task are agents', () => {
+  const p = streamOf(ev(0, [use('a', 'Agent')]), ev(1, [use('b', 'Bash')], 'a'), ev(3, [res('b')], 'a'), ev(10, [res('a')]), ev(12, [use('c', 'Task'), use('d', 'Read')]), ev(13, [res('d')]), ev(20, [res('c')]))
+  assert.deepEqual(callIntervals(p), [
+    { kind: 'agents', start: T0, end: T0 + 10000 },
+    { kind: 'tools', start: T0 + 1000, end: T0 + 3000 },
+    { kind: 'agents', start: T0 + 12000, end: T0 + 20000 },
+    { kind: 'tools', start: T0 + 12000, end: T0 + 13000 },
+  ])
+})
+
+test('callIntervals: a call with no result runs to the end of the stream', () => {
+  const p = streamOf(ev(0, [use('a', 'Bash')]), ev(30, [{ type: 'text', text: 'x' }]))
+  assert.deepEqual(callIntervals(p), [{ kind: 'tools', start: T0, end: T0 + 30000 }])
+})
+
+test('splitOf: orchestrator is the span minus agents and tools; parallel calls are merged, agents win on overlap', () => {
+  const iv = [
+    { kind: 'agents', start: 10, end: 40 },
+    { kind: 'agents', start: 20, end: 50 }, // parallel agents: 10–50 once
+    { kind: 'tools', start: 30, end: 60 }, // 30–50 is agents' — tools get 50–60
+    { kind: 'tools', start: 70, end: 80 },
+    { kind: 'tools', start: 75, end: 85 }, // merged: 70–85
+  ]
+  assert.deepEqual(splitOf(iv, 0, 100), { ms: 100, orchestrator: 35, agents: 40, tools: 25 })
+  // clipped to the window
+  assert.deepEqual(splitOf(iv, 45, 75), { ms: 30, orchestrator: 10, agents: 5, tools: 15 })
+  // never negative, even with calls past the window
+  assert.deepEqual(splitOf([{ kind: 'agents', start: -10, end: 200 }], 0, 100), { ms: 100, orchestrator: 0, agents: 100, tools: 0 })
+  assert.deepEqual(splitOf([], 5, 5), { ms: 0, orchestrator: 0, agents: 0, tools: 0 })
+})
+
+test('attachSplits puts a split on the session and each of its steps', () => {
+  const p = parseStream(STREAM)
+  const s = attachSplits({ steps: deriveSteps(p, { prompt: 'x' }) }, p)
+  // span 0–300 s; Skill 10–11 s; Read (no result) 60–300 s; Agent (no result) 180–300 s; Bash inside the agent
+  assert.deepEqual(s.split, { ms: 300000, orchestrator: 59000, agents: 120000, tools: 121000 })
+  assert.deepEqual(s.steps.map((x) => x.split), [
+    { ms: 10000, orchestrator: 10000, agents: 0, tools: 0 },
+    { ms: 110000, orchestrator: 49000, agents: 0, tools: 61000 },
+    { ms: 180000, orchestrator: 0, agents: 120000, tools: 60000 },
+  ])
+})
+
+test('runTotals sums the sessions\' splits when they have them', () => {
+  const sp = (o, a, t) => ({ ms: o + a + t, orchestrator: o, agents: a, tools: t })
+  const t = runTotals([{ totals: { ms: 1 }, split: sp(1, 2, 3) }, { totals: { ms: 1 }, split: sp(10, 20, 30) }, { totals: { ms: 1 } }])
+  assert.deepEqual(t.split, sp(11, 22, 33))
+  assert.equal('split' in runTotals([{ totals: { ms: 1 } }]), false)
+})
+
+test('D1: with reps the summary and step tables show median (min–max) and say the rep count', () => {
+  const a = run('builder', 1, { ms: 100000 })
+  const b = run('builder', 2, { ms: 300000, totals: { ms: 300, turns: 30, tokens: { input: 1, output: 2, cacheRead: 3 }, costUsd: 3 }, sessions: [{ name: 'a', steps: [{ name: 'builder:audit', ms: 40 }, { name: 'builder:build', ms: 120000 }] }] })
+  const c = run('builder', 3, { ms: 200000 })
+  const md = renderReport({ ...DATA, runs: [a, b, c] })
+  assert.match(md, /\| builder \| done \| 3m \(1m–5m\) \| 10 \(10–30\) \|/)
+  assert.match(md, /\$1\.00 \(\$1\.00–\$3\.00\)/)
+  assert.match(md, /median \(min–max\) of 3 reps/)
+  // a step the same in every rep shows only the median
+  assert.match(md, /\| builder \| 0s \| 0s \(0s–2m\) \|/)
+  // one rep: no brackets
+  assert.match(renderReport({ ...DATA, runs: [a] }), /\| builder \| done \| 1m \| 10 \|/)
+})
+
+test('D1: configs with different rep counts each say theirs', () => {
+  const md = renderReport({ ...DATA, runs: [run('builder', 1), run('builder', 2), run('gsd', 1)] })
+  assert.match(md, /median \(min–max\) over reps: builder 2 · gsd 1/)
+})
+
+test('D2: the summary has an Orchestrator · Agents · Tools column and each session heading its split line', () => {
+  const split = { ms: 600000, orchestrator: 360000, agents: 180000, tools: 60000 }
+  const r = run('builder', 1, { totals: { ms: 600000, turns: 1, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, split }, sessions: [{ name: 'fleet 01', prompt: 'p', split, totals: { ms: 600000, turns: 1 }, steps: [] }] })
+  const md = renderReport({ ...DATA, runs: [r, run('gsd', 1)] })
+  assert.match(md, /\| Longest step \| Orchestrator · Agents · Tools \|/)
+  assert.match(md, /\| 6\.0m 60% · 3\.0m 30% · 1\.0m 10% \|/)
+  assert.match(md, /^### fleet 01 — 10m, 1 turns\n\nsplit: orchestrator 6\.0m \(60%\) · agents 3\.0m \(30%\) · tools 1\.0m \(10%\)$/m)
+  // a run with no split shows —
+  assert.match(md, /\| gsd \| done \|.*\| — \|$/m)
 })

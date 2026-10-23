@@ -86,7 +86,13 @@
                   "ms": 2501,
                   "after": "Bash cd /Users/lukekeith/www/builder; ls skills/brainstorm scripts; grep -n '^## ' sk"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 55596,
+                "orchestrator": 54452,
+                "agents": 0,
+                "tools": 1144
+              }
             },
             {
               "name": "builder:spec",
@@ -132,10 +138,22 @@
                   "ms": 2789,
                   "after": "Bash cd /Users/lukekeith/www/builder; sed -n 252,560p skills/resume/REFERENCE.md"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 89713,
+                "orchestrator": 89059,
+                "agents": 0,
+                "tools": 654
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 145309,
+            "orchestrator": 143511,
+            "agents": 0,
+            "tools": 1798
+          }
         },
         {
           "name": "fleet 01",
@@ -196,7 +214,13 @@
                   "ms": 630,
                   "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 9294,
+                "orchestrator": 8337,
+                "agents": 0,
+                "tools": 957
+              }
             },
             {
               "name": "builder:audit",
@@ -242,7 +266,13 @@
                   "ms": 3030,
                   "after": "Skill builder:audit"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 46130,
+                "orchestrator": 44354,
+                "agents": 0,
+                "tools": 1776
+              }
             },
             {
               "name": "builder:plan",
@@ -288,7 +318,13 @@
                   "ms": 4304,
                   "after": "Bash T=$(mktemp -d) && cp -R src test package.json \"$T\"/ && cd \"$T\" && python3 - \"$OL"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 98250,
+                "orchestrator": 93338,
+                "agents": 0,
+                "tools": 4912
+              }
             },
             {
               "name": "builder:build",
@@ -384,10 +420,22 @@
                   "ms": 10381,
                   "after": "Bash sed -n 1,30p test/tags.test.mjs"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 322614,
+                "orchestrator": 162018,
+                "agents": 146953,
+                "tools": 13643
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 476288,
+            "orchestrator": 308047,
+            "agents": 146953,
+            "tools": 21288
+          }
         },
         {
           "name": "fleet 02",
@@ -452,7 +500,13 @@
                   "ms": 2666,
                   "after": "Bash git merge-base --is-ancestor main HEAD && echo \"main already in\"; export NOTES_F"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 27198,
+                "orchestrator": 25604,
+                "agents": 0,
+                "tools": 1594
+              }
             },
             {
               "name": "builder:agent-walk",
@@ -504,7 +558,13 @@
                   "ms": 10981,
                   "after": "Bash cat > .builder/note-tags/agent-walk/round-1/report.md <<'EOF'"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 106438,
+                "orchestrator": 53187,
+                "agents": 52673,
+                "tools": 578
+              }
             },
             {
               "name": "builder:verify",
@@ -548,7 +608,13 @@
                   "ms": 3823,
                   "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 47462,
+                "orchestrator": 46036,
+                "agents": 0,
+                "tools": 1426
+              }
             },
             {
               "name": "builder:ship",
@@ -589,10 +655,22 @@
                   "ms": 485,
                   "after": "Bash ls docs/features/_archive/note-tags 2>&1; grep -l 'child: note-tags' docs/featur"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 27025,
+                "orchestrator": 26565,
+                "agents": 0,
+                "tools": 460
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 208123,
+            "orchestrator": 151392,
+            "agents": 52673,
+            "tools": 4058
+          }
         }
       ],
       "totals": {
@@ -603,7 +681,13 @@
           "output": 52985,
           "cacheRead": 5234102
         },
-        "costUsd": 5.2399316
+        "costUsd": 5.2399316,
+        "split": {
+          "ms": 829720,
+          "orchestrator": 602950,
+          "agents": 199626,
+          "tools": 27144
+        }
       },
       "score": {
         "accept": {
@@ -716,7 +800,13 @@
                   "ms": 1160,
                   "after": "Bash sed -n 260,300p /Users/lukekeith/www/builder/skills/brainstorm/CONVERSATION.md; "
                 }
-              ]
+              ],
+              "split": {
+                "ms": 54013,
+                "orchestrator": 53074,
+                "agents": 0,
+                "tools": 939
+              }
             },
             {
               "name": "builder:spec",
@@ -763,10 +853,22 @@
                   "ms": 2437,
                   "after": "Bash cat > docs/features/note-tags/MANIFEST.md <<EOF"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 82939,
+                "orchestrator": 82392,
+                "agents": 0,
+                "tools": 547
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 136952,
+            "orchestrator": 135466,
+            "agents": 0,
+            "tools": 1486
+          }
         },
         {
           "name": "fleet 01",
@@ -827,7 +929,13 @@
                   "ms": 447,
                   "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 7600,
+                "orchestrator": 6927,
+                "agents": 0,
+                "tools": 673
+              }
             },
             {
               "name": "builder:audit",
@@ -870,7 +978,13 @@
                   "ms": 2294,
                   "after": "Bash cd docs/features/note-tags && python3 - <<'EOF'"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 35574,
+                "orchestrator": 34252,
+                "agents": 0,
+                "tools": 1322
+              }
             },
             {
               "name": "builder:plan",
@@ -915,7 +1029,13 @@
                   "ms": 2871,
                   "after": "Skill builder:plan"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 78797,
+                "orchestrator": 78163,
+                "agents": 0,
+                "tools": 634
+              }
             },
             {
               "name": "builder:build",
@@ -1032,10 +1152,22 @@
                   "ms": 13196,
                   "after": "Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); /Users/lukekeith"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 398759,
+                "orchestrator": 175807,
+                "agents": 214543,
+                "tools": 8409
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 520730,
+            "orchestrator": 295149,
+            "agents": 214543,
+            "tools": 11038
+          }
         },
         {
           "name": "fleet 02",
@@ -1101,7 +1233,13 @@
                   "ms": 2393,
                   "after": "Bash cd docs/features/note-tags && sed -i '' -e 's/^state: building/state: built/' -e"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 28476,
+                "orchestrator": 26240,
+                "agents": 0,
+                "tools": 2236
+              }
             },
             {
               "name": "builder:agent-walk",
@@ -1152,7 +1290,13 @@
                   "ms": 4754,
                   "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 83008,
+                "orchestrator": 34066,
+                "agents": 48316,
+                "tools": 626
+              }
             },
             {
               "name": "builder:verify",
@@ -1196,7 +1340,13 @@
                   "ms": 2969,
                   "after": "Bash B=/Users/lukekeith/www/builder/scripts"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 34195,
+                "orchestrator": 32132,
+                "agents": 0,
+                "tools": 2063
+              }
             },
             {
               "name": "builder:ship",
@@ -1238,10 +1388,22 @@
                   "ms": 2352,
                   "after": "Bash ls docs/features/_archive/note-tags 2>&1; grep -l 'child: note-tags' docs/featur"
                 }
-              ]
+              ],
+              "split": {
+                "ms": 24011,
+                "orchestrator": 23522,
+                "agents": 0,
+                "tools": 489
+              }
             }
           ],
-          "tail": []
+          "tail": [],
+          "split": {
+            "ms": 169690,
+            "orchestrator": 115960,
+            "agents": 48316,
+            "tools": 5414
+          }
         }
       ],
       "totals": {
@@ -1252,7 +1414,13 @@
           "output": 51706,
           "cacheRead": 5797885
         },
-        "costUsd": 5.338236170000001
+        "costUsd": 5.338236170000001,
+        "split": {
+          "ms": 827372,
+          "orchestrator": 546575,
+          "agents": 262859,
+          "tools": 17938
+        }
       },
       "score": {
         "accept": {

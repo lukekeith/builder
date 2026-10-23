@@ -134,6 +134,76 @@ export function sessionTotals(parsed) {
   return { ms: wall, turns: events.filter((e) => e.type === 'assistant' && e.top).length, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, ended: 'cut' }
 }
 
+// ---- the time split: orchestrator / agents / tools ------------------------------------------------
+
+/**
+ * Every tool call in the stream as an interval: from its tool_use event to its tool_result's (a call
+ * with no result ran to the end of the stream). `Agent`/`Task` calls are `agents`, every other tool `tools`.
+ */
+export function callIntervals(parsed) {
+  const end = endOf(parsed)
+  const calls = []
+  const byId = new Map()
+  for (const e of parsed.events) {
+    if (!Number.isFinite(e.t)) continue
+    for (const b of e.blocks) {
+      if (b.kind === 'tool_use' && b.id && !byId.has(b.id)) {
+        const c = { kind: AGENT_TOOLS.has(b.name) ? 'agents' : 'tools', start: e.t, end: NaN }
+        byId.set(b.id, c)
+        calls.push(c)
+      } else if (b.kind === 'tool_result' && byId.has(b.id) && !Number.isFinite(byId.get(b.id).end)) byId.get(b.id).end = Math.max(e.t, byId.get(b.id).start)
+    }
+  }
+  for (const c of calls) if (!Number.isFinite(c.end)) c.end = Math.max(end, c.start)
+  return calls
+}
+
+/** The length of the union of intervals, clipped to [from, to]. */
+function unionMs(intervals, from, to) {
+  const a = intervals.map((i) => [Math.max(i.start, from), Math.min(i.end, to)]).filter(([s, e]) => e > s).sort((x, y) => x[0] - y[0])
+  let total = 0
+  let cs = -Infinity
+  let ce = -Infinity
+  for (const [s, e] of a) {
+    if (s > ce) {
+      if (ce > cs) total += ce - cs
+      cs = s
+      ce = e
+    } else ce = Math.max(ce, e)
+  }
+  if (ce > cs) total += ce - cs
+  return total
+}
+
+/**
+ * The window [from, to] split three ways: agents (inside an Agent/Task call), tools (inside any other
+ * call, and not inside an agent's), orchestrator (the rest). Parallel calls count once.
+ */
+export function splitOf(intervals, from, to) {
+  const ms = Math.max(0, to - from)
+  if (!ms) return { ms: 0, orchestrator: 0, agents: 0, tools: 0 }
+  const agents = unionMs(intervals.filter((i) => i.kind === 'agents'), from, to)
+  const busy = unionMs(intervals, from, to)
+  return { ms, orchestrator: Math.max(0, ms - busy), agents, tools: busy - agents }
+}
+
+/** Puts `split` on a session record and on each of its steps (by their start/end), from its parsed stream. */
+export function attachSplits(session, parsed) {
+  const iv = callIntervals(parsed)
+  const ts = parsed.events.map((e) => e.t).filter(Number.isFinite)
+  if (!ts.length) return session
+  session.split = splitOf(iv, Math.min(...ts), endOf(parsed))
+  for (const st of session.steps ?? []) if (Number.isFinite(st.start) && Number.isFinite(st.end)) st.split = splitOf(iv, st.start, st.end)
+  return session
+}
+
+/** Splits added up. */
+export function addSplits(splits) {
+  const t = { ms: 0, orchestrator: 0, agents: 0, tools: 0 }
+  for (const s of splits) for (const k of Object.keys(t)) t[k] += s?.[k] ?? 0
+  return t
+}
+
 export { duration, formatTokens }
 
 /** `# pass N` / `# fail N` from node --test's TAP reporter. */
@@ -155,6 +225,8 @@ export function runTotals(sessions) {
     t.tokens.cacheRead += x.tokens?.cacheRead ?? 0
     t.costUsd += x.costUsd ?? 0
   }
+  const splits = sessions.map((s) => s.split).filter(Boolean)
+  if (splits.length) t.split = addSplits(splits)
   return t
 }
 
@@ -175,6 +247,12 @@ export function stepTimes(run) {
   return out
 }
 
+/** [min, max] of the finite values, or null when there are fewer than two. */
+export function range(nums) {
+  const a = nums.filter(Number.isFinite)
+  return a.length > 1 ? [Math.min(...a), Math.max(...a)] : null
+}
+
 /** One row per config: medians over its reps. Status is a not-done rep's status (`done` when every rep is done). */
 export function summarize(runs) {
   const byConfig = new Map()
@@ -188,7 +266,9 @@ export function summarize(runs) {
     const steps = Object.fromEntries(
       stepNames.map((n) => [n, median(reps.filter((r) => n in timesOf.get(r)).map((r) => timesOf.get(r)[n]))]),
     )
+    const stepRange = Object.fromEntries(stepNames.map((n) => [n, range(reps.filter((r) => n in timesOf.get(r)).map((r) => timesOf.get(r)[n]))]))
     const longest = Object.entries(steps).sort((a, b) => b[1] - a[1])[0]
+    const splits = reps.map((r) => r.totals?.split).filter(Boolean)
     const scored = (k) => {
       const have = reps.filter((r) => r.score?.[k])
       return have.length ? { passed: median(have.map((r) => r.score[k].passed)), total: median(have.map((r) => r.score[k].total)) } : null
@@ -205,6 +285,14 @@ export function summarize(runs) {
       fixture: scored('fixture'),
       longest: longest ? { name: longest[0], ms: longest[1] } : null,
       steps,
+      stepRange,
+      range: {
+        ms: range(reps.map((r) => r.ms)),
+        turns: range(reps.map((r) => r.totals?.turns)),
+        tokens: range(reps.map((r) => (r.totals ? (r.totals.tokens?.input ?? 0) + (r.totals.tokens?.output ?? 0) : NaN))),
+        costUsd: range(reps.map((r) => r.totals?.costUsd)),
+      },
+      split: splits.length ? Object.fromEntries(['ms', 'orchestrator', 'agents', 'tools'].map((k) => [k, median(splits.map((x) => x[k]))])) : null,
       flagged: [reps.some((r) => r.path === 'in-chat') ? IN_CHAT_FLAG : null, reps.some(overlapped) ? OVERLAP_FLAG : null].filter(Boolean).join(' · ') || null,
     })
   }
@@ -217,16 +305,38 @@ const usd = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : '—')
 const dur = (n) => (Number.isFinite(n) ? duration(n) : '—')
 const score = (s) => (s ? `${Math.round(s.passed)}/${Math.round(s.total)}` : '—')
 const cell = (s) => String(s ?? '—').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|')
+/** `median (min–max)`, or just the median when the reps agree (as formatted) or there is one. */
+const spread = (med, rg, f) => {
+  const m = f(med)
+  if (!rg) return m
+  const [lo, hi] = [f(rg[0]), f(rg[1])]
+  return lo === hi ? m : `${m} (${lo}–${hi})`
+}
+const minutes = (n) => `${(n / 60000).toFixed(1)}m`
+const pct = (n, of) => (of > 0 ? `${Math.round((n / of) * 100)}%` : '—')
+/** `6.0m 60% · 3.0m 30% · 1.0m 10%` — orchestrator · agents · tools, each with its share of the span. */
+export const splitCell = (sp) => {
+  if (!sp) return '—'
+  const of = sp.orchestrator + sp.agents + sp.tools
+  return ['orchestrator', 'agents', 'tools'].map((k) => `${minutes(sp[k])} ${pct(sp[k], of)}`).join(' · ')
+}
+const splitLine = (sp) => `split: ${['orchestrator', 'agents', 'tools'].map((k) => `${k} ${minutes(sp[k])} (${pct(sp[k], sp.orchestrator + sp.agents + sp.tools)})`).join(' · ')}`
+const int = (n) => (Number.isFinite(n) ? String(Math.round(n)) : '—')
+const tok = (n) => (Number.isFinite(n) ? formatTokens(n) : '—')
 const calls = (tc) => Object.entries(tc ?? {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · ')
 
 export function renderSummary(data) {
   const rows = summarize(data.runs ?? [])
   const reps = Math.max(1, ...rows.map((r) => r.n))
-  const lines = ['| Config | Status | Wall | Turns | Tokens (in+out) | Cost | Accept | Fixture tests | Longest step |', '|---|---|---|---|---|---|---|---|---|']
+  const lines = ['| Config | Status | Wall | Turns | Tokens (in+out) | Cost | Accept | Fixture tests | Longest step | Orchestrator · Agents · Tools |', '|---|---|---|---|---|---|---|---|---|---|']
   for (const r of rows) {
-    lines.push(`| ${r.config}${r.flagged ? ' ⚠' : ''} | ${cell(r.status)} | ${dur(r.ms)} | ${Number.isFinite(r.turns) ? Math.round(r.turns) : '—'} | ${Number.isFinite(r.tokens) ? formatTokens(r.tokens) : '—'} | ${usd(r.costUsd)} | ${score(r.accept)} | ${score(r.fixture)} | ${r.longest ? `${r.longest.name} ${dur(r.longest.ms)}` : '—'} |`)
+    const g = r.range ?? {}
+    lines.push(`| ${r.config}${r.flagged ? ' ⚠' : ''} | ${cell(r.status)} | ${spread(r.ms, g.ms, dur)} | ${spread(r.turns, g.turns, int)} | ${spread(r.tokens, g.tokens, tok)} | ${spread(r.costUsd, g.costUsd, usd)} | ${score(r.accept)} | ${score(r.fixture)} | ${r.longest ? `${r.longest.name} ${dur(r.longest.ms)}` : '—'} | ${splitCell(r.split)} |`)
   }
-  if (reps > 1) lines.push('', `median of ${reps} reps`)
+  if (reps > 1) {
+    const ns = [...new Set(rows.map((r) => r.n))]
+    lines.push('', ns.length === 1 ? `median (min–max) of ${reps} reps` : `median (min–max) over reps: ${rows.map((r) => `${r.config} ${r.n}`).join(' · ')}`)
+  }
   for (const r of rows) if (r.flagged) lines.push('', `⚠ ${r.config}: ${r.flagged}`)
   return { rows, text: lines.join('\n') }
 }
@@ -237,7 +347,7 @@ export function renderReport(data) {
   const out = [`# benchmark ${data.runId} — ${data.feature}`, '', `builder ${v.builder ?? '—'} · superpowers ${v.superpowers ?? '—'} · gsd ${v.gsd ?? '—'} · ${data.model ?? 'default model'} · ${new Date(data.startedAt).toISOString()}`, '', '## Summary', '', summary]
   const stepNames = [...new Set(rows.flatMap((r) => Object.keys(r.steps)))]
   out.push('', '## Time per step', '', `| Config | ${stepNames.map(cell).join(' | ')} |`, `|---|${stepNames.map(() => '---').join('|')}|`)
-  for (const r of rows) out.push(`| ${r.config} | ${stepNames.map((n) => (n in r.steps ? dur(r.steps[n]) : '—')).join(' | ')} |`)
+  for (const r of rows) out.push(`| ${r.config} | ${stepNames.map((n) => (n in r.steps ? spread(r.steps[n], r.stepRange?.[n], dur) : '—')).join(' | ')} |`)
   for (const run of data.runs ?? []) {
     const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
     out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')
@@ -246,7 +356,9 @@ export function renderReport(data) {
     if (overlapped(run)) out.push(`⚠ ${OVERLAP_FLAG}`, '')
     out.push(`wall ${dur(run.ms)}${run.installMs > 0 ? ` (install ${dur(run.installMs)}, not counted)` : ''} · ${run.totals?.turns ?? 0} turns · ${formatTokens((run.totals?.tokens?.input ?? 0) + (run.totals?.tokens?.output ?? 0))} tokens (in+out) · ${usd(run.totals?.costUsd)} · accept ${score(run.score?.accept)} · fixture ${score(run.score?.fixture)}`, ...(run.stoppedEarly ? [`stopped early: ${run.stoppedEarly} — the remaining sessions were not run`] : []), `copy: \`${run.copy ?? '—'}\``, '')
     for (const s of run.sessions ?? []) {
-      out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '', `prompt: \`${firstLine(s.prompt)}\``)
+      out.push(`### ${s.name}${s.lane ? ` (${s.lane})` : ''} — ${dur(s.totals?.ms)}, ${s.totals?.turns ?? 0} turns${s.totals?.ended === 'cut' ? ', cut off' : ''}`, '')
+      if (s.split) out.push(splitLine(s.split), '')
+      out.push(`prompt: \`${firstLine(s.prompt)}\``)
       if (s.plugins?.length) out.push(`plugins: ${s.plugins.join(', ')}`)
       out.push('')
       for (const st of s.steps ?? []) {

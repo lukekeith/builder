@@ -21,7 +21,7 @@ import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { readBrainstormHeader } from './brainstorm-file.mjs'
-import { parseStream, deriveSteps, sessionTotals, runTotals, parseTap, renderReport, renderStatusTable } from './bench-core.mjs'
+import { parseStream, deriveSteps, sessionTotals, runTotals, parseTap, renderReport, renderStatusTable, attachSplits } from './bench-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BUILDER = resolve(HERE, '..')
@@ -163,7 +163,32 @@ export function sessionRecord({ name, lane, prompt, file, copy = null }) {
   const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
   const parsed = parseStream(text)
   const lines = text.split('\n').filter((l) => l.trim() && !l.startsWith('{'))
-  return { name, file, lane, sessionId: parsed.sessionId, model: parsed.model, prompt, totals: sessionTotals(parsed), plugins: parsed.plugins.filter((x) => x.path !== 'builtin').map((x) => `${x.name} ${x.version ?? ''}`.trim()), steps: deriveSteps(parsed, { prompt, root: copy }), tail: lines.slice(-10) }
+  const rec = { name, file, lane, sessionId: parsed.sessionId, model: parsed.model, prompt, totals: sessionTotals(parsed), plugins: parsed.plugins.filter((x) => x.path !== 'builtin').map((x) => `${x.name} ${x.version ?? ''}`.trim()), steps: deriveSteps(parsed, { prompt, root: copy }), tail: lines.slice(-10) }
+  return attachSplits(rec, parsed)
+}
+
+/**
+ * A runs.json from before the time split: each session without one gets it from its raw stream —
+ * at its recorded path, else beside runs.json under <config>/ — and each run's totals are re-added.
+ * A session whose stream is gone keeps none (the report shows —). True when anything was added.
+ */
+export function backfillSplits(data, dir) {
+  let added = false
+  for (const run of data.runs ?? []) {
+    let touched = false
+    for (const s of run.sessions ?? []) {
+      if (s.split || !s.file) continue
+      const file = [s.file, join(dir, run.config, basename(s.file)), join(dir, basename(dirname(s.file)), basename(s.file))].find((f) => existsSync(f))
+      if (!file) continue
+      attachSplits(s, parseStream(readFileSync(file, 'utf8')))
+      if (s.split) touched = added = true
+    }
+    if (touched && run.totals) {
+      const { split } = runTotals(run.sessions)
+      if (split) run.totals.split = split
+    }
+  }
+  return added
 }
 
 // ---- the matrix and the drivers ------------------------------------------------------------------
@@ -371,25 +396,65 @@ export function installGsd(copy) {
   return { ok: true, version: /(\d+\.\d+\.\d+)/.exec(`${r.stdout}\n${r.stderr}`)?.[1] ?? null, reason: null }
 }
 
-/** After the run: main checked out, the fixture's tests and the hidden acceptance tests, both TAP. */
-export function score(copy, feature) {
+/** The fixture a feature runs on: features/<f>/feature.json `{ "fixture": "<name>" }`, absent → `notes`. */
+export function fixtureOf(featureDir) {
+  const file = join(featureDir, 'feature.json')
+  if (!existsSync(file)) return 'notes'
+  let fixture
+  try {
+    fixture = JSON.parse(readFileSync(file, 'utf8')).fixture
+  } catch (e) {
+    throw new Error(`${file} is not valid JSON: ${e.message}`)
+  }
+  if (fixture == null) return 'notes'
+  if (typeof fixture !== 'string' || !fixture || fixture !== basename(fixture) || fixture.startsWith('.')) throw new Error(`${file}: fixture must be a plain directory name under bench/fixtures/`)
+  return fixture
+}
+
+/** Every *.test.mjs in a fixture (its own suites), as paths relative to it. */
+export function fixtureTests(fixture, rel = '') {
+  const out = []
+  for (const d of readdirSync(join(fixture, rel), { withFileTypes: true })) {
+    if (d.name === 'node_modules' || d.name === '.git' || d.name.startsWith('.')) continue
+    const p = rel ? join(rel, d.name) : d.name
+    if (d.isDirectory()) out.push(...fixtureTests(fixture, p))
+    else if (d.name.endsWith('.test.mjs')) out.push(p)
+  }
+  return out.sort()
+}
+
+/**
+ * After the run: main checked out, the fixture's own tests (the pristine copies) and the hidden
+ * acceptance tests (at <copy>/test/accept.test.mjs), both TAP. SLOW_TESTS_MS=0: a fixture's
+ * deliberate per-file delay is for the pipeline's gates, not for scoring.
+ */
+export function score(copy, feature, fixture) {
   try {
     git(copy, 'checkout', '-q', 'main')
   } catch {}
-  const env = { ...process.env }
+  const env = { ...process.env, SLOW_TESTS_MS: '0' }
   delete env.NODE_TEST_CONTEXT // set when bench itself runs under `node --test`; it makes a nested run report as a child instead of printing TAP
-  const tap = (file) => {
-    const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', file], { cwd: copy, encoding: 'utf8', env, timeout: 5 * 60 * 1000 })
+  const tap = (files) => {
+    const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...files], { cwd: copy, encoding: 'utf8', env, timeout: 5 * 60 * 1000 })
     return parseTap(`${r.stdout}\n${r.stderr}`)
   }
-  // the agent may have edited test/cli.test.mjs: score the pristine one
-  cpSync(join(FIXTURE, 'test', 'cli.test.mjs'), join(copy, 'test', '.bench-fixture.test.mjs'))
-  const fixture = tap(join('test', '.bench-fixture.test.mjs'))
-  rmSync(join(copy, 'test', '.bench-fixture.test.mjs'), { force: true })
-  cpSync(join(FEATURES, feature, 'accept.test.mjs'), join(copy, 'test', 'accept.test.mjs'))
-  const accept = tap(join('test', 'accept.test.mjs'))
-  rmSync(join(copy, 'test', 'accept.test.mjs'), { force: true })
-  return { accept, fixture }
+  // the agent may have edited the fixture's tests: score the pristine ones, beside the originals so their relative imports resolve
+  const pristine = fixtureTests(fixture).map((f) => {
+    const dest = join(dirname(f), `.bench-fixture-${basename(f)}`)
+    mkdirSync(join(copy, dirname(f)), { recursive: true })
+    cpSync(join(fixture, f), join(copy, dest))
+    return dest
+  })
+  const fixtureScore = tap(pristine)
+  for (const f of pristine) rmSync(join(copy, f), { force: true })
+  const testDir = join(copy, 'test')
+  const madeTestDir = !existsSync(testDir)
+  mkdirSync(testDir, { recursive: true })
+  cpSync(join(FEATURES, feature, 'accept.test.mjs'), join(testDir, 'accept.test.mjs'))
+  const accept = tap([join('test', 'accept.test.mjs')])
+  if (madeTestDir) rmSync(testDir, { recursive: true, force: true })
+  else rmSync(join(testDir, 'accept.test.mjs'), { force: true })
+  return { accept, fixture: fixtureScore }
 }
 
 const writeJson = (p, o) => {
@@ -417,7 +482,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   const outDir = join(outRoot, label)
   mkdirSync(outDir, { recursive: true })
   const flags = flagsFor(m.pipeline, copy)
-  prepareCopy({ fixture: FIXTURE, dest: copy, claudeArgs: [...flags, ...(plan.model ? ['--model', plan.model] : [])].join(' ') })
+  prepareCopy({ fixture: join(FIXTURES, plan.fixture), dest: copy, claudeArgs: [...flags, ...(plan.model ? ['--model', plan.model] : [])].join(' ') })
   if (m.pipeline === 'gsd') writeFileSync(join(copy, 'REQUEST.md'), plan.request + '\n')
   const run = { config: m.config, pipeline: m.pipeline, tests: m.tests, rep, status: 'done', path: 'pipeline', startedAt: Date.now(), endedAt: null, ms: 0, installMs: 0, sessions: [], totals: null, score: null, copy, gitLog: [] }
   const progress = (session) => writeJson(join(outRoot, 'progress.json'), { config: m.config, rep, session, startedAt: Date.now() })
@@ -513,7 +578,7 @@ export async function runConfig(plan, m, rep, data, outRoot) {
     }
   }
   if (!run.status.startsWith('not run')) {
-    run.score = score(copy, plan.feature)
+    run.score = score(copy, plan.feature, join(FIXTURES, plan.fixture))
     try {
       run.gitLog = git(copy, 'log', '--oneline', 'main').split('\n')
     } catch {}
@@ -533,7 +598,7 @@ function versions() {
 export async function runAll(plan) {
   const outRoot = join(RESULTS, plan.id)
   mkdirSync(outRoot, { recursive: true })
-  const data = { runId: plan.id, feature: plan.feature, model: plan.model, startedAt: Date.now(), endedAt: null, versions: versions(), runs: [] }
+  const data = { runId: plan.id, feature: plan.feature, fixture: plan.fixture, model: plan.model, startedAt: Date.now(), endedAt: null, versions: versions(), runs: [] }
   const save = () => {
     writeJson(join(outRoot, 'runs.json'), data)
     writeFileSync(join(outRoot, 'REPORT.md'), renderReport(data))
@@ -565,7 +630,7 @@ const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : null)
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 const RESULTS = resultsDir(ROOT)
 const FEATURES = join(BUILDER, 'bench', 'features')
-const FIXTURE = join(BUILDER, 'bench', 'fixture')
+const FIXTURES = join(BUILDER, 'bench', 'fixtures')
 
 function planRun() {
   const feature = argv[1]
@@ -577,8 +642,15 @@ function planRun() {
   const repeat = Math.max(1, Number(opt('--repeat')) || 1)
   const model = opt('--model')
   const request = readFileSync(join(FEATURES, feature, 'request.md'), 'utf8').trim()
+  let fixture
+  try {
+    fixture = fixtureOf(join(FEATURES, feature))
+  } catch (e) {
+    die(e.message)
+  }
+  if (!existsSync(join(FIXTURES, fixture, '.claude', 'builder.md'))) die(`feature '${feature}' names fixture '${fixture}' — bench/fixtures/ has: ${readdirSync(FIXTURES).join(', ') || 'nothing'}`)
   const configs = MATRIX.filter((m) => !only || only.includes(m.config))
-  return { feature, request, configs, repeat, model, id: process.env.BENCH_RUN_ID ?? runId(feature) }
+  return { feature, fixture, request, configs, repeat, model, id: process.env.BENCH_RUN_ID ?? runId(feature) }
 }
 
 /** The sessions a config would run in a copy, with the flags and the owner prompt each gets. */
@@ -590,8 +662,8 @@ export function sessionsFor(m, copy, request) {
 function dryRun(plan) {
   const dest = join(TMP, plan.id, '_dry')
   const m0 = plan.configs[0]
-  prepareCopy({ fixture: FIXTURE, dest, claudeArgs: flagsFor('builder', dest).join(' ') })
-  console.log(`benchmark ${plan.id} — feature ${plan.feature}, ${plan.configs.length} config(s) × ${plan.repeat} rep(s)${plan.model ? `, model ${plan.model}` : ''}`)
+  prepareCopy({ fixture: join(FIXTURES, plan.fixture), dest, claudeArgs: flagsFor('builder', dest).join(' ') })
+  console.log(`benchmark ${plan.id} — feature ${plan.feature} on fixture ${plan.fixture}, ${plan.configs.length} config(s) × ${plan.repeat} rep(s)${plan.model ? `, model ${plan.model}` : ''}`)
   console.log(`copies under ${join(TMP, plan.id)}; results in ${join(RESULTS, plan.id)}`)
   console.log('')
   for (const m of plan.configs) {
@@ -681,6 +753,7 @@ if (cmd === 'report') {
   if (!id || id !== basename(id) || id.startsWith('.')) die(`run id must be a plain directory name: '${id ?? ''}'`)
   if (!existsSync(join(RESULTS, id, 'runs.json'))) die(`no run '${id ?? ''}' under ${RESULTS}`)
   const data = readRun(id)
+  if (backfillSplits(data, join(RESULTS, id))) writeJson(join(RESULTS, id, 'runs.json'), data)
   writeFileSync(join(RESULTS, id, 'REPORT.md'), renderReport(data))
   console.log(renderStatusTable(data, null))
   console.log(`report: ${join(RESULTS, id, 'REPORT.md')}`)
