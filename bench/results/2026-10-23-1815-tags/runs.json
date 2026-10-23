@@ -1,0 +1,2185 @@
+{
+  "runId": "2026-10-23-1815-tags",
+  "feature": "tags",
+  "fixture": "notes",
+  "model": null,
+  "startedAt": 1792797337036,
+  "endedAt": 1792799627940,
+  "versions": {
+    "builder": "4.13.0",
+    "superpowers": "7.0.0",
+    "gsd": null
+  },
+  "runs": [
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792797337089,
+      "endedAt": 1792797939761,
+      "ms": 602672,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-1/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "bc096212-152e-43e9-8903-f15d5604e2a2",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can carry tags.\n\n- `notes add <text> --tag <t>` stores the note with that tag; `--tag` may be given more than once.\n  A tag is one word, lower-case letters, digits and dashes.\n- `notes list` is unchanged for untagged notes; a tagged note's line ends with its tags as\n  ` #t1 #t2` (sorted, space before each `#`).\n- `notes list --tag <t>` shows only notes carrying that tag, in id order.\n- `notes show <id>` prints the text on the first line and, when the note has tags, `tags: t1, t2`\n  (sorted) on the second.\n- `notes tags` lists every tag in use with its count, one per line as `<tag>  <count>`, sorted by\n  tag. With no tags at all it prints nothing.\n- An invalid tag (anything but lower-case letters, digits and dashes) makes `notes add` fail with exit 1 and a message on stderr.\n- Existing notes files without tags keep working.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 124089,
+            "turns": 16,
+            "tokens": {
+              "input": 24,
+              "output": 13425,
+              "cacheRead": 654374
+            },
+            "costUsd": 0.9389268000000003,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792797340272,
+              "end": 1792797392610,
+              "ms": 52338,
+              "turns": 13,
+              "toolCalls": {
+                "Bash": 5,
+                "Write": 1
+              },
+              "files": [
+                ".builder/note-tags/brainstorm.md"
+              ],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cat /Users/lukekeith/www/builder/skills/brainstorm/CONVERSATION.md; cat /private",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "sed -n 94,134p /Users/lukekeith/www/builder/skills/resume/REFERENCE.md; cat /Use",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 29086,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 6796,
+                  "after": "Bash sed -n 94,134p /Users/lukekeith/www/builder/skills/resume/REFERENCE.md; cat /Use"
+                },
+                {
+                  "ms": 2463,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2114,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2035,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/brainstorm/CONVERSATION.md; cat /private"
+                }
+              ],
+              "split": {
+                "ms": 52338,
+                "orchestrator": 51354,
+                "agents": 0,
+                "tools": 984
+              }
+            },
+            {
+              "name": "builder:spec",
+              "start": 1792797392610,
+              "end": 1792797463035,
+              "ms": 70425,
+              "turns": 12,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 5,
+                "Write": 2
+              },
+              "files": [
+                "docs/features/note-tags/SPEC.md",
+                "docs/features/note-tags/MANIFEST.md"
+              ],
+              "commands": [
+                "sed -n 403,600p /Users/lukekeith/www/builder/skills/resume/REFERENCE.md",
+                "sed -n 600,700p /Users/lukekeith/www/builder/skills/resume/REFERENCE.md; ls /Use",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 45886,
+                  "after": "Bash mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-"
+                },
+                {
+                  "ms": 7124,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3414,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3362,
+                  "after": "Bash sed -n 600,700p /Users/lukekeith/www/builder/skills/resume/REFERENCE.md; ls /Use"
+                },
+                {
+                  "ms": 2282,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1/docs/features/note-tags/SPEC.md"
+                }
+              ],
+              "split": {
+                "ms": 70425,
+                "orchestrator": 69781,
+                "agents": 0,
+                "tools": 644
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 122763,
+            "orchestrator": 121135,
+            "agents": 0,
+            "tools": 1628
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-1/session-fleet-note-tags-01.jsonl",
+          "lane": "build",
+          "sessionId": "2dffc0d7-4f0d-45d3-ae15-0c497559459a",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-tags --agent-walk",
+          "totals": {
+            "ms": 401634,
+            "turns": 33,
+            "tokens": {
+              "input": 60,
+              "output": 24713,
+              "cacheRead": 2705964
+            },
+            "costUsd": 2.3689522899999997,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792797467698,
+              "end": 1792797478098,
+              "ms": 10400,
+              "turns": 7,
+              "toolCalls": {
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d",
+                "cat docs/features/note-tags/SPEC.md; ls; cat package.json; ls src test; wc -l sr",
+                "cd docs/features/note-tags && printf 'agent-walk: on 2026-10-23\\n' >> MANIFEST.m"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 2755,
+                  "after": "Bash cat docs/features/note-tags/SPEC.md; ls; cat package.json; ls src test; wc -l sr"
+                },
+                {
+                  "ms": 2508,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d"
+                },
+                {
+                  "ms": 2367,
+                  "after": "Bash cd docs/features/note-tags && printf 'agent-walk: on 2026-10-23\\n' >> MANIFEST.m"
+                },
+                {
+                  "ms": 599,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 541,
+                  "after": "Bash cd docs/features/note-tags && printf 'agent-walk: on 2026-10-23\\n' >> MANIFEST.m"
+                }
+              ],
+              "split": {
+                "ms": 10400,
+                "orchestrator": 9750,
+                "agents": 0,
+                "tools": 650
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792797478098,
+              "end": 1792797506314,
+              "ms": 28216,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "cd ../../.. && cat -n src/cli.mjs src/store.mjs test/cli.test.mjs README.md; git",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no",
+                "cd docs/features/note-tags && python3 - <<'EOF'"
+              ],
+              "tests": [
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 8734,
+                  "after": "Bash cd ../../.. && cat -n src/cli.mjs src/store.mjs test/cli.test.mjs README.md; git"
+                },
+                {
+                  "ms": 8418,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                },
+                {
+                  "ms": 2848,
+                  "after": "Bash cd docs/features/note-tags && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2831,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                },
+                {
+                  "ms": 2252,
+                  "after": "Skill builder:audit"
+                }
+              ],
+              "split": {
+                "ms": 28216,
+                "orchestrator": 26775,
+                "agents": 0,
+                "tools": 1441
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792797506314,
+              "end": 1792797579980,
+              "ms": 73666,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1.fleet/note-tags/docs/features/note-tags/PLAN.md"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei",
+                "cd docs/features/note-tags && cat >> SPEC.md <<'EOF'",
+                "cd docs/features/note-tags && sed -i '' 's/^go-ahead: none/go-ahead: auto (recom"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 41094,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei"
+                },
+                {
+                  "ms": 15114,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei"
+                },
+                {
+                  "ms": 5074,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1.fleet/note-tags/docs/features/note-tags/PLAN.md"
+                },
+                {
+                  "ms": 2949,
+                  "after": "Bash cd docs/features/note-tags && sed -i '' 's/^go-ahead: none/go-ahead: auto (recom"
+                },
+                {
+                  "ms": 2704,
+                  "after": "Skill builder:plan"
+                }
+              ],
+              "split": {
+                "ms": 73666,
+                "orchestrator": 73131,
+                "agents": 0,
+                "tools": 535
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792797579980,
+              "end": 1792797867054,
+              "ms": 287074,
+              "turns": 31,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 33,
+                "Agent": 4,
+                "Edit": 4,
+                "Write": 1,
+                "Read": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1.fleet/note-tags/src/cli.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1.fleet/note-tags/README.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1.fleet/note-tags/.builder/note-tags/task-3-report.md",
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-23-1815-tags-builder-1-fleet-note-tags/2dffc0d7-4f0d-45d3-ae15-0c497559459a/tool-results/brk4t51k7.txt"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; sed -n 1,400p $B/skills/build/EXECUTION.md | hea",
+                "B=/Users/lukekeith/www/builder; sed -n 250,400p $B/skills/build/EXECUTION.md; ec",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-tags; WS=$($B/scripts/works",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-tags; WS=$($B/scripts/works",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat /Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md | head ",
+                "python3 - <<'EOF'",
+                "timeout 120 npm test 2>&1 | tail -80",
+                "npm test 2>&1 | tail -90",
+                "python3 - <<'EOF'",
+                "git status --short && git diff -- src/cli.mjs && git add src/cli.mjs test/cli.te",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git show --stat ",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat /Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md | head ",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | sed -n '/not ok 9/,/^# pass/p' | head -40",
+                "npm test 2>&1 | grep -E '^(not ok|ok|# (tests|pass|fail))'",
+                "git add src/cli.mjs test/cli.test.mjs && git commit -q -m \"feat(note-tags): filt",
+                "cat > /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git log --onelin",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat /Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md | head ",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | tail -n 12; echo \"EXIT=${PIPESTATUS[0]}\"; git status --short",
+                "git add README.md src/cli.mjs test/cli.test.mjs && git commit -q -m \"$(printf 'f",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); git status",
+                "node /Users/lukekeith/www/builder/scripts/job.mjs wait gates-note-tags",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); $B/scripts",
+                "cat docs/features/note-tags/SPEC.md && cat .builder/note-tags/review-final.diff",
+                "cat src/store.mjs package.json; git diff 7656b0bc..HEAD --stat -- src/store.mjs ",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); F=docs/fea",
+                "node /Users/lukekeith/www/builder/scripts/job.mjs wait deep-note-tags; cd docs/f",
+                "cd ../../.. && B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-ta"
+              ],
+              "tests": [
+                "timeout 120 npm test 2>&1 | tail -80",
+                "npm test 2>&1 | tail -90",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git show --stat ",
+                "npm test 2>&1 | sed -n '/not ok 9/,/^# pass/p' | head -40",
+                "npm test 2>&1 | grep -E '^(not ok|ok|# (tests|pass|fail))'",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git log --onelin",
+                "npm test 2>&1 | tail -n 12; echo \"EXIT=${PIPESTATUS[0]}\"; git status --short"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: tags on add/list"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 2: list filter, show tags"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 3: tags command"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final review: note-tags"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 19611,
+                  "after": "Bash cat src/store.mjs package.json; git diff 7656b0bc..HEAD --stat -- src/store.mjs "
+                },
+                {
+                  "ms": 15949,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-23-1815-tags-builder-1-fleet-note-tags/2dffc0d7-4f0d-45d3-ae15-0c497559459a/tool-results/brk4t51k7.txt"
+                },
+                {
+                  "ms": 12841,
+                  "after": "Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git log --onelin"
+                },
+                {
+                  "ms": 12803,
+                  "after": "Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); git show --stat "
+                },
+                {
+                  "ms": 12447,
+                  "after": "Bash cat src/store.mjs package.json; git diff 7656b0bc..HEAD --stat -- src/store.mjs "
+                }
+              ],
+              "split": {
+                "ms": 287074,
+                "orchestrator": 137979,
+                "agents": 139620,
+                "tools": 9475
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 399356,
+            "orchestrator": 247635,
+            "agents": 139620,
+            "tools": 12101
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-1/session-fleet-note-tags-02.jsonl",
+          "lane": "walk",
+          "sessionId": "a988326e-827c-4599-aa38-7bcabe3898d9",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-tags --agent-walk",
+          "totals": {
+            "ms": 68219,
+            "turns": 26,
+            "tokens": {
+              "input": 38,
+              "output": 6256,
+              "cacheRead": 1225527
+            },
+            "costUsd": 0.9511053999999999,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792797870376,
+              "end": 1792797888388,
+              "ms": 18012,
+              "turns": 11,
+              "toolCalls": {
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/note-tags/MANIFE",
+                "cd /Users/lukekeith/www/builder/skills/resume; grep -n \"^## \\|^### \" REFERENCE.m",
+                "npm test 2>&1 | tail -15; W=$(/Users/lukekeith/www/builder/scripts/workspace not",
+                "export NOTES_FILE=$(mktemp -d)/notes.json; c(){ node src/cli.mjs \"$@\"; echo \"[ex",
+                "M=docs/features/note-tags/MANIFEST.md; SHA=$(git rev-parse --short HEAD); sed -i"
+              ],
+              "tests": [
+                "npm test 2>&1 | tail -15; W=$(/Users/lukekeith/www/builder/scripts/workspace not"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4335,
+                  "after": "Bash npm test 2>&1 | tail -15; W=$(/Users/lukekeith/www/builder/scripts/workspace not"
+                },
+                {
+                  "ms": 1943,
+                  "after": "Bash export NOTES_FILE=$(mktemp -d)/notes.json; c(){ node src/cli.mjs \"$@\"; echo \"[ex"
+                },
+                {
+                  "ms": 1735,
+                  "after": "Bash cd /Users/lukekeith/www/builder/skills/resume; grep -n \"^## \\|^### \" REFERENCE.m"
+                },
+                {
+                  "ms": 1658,
+                  "after": "Bash M=docs/features/note-tags/MANIFEST.md; SHA=$(git rev-parse --short HEAD); sed -i"
+                },
+                {
+                  "ms": 1391,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/note-tags/MANIFE"
+                }
+              ],
+              "split": {
+                "ms": 18012,
+                "orchestrator": 12485,
+                "agents": 0,
+                "tools": 5527
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792797888388,
+              "end": 1792797902172,
+              "ms": 13784,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "sed -n '1,400p' /Users/lukekeith/www/builder/skills/agent-walk/SKILL.md",
+                "node /Users/lukekeith/www/builder/scripts/profile.mjs --levers docs/features/not",
+                "awk '/^## At sign-off/,/^## At ship/' /Users/lukekeith/www/builder/skills/ship/S",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5047,
+                  "after": "Bash awk '/^## At sign-off/,/^## At ship/' /Users/lukekeith/www/builder/skills/ship/S"
+                },
+                {
+                  "ms": 1987,
+                  "after": "Bash sed -n '1,400p' /Users/lukekeith/www/builder/skills/agent-walk/SKILL.md"
+                },
+                {
+                  "ms": 1584,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/profile.mjs --levers docs/features/not"
+                },
+                {
+                  "ms": 1517,
+                  "after": "Bash awk '/^## At sign-off/,/^## At ship/' /Users/lukekeith/www/builder/skills/ship/S"
+                },
+                {
+                  "ms": 1141,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/profile.mjs --levers docs/features/not"
+                }
+              ],
+              "split": {
+                "ms": 13784,
+                "orchestrator": 13236,
+                "agents": 0,
+                "tools": 548
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792797902172,
+              "end": 1792797922627,
+              "ms": 20455,
+              "turns": 16,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start note-tags-verify -",
+                "B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start note-tags-fast -- ",
+                "F=docs/features/note-tags; W=\"$(/Users/lukekeith/www/builder/scripts/workspace n",
+                "W=\"$(/Users/lukekeith/www/builder/scripts/workspace note-tags)\"; grep -n -i \"pha",
+                "F=docs/features/note-tags; SHA=$(git rev-parse --short HEAD); sed -i '' -e \"s/^v",
+                "git merge --no-edit main 2>&1; git log --oneline -1"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3026,
+                  "after": "Bash F=docs/features/note-tags; W=\"$(/Users/lukekeith/www/builder/scripts/workspace n"
+                },
+                {
+                  "ms": 2355,
+                  "after": "Bash B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start note-tags-fast -- "
+                },
+                {
+                  "ms": 1988,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 1843,
+                  "after": "Bash B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start note-tags-fast -- "
+                },
+                {
+                  "ms": 1653,
+                  "after": "Bash W=\"$(/Users/lukekeith/www/builder/scripts/workspace note-tags)\"; grep -n -i \"pha"
+                }
+              ],
+              "split": {
+                "ms": 20455,
+                "orchestrator": 18541,
+                "agents": 0,
+                "tools": 1914
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792797922627,
+              "end": 1792797937369,
+              "ms": 14742,
+              "turns": 8,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "awk '/^## At ship/,0' /Users/lukekeith/www/builder/skills/ship/SKILL.md",
+                "F=docs/features/note-tags; ls -d docs/features/_archive/note-tags 2>/dev/null &&",
+                "/Users/lukekeith/www/builder/scripts/workspace --remove note-tags",
+                "mkdir -p docs/features/_archive && git mv docs/features/note-tags docs/features/"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7715,
+                  "after": "Bash mkdir -p docs/features/_archive && git mv docs/features/note-tags docs/features/"
+                },
+                {
+                  "ms": 1605,
+                  "after": "Bash awk '/^## At ship/,0' /Users/lukekeith/www/builder/skills/ship/SKILL.md"
+                },
+                {
+                  "ms": 1530,
+                  "after": "Bash awk '/^## At ship/,0' /Users/lukekeith/www/builder/skills/ship/SKILL.md"
+                },
+                {
+                  "ms": 1154,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace --remove note-tags"
+                },
+                {
+                  "ms": 1004,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace --remove note-tags"
+                }
+              ],
+              "split": {
+                "ms": 14742,
+                "orchestrator": 14249,
+                "agents": 0,
+                "tools": 493
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 66993,
+            "orchestrator": 58511,
+            "agents": 0,
+            "tools": 8482
+          }
+        }
+      ],
+      "totals": {
+        "ms": 593942,
+        "turns": 75,
+        "tokens": {
+          "input": 122,
+          "output": 44394,
+          "cacheRead": 4585865
+        },
+        "costUsd": 4.25898449,
+        "split": {
+          "ms": 589112,
+          "orchestrator": 427281,
+          "agents": 139620,
+          "tools": 22211
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 7,
+          "failed": 0,
+          "total": 7
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-1",
+      "gitLog": [
+        "56f2cd4 merge(note-tags): agent-verified, not human-tested",
+        "2195a51 docs(note-tags): note-tags shipped into main",
+        "b42af21 docs(note-tags): note-tags — verify READY",
+        "96140f3 docs(note-tags): note-tags agent signed off (not human-tested)",
+        "8aab5f6 chore(note-tags): note-tags — walk-ready, built",
+        "b31fea1 chore(note-tags): note-tags — phases closed, awaiting the walk lane",
+        "df8ef24 chore(note-tags): note-tags — contract frozen at phase 2",
+        "6a9870b feat(note-tags): add the tags command, usage and README",
+        "006d4d0 feat(note-tags): filter list by tag and show a note's tags",
+        "4ab9036 feat(note-tags): store tags on add and render them in list",
+        "48a9c40 chore(note-tags): note-tags — go-ahead (own · touched · end)",
+        "e467811 docs(note-tags): plan note-tags",
+        "be6f629 docs(note-tags): note-tags audited",
+        "7656b0b docs(note-tags): design note-tags",
+        "5d52d5f fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792797939813,
+      "endedAt": 1792798796903,
+      "ms": 857090,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-2/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "7d45e894-fc84-4f95-81ca-7a01e7f4487b",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can carry tags.\n\n- `notes add <text> --tag <t>` stores the note with that tag; `--tag` may be given more than once.\n  A tag is one word, lower-case letters, digits and dashes.\n- `notes list` is unchanged for untagged notes; a tagged note's line ends with its tags as\n  ` #t1 #t2` (sorted, space before each `#`).\n- `notes list --tag <t>` shows only notes carrying that tag, in id order.\n- `notes show <id>` prints the text on the first line and, when the note has tags, `tags: t1, t2`\n  (sorted) on the second.\n- `notes tags` lists every tag in use with its count, one per line as `<tag>  <count>`, sorted by\n  tag. With no tags at all it prints nothing.\n- An invalid tag (anything but lower-case letters, digits and dashes) makes `notes add` fail with exit 1 and a message on stderr.\n- Existing notes files without tags keep working.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 144871,
+            "turns": 12,
+            "tokens": {
+              "input": 22,
+              "output": 13293,
+              "cacheRead": 606096
+            },
+            "costUsd": 0.9487432000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792797946951,
+              "end": 1792798009718,
+              "ms": 62767,
+              "turns": 13,
+              "toolCalls": {
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "sed -n '/^## Approaches/,/^## Steering/p' /Users/lukekeith/www/builder/skills/br",
+                "sed -n '94,135p' /Users/lukekeith/www/builder/REFERENCE.md",
+                "ls /Users/lukekeith/www/builder/skills/*/REFERENCE.md; f=$(ls /Users/lukekeith/w",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 30884,
+                  "after": "Bash ls /Users/lukekeith/www/builder/skills/*/REFERENCE.md; f=$(ls /Users/lukekeith/w"
+                },
+                {
+                  "ms": 7176,
+                  "after": "Bash ls /Users/lukekeith/www/builder/skills/*/REFERENCE.md; f=$(ls /Users/lukekeith/w"
+                },
+                {
+                  "ms": 6411,
+                  "after": "Bash sed -n '/^## Approaches/,/^## Steering/p' /Users/lukekeith/www/builder/skills/br"
+                },
+                {
+                  "ms": 5813,
+                  "after": "Bash mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-"
+                },
+                {
+                  "ms": 3696,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                }
+              ],
+              "split": {
+                "ms": 62767,
+                "orchestrator": 61716,
+                "agents": 0,
+                "tools": 1051
+              }
+            },
+            {
+              "name": "builder:spec",
+              "start": 1792798009718,
+              "end": 1792798086869,
+              "ms": 77151,
+              "turns": 8,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "sed -n '420,740p' /Users/lukekeith/www/builder/skills/resume/REFERENCE.md",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 55398,
+                  "after": "Bash sed -n '420,740p' /Users/lukekeith/www/builder/skills/resume/REFERENCE.md"
+                },
+                {
+                  "ms": 8109,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3908,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3407,
+                  "after": "Bash sed -n '420,740p' /Users/lukekeith/www/builder/skills/resume/REFERENCE.md"
+                },
+                {
+                  "ms": 3047,
+                  "after": "Skill builder:spec"
+                }
+              ],
+              "split": {
+                "ms": 77151,
+                "orchestrator": 76724,
+                "agents": 0,
+                "tools": 427
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 139918,
+            "orchestrator": 138440,
+            "agents": 0,
+            "tools": 1478
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-2/session-fleet-notes-tags-01.jsonl",
+          "lane": "build",
+          "sessionId": "4306e485-47f1-4285-9e75-b178879d8d1c",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-tags --agent-walk",
+          "totals": {
+            "ms": 605760,
+            "turns": 37,
+            "tokens": {
+              "input": 66,
+              "output": 28137,
+              "cacheRead": 3082391
+            },
+            "costUsd": 2.605816825000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792798094112,
+              "end": 1792798099111,
+              "ms": 4999,
+              "turns": 3,
+              "toolCalls": {
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md; echo ----; cat docs/features/notes-tags/MANIFEST.md; ls "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3128,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/notes-tags/MANIFEST.md; ls "
+                },
+                {
+                  "ms": 677,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 623,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/notes-tags/MANIFEST.md; ls "
+                },
+                {
+                  "ms": 571,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/notes-tags/MANIFEST.md; ls "
+                }
+              ],
+              "split": {
+                "ms": 4999,
+                "orchestrator": 4376,
+                "agents": 0,
+                "tools": 623
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792798099111,
+              "end": 1792798153282,
+              "ms": 54171,
+              "turns": 13,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat docs/features/notes-tags/SPEC.md; echo ----; ls -R src test; cat package.jso",
+                "cat -n src/cli.mjs src/store.mjs test/cli.test.mjs; cat README.md 2>/dev/null | ",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no",
+                "cd docs/features/notes-tags && python3 - <<'EOF'",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "sed -i '' 's/| OPEN — recommended as written |/| auto (recommended) 2026-10-23 |"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 14159,
+                  "after": "Bash cat -n src/cli.mjs src/store.mjs test/cli.test.mjs; cat README.md 2>/dev/null | "
+                },
+                {
+                  "ms": 12063,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                },
+                {
+                  "ms": 5097,
+                  "after": "Bash cat docs/features/notes-tags/SPEC.md; echo ----; ls -R src test; cat package.jso"
+                },
+                {
+                  "ms": 3880,
+                  "after": "Bash cd docs/features/notes-tags && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 3606,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                }
+              ],
+              "split": {
+                "ms": 54171,
+                "orchestrator": 53424,
+                "agents": 0,
+                "tools": 747
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792798153282,
+              "end": 1792798258887,
+              "ms": 105605,
+              "turns": 11,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/docs/features/notes-tags/PLAN.md"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md",
+                "ls /Users/lukekeith/www/builder/scripts/; node /Users/lukekeith/www/builder/scri",
+                "cd docs/features/notes-tags && python3 - <<'EOF'",
+                "M=docs/features/notes-tags/MANIFEST.md; H=$(git rev-parse --short HEAD); sed -i "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 48160,
+                  "after": "Bash ls /Users/lukekeith/www/builder/scripts/; node /Users/lukekeith/www/builder/scri"
+                },
+                {
+                  "ms": 20329,
+                  "after": "Skill builder:plan"
+                },
+                {
+                  "ms": 17867,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md"
+                },
+                {
+                  "ms": 3579,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/docs/features/notes-tags/PLAN.md"
+                },
+                {
+                  "ms": 3315,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/docs/features/notes-tags/PLAN.md"
+                }
+              ],
+              "split": {
+                "ms": 105605,
+                "orchestrator": 105003,
+                "agents": 0,
+                "tools": 602
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792798258887,
+              "end": 1792798694954,
+              "ms": 436067,
+              "turns": 34,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 43,
+                "Agent": 7,
+                "Edit": 4,
+                "Write": 2,
+                "Read": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/src/cli.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/.builder/notes-tags/task-1-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/.builder/notes-tags/task-2-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/docs/features/notes-tags/MANIFEST.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2.fleet/notes-tags/.builder/notes-tags/review-0b90196..505437e.diff"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/build/EXECUTION.md | head -250; /Users/l",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); cat > \"$WS/prog",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); S=docs/features",
+                "sed -n 80,200p /Users/lukekeith/www/builder/skills/build/prompts/implementer.md;",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat -n src/cli.mjs && echo --- && cat -n src/store.mjs && echo --- && cat -n tes",
+                "cat > test/tags.test.mjs <<'EOF'",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "git diff && git status --short && node src/cli.mjs --help >/dev/null 2>&1; expor",
+                "git add src/cli.mjs test/tags.test.mjs && git commit -q -F - <<'EOF'",
+                "git show --stat HEAD | head -20; npm test 2>&1 | grep -E \"^# (pass|fail)\"; WS=$(",
+                "cat .builder/notes-tags/task-2-brief.md && echo ---- && cat src/cli.mjs && echo ",
+                "cat >> test/tags.test.mjs <<'EOF'",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "git add src/cli.mjs test/tags.test.mjs && git commit -q -m \"$(printf 'feat(notes",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); printf 'Task 2:",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "for f in test-driven-development systematic-debugging receiving-code-review veri",
+                "cat >> test/tags.test.mjs <<'EOF'",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "git add src/cli.mjs test/tags.test.mjs && git commit -q -F - <<'EOF'",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat -n src/cli.mjs && cat -n src/store.mjs && cat README.md && cat test/cli.test",
+                "cat >> test/tags.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "git diff --stat && node src/cli.mjs; echo \"exit=$?\"; NOTES_FILE=/tmp/nt-$$.json ",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); printf 'Task 3:",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); /Users/lukekeit",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cat /Users/lukekeith/www/builder/skills/receiving-code-review/SKILL.md | head -8",
+                "cat -n src/cli.mjs | grep -n -i -E \"tag|stderr|exit|usage\" | head -60; cat packa",
+                "python3 - <<'EOF'",
+                "mkdir -p .builder/notes-tags && cat >> .builder/notes-tags/task-4-report.md <<'E",
+                "git add test/tags.test.mjs README.md && git commit -q -m \"test(notes-tags): tigh",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); /Users/lukekeit",
+                "B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start gate2-notes-tags -",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); cat >> \"$WS/pro"
+              ],
+              "tests": [
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "git show --stat HEAD | head -20; npm test 2>&1 | grep -E \"^# (pass|fail)\"; WS=$(",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "git add src/cli.mjs test/tags.test.mjs && git commit -q -m \"$(printf 'feat(notes",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|",
+                "cat -n src/cli.mjs && cat -n src/store.mjs && cat README.md && cat test/cli.test",
+                "node --test test/tags.test.mjs test/cli.test.mjs 2>&1 | grep -E \"^# (tests|pass|"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: add --tag"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 2: list --tag"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 3: show + tags"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 4: usage, README"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final review: notes-tags"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Fix final-review minors"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Scoped re-review of fix"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 20156,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 14665,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 13675,
+                  "after": "Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); printf 'Task 2:"
+                },
+                {
+                  "ms": 12699,
+                  "after": "Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace notes-tags); /Users/lukekeit"
+                },
+                {
+                  "ms": 12573,
+                  "after": "Bash mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-"
+                }
+              ],
+              "split": {
+                "ms": 436067,
+                "orchestrator": 173435,
+                "agents": 244741,
+                "tools": 17891
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 600842,
+            "orchestrator": 336238,
+            "agents": 244741,
+            "tools": 19863
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-2/session-fleet-notes-tags-02.jsonl",
+          "lane": "walk",
+          "sessionId": "b00febdb-60aa-470c-b32f-b0691a55dfa9",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-tags --agent-walk",
+          "totals": {
+            "ms": 97402,
+            "turns": 24,
+            "tokens": {
+              "input": 38,
+              "output": 5463,
+              "cacheRead": 1134210
+            },
+            "costUsd": 0.843174,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792798700493,
+              "end": 1792798722110,
+              "ms": 21617,
+              "turns": 10,
+              "toolCalls": {
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/notes-tags/MANIF",
+                "B=/Users/lukekeith/www/builder; awk '/^## Walk readiness/,/^## [^W]/' $B/skills/",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start gate-notes -- node",
+                "export NOTES_FILE=$(mktemp -d)/n.json; c(){ echo \"\\$ notes $*\"; node src/cli.mjs",
+                "M=docs/features/notes-tags/MANIFEST.md; H=$(git rev-parse --short HEAD); sed -i "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3603,
+                  "after": "Bash export NOTES_FILE=$(mktemp -d)/n.json; c(){ echo \"\\$ notes $*\"; node src/cli.mjs"
+                },
+                {
+                  "ms": 3442,
+                  "after": "Bash B=/Users/lukekeith/www/builder; awk '/^## Walk readiness/,/^## [^W]/' $B/skills/"
+                },
+                {
+                  "ms": 3237,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/notes-tags/MANIF"
+                },
+                {
+                  "ms": 3207,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start gate-notes -- node"
+                },
+                {
+                  "ms": 2595,
+                  "after": "Bash M=docs/features/notes-tags/MANIFEST.md; H=$(git rev-parse --short HEAD); sed -i "
+                }
+              ],
+              "split": {
+                "ms": 21617,
+                "orchestrator": 19685,
+                "agents": 0,
+                "tools": 1932
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792798722110,
+              "end": 1792798738212,
+              "ms": 16102,
+              "turns": 8,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur",
+                "S=docs/features/notes-tags/SPEC.md; head -5 $S; grep -n '^## ' $S; git rev-parse",
+                "F=docs/features/notes-tags; S=$F/SPEC.md; H=261a011"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3227,
+                  "after": "Bash S=docs/features/notes-tags/SPEC.md; head -5 $S; grep -n '^## ' $S; git rev-parse"
+                },
+                {
+                  "ms": 2994,
+                  "after": "Bash S=docs/features/notes-tags/SPEC.md; head -5 $S; grep -n '^## ' $S; git rev-parse"
+                },
+                {
+                  "ms": 2979,
+                  "after": "Skill builder:agent-walk"
+                },
+                {
+                  "ms": 2729,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                },
+                {
+                  "ms": 2686,
+                  "after": "Bash F=docs/features/notes-tags; S=$F/SPEC.md; H=261a011"
+                }
+              ],
+              "split": {
+                "ms": 16102,
+                "orchestrator": 15617,
+                "agents": 0,
+                "tools": 485
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792798738212,
+              "end": 1792798777621,
+              "ms": 39409,
+              "turns": 15,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace notes-tags)\"; grep -E",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-notes -- no",
+                "B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace notes-tags)\"; grep -i",
+                "sed -n 108,125p test/tags.test.mjs | grep -n \"rm\\|empty\" ; npm test 2>&1 | grep ",
+                "F=docs/features/notes-tags; S=$F/SPEC.md; sed -i '' -e '/^| SC1 /s/| planned |$/",
+                "git merge --no-edit main 2>&1 | tail -3; git log --oneline -1"
+              ],
+              "tests": [
+                "sed -n 108,125p test/tags.test.mjs | grep -n \"rm\\|empty\" ; npm test 2>&1 | grep "
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 6459,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 5515,
+                  "after": "Bash sed -n 108,125p test/tags.test.mjs | grep -n \"rm\\|empty\" ; npm test 2>&1 | grep "
+                },
+                {
+                  "ms": 4415,
+                  "after": "Bash sed -n 108,125p test/tags.test.mjs | grep -n \"rm\\|empty\" ; npm test 2>&1 | grep "
+                },
+                {
+                  "ms": 4227,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-notes -- no"
+                },
+                {
+                  "ms": 3529,
+                  "after": "Bash sed -n 108,125p test/tags.test.mjs | grep -n \"rm\\|empty\" ; npm test 2>&1 | grep "
+                }
+              ],
+              "split": {
+                "ms": 39409,
+                "orchestrator": 32558,
+                "agents": 0,
+                "tools": 6851
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792798777621,
+              "end": 1792798794570,
+              "ms": 16949,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "ls docs/features/_archive/notes-tags 2>/dev/null && echo COLLISION; F=docs/featu",
+                "/Users/lukekeith/www/builder/scripts/workspace --remove notes-tags",
+                "mkdir -p docs/features/_archive && git mv docs/features/notes-tags docs/features"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 8741,
+                  "after": "Bash mkdir -p docs/features/_archive && git mv docs/features/notes-tags docs/features"
+                },
+                {
+                  "ms": 3279,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace --remove notes-tags"
+                },
+                {
+                  "ms": 3271,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 978,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 326,
+                  "after": "Bash ls docs/features/_archive/notes-tags 2>/dev/null && echo COLLISION; F=docs/featu"
+                }
+              ],
+              "split": {
+                "ms": 16949,
+                "orchestrator": 16594,
+                "agents": 0,
+                "tools": 355
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 94077,
+            "orchestrator": 84454,
+            "agents": 0,
+            "tools": 9623
+          }
+        }
+      ],
+      "totals": {
+        "ms": 848033,
+        "turns": 73,
+        "tokens": {
+          "input": 126,
+          "output": 46893,
+          "cacheRead": 4822697
+        },
+        "costUsd": 4.397734025000001,
+        "split": {
+          "ms": 834837,
+          "orchestrator": 559132,
+          "agents": 244741,
+          "tools": 30964
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 7,
+          "failed": 0,
+          "total": 7
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-2",
+      "gitLog": [
+        "48e2694 merge(notes-tags): agent-verified, not human-tested",
+        "dfb3fac docs(notes-tags): notes-tags shipped into main",
+        "e47de33 docs(notes-tags): notes-tags — verify READY",
+        "df286ca docs(notes-tags): notes-tags agent signed off (not human-tested)",
+        "261a011 chore(notes-tags): walk readiness — CLI smoked, state built",
+        "9136a25 chore(notes-tags): notes-tags — phases closed, awaiting the walk lane",
+        "505437e test(notes-tags): tighten tag error assertions; README names tags",
+        "0b90196 feat(notes-tags): usage and README name tags; pre-tags files covered",
+        "cff3610 feat(notes-tags): show prints tags, notes tags counts them",
+        "ea055de feat(notes-tags): list --tag filters by one tag",
+        "e1fb4bc feat(notes-tags): add --tag stores tags, list shows them",
+        "a89e298 docs(notes-tags): plan notes-tags",
+        "61a0213 docs(notes-tags): rule D16, D17 (auto)",
+        "afd9fa9 docs(notes-tags): notes-tags audited",
+        "1988c20 docs(notes-tags): design notes-tags",
+        "8218e5f fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 3,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792798796966,
+      "endedAt": 1792799627940,
+      "ms": 830974,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-3/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "90304835-7139-4015-87c7-8250c0a2dad0",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can carry tags.\n\n- `notes add <text> --tag <t>` stores the note with that tag; `--tag` may be given more than once.\n  A tag is one word, lower-case letters, digits and dashes.\n- `notes list` is unchanged for untagged notes; a tagged note's line ends with its tags as\n  ` #t1 #t2` (sorted, space before each `#`).\n- `notes list --tag <t>` shows only notes carrying that tag, in id order.\n- `notes show <id>` prints the text on the first line and, when the note has tags, `tags: t1, t2`\n  (sorted) on the second.\n- `notes tags` lists every tag in use with its count, one per line as `<tag>  <count>`, sorted by\n  tag. With no tags at all it prints nothing.\n- An invalid tag (anything but lower-case letters, digits and dashes) makes `notes add` fail with exit 1 and a message on stderr.\n- Existing notes files without tags keep working.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 121614,
+            "turns": 14,
+            "tokens": {
+              "input": 22,
+              "output": 12308,
+              "cacheRead": 603909
+            },
+            "costUsd": 0.8832298000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792798801190,
+              "end": 1792798850848,
+              "ms": 49658,
+              "turns": 10,
+              "toolCalls": {
+                "Bash": 4,
+                "Write": 1
+              },
+              "files": [
+                ".builder/note-tags/brainstorm.md"
+              ],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /Users/lukekeith/www/builder; ls skills/brainstorm scripts | head -50; grep -",
+                "cd /Users/lukekeith/www/builder; f=$(grep -l '^## The classifier' skills/*/REFER",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 29615,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 5960,
+                  "after": "Bash cd /Users/lukekeith/www/builder; f=$(grep -l '^## The classifier' skills/*/REFER"
+                },
+                {
+                  "ms": 2625,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2402,
+                  "after": "Bash cd /Users/lukekeith/www/builder; ls skills/brainstorm scripts | head -50; grep -"
+                },
+                {
+                  "ms": 1990,
+                  "after": "Bash cd /Users/lukekeith/www/builder; f=$(grep -l '^## The classifier' skills/*/REFER"
+                }
+              ],
+              "split": {
+                "ms": 49658,
+                "orchestrator": 48851,
+                "agents": 0,
+                "tools": 807
+              }
+            },
+            {
+              "name": "builder:spec",
+              "start": 1792798850848,
+              "end": 1792798920437,
+              "ms": 69589,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4,
+                "Write": 2
+              },
+              "files": [
+                "docs/features/note-tags/SPEC.md",
+                "docs/features/note-tags/MANIFEST.md"
+              ],
+              "commands": [
+                "cd /Users/lukekeith/www/builder/skills/resume; awk '/^## MANIFEST.md/,/^## What ",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 47018,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 7382,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2477,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2459,
+                  "after": "Bash cd /Users/lukekeith/www/builder/skills/resume; awk '/^## MANIFEST.md/,/^## What "
+                },
+                {
+                  "ms": 2446,
+                  "after": "Skill builder:spec"
+                }
+              ],
+              "split": {
+                "ms": 69589,
+                "orchestrator": 69089,
+                "agents": 0,
+                "tools": 500
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 119247,
+            "orchestrator": 117940,
+            "agents": 0,
+            "tools": 1307
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-3/session-fleet-note-tags-01.jsonl",
+          "lane": "build",
+          "sessionId": "27d78fec-520c-422b-936f-12eec7ad78dd",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-tags --agent-walk",
+          "totals": {
+            "ms": 576782,
+            "turns": 37,
+            "tokens": {
+              "input": 68,
+              "output": 29085,
+              "cacheRead": 3160239
+            },
+            "costUsd": 2.72870738,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792798925503,
+              "end": 1792798937339,
+              "ms": 11836,
+              "turns": 6,
+              "toolCalls": {
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d",
+                "cat docs/features/note-tags/SPEC.md; ls; cat package.json; ls src test",
+                "cd docs/features/note-tags && printf 'agent-walk: on 2026-10-23\\ntarget: main\\n'"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3615,
+                  "after": "Bash cat docs/features/note-tags/SPEC.md; ls; cat package.json; ls src test"
+                },
+                {
+                  "ms": 2942,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d"
+                },
+                {
+                  "ms": 2608,
+                  "after": "Bash cd docs/features/note-tags && printf 'agent-walk: on 2026-10-23\\ntarget: main\\n'"
+                },
+                {
+                  "ms": 750,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 585,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-tags/MANIFEST.md; ls d"
+                }
+              ],
+              "split": {
+                "ms": 11836,
+                "orchestrator": 11062,
+                "agents": 0,
+                "tools": 774
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792798937339,
+              "end": 1792798982708,
+              "ms": 45369,
+              "turns": 13,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no",
+                "python3 - <<'EOF'",
+                "cd docs/features/note-tags && sed -i '' -e 's/^state: spec/state: audited/' -e \"",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 12305,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                },
+                {
+                  "ms": 9746,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3993,
+                  "after": "Bash python3 - <<'EOF'"
+                },
+                {
+                  "ms": 3806,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                },
+                {
+                  "ms": 3649,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no"
+                }
+              ],
+              "split": {
+                "ms": 45369,
+                "orchestrator": 44670,
+                "agents": 0,
+                "tools": 699
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792798982708,
+              "end": 1792799071259,
+              "ms": 88551,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/docs/features/note-tags/PLAN.md"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei",
+                "F=docs/features/note-tags && cat >> $F/SPEC.md <<'EOF'",
+                "F=docs/features/note-tags && sed -i '' -e 's/^go-ahead: none/go-ahead: auto (rec"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 48193,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei"
+                },
+                {
+                  "ms": 17760,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; node /Users/lukekei"
+                },
+                {
+                  "ms": 6882,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/docs/features/note-tags/PLAN.md"
+                },
+                {
+                  "ms": 3994,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/docs/features/note-tags/PLAN.md"
+                },
+                {
+                  "ms": 3065,
+                  "after": "Skill builder:plan"
+                }
+              ],
+              "split": {
+                "ms": 88551,
+                "orchestrator": 88102,
+                "agents": 0,
+                "tools": 449
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792799071259,
+              "end": 1792799499549,
+              "ms": 428290,
+              "turns": 35,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 42,
+                "Agent": 7,
+                "Edit": 9,
+                "Read": 11
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/test/cli.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/src/cli.mjs",
+                "/Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/.builder/note-tags/task-3-brief.md",
+                "/Users/lukekeith/www/builder/skills/verification-before-completion/SKILL.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/src/store.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/README.md",
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-23-1815-tags-builder-3-fleet-note-tags/27d78fec-520c-422b-936f-12eec7ad78dd/tool-results/brdjgbwhw.txt",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/.builder/note-tags/review-5a13161..563cb3e.diff",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3.fleet/note-tags/.builder/note-tags/final-fix-report.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; sed -n 1,400p $B/skills/build/EXECUTION.md | hea",
+                "B=/Users/lukekeith/www/builder; cat $B/skills/build/prompts/implementer.md; sed ",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-tags; WS=$($B/scripts/works",
+                "cat .builder/note-tags/task-1-brief.md && echo ---- && cat /Users/lukekeith/www/",
+                "cat -n src/cli.mjs && echo ---- && cat -n test/cli.test.mjs && echo ---- && git ",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | tail -12; echo \"exit=${PIPESTATUS[0]}\"",
+                "npm test >/tmp/nt-test.out 2>&1; echo \"npm test exit=$?\"; grep -E '^# (pass|fail",
+                "git add src/cli.mjs test/cli.test.mjs && git commit -q -F - <<'EOF'",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); echo \"Task 1: co",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | grep -A6 -E \"^not ok\" | head -60",
+                "npm test 2>&1 | tail -12",
+                "git add src/cli.mjs test/cli.test.mjs && git commit -q -F - <<'EOF'",
+                "git commit -q --amend -F - <<'EOF'",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); printf '%s\\n' \"T",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | tail -10; git status --short; git diff --stat",
+                "git add src/cli.mjs test/cli.test.mjs && git commit -q -m \"feat(note-tags): show",
+                "cat > /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-18",
+                "git status --short && git log --oneline -3 && cat package.json && cat src/store.",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | grep -E \"^# (tests|pass|fail)\" && git add src/store.mjs README.m",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); printf '%s",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); $B/scripts",
+                "cat docs/features/note-tags/SPEC.md && cat .builder/note-tags/review-final.diff",
+                "D=$(mktemp -d) && export NOTES_FILE=$D/n.json; C=src/cli.mjs",
+                "python3 - <<'EOF'",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); $B/scripts",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start note-tags-gate2 --",
+                "B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); F=docs/fea"
+              ],
+              "tests": [
+                "npm test 2>&1 | tail -12; echo \"exit=${PIPESTATUS[0]}\"",
+                "npm test >/tmp/nt-test.out 2>&1; echo \"npm test exit=$?\"; grep -E '^# (pass|fail",
+                "npm test 2>&1 | grep -A6 -E \"^not ok\" | head -60",
+                "npm test 2>&1 | tail -12",
+                "npm test 2>&1 | tail -10; git status --short; git diff --stat",
+                "npm test 2>&1 | grep -E \"^# (tests|pass|fail)\" && git add src/store.mjs README.m"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: add --tag"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 2: list --tag"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 3: show + tags"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 4: compat + docs"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final review: note-tags"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final-review fix wave"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Scoped re-review of fix wave"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 20060,
+                  "after": "Bash D=$(mktemp -d) && export NOTES_FILE=$D/n.json; C=src/cli.mjs"
+                },
+                {
+                  "ms": 19122,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-23-1815-tags-builder-3-fleet-note-tags/27d78fec-520c-422b-936f-12eec7ad78dd/tool-results/brdjgbwhw.txt"
+                },
+                {
+                  "ms": 19036,
+                  "after": "Bash B=/Users/lukekeith/www/builder; WS=$($B/scripts/workspace note-tags); $B/scripts"
+                },
+                {
+                  "ms": 14100,
+                  "after": "Bash python3 - <<'EOF'"
+                },
+                {
+                  "ms": 12292,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/note-tags; WS=$($B/scripts/works"
+                }
+              ],
+              "split": {
+                "ms": 428290,
+                "orchestrator": 190045,
+                "agents": 225063,
+                "tools": 13182
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 574046,
+            "orchestrator": 333879,
+            "agents": 225063,
+            "tools": 15104
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-23-1815-tags/builder-3/session-fleet-note-tags-02.jsonl",
+          "lane": "walk",
+          "sessionId": "44ef8278-c20d-40de-b1be-126a309e589c",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-tags --agent-walk",
+          "totals": {
+            "ms": 123841,
+            "turns": 27,
+            "tokens": {
+              "input": 46,
+              "output": 7839,
+              "cacheRead": 1509340
+            },
+            "costUsd": 1.2994542,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.13.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792799503010,
+              "end": 1792799523657,
+              "ms": 20647,
+              "turns": 13,
+              "toolCalls": {
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/note-tags/MANIFE",
+                "B=/Users/lukekeith/www/builder; grep -n \"^## \\|^### \" $B/skills/resume/REFERENCE",
+                "B=/Users/lukekeith/www/builder; W=$($B/scripts/workspace note-tags); echo $W; ls",
+                "git merge-base --is-ancestor main HEAD && echo \"main in HEAD\"; cat .builder/note",
+                "export NOTES_FILE=$(mktemp -d)/notes.json; c(){ node src/cli.mjs \"$@\"; echo \"[ex",
+                "cd docs/features/note-tags && sed -i '' -e 's/^state: building/state: built/' -e"
+              ],
+              "tests": [
+                "B=/Users/lukekeith/www/builder; W=$($B/scripts/workspace note-tags); echo $W; ls"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5217,
+                  "after": "Bash B=/Users/lukekeith/www/builder; W=$($B/scripts/workspace note-tags); echo $W; ls"
+                },
+                {
+                  "ms": 1931,
+                  "after": "Bash export NOTES_FILE=$(mktemp -d)/notes.json; c(){ node src/cli.mjs \"$@\"; echo \"[ex"
+                },
+                {
+                  "ms": 1587,
+                  "after": "Bash B=/Users/lukekeith/www/builder; grep -n \"^## \\|^### \" $B/skills/resume/REFERENCE"
+                },
+                {
+                  "ms": 1512,
+                  "after": "Bash export NOTES_FILE=$(mktemp -d)/notes.json; c(){ node src/cli.mjs \"$@\"; echo \"[ex"
+                },
+                {
+                  "ms": 1429,
+                  "after": "Bash B=/Users/lukekeith/www/builder; W=$($B/scripts/workspace note-tags); echo $W; ls"
+                }
+              ],
+              "split": {
+                "ms": 20647,
+                "orchestrator": 14279,
+                "agents": 0,
+                "tools": 6368
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792799523657,
+              "end": 1792799582354,
+              "ms": 58697,
+              "turns": 12,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6,
+                "Agent": 1
+              },
+              "files": [],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "git rev-parse --short HEAD && cat .builder/note-tags/walk.md && ls -R src && cat",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "B=/Users/lukekeith/www/builder; awk '/^## At sign-off/,/^## At ship/' $B/skills/",
+                "set -e; head -n 188 SPEC.md | sed -e :a -e '/^\\n*$/{$d;N;ba' -e '}' > /tmp/spec."
+              ],
+              "tests": [],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Agent walk round 1"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 11538,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 10471,
+                  "after": "Bash git rev-parse --short HEAD && cat .builder/note-tags/walk.md && ls -R src && cat"
+                },
+                {
+                  "ms": 9924,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 9519,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 3565,
+                  "after": "Bash B=/Users/lukekeith/www/builder; awk '/^## At sign-off/,/^## At ship/' $B/skills/"
+                }
+              ],
+              "split": {
+                "ms": 58697,
+                "orchestrator": 23459,
+                "agents": 34871,
+                "tools": 367
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792799582354,
+              "end": 1792799608684,
+              "ms": 26330,
+              "turns": 19,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 7
+              },
+              "files": [],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-note-tags-f",
+                "git diff main --stat; git diff main -- package.json; git diff main -- src/; sed ",
+                "grep -n \"^test(\" test/cli.test.mjs",
+                "cd docs/features/note-tags && sed -i '' -e 's/^state: signed-off/state: verified",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3287,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                },
+                {
+                  "ms": 2650,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-note-tags-f"
+                },
+                {
+                  "ms": 2650,
+                  "after": "Bash git diff main --stat; git diff main -- package.json; git diff main -- src/; sed "
+                },
+                {
+                  "ms": 2386,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 2310,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-181"
+                }
+              ],
+              "split": {
+                "ms": 26330,
+                "orchestrator": 24158,
+                "agents": 0,
+                "tools": 2172
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792799608684,
+              "end": 1792799625543,
+              "ms": 16859,
+              "turns": 7,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "ls docs/features/_archive/note-tags 2>&1; set -e; F=docs/features/note-tags; sed",
+                "/Users/lukekeith/www/builder/scripts/workspace --remove note-tags",
+                "git commit -qm \"docs(note-tags): note-tags shipped into main"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 8850,
+                  "after": "Bash git commit -qm \"docs(note-tags): note-tags shipped into main"
+                },
+                {
+                  "ms": 1817,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 1570,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace --remove note-tags"
+                },
+                {
+                  "ms": 1531,
+                  "after": "Bash git commit -qm \"docs(note-tags): note-tags shipped into main"
+                },
+                {
+                  "ms": 1366,
+                  "after": "Skill builder:ship"
+                }
+              ],
+              "split": {
+                "ms": 16859,
+                "orchestrator": 16447,
+                "agents": 0,
+                "tools": 412
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 122533,
+            "orchestrator": 78343,
+            "agents": 34871,
+            "tools": 9319
+          }
+        }
+      ],
+      "totals": {
+        "ms": 822237,
+        "turns": 78,
+        "tokens": {
+          "input": 136,
+          "output": 49232,
+          "cacheRead": 5273488
+        },
+        "costUsd": 4.9113913799999995,
+        "split": {
+          "ms": 815826,
+          "orchestrator": 530162,
+          "agents": 259934,
+          "tools": 25730
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 7,
+          "failed": 0,
+          "total": 7
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1815-tags/builder-3",
+      "gitLog": [
+        "b954067 merge(note-tags): agent-verified, not human-tested",
+        "d175c11 docs(note-tags): note-tags shipped into main",
+        "db47f2c docs(note-tags): note-tags — verify READY",
+        "bbcbf1c docs(note-tags): note-tags agent signed off (not human-tested)",
+        "129a33f chore(note-tags): note-tags — walk-ready, built",
+        "eede6f0 chore(note-tags): note-tags — phases closed, awaiting the walk lane",
+        "563cb3e fix(note-tags): stricter tag pattern, tags rejects arguments",
+        "5a13161 docs(note-tags): old-format test, store shape comment, README",
+        "39a1666 feat(note-tags): show tags and count them with notes tags",
+        "0c3ade7 feat(note-tags): filter list by tag",
+        "1d0d8f6 feat(note-tags): add --tag and tagged list lines",
+        "450d2a5 chore(note-tags): note-tags — go-ahead (own · risk · end)",
+        "97ebfc2 docs(note-tags): plan note-tags",
+        "68a5442 docs(note-tags): note-tags audited",
+        "c490278 docs(note-tags): design note-tags",
+        "e55ffdf fixture"
+      ]
+    }
+  ]
+}
