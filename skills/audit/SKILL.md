@@ -199,9 +199,17 @@ line dies with the session:
 `/builder:plan` refuses to start while a `blocked:` row stands. BLOCKED is not a failed audit: the
 manifest is still `state: audited` with the same `next:` line.
 
-Standard handoff: what the pass found in plain language, grouped **contract-changing /
-design-affecting / stale-spec / nits**, with data-integrity items and anything breaking for a released
-build called out separately and first; the next command — **never "another pass"** — and the footer:
+Standard handoff, in this order:
+
+1. **What the audit changed in the design** — the review delta, REFERENCE §The review §The delta
+   form: each review section a correction moved (what users get or see, added · changed · removed,
+   data, apps, decisions, not included), before → after, in plain words — the design the owner
+   approved at spec is what it is measured against. Nothing moved → the one line
+   `The audit changed nothing in the design you approved.`
+2. **What the pass found**, in plain language, grouped **contract-changing / design-affecting /
+   stale-spec / nits**, with data-integrity items and anything breaking for a released build called
+   out separately and first; the OPEN decisions it raised, each with its recommendation.
+3. The next command — **never "another pass"** — and the footer:
 
 ```
 📍 <feature>: audited — next:
@@ -214,6 +222,9 @@ build called out separately and first; the next command — **never "another pas
 Append ` · BLOCKED: <n> items` after `audited` when the verdict is BLOCKED. The numbered form is
 REFERENCE §The two-way footer; without a config `agent_walk:` block, the single line
 `📍 <feature>: audited — next: /builder:resume --path <folder> · or say go`.
+
+**Under `--auto`** no delta is printed (REFERENCE §The review — nobody approves): one line with the
+counts, then the footer. The plan's go-ahead and the walk show what moved.
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
 ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
