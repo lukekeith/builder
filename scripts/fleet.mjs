@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -641,11 +641,14 @@ const priorPark = (f) =>
       'Park again only if it still stands, with the line and the record rewritten per REFERENCE §How a park reads and §The park record.'
     : ''
 
-function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}${priorPark(fleet.features[feature])}`) {
+async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}${priorPark(fleet.features[feature])}`) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
   noteFacts(fleet.features[feature], feature) // the ship run removes the manifest and plan: read them first
+  // A Claude Code auto-update swaps the binary out for a few seconds; wait it out rather than fail
+  // the feature (the run would otherwise end `spawn claude ENOENT`, exit 127).
+  if (!(await waitForCommand(CLAUDE))) console.error(`[fleet] ${CLAUDE} not found on PATH after 3 min — starting anyway`)
   return new Promise((done) => {
     const out = createWriteStream(log)
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
