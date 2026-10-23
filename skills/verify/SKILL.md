@@ -16,7 +16,9 @@ It reads four things, and **trusts nothing remembered from the build** — every
 - **`<folder>/MANIFEST.md`** — `state:` · `apps:` · `contract:` · `tests:` · `walk:` · `verify:` ·
   `hold:` · `head`.
 - **`.claude/builder.md`** — §Quality gates (the fast sets and the deep set), §House rules (item 7's
-  checklist), §Environment landmines.
+  checklist), §Environment landmines. `node <builder>/scripts/docs.mjs verify` prints it in one call
+  with the REFERENCE sections this step cites — §Quality gates — the mechanism, §The two-way footer,
+  §Continuing on "go".
 - **the ledger** — the sign-off removed `PLAN.md`, so the ledger plus `git log` are the record of
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 
@@ -206,7 +208,19 @@ tasks:
 | **INCOMPLETE** | `verify: INCOMPLETE YYYY-MM-DD` · `state` unchanged · `next: /builder:resume --path <folder>` | each failing item a `- [ ]` under `## Fixes`, **naming its app** and what clears it |
 
 Commit both together: `docs(<ticket-or-feature>): <feature> — verify <READY|INCOMPLETE>`. INCOMPLETE
-is a normal outcome; the orchestrator loops it.
+is a normal outcome; the orchestrator loops it. One call each — the presets carry the subject:
+
+```bash
+# READY
+node <builder>/scripts/advance.mjs <folder> --set "verify=READY YYYY-MM-DD" --set state=verified \
+  --set "next=<the PR command | 🛑 held — <the hold's words>>" --head --commit verify-ready
+# INCOMPLETE — the ## Fixes rows written to SPEC.md first
+node <builder>/scripts/advance.mjs <folder> --set "verify=INCOMPLETE YYYY-MM-DD" \
+  --set "next=/builder:resume --path <folder>" --head --add <folder>/SPEC.md --commit verify-incomplete
+```
+
+After a crash, re-run the same command — it finishes what's missing or says `already applied`
+(REFERENCE §The scripts).
 
 🔒 **READY is not shipped: this skill never opens a PR**, never writes to the ticket system, and never
 deploys. Hand back to `/builder:resume --path <folder>`. Lead the hand-off with the evidence — which

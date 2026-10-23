@@ -9,7 +9,8 @@ Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-w
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
-**Load these three before writing anything**, and cite them rather than restate them:
+**Load these three before writing anything — in one call,** `node <builder>/scripts/docs.mjs plan`
+prints all three — and cite them rather than restate them:
 [`PLAN-FORMAT.md`](PLAN-FORMAT.md) (the shape of the file this step writes) · REFERENCE (§Sizes for
 the phase counts · §Contract and the contract freeze, which the phase ORDER exists to protect ·
 §MANIFEST.md · §Branch and ticket) · **`.claude/builder.md`** (§Quality gates for every `Gates` cell,
@@ -166,10 +167,21 @@ this step is printed **in chat only** — never into `PLAN.md`.
 **Two files.** `<folder>/PLAN.md`; and **one SPEC edit** — §Plan appended **immediately after
 §Findings & risks**, an **index, not the plan**: a pointer to `PLAN.md`, then one line per task
 reading `Phase N · Task M · <name>` and nothing else. Condense strips §Plan by heading, so nothing
-reads it by position. Never per-phase docs.
+reads it by position. Never per-phase docs. **The script writes it** from PLAN.md's headings and
+`## Phases` table — never type it by hand:
+`node <builder>/scripts/plan-slices.mjs <folder> --index --write` (re-running it rewrites the same index).
 
 **The manifest:** `state: planned`, `head`, `branch`, `next: /builder:resume --path <folder>`. Commit
-`PLAN.md`, the SPEC and the manifest together: `docs(<ticket-or-feature>): plan <feature>`.
+`PLAN.md`, the SPEC and the manifest together: `docs(<ticket-or-feature>): plan <feature>` — one call:
+
+```bash
+node <builder>/scripts/advance.mjs <folder> --set state=planned \
+  --set "next=/builder:resume --path <folder>" --head \
+  --add <folder>/PLAN.md --add <folder>/SPEC.md --commit plan
+```
+
+After a crash, re-run the same command — it finishes what's missing or says `already applied`
+(REFERENCE §The scripts). Every manifest write below goes through `advance.mjs` the same way.
 
 **Then take the go-ahead, in the same turn** — §The go-ahead.
 
@@ -259,6 +271,10 @@ lines**, with the same A/B/C — A now reads *Build it with this plan*, and "go"
 that is not its default — the recommendation taken unchanged is still written. `<test plan>` below is
 its label, the three values `·`-joined (`own · touched · end`, ` · you` with `walk=you`).
 
+One call records it — `node <builder>/scripts/advance.mjs <folder> --set "go-ahead=<name YYYY-MM-DD>"
+--set "tests=slice=<v> end=<v> review=<v>[ …]" [--set target=<branch>] --head --commit
+"chore({key}): {feature} — go-ahead (<test plan>)"`:
+
 - **No `agent_walk:` block** → commit `chore(<ticket-or-feature>): <feature> — go-ahead (<test plan>)`,
   then run `/builder:build --path <folder>` through the Skill tool in the same turn — A was the go.
 - **An `agent_walk:` block** → write `target: <branch>` too, commit
@@ -286,7 +302,9 @@ The human chose to build it in this session without the ceremony (REFERENCE §Fl
 the slices and what rides along exactly as above — it is the plan they are about to watch being
 built — but **don't stop for an approval**: choosing *here* was the go-ahead. No A/B/C, no questions:
 the test plan is the manifest's `tests:`, or the recommendation, written as `tests:`. Write
-`go-ahead: <name YYYY-MM-DD> (here)`, commit `chore(<feature>): <feature> — go-ahead (here)`, and run
+`go-ahead: <name YYYY-MM-DD> (here)`, commit `chore(<feature>): <feature> — go-ahead (here)`
+(`advance.mjs <folder> --set "go-ahead=<name YYYY-MM-DD> (here)" --set "tests=…" --head --commit
+"chore({feature}): {feature} — go-ahead (here)"`), and run
 `/builder:build --path <folder> --here` through the Skill tool in the same turn. No **Land on?**, no
 fleet. Under `--agent-walk`, `build: here` is ignored.
 
@@ -311,7 +329,9 @@ manifest has neither `tests:` nor an old `profile:`**:
 3. **Land on?** once for the run (one target per run), in the first call.
 
 Write `tests:` and `target:` to each pick's manifest — never `go-ahead:`, which the plan still records
-— and commit `chore(<feature>): test plan <test plan> → <target>` in this checkout before the dry run.
+— and commit `chore(<feature>): test plan <test plan> → <target>` in this checkout before the dry run
+(`advance.mjs <folder> --set "tests=…" --set target=<target> --commit "chore({feature}): test plan
+<test plan> → <target>"`, one per pick).
 The headless go-ahead keeps them (below). A pick that already carries `tests:` or `profile:` is not
 asked again.
 

@@ -8,7 +8,8 @@ description: Prototype-mode step of the /builder:* pipeline, between design and 
 Invocation: **`/builder:align --path <folder> [--ticket <id>] [--auto]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags.
 
-**Load REFERENCE and `.claude/builder.md` before starting**: REFERENCE §Prototype mode's "Then
+**Load REFERENCE and `.claude/builder.md` before starting — in one call:**
+`node <builder>/scripts/docs.mjs align` prints the sections below and the config. REFERENCE §Prototype mode's "Then
 **align** …" paragraph is this step's contract, §SPEC.md says where `SC#` and `T#` land, §Contract and
 the contract freeze is what this step's output becomes; the config's §House rules gives each app's
 real shape and §Standing traps holds what this project has already paid to learn.
@@ -114,7 +115,16 @@ node <builder>/scripts/check-obligations.mjs <folder>
 
 Then the manifest: `state: aligned`, `next: /builder:resume --path <folder>`, `head`, `branch`, and
 `apps:` refreshed if the trace proved a consumer in or out of scope. Commit the manifest **with** the
-SPEC edit: `docs(<ticket-or-feature>): <feature> aligned`.
+SPEC edit: `docs(<ticket-or-feature>): <feature> aligned` — one call:
+
+```bash
+node <builder>/scripts/advance.mjs <folder> --set state=aligned \
+  --set "next=/builder:resume --path <folder>" [--set "apps=<a>+<b>"] --head \
+  --add <folder>/SPEC.md --commit aligned
+```
+
+After a crash, re-run the same command — it finishes what's missing or says `already applied`
+(REFERENCE §The scripts).
 
 ## Hand off
 

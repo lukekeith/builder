@@ -7,6 +7,9 @@ description: Apply ONE change to a feature that is already audited, planned or p
 
 Invocation: **`/builder:revise --path <folder> [--ticket <id>] <the change>`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — flags first, the free text after them **is the change**.
+The docs a revision reads come in one call: `node <builder>/scripts/docs.mjs revise` — REFERENCE
+§Contract and the contract freeze (the one way a frozen contract re-opens), §SPEC.md, §Continuing on
+"go" and `.claude/builder.md`.
 
 **Where the feature stands is the manifest** — `state:`, `go-ahead:` and `contract:`, plus, once
 signed off, the `✅ SIGNED OFF` line in the SPEC header. Read those before routing; the route is keyed
@@ -115,7 +118,12 @@ against the code for that one contract and nothing else.
 - Every behavioural change owes its test in the same task block.
 - **The manifest moves only when the route changed something it records:** a re-taken go-ahead
   rewrites `go-ahead:`; a re-opened freeze rewrites `contract:`; a changed blast radius rewrites
-  `apps:`. Nothing here advances or rewinds `state:`.
+  `apps:`. Nothing here advances or rewinds `state:`. When it moves, the manifest and the doc edit
+  are one call — `node <builder>/scripts/advance.mjs <folder> --set "contract=open (reopened
+  <YYYY-MM-DD>)" [--set "apps=…"] [--set "go-ahead=none"] --head --add <folder>/SPEC.md [--add
+  <folder>/PLAN.md] --commit "docs({key}): {feature} — revised: <the change>"`; a docs-only edit
+  with no manifest change is the same call without `--set`. After a crash, re-run the same command —
+  it finishes what's missing or says `already applied` (REFERENCE §The scripts).
 - **Gate the revision at its own size, not the feature's.** A moved button takes that app's fast
   gates — and a look at the running app if it's visual. It does **not** re-run the cross-app walk, and
   it does not re-run `/builder:verify` wholesale: the feature was already verified, and a tweak that

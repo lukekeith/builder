@@ -14,6 +14,14 @@ Invocation: **`/builder:ship --path <folder>`**. Without `--path`,
 `state: signed-off` (sign-off moment) and rows whose `pr:` is open and `verify: READY` (ship moment).
 
 **Two moments, one file** — REFERENCE §Condense says what each writes; the procedures below say how.
+`node <builder>/scripts/docs.mjs ship` prints §Condense, §Continuing on "go" and the config in one call.
+
+**The script does the mechanical part of both moments** — `node <builder>/scripts/condense.mjs`
+writes exactly what the steps below describe, in one call and one commit. **What stays yours is the
+judgment it cannot make:** that there was a PASS, the signer's name and verbatim words, that the PR is
+open and which number it is (`gh pr view` — ask, never guess). After a crash, re-run the same command
+— each step looks before it writes, and a finished call prints `already applied` / `already shipped`
+(REFERENCE §The scripts).
 
 ## At sign-off
 
@@ -53,6 +61,11 @@ walk keeps **both** the §Plan index and `PLAN.md`.
 3. **Read the state back**: `node <builder>/scripts/list-features.mjs` shows the feature as
    `signed-off` with the manifest's `next:` — not DONE. Commit with the sign-off write as one commit,
    or standalone as `docs(<key>): condense <feature> at sign-off`.
+
+Steps 1–2 and the commit are one call — from `/builder:signoff` with its manifest keys (signoff §What
+gets written), standalone with the fields read as step 1 says:
+`node <builder>/scripts/condense.mjs <folder> --signoff human --name "<name>" --words "<words>" --sha <sha> [--hold "<reason>"]`
+(the default subject is the standalone one).
 
 ```
 📍 <feature>: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path <folder> · or say go
@@ -119,6 +132,13 @@ header flip would leave a half-shipped tree.
    lists it.
 
 Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
+
+The collision check, steps 1–5 and the commit are one call, after you have confirmed the precondition:
+`node <builder>/scripts/condense.mjs <folder> --ship --pr <N>` — agent form
+`node <builder>/scripts/condense.mjs <folder> --ship --into <branch>`. It refuses unless `verify:
+READY` (and, with `--into`, until `<branch>` is merged into this branch), removes the workspace itself
+(no `rm -rf`), and an interrupted ship — header flipped, manifest gone, folder already moved — is
+finished by running it again.
 
 🔴 **Shipping does not update the ticket system.** The config's §Companion skills names the command
 that reports a fix back with its evidence, and it is the human's to make. Name it in the hand-off when

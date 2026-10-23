@@ -13,10 +13,12 @@ erroring on it.
 **`--help` first.** If present, render the `builder:help` card and stop.
 
 **The mechanics live in [CONVERSATION.md](CONVERSATION.md)** — the record, rounds, approaches,
-confirm, size, steering. Read it now. **Do not load REFERENCE wholesale** — the conversation reads only the four sections CONVERSATION.md
-names, when it reaches them; the spec formats belong to `/builder:spec`. Read `.claude/builder.md`:
-the apps and the house-rule sources, and for the small path its companion skills, gates, landmines
-and `commit:` mode.
+confirm, size, steering. Read it now, in one call with what else the conversation reads:
+`node <builder>/scripts/docs.mjs brainstorm` prints CONVERSATION.md, the four sections CONVERSATION.md
+names (REFERENCE §Sizes · §The classifier · §The review · §Walk readiness) and `.claude/builder.md`.
+**Do not load REFERENCE wholesale** — the spec formats belong to `/builder:spec` (under `--auto`,
+§Spec under `--auto` reads them through `docs.mjs spec-auto`). From the config: the apps and the
+house-rule sources, and for the small path its companion skills, gates, landmines and `commit:` mode.
 
 **`--ticket <id>`** (REFERENCE §Flags) → write `ticket: <id>` into the record's header; check that
 the current branch name carries the key and warn once if it does not; and read the dossier when the
@@ -30,8 +32,11 @@ known to build.
 
 Take these in order; the first that applies wins.
 
-1. **`--path <folder>` with a `brainstorm.md` in its workspace** → a status other than
-   `handed-off`: resume from it (CONVERSATION §The record); a record with `source: intake` belongs
+1. **`--path <folder>` with a `brainstorm.md` in its workspace** → **an `--auto` stub** (`auto:
+   stub` in its header): its SPEC committed → set `status: handed-off` and hand on to
+   `/builder:resume --path <folder>`; not committed → re-run the `--auto` run from its `Request:`
+   line (CONVERSATION §Steering and --auto, its `--auto` stub record), whether or not this run says `--auto`. Otherwise a
+   status other than `handed-off`: resume from it (CONVERSATION §The record); a record with `source: intake` belongs
    to `/builder:intake` — hand it there. `handed-off` with a live SPEC, MANIFEST or PROGRAM: fall
    through to step 4 — a new revision, which overwrites the record. **`handed-off` with none of
    them** → nothing to resume: say where the work went (built in chat, stopped at understanding, or
@@ -48,7 +53,10 @@ Take these in order; the first that applies wins.
 4. **Derive the name** (from `--path` or the text) and check it:
    - no `--path`, and `.builder/<name>/brainstorm.md` already exists with a status other than
      `handed-off` → a conversation under this name is in progress: offer to resume it (step 1)
-     rather than overwrite it, or a different name for new work.
+     rather than overwrite it, or a different name for new work. An `--auto` stub is step 1 without
+     asking — the same command re-run after a crash.
+   - no `--path`, and an `--auto` stub with `status: handed-off` whose `Request:` is this run's text
+     → it is already written: print the spec's footer (`/builder:spec` §3) and stop.
    - exists under `<registry>/_archive/` → it shipped: refuse the name, say when (its header line),
      suggest `<name>-v2`.
    - **The DONE check**: a live folder whose SPEC header carries `SHIPPED`, or whose README header
@@ -104,7 +112,9 @@ Take these in order; the first that applies wins.
    §Steering and --auto).
 
 Write the record (`status: exploring`, `source: brainstorm`). The intent stays `(assumed)` until the
-user confirms or corrects it.
+user confirms or corrects it. **Under `--auto`** the record is the stub (CONVERSATION §Steering and --auto,
+its `--auto` stub record), written here with the request verbatim, and only its `status:` and §Size change after
+this — the tree, the approaches and the rest live in this turn and go straight into the spec.
 
 ## Quick path
 
@@ -323,11 +333,30 @@ tree starts seeded from the concept (§Discovery · After discovery). Where the 
 
 CONVERSATION §Approaches, §Confirm and §Size and the small path, in that order. Sizing happens only
 after the user confirms the understanding and chooses to build, and the size comes from the
-confirmed concept. md, lg and xl hand on to `/builder:spec`; xs and sm are designed and built here.
+confirmed concept. md, lg and xl hand on to `/builder:spec` — under `--auto`, §Spec under `--auto`
+instead; xs and sm are designed and built here.
 
 A revision conversation never sizes: after §Confirm it hands to `/builder:spec --path <folder>` (no
 `go-ahead:` yet) or, after a go-ahead, sets `status: handed-off` and hands each settled change to
 `/builder:revise --path <folder> <the ruling>`.
+
+## Spec under `--auto`
+
+Under `--auto`, md, lg and xl don't type a full record for `/builder:spec` to read back: this turn
+writes the spec itself, from the conversation it holds. Nothing a user sees changes — the same SPEC,
+manifest, commit and footer `/builder:spec --auto` produces.
+
+1. The stub says `status: sized <size>` (CONVERSATION §Steering and --auto, its `--auto` stub record).
+2. `node <builder>/scripts/docs.mjs spec-auto` — `/builder:spec`'s own steps (skills/spec/SKILL.md)
+   with REFERENCE §SPEC.md · §MANIFEST.md · §PROGRAM.md and the config, in one call.
+3. Run `/builder:spec`'s §1–§3 as written, under `--auto`, with this turn's tree as the record: every
+   product choice takes its recommendation (`auto (recommended) YYYY-MM-DD`), SPEC.md and
+   MANIFEST.md (PROGRAM.md at xl) are written, `check-obligations.mjs` proves it, one commit
+   `docs(<ticket-or-feature>): design <feature>`, no review printed — the one line and the footer.
+4. Set the stub's `status: handed-off` — its `spec:` line already points at the SPEC.
+
+**After a crash, re-run the same command** — step 1 of §Where to start reads the stub and finishes
+what is missing; nothing is lost but the recon, which is redone.
 
 ## Every pause
 

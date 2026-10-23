@@ -14,11 +14,19 @@ nothing else in this skill applies — §The test plan's levers included, which 
 way.
 
 **This skill is a wrapper.** [`EXECUTION.md`](EXECUTION.md) owns the loop — setup, dispatch, the task
-review, the fix loop and its breaker, the final review, the "Rulings I made" list. **Read it first**,
-then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md · §MANIFEST.md · §Branch and
-ticket) and **`.claude/builder.md`** (§Quality gates for the per-app fast sets · §Global constraints
+review, the fix loop and its breaker, the final review, the "Rulings I made" list. **Read it first,
+with everything else this step reads, in one call:** `node <builder>/scripts/docs.mjs build` — it
+prints EXECUTION.md, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
+§MANIFEST.md · §Branch and ticket · §Quality gates — the mechanism · §Walk readiness · §The craft
+skills) and **`.claude/builder.md`** (§Quality gates for the per-app fast sets · §Global constraints
 for every brief · §House rules · §Environment landmines). Everything below is the binding this
 pipeline puts on top of that loop.
+
+**The orchestrator does not type what a script writes** (REFERENCE §The scripts): every subagent
+prompt comes from `dispatch.mjs`, every manifest / ledger / commit change from `advance.mjs`, the walk
+script from `walk-script.mjs`, the walk lane's hand-off from `handoff.mjs`. Each is idempotent —
+🔴 **after a crash or a `/clear`, re-run the same command**; it finishes what is missing or says
+`already applied`.
 
 Input: `<folder>/PLAN.md` — the plan, and the only thing executed — with `SPEC.md` read for the
 sections a task implements and `MANIFEST.md` for state, plus the ledger. Output: code — **one commit
@@ -76,7 +84,7 @@ whose state is `planned` or `building`.
 | `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `profile:` or `target:` (a 4.9 go-ahead) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:agent --path <folder>`. Never build it here. Neither key (a 4.8 go-ahead) → the rows below, as before |
 | `state: planned` **and** `go-ahead:` carries a name + date | run |
 | `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: hand off to `/builder:plan --path <folder>` — its go-ahead picks the test plan and launches the fleet. Never take the go-ahead or build it here |
-| `state: planned` **and** `go-ahead: none` | take the go-ahead here, exactly as plan §The go-ahead does — the slices from `plan-slices.mjs`, the A/B/C, B's questions, `tests:` recorded. A → write `go-ahead:` and `tests:`, commit, run. C → hand back. ⛔ Never hand back to the plan step for this. Under `--auto` the slices are presented, the recommendation recorded, and the run proceeds |
+| `state: planned` **and** `go-ahead: none` | take the go-ahead here, exactly as plan §The go-ahead does — the slices from `plan-slices.mjs`, the A/B/C, B's questions, `tests:` recorded. A → write `go-ahead:` and `tests:` and commit — the same `advance.mjs` call plan §The go-ahead makes — then run. C → hand back. ⛔ Never hand back to the plan step for this. Under `--auto` the slices are presented, the recommendation recorded, and the run proceeds |
 | `state: building` | resume — the ledger is ground truth, not the conversation |
 | §Findings has a `blocked:` row | name the row and its clearer, hand back, stop. A `build-time risk` row is **not** a blocker — it rides into its task's brief |
 | `state: built` · `signed-off` · `verified` · `shipped` | already built. Say so naming the state, hand back, stop |
@@ -104,11 +112,16 @@ Two things it leaves to this skill:
 
 ### Composing the brief
 
-1. `<builder>/scripts/task-brief <folder>/PLAN.md N "<WS>/task-N-brief.md"` — with the **explicit
-   outfile**, always.
+`node <builder>/scripts/dispatch.mjs implementer <folder> --task N [--context "<one paragraph>"]`
+composes the brief at `<WS>/task-N-brief.md` and the implementer's prompt beside it — and records the
+task's BASE the first time. What the brief carries — the script writes it; this is what it holds, so
+you know what not to repeat in `--context`:
+
+1. **The task block** exactly as `<builder>/scripts/task-brief` cuts it — from its heading to the next
+   `Task` heading.
 2. **Nothing is trimmed.** The plan keeps nothing between task blocks and nothing after the last one,
    so what the script wrote is exactly one task.
-3. **Append four blocks**, in this order:
+3. **Then four blocks**, in this order:
    - **The SPEC section(s) this task implements**, copied: the ones the block's **Files**, its `App:`
      and `Phase:` lines and its **Interfaces** point at — a schema task → §Schema & API changes + the
      Data plan; work in an app → that app's §<App> section; the tests → §Testing — plus every
@@ -131,14 +144,31 @@ Two things it leaves to this skill:
 
 EXECUTION.md §1–5 unchanged, with these bindings:
 
-- **Report file:** `<WS>/task-N-report.md`. **Review package:**
-  `<builder>/scripts/review-package BASE HEAD "<WS>/review-<base7>..<head7>.diff"` — explicit outfile
-  again, and the BASE you recorded, **never `HEAD~1`**.
-- **The prompts** are [`prompts/implementer.md`](prompts/implementer.md),
+- 🔴 **Every dispatch is rendered, never typed:** `node <builder>/scripts/dispatch.mjs <kind> <folder> …`
+  writes the subagent's whole prompt into the workspace and prints the Agent call — its
+  `description`, the model guidance (**name the model yourself**, EXECUTION.md §Model selection) and
+  the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
+  one paragraph of context the template cannot know — better passed as `--context`, so it lands in
+  the file and survives a crash. The kinds:
+
+  | Dispatch | Command |
+  |---|---|
+  | the implementer | `dispatch.mjs implementer <folder> --task N [--context "…"]` |
+  | the task review | `dispatch.mjs task-review <folder> --task N` — the review package from the recorded BASE, **never `HEAD~1`** |
+  | a fix round R | `dispatch.mjs implementer <folder> --task N --round R --findings-file <the findings: file the last review printed>` — rounds 1–3: send the resumed implementer `Read <file> and do what it says.`; rounds 4–5: a fresh Agent, one tier up |
+  | its scoped re-review | `dispatch.mjs re-review <folder> --task N --round R --findings-file <the same file>` — the next round's file is this re-review's `findings:` |
+  | the phase review (`review=app`) | `dispatch.mjs task-review <folder> --phase N` |
+
+- **Findings travel as files.** Each reviewer writes its report to the workspace file its dispatch
+  names (`findings: <WS>/task-N-review.md`, `task-N-re-review-R.md`, `review-phase-N.md`) and the fix
+  round passes that file — never paste a review into a dispatch. A ⚠️ item you confirmed rides along
+  as `--findings "<it>"`; a finding you ruled out of the loop (a plan-mandated ruling) goes in
+  `--context` with the `Ruling:`.
+- **What the templates are:** [`prompts/implementer.md`](prompts/implementer.md),
   [`prompts/task-reviewer.md`](prompts/task-reviewer.md) and
-  [`prompts/re-review.md`](prompts/re-review.md). The implementer's `[COMMIT_INSTRUCTION]` comes from
-  the config: an app marked `commit: auto` commits its own task; one marked **`commit: manual`
-  stages and stops**.
+  [`prompts/re-review.md`](prompts/re-review.md) — `dispatch.mjs` fills them. Report file:
+  `<WS>/task-N-report.md`. The implementer's `[COMMIT_INSTRUCTION]` comes from the config: an app
+  marked `commit: auto` commits its own task; one marked **`commit: manual` stages and stops**.
 - **The reviewer gets §Contract** as well as the constraints block, and checks the diff against it
   rather than against the implementer's description.
 - **The implementer runs its own tests and the type-check, not the app's suite.** The prompt says
@@ -146,23 +176,26 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   at the phase close (`own+app`), after every task through the gate runner (`full`), or once at the
   end (`own`, `none`) — never inside an implementer: one running it per task was the largest single
   cost measured in a real build, and it proved nothing the gate runner did not prove again minutes
-  later. **Under `slice=none`** the dispatch adds one line: `tests: slice=none — write the tests
-  your block names; run only the type-check; they run at the end.`
+  later. **Under `slice=none`** the dispatch carries one more line — `dispatch.mjs` adds it from the
+  manifest: `tests: slice=none — write the tests your block names; run only the type-check; they run
+  at the end.`
 - **Under `slice=full`, after each task completes** (its review too, when there is one):
   `node <builder>/scripts/gate.mjs <app>`. Red → a fix dispatch against that task, reviewed like any
   other finding, and the gate again — the next task waits.
 - **Under `review=app` or `end`, there is no task review:** a DONE report goes straight to
   EXECUTION.md §5, the ledger line saying so.
-- **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**.
-- **Carry the config's §Environment landmines into the dispatch** when one applies to this task. A
+- **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**: render each
+  task's dispatch, then send the first one's with `--context` naming the others' brief files.
+- **Carry the config's §Environment landmines into the dispatch** (`--context`) when one applies to this task. A
   fresh implementer has never met them, and the commonest class — a service that does not reload, a
   tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
   pass or fail against a lie. Put the remedy **in the step**, not in the prose.
 - 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `$BUILDER_FLEET_DIR/requests/<feature>.pause`
   exists — the fleet sets `BUILDER_FLEET_DIR` to the main checkout's fleet dir, since this run's cwd
   is its worktree; unset → `.builder/fleet/requests/<feature>.pause` — tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
-  manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop. The
-  ledger keeps every finished task.
+  manifest and commit it, in one call:
+  `node <builder>/scripts/advance.mjs <folder> --set 'blocked="revising — next: /builder:revise --path <folder>"' --ledger "<where it stopped>" --head --commit "chore({key}): {feature} — parked: revising"`,
+  and stop. The ledger keeps every finished task.
 
 ## Phase close — the controller's own work
 
@@ -188,20 +221,23 @@ echo** — when they disagree, the table decides and the mismatch is said out lo
    task that caused it, reviewed like any other finding — never a controller fix — then the gate
    re-runs.
 2b. **Under `review=app`, one review of the phase's whole diff:**
-   `<builder>/scripts/review-package <phase BASE> HEAD "<WS>/review-phase-N.diff"` — the BASE
-   recorded before the phase's first task — dispatched with
+   `node <builder>/scripts/dispatch.mjs task-review <folder> --phase N` — the review package from
+   the BASE recorded before the phase's first task to HEAD (`<WS>/review-phase-N.diff`), with
    [`prompts/task-reviewer.md`](prompts/task-reviewer.md), every brief and report of the phase, the
-   constraints block and §Contract. Its findings run EXECUTION.md §4's fix loop, each against the
-   task it names; the phase closes when the loop does.
+   constraints block and §Contract. Its findings (`<WS>/review-phase-N.md`) run EXECUTION.md §4's
+   fix loop, each against the task it names; the phase closes when the loop does.
 3. 🔴 **If this was the PRODUCER's phase, freeze the contract.** Write `contract: frozen <YYYY-MM-DD>`
-   to the manifest and commit it with the phase's ledger line:
-   `chore(<ticket-or-feature>): <feature> — contract frozen at phase N`. **This is a manifest write
-   moment** and the one exception to "the manifest is not written at a phase close". Every consumer
-   task after it is briefed against a frozen contract.
+   to the manifest and commit it with the phase's ledger line — one call:
+   `node <builder>/scripts/advance.mjs <folder> --set "contract=frozen <YYYY-MM-DD>" --ledger "Phase N (<app>): closed — …" --head --commit "chore({key}): {feature} — contract frozen at phase N"`
+   (the subject `chore(<ticket-or-feature>): <feature> — contract frozen at phase N`). **This is a
+   manifest write moment** and the one exception to "the manifest is not written at a phase close".
+   Every consumer task after it is briefed against a frozen contract — `dispatch.mjs` reads the
+   manifest and says so in every brief.
 4. **If the phase landed `SC#` rows,** tick each row's Status in §Schema & API changes with its real
    migration id. That is **the one docs-only commit the build allows**:
-   `docs(<ticket-or-feature>): <feature> — SC# landed`.
-5. **One ledger line:** `Phase N (<app>): closed — gates <one line> · <sha>`, or under
+   `node <builder>/scripts/advance.mjs <folder> --add <folder>/SPEC.md --commit "docs({key}): {feature} — SC# landed"`.
+5. **One ledger line** — `node <builder>/scripts/advance.mjs <folder> --ledger "<line>"` (no commit):
+   `Phase N (<app>): closed — gates <one line> · <sha>`, or under
    `slice=none` / `own`: `Phase N (<app>): closed — gates deferred to the end (tests: slice=<v>) · <sha>`.
 6. **Otherwise the manifest is not written here** — per-phase state is the ledger plus `git log`.
 7. **Start the next phase in the same turn.** The go-ahead covered the whole plan.
@@ -225,10 +261,11 @@ can still happen from a dirty tree with that said plainly.
 
 EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 
-1. Tick the ledger: tasks complete, the open fix round if any, one line on where the phase stands,
-   and anything for `## env notes`.
-2. Write the manifest — `state: building`, `next: /builder:resume --path <folder>`, `head`, `branch`.
-3. Commit it alone: `chore(<ticket-or-feature>): <feature> — stopped mid-phase N`. **Nothing else is
+1–3. **One call** ticks the ledger (tasks complete, the open fix round if any, one line on where the
+   phase stands, anything for `## env notes`), writes the manifest — `state: building`,
+   `next: /builder:resume --path <folder>`, `head`, `branch` — and commits it alone:
+   `node <builder>/scripts/advance.mjs <folder> --set state=building --set "next=/builder:resume --path <folder>" --head --ledger "<line>"… --commit "chore({key}): {feature} — stopped mid-phase N"`
+   (the subject `chore(<ticket-or-feature>): <feature> — stopped mid-phase N`). **Nothing else is
    committed by the controller mid-build.**
 4. Hand off ending `say go to continue here, or run /clear first, then /builder:resume --path <folder>`
    — all state is on disk, so continuing in this session loses nothing but room.
@@ -248,7 +285,8 @@ the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agen
   every path forward is a guess at what the product should be** — these park: write
   `blocked: "<the stop class, and what it stopped on, in plain words> — next: <step>"` (REFERENCE §How a park reads) to the manifest, and `<folder>/PARKED.md` (REFERENCE §The park
   record; `kind: human-step` for a `commit: manual` app, `decision` for a broken plan), in the same
-  ledger line and manifest commit as steps 1–3, the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>`, and
+  ledger line and manifest commit as steps 1–3 — that call with `--set 'blocked="…"' --add <folder>/PARKED.md`
+  and the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>` — and
   **end the run**. A plan that is merely wrong in places is not this: rule, fix the task, go on.
 - **Under `unruled: park`**, a choice the spec doesn't settle parks the same way (`kind: decision`),
   naming the choice — no ruling taken.
@@ -269,27 +307,39 @@ Never ask.
 
    🔴 Red is a stop here as anywhere (§The test plan): each failure is a fix dispatch against the
    slice that caused it, then the runner again.
-2. **The final whole-branch review** — EXECUTION.md §The final whole-branch review, using
-   [`prompts/final-reviewer.md`](prompts/final-reviewer.md) on the most capable model, pointed at the
-   ledger's deferred-minor and parked lines **and at §Contract**. ONE fix dispatch, one scoped
-   re-review, then adjudicate. No second fix wave.
+2. **The final whole-branch review** — EXECUTION.md §The final whole-branch review:
+   `node <builder>/scripts/dispatch.mjs final-review <folder>` renders
+   [`prompts/final-reviewer.md`](prompts/final-reviewer.md) — on the most capable model, pointed at
+   the ledger's deferred-minor and parked lines **and at §Contract**, its report written to
+   `<WS>/final-review.md`. ONE fix dispatch (`dispatch.mjs implementer <folder> --final`, which takes
+   that file), one scoped re-review (`dispatch.mjs re-review <folder> --final --round 1
+   --findings-file <WS>/final-review.md`), then adjudicate. No second fix wave.
 3. 🔴 **Walk readiness** — [REFERENCE](../resume/REFERENCE.md) §Walk readiness: pending
    migrations applied to the **dev** database (asked for, not assumed), stale processes restarted,
    the running app smoked on every surface this feature changed. A defect it finds is a fix dispatch
    like a red gate, then it runs again. **Still `pending` → stop here**: no walk script, no
    `state: built`; write `state: building`, `ready: pending "<what>"`,
-   `next: <what the human must do>, then /builder:resume --path <folder>` and hand off saying exactly
-   that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
+   `next: <what the human must do>, then /builder:resume --path <folder>` —
+   `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "<what>"' --set "next=<…>" --head --commit "chore({key}): {feature} — built, walk readiness pending"` —
+   and hand off saying exactly that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
    **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all. Instead, **run the
    deep set here**, where it runs in parallel with other builds instead of holding the one-at-a-time
    walk lane: `node <builder>/scripts/gate.mjs --deep <every in-scope app>` through `job.mjs`. Red
    deep gates are fix dispatches like any red phase gate. Verify will quote this run if nothing
-   changes the tree before it — and re-run it if something does. Then write `state: building`,
-   `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>`, commit
-   `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`, and end the run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
+   changes the tree before it — and re-run it if something does. Then write the walk script (step 4,
+   so the walk lane finds it), write `state: building`,
+   `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>` and commit —
+   `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "dev env (fleet walk lane)"' --set "next=/builder:resume --path <folder>" --head --commit walk-lane`
+   (the preset `walk-lane` = `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`) —
+   then §The hand-off file, and end the run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
    becomes. With `agent_walk.start` set, the fleet has already started the walk env for this worktree —
    never start or restart it here (REFERENCE §Walk readiness).
-4. **The walk script** — write it to `<WS>/walk.md` **and print it in the hand-off**. 🔴 **It is per
+4. **The walk script** — `node <builder>/scripts/walk-script.mjs <folder>` writes `<WS>/walk.md`
+   from SPEC §Testing; **you fill only each app's marked `<!-- orchestrator: … -->` block** — how to
+   reach it (a URL, the command prefix, scratch files), the surfaces that cannot work locally, a
+   readiness step that could not run here — and reword an item a person couldn't do as written, or
+   fix a `[risk]` tag the script got wrong. A re-run keeps your blocks and rewrites the rest
+   identically. **Print it in the hand-off.** 🔴 **It is per
    app**: a multi-app feature is walked in more than one place, and a script naming one of them gets
    half a sign-off. Per app: where to go, what to do, what to look for **newest-first**, and the local
    facts the human needs — taken from the config's §Environment landmines, plus which surfaces cannot
@@ -297,15 +347,22 @@ Never ask.
    **Under `--agent-walk`**, append the cross-app walk after the per-app sections, so the agent walk
    runs it in the same live session and verify need not drive the app again (verify item 10):
    `## Cross-app (verify E2E)`, then SPEC §Testing's walk script as numbered steps `E1…En` — each
-   one line of what to do and one of what to see, in the script's order. Without `--agent-walk`,
+   one line of what to do and one of what to see, in the script's order. `walk-script.mjs` writes it
+   when the manifest says `agent-walk: on` (`--cross-app` forces it). Without `--agent-walk`,
    `walk.md` stays per-app only.
    **Tag `[risk]`** on every item touching a §Contract row, an auth or permission path, a
    load/save/delete path, a notification payload or a deep-link target (verify's re-walk table) — the
    agent walk under `end=risk` walks only those.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
-   `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk`.
-   **Under `--agent-walk`:** `next: /builder:agent-walk --path <folder>` and keep going into it — the
+   `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk` — one call:
+   `node <builder>/scripts/advance.mjs <folder> --set state=built --set "ready=yes <YYYY-MM-DD> <sha>" --set "next=🔒 your walk → /builder:signoff --path <folder>" --head --commit built`.
+   **Under `--agent-walk`:** `--set "next=/builder:agent-walk --path <folder>"` and keep going into it — the
    walk script is still written (the agent walks it), and no human is asked to.
+5b. **The hand-off file** — `node <builder>/scripts/handoff.mjs write <folder> [--note "<a line only
+   this lane knows>"]`, the build's last act after its manifest commit, at both ends: built, or
+   phases closed for the walk lane. It writes `<WS>/handoff.md` — state, sha, gates, the contract,
+   walk.md's counts, open items, this config's readiness facts — so the walk lane's resume reads one
+   file instead of re-deriving it. Re-running it rewrites nothing that hasn't changed.
 6. **"Rulings I made"** goes in the hand-off — every ledger line containing `Ruling:`, in order, each
    with what it costs if wrong. It is the only place those decisions reach the human.
 7. ⛔ **Do not delete the workspace** — the walk, verify and the sign-off still read it.
@@ -339,7 +396,7 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
    contract-freeze ceremony (still freeze it in the manifest when the producer's phase closes),
    walk readiness, the walk, sign-off and verify.
 6. **When the last task is in:** write `state: built`, `walk: none`, `ready: none` and commit
-   `chore(<feature>): built here — not walked`. Then:
+   `chore(<feature>): built here — not walked` — `node <builder>/scripts/advance.mjs <folder> --set state=built --set walk=none --set ready=none --head --commit "chore({feature}): built here — not walked"`. Then:
 
 ~~~
 📍 <feature>: built here, not walked — test it yourself. When you want the full finish:

@@ -9,7 +9,9 @@ Invocation: **`/builder:audit --path <folder> [--ticket <id>] [--auto]`**. Flags
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
-**Load REFERENCE and `.claude/builder.md` before starting**, and cite them rather than restate them:
+**Load REFERENCE and `.claude/builder.md` before starting — in one call:**
+`node <builder>/scripts/docs.mjs audit` prints every section below, the config and
+`SURFACE-CHECK.md` together; cite them rather than restate them:
 the config's **§House rules** is sweep 1's checklist and its **§Standing traps** is what this project
 has already paid to learn · REFERENCE §SPEC.md gives the §Findings / §Decisions shapes and the
 `build-time risk` convention · §Apps and §Contract and the contract freeze are sweep 3's subject ·
@@ -185,7 +187,17 @@ anything the cap leaves unsettled.
 **The manifest:** `state: audited`, `head`, `branch`, `apps:` refreshed if sweep 3 corrected §Apps,
 and `next: /builder:resume --path <folder>` — one command either way, because the orchestrator routes
 to the decisions gate when §Decisions has OPEN rows and to `/builder:plan` when it does not. Commit
-the SPEC and the manifest **together**: `docs(<ticket-or-feature>): <feature> audited`.
+the SPEC and the manifest **together**: `docs(<ticket-or-feature>): <feature> audited`. All of it is
+one call:
+
+```bash
+node <builder>/scripts/advance.mjs <folder> --set state=audited \
+  --set "next=/builder:resume --path <folder>" [--set "apps=<a>+<b>"] --head \
+  --add <folder>/SPEC.md --commit audited
+```
+
+After a crash, re-run the same command — it finishes what's missing or says `already applied`
+(REFERENCE §The scripts).
 
 **The hand-off carries a `READY` / `BLOCKED` line** over the contract sweep and, in prototype mode,
 items 7–10 plus the `S#` closure — every `S#` COVERED, DROPPED **with a named decider**, or carried by

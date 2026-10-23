@@ -14,10 +14,18 @@ picker, nothing written.
 
 **Read `.claude/builder.md` before anything else.** It is the only place this pipeline learns what
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
-`/builder:init`, and stop.
+`/builder:init`, and stop. One call prints it with the REFERENCE sections this flow reads —
+§Flags · §MANIFEST.md · §Condense · §The two-way footer · §Continuing on "go":
+`node <builder>/scripts/docs.mjs resume`.
+
+**State changes go through the scripts** (REFERENCE §The scripts): a manifest key, a ledger line and
+its commit are one `node <builder>/scripts/advance.mjs <folder> …` call, never a hand `sed`. 🔴 Each
+is idempotent — **after a crash or a session that died, re-run the same command**; it finishes what
+is missing or says `already applied`.
 
 **`--here` (not under `--agent-walk`)** → write `build: here` to the manifest (once; a manifest that
-already says it is left alone), commit `chore(<feature>): build here, without the ceremony`, then
+already says it is left alone), commit `chore(<feature>): build here, without the ceremony` —
+`node <builder>/scripts/advance.mjs <folder> --set build=here --commit "chore({feature}): build here, without the ceremony"` — then
 route as below. Valid only before the build starts (`state` spec, aligned, audited or planned); past
 that, say so in one line and route as usual.
 
@@ -73,7 +81,9 @@ which, and stop; any other status →
 
 **A feature folder (a SPEC, MANIFEST or PROGRAM) that also has a `.builder/<feature>/brainstorm.md`
 whose status is not `handed-off`** → a revision conversation is open, and it comes before the manifest's next step: run
-`/builder:brainstorm --path <folder>` and stop.
+`/builder:brainstorm --path <folder>` and stop — except an `--auto` stub (`auto: stub` in its header,
+brainstorm §Spec under --auto) whose SPEC is committed: that run died after its commit, so set the
+stub's `status: handed-off` and route on the manifest.
 
 **The fleet's copy wins.** Not under `--agent-walk`: when `.builder/fleet/fleet.json` has a row for
 the feature whose `worktree` exists on disk, that worktree's `<registry>/<feature>/MANIFEST.md` is the
@@ -91,7 +101,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 |---|---|
 | SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm <the new thing>` |
 | `blocked:` reads `waiting for your walk …` (test plan `walk=you`: the agent walk passed) | your walk, in the fleet's worktree `<wt>` — the row's `worktree` in `.builder/fleet/fleet.json`, kept for you when the fleet ends (gone → `git worktree add <wt> <the row's branch>` first): 1. start `<wt>`'s walk env — `agent_walk.start` run in `<wt>` with `agent_walk.env` ({feature} filled in), as the walk lane does; 2. print `<wt>`'s `walk.md` (`cd <wt> && <builder>/scripts/workspace <feature>`); 3. 🔒 stop, giving the exact command to type: `/builder:signoff --path <wt>/<registry>/<feature>` (the absolute path) — it reads, writes and commits in `<wt>`, and its migration-status check runs with that same `agent_walk.env`; 4. whatever its verdict, `/builder:signoff` hands it back with `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) — run it yourself when it didn't — on PASS the fleet verifies and lands it; on PROBLEMS the agents work the `## Fixes`, re-walk, and park again for your walk. Never unpark it any other way — `/builder:agent` doesn't either. Under `--agent-walk`, end the run |
-| `blocked:` set (anything but `none`) | ⛔ **parked.** Show why and the recommended next step — from `<folder>/PARKED.md` when there is one (*What is stuck*, *Recommended next step*, and the last *History* line), else the line split per REFERENCE §How a park reads. Then **offer to unpark**, one AskUserQuestion: **Unpark and dig in (Recommended)** — set `blocked: none`, append `unparked by <you> YYYY-MM-DD` to the record's History, commit `chore(<feature>): unparked — was: <the line>`, then start from *Where to dig* with [`systematic-debugging`](../systematic-debugging/SKILL.md) before anything else, and carry on to the manifest's step; or **Leave it parked**. A `kind: human-step` park recommends its human step instead. Under `--agent-walk`, end the run: the fleet reads the line, and retries it itself |
+| `blocked:` set (anything but `none`) | ⛔ **parked.** Show why and the recommended next step — from `<folder>/PARKED.md` when there is one (*What is stuck*, *Recommended next step*, and the last *History* line), else the line split per REFERENCE §How a park reads. Then **offer to unpark**, one AskUserQuestion: **Unpark and dig in (Recommended)** — set `blocked: none`, append `unparked by <you> YYYY-MM-DD` to the record's History, commit `chore(<feature>): unparked — was: <the line>` (`advance.mjs <folder> --set blocked=none --add <folder>/PARKED.md --commit "chore({feature}): unparked — was: <the line>"`), then start from *Where to dig* with [`systematic-debugging`](../systematic-debugging/SKILL.md) before anything else, and carry on to the manifest's step; or **Leave it parked**. A `kind: human-step` park recommends its human step instead. Under `--agent-walk`, end the run: the fleet reads the line, and retries it itself |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
 | **a `SPEC.md` with no manifest** | half-written, or a half-finished conversion. Write the missing manifest from what the SPEC records, then re-enter this table |
@@ -106,7 +116,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | `/builder:plan --path <folder>` — its go-ahead picks the test plan and launches the fleet (plan §The go-ahead); never a hand build |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
 | `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `target:` or an old `profile:` (an agent go-ahead writes `target:`; `tests:` alone is an in-chat go-ahead, built by the rows below) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: `/builder:agent --path <folder>` — it relaunches the fleet on the manifest's `target:`, or says it is already running. A fleet row parked `waiting for your walk …` is the walk row above, never this one. Neither key (a 4.8 go-ahead) → the hand-build rows below, as before |
-| `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — run REFERENCE §Walk readiness, then the build's walk script and `state: built`. Don't re-run the final review |
+| `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — the walk lane. **First `node <builder>/scripts/handoff.mjs read <folder>`**: `trust: ok` → it prints the build lane's hand-off (state, sha, gates, open items, this config's readiness facts, the route with its exact `advance.mjs` call) and the walk-lane docs (REFERENCE §Walk readiness, build §When the last phase signs) — follow its route. **`stale: …` (exit 3)** — no hand-off, or the code or the manifest moved since — → derive it as before: `node <builder>/scripts/docs.mjs walk-lane`, run REFERENCE §Walk readiness, then the build's walk script (`walk-script.mjs`, when `walk.md` is missing) and `state: built`. The manifest always wins over the hand-off. Don't re-run the final review |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
 | `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk. **Under `--agent-walk`:** `/builder:agent-walk --path <folder>` instead |
@@ -198,7 +208,8 @@ touches neither the SPEC header nor the PR lock.
    walk script below. This is where an unattended run is checked: nothing lands unseen.
 2. **Print the walk script.** The build wrote it to `walk.md` in the workspace
    (`<builder>/scripts/workspace <feature>` prints the directory; re-resolve it inline in every
-   command). Missing → write it now: **per app**, since a multi-app feature is walked in more than
+   command). Missing → write it now with `node <builder>/scripts/walk-script.mjs <folder>` and fill
+   its marked blocks: **per app**, since a multi-app feature is walked in more than
    one place — where to go, what to do, what to look for **newest-first**, and the local facts the
    human needs, taken from the config's §Environment landmines.
 3. **Wait.** Say plainly what has and has not been human-tested, and on which app.
@@ -327,8 +338,10 @@ Every point that would ask resolves one of two ways:
 - **Park** — only for the cases above. Write `blocked: "<why> — next: <step>"` (REFERENCE §How a park reads) and `next:
   /builder:resume --path <folder>` to the manifest, **and `<folder>/PARKED.md`** (REFERENCE §The park
   record — everything a cold reader needs to dig: what is stuck, what was tried, the evidence quoted,
-  where to dig), commit both `chore(<ticket-or-feature>): <feature> — parked: <reason>`, print the
-  footer, and **end the run**. The reason names the decision the spec is missing, in one line the
+  where to dig), commit both `chore(<ticket-or-feature>): <feature> — parked: <reason>` — write
+  PARKED.md, then one call:
+  `node <builder>/scripts/advance.mjs <folder> --set 'blocked="<why> — next: <step>"' --set "next=/builder:resume --path <folder>" --add <folder>/PARKED.md --head --commit "chore({key}): {feature} — parked: <reason>"` —
+  print the footer, and **end the run**. The reason names the decision the spec is missing, in one line the
   human can answer.
 - **A run started after an unpark** — the fleet's prompt says the feature *was parked before* and
   quotes the old line. **Read `<folder>/PARKED.md` first**: it is the investigation so far. Treat it
@@ -358,8 +371,9 @@ Every point that would ask resolves one of two ways:
 `--no-dev-env` when this run has it — `--auto` too, because plan, audit and align read `--agent-walk`
 only to park (a plan's split) and would otherwise still raise their own pauses (a plan step's
 `ExitPlanMode` for the go-ahead, for one); they do already honour `--auto`, so that's what settles them. Under
-`--no-dev-env`, reaching walk readiness writes `ready: pending "dev env (fleet walk lane)"`, commits,
-and ends the run.
+`--no-dev-env`, reaching walk readiness writes `ready: pending "dev env (fleet walk lane)"`, commits
+(build §When the last phase signs: `advance.mjs … --commit walk-lane`), writes the hand-off
+(`handoff.mjs write`), and ends the run.
 
 **Agent mode's job is a feature merged into the target branch.** A run that stops short of that
 without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
@@ -425,7 +439,9 @@ first (`git switch <branch>`) if the tree is clean; otherwise stop and name the 
    **Agent-signed-off** (`walk: agent-pass …`) → this section is not the one: §Ship in agent mode
    under `--agent-walk`; without it, the route table's agent-mode row says what to offer.
 3. **Write `pr: #N` to the manifest yourself and commit it** — `gh pr view --json number --jq
-   .number` — plus `next: watch CI, then /builder:ship --path <folder>`. Nothing else writes that line.
+   .number` — plus `next: watch CI, then /builder:ship --path <folder>`, in one call:
+   `node <builder>/scripts/advance.mjs <folder> --set "pr=#N" --set "next=watch CI, then /builder:ship --path <folder>" --head --commit "docs({key}): {feature} — PR #N open"`.
+   Nothing else writes that line.
 4. **Watch CI.** Merging is the user's call.
 5. **On the open PR:** `/builder:ship --path <folder>` flips the SPEC header to SHIPPED, removes
    `MANIFEST.md` and deletes the workspace.
