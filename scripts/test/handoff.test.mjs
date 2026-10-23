@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { writeFileSync, mkdirSync, statSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { leanRepo, run, git, readText } from './fixtures/lean-repo.mjs'
 
@@ -44,6 +44,20 @@ test('handoff write: the build lane\'s end state — state, head, gates per app,
   assert.match(h, /REFERENCE §Walk readiness/)
   assert.match(h, /advance\.mjs docs\/features\/note-tags --set state=built --set "ready=yes <YYYY-MM-DD> <sha>" --set "next=\/builder:agent-walk --path docs\/features\/note-tags" --head --commit built/)
   assert.match(h, /No database and nothing to migrate|No dev environment/)
+})
+
+test('handoff write: outside agent mode the route records the human walk, and a missing walk.md is named', () => {
+  const r = walkReady()
+  const mf = join(r.folder, 'MANIFEST.md')
+  writeFileSync(mf, readText(mf).replace(/^agent-walk: .*\n/m, ''))
+  git(r.root, 'commit', '-qam', 'docs: not agent mode')
+  rmSync(join(WS(r), 'walk.md'))
+  const out = run('handoff.mjs', ['write', r.rel], { cwd: r.root })
+  assert.equal(out.status, 0, out.stderr)
+  const h = readText(join(WS(r), 'handoff.md'))
+  assert.match(h, /--set "next=🔒 your walk → \/builder:signoff --path docs\/features\/note-tags" --head --commit built/)
+  assert.match(h, /3\. Then 🔒 the human's walk .* write walk\.md first: `node <builder>\/scripts\/walk-script\.mjs docs\/features\/note-tags`/)
+  assert.doesNotMatch(h, /\/builder:agent-walk/)
 })
 
 test('handoff write: re-running with nothing changed leaves the file as it was', () => {

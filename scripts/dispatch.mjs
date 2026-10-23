@@ -20,9 +20,12 @@
  *                          the working directory, the report path, and a Context line (task i of n,
  *                          its phase and goal, `tests: slice=none` when the test plan says so, your
  *                          --context). Records the task's BASE (HEAD now) the first time.
- *      --round R           a fix dispatch for a fresh implementer (rounds 4–5, or a harness that can't
- *                          resume one): the findings verbatim, receiving-code-review first, and from
+ *      --round R           a fix round (fresh at rounds 4–5; rounds 1–3 send the resumed implementer
+ *                          the same file): the findings verbatim, receiving-code-review first, and from
  *                          round 3 systematic-debugging; from round 4 the "you own it now" framing.
+ *   implementer --final    the final review's ONE fix wave: <WS>/final-fix-brief.md (the findings — by
+ *                          default from <WS>/final-review.md —, §Contract, the craft skills, the
+ *                          constraints) and the implementer template across the in-scope apps.
  *   task-review --task N   generates the review package BASE..HEAD (the recorded BASE, never HEAD~1)
  *                          and renders prompts/task-reviewer.md with §Contract verbatim and its status.
  *      --phase N           review=app: one review of the phase's whole diff, every brief and report.
@@ -37,11 +40,19 @@
  *                          directory and report contract, the scope `end` sets; from round 3, the items
  *                          that failed last round, with systematic-debugging.
  *
+ * Findings travel as files. Every review kind tells its reviewer to write its report to a workspace
+ * file — <WS>/task-N-review.md, review-phase-N.md, task-N-re-review-R.md, final-review.md,
+ * final-re-review.md — and prints it as `findings: <path>`. The next fix round and re-review take
+ * `--findings-file <that path>`: the report is embedded verbatim with one line scoping it to its open
+ * findings (Critical, Important, ❌ — or NOT ADDRESSED and new breakage); `--findings "<text>"`
+ * alongside adds the controller's own (a ⚠️ item it confirmed).
+ *
  * Prints the file it wrote, then the Agent call's description, the model guidance and its prompt line.
  *
  * What stays with the orchestrator (judgment): the model tier (EXECUTION §Model selection — always
  * name one); interfaces and rulings from earlier tasks, and an Environment landmine that applies
- * (--context); the findings (copied from the reviewer's reply); whether a finding enters the loop;
+ * (--context); a ⚠️ item it confirmed (--findings); whether a finding enters the loop (a plan-mandated
+ * ruling, a finding it overrules — say so in --context);
  * batching small same-shape tasks into one dispatch.
  *
  * Safe to re-run: the same arguments render the same file, and the recorded BASE and reviewed heads
@@ -214,15 +225,90 @@ const commitTexts = () => {
   return { auto, manual: `${manual[1] ?? ''}${manual[2]}` }
 }
 
+/** The scope line a findings FILE carries: a reviewer's whole report, of which only the open findings are in the round. */
+export const FILE_SCOPE =
+  'The open findings are, in the review report below: its Critical and Important issues and its ❌ spec-compliance items — or, in a re-review report, every finding marked NOT ADDRESSED and any new Critical or Important breakage. Minor issues, Strengths and out-of-scope observations are not in this round.'
+
 function findingsOf(a) {
-  const text = a['findings-file'] ? read(a['findings-file']) : a.findings
-  if (!text || !text.trim()) throw new Error('this dispatch carries the open findings verbatim — pass --findings "<text>" or --findings-file <path>')
+  const file = a['findings-file']
+  if (file != null) {
+    const text = read(file)
+    if (!text || !text.trim()) throw new Error(`no findings in ${file} — the reviewer writes its report there (the dispatch's findings: line); pass the file it names`)
+    const parts = [FILE_SCOPE, '', `From ${file} (verbatim):`, '', text.replace(/\s+$/, '')]
+    if (a.findings?.trim()) parts.push('', 'Added by the controller:', '', a.findings.replace(/\s+$/, ''))
+    return parts.join('\n')
+  }
+  const text = a.findings
+  if (!text || !text.trim()) throw new Error('this dispatch carries the open findings verbatim — pass --findings-file <the review\'s findings file> or --findings "<text>"')
   return text.replace(/\s+$/, '')
 }
 
+/** Where a reviewer writes its report — the file a fix round passes as --findings-file. */
+const findingsPath = (ws, name) => join(ws, `${name}.md`)
+
 // ---- the kinds -----------------------------------------------------------------------------------
 
+/** The final review's ONE fix wave (EXECUTION.md §The final whole-branch review): its own brief, the implementer template. */
+function finalFix(f, a, ws) {
+  const st = loadState(ws)
+  if (!st.final?.reviewed?.[0]) throw new Error('no final review recorded — dispatch final-review first')
+  const findings = findingsOf({ ...a, 'findings-file': a['findings-file'] ?? (a.findings ? undefined : findingsPath(ws, 'final-review')) })
+  const c = contractOf(f)
+  const apps = isSet(f.manifest.apps) ? f.manifest.apps.split('+').map((x) => x.trim()) : (f.cfg?.appNames ?? [])
+  const briefPath = join(ws, 'final-fix-brief.md')
+  const brief = [
+    `# ${f.feature} — the final whole-branch review's fix wave`,
+    '',
+    `The spec: ${f.specPath} — §Apps, §Contract, §Decisions and §Testing are what the code must satisfy.`,
+    '',
+    '## The findings',
+    '',
+    findings,
+    '',
+    `## §Contract — ${c.status}`,
+    '',
+    c.body,
+    '',
+    c.rule,
+    '',
+    '## The craft skills — read them by path',
+    '',
+    ...Object.values(CRAFT).map((s) => `- ${skillPath(s)}`),
+    '',
+    "## Global constraints (the project config's, verbatim)",
+    '',
+    constraints(f),
+    '',
+  ].join('\n')
+  writeAtomic(briefPath, brief)
+  const reportPath = join(ws, 'final-fix-report.md')
+  const texts = commitTexts()
+  const modes = apps.map((n) => [n, f.cfg?.apps.find((x) => x.name === n)?.commit ?? 'auto'])
+  const subject = `fix(${f.key}): final review findings`
+  const commit = modes.every(([, m]) => m !== 'manual')
+    ? `${texts.auto.replace(/exactly one commit for this task/, 'one commit per app you fix')} Subject: \`${subject}\`.`
+    : modes.map(([n, m]) => `In ${n}: ${m === 'manual' ? `${texts.manual} Propose: \`${subject}\`.` : `${texts.auto.replace(/exactly one commit for this task/, 'one commit for this app')} Subject: \`${subject}\`.`}`).join(' ')
+  const ctx = [
+    `The final whole-branch review of ${f.feature} returned findings; you are the ONE fix wave — every finding in the brief, in one pass. There is no second wave.`,
+    `Read ${skillPath(CRAFT.REVIEW_PATH)} BEFORE fixing anything: findings are evaluated, not obeyed — a wrong one gets a reasoned push-back in your report.`,
+  ]
+  if (a.context) ctx.push('', a.context.trim())
+  const tpl = promptOf(readFileSync(join(PROMPTS, 'implementer.md'), 'utf8'))
+  let body = tpl.body.replaceAll('Task N: [task name]', `the final review's fixes for ${f.feature}`).replaceAll('[directory]', f.root)
+  body = body.replace(/\[One line on where this fits\.[^\]]*\]/, () => ctx.join('\n'))
+  body = fill(body, {
+    BRIEF_FILE: briefPath,
+    APP: `each finding's own app (${apps.join(', ')}) — a fix stays inside the app its finding names`,
+    COMMIT_INSTRUCTION: commit,
+    GLOBAL_CONSTRAINTS: constraints(f),
+    REPORT_FILE: reportPath,
+    ...craftValues(),
+  })
+  return { file: join(ws, 'dispatch-implementer-final-fix.md'), body, description: `Fix the final review's findings: ${f.feature}`, model: 'REQUIRED — EXECUTION.md §Model selection (a standard model at least: the wave spans the branch)' }
+}
+
 function implementer(f, a, ws) {
+  if (a.final) return finalFix(f, a, ws)
   const { tasks, t, block } = taskOf(f, a.task)
   const n = t.n
   const round = a.round ? +a.round : 0
@@ -306,8 +392,9 @@ function taskReview(f, a, ws) {
       BASE_SHA: rec.base,
       HEAD_SHA: rec.head,
       DIFF_FILE: diff,
+      FINDINGS_FILE: findingsPath(ws, `review-phase-${a.phase}`),
     })
-    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: 'REQUIRED — EXECUTION.md §Model selection' }
+    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: 'REQUIRED — EXECUTION.md §Model selection', findings: findingsPath(ws, `review-phase-${a.phase}`) }
   }
   const { t } = taskOf(f, a.task)
   const rec = (st.tasks[t.n] ??= {})
@@ -330,9 +417,10 @@ function taskReview(f, a, ws) {
     BASE_SHA: rec.base,
     HEAD_SHA: head,
     DIFF_FILE: diff,
+    FINDINGS_FILE: findingsPath(ws, `task-${t.n}-review`),
   })
   const tiny = recipeOf(taskOf(f, t.n).block)?.tiny
-  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: `REQUIRED — EXECUTION.md §Model selection${tiny ? ' (Recipe says tiny: the cheapest tier that can read a diff)' : ''}` }
+  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: `REQUIRED — EXECUTION.md §Model selection${tiny ? ' (Recipe says tiny: the cheapest tier that can read a diff)' : ''}`, findings: findingsPath(ws, `task-${t.n}-review`) }
 }
 
 function reReview(f, a, ws) {
@@ -345,7 +433,7 @@ function reReview(f, a, ws) {
   if (a.final) {
     rec = st.final
     if (!rec?.reviewed?.[0]) throw new Error('no final review recorded — dispatch final-review first')
-    brief = f.specPath
+    brief = existsSync(join(ws, 'final-fix-brief.md')) ? join(ws, 'final-fix-brief.md') : f.specPath
     report = join(ws, 'final-fix-report.md')
     label = 'final review'
   } else {
@@ -362,12 +450,14 @@ function reReview(f, a, ws) {
   saveState(ws, st)
   const head = rec.reviewed[round]
   const diff = reviewPackage(f, fixBase, head, join(ws, `review-${fixBase}..${head}.diff`))
-  const body = fill(tpl.body, { BRIEF_FILE: brief, FINDINGS: findings, REPORT_FILE: report, FIX_BASE_SHA: fixBase, HEAD_SHA: head, DIFF_FILE: diff })
+  const out = findingsPath(ws, a.final ? 'final-re-review' : `task-${a.task}-re-review-${round}`)
+  const body = fill(tpl.body, { BRIEF_FILE: brief, FINDINGS: findings, REPORT_FILE: report, FIX_BASE_SHA: fixBase, HEAD_SHA: head, DIFF_FILE: diff, FINDINGS_FILE: out })
   return {
     file: join(ws, `dispatch-re-review-${a.final ? 'final' : `task-${a.task}`}-round-${round}.md`),
     body,
     description: a.final ? `Re-review the final review's fix wave` : tpl.description.replace('Task N', label).replace('round R', `round ${round}`),
     model: 'REQUIRED — a cheap-to-mid tier for a small fix diff (EXECUTION.md §Model selection)',
+    findings: out,
   }
 }
 
@@ -399,8 +489,9 @@ function finalReview(f, a, ws) {
     DIFF_FILE: diff,
     BASE_SHA: rec.base,
     HEAD_SHA: head,
+    FINDINGS_FILE: findingsPath(ws, 'final-review'),
   })
-  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)' }
+  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review') }
 }
 
 function agentWalk(f, a, ws) {
@@ -467,7 +558,7 @@ async function main(argv) {
   const a = parseArgs(argv, { bool: ['final'] })
   const [kind, folder] = a._
   if (!kind || !folder || !KINDS.includes(kind)) {
-    console.error(`usage: dispatch.mjs <${KINDS.join('|')}> <folder> [--task N] [--round N] [--context "<one paragraph>"] [--findings "<text>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]`)
+    console.error(`usage: dispatch.mjs <${KINDS.join('|')}> <folder> [--task N | --final] [--round N] [--context "<one paragraph>"] [--findings "<text>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]`)
     return 2
   }
   const f = openFeature(folder)
@@ -477,6 +568,7 @@ async function main(argv) {
   writeAtomic(r.file, r.body)
   console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
   if (r.note) console.log(r.note)
+  if (r.findings) console.log(`findings: ${r.findings} — the reviewer writes its report here; a fix round passes it as --findings-file`)
   console.log(`Agent call — description: ${r.description}`)
   console.log(`  model: ${r.model}`)
   console.log(`  prompt: Read ${r.file} and do what it says.`)

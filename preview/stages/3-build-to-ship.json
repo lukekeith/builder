@@ -22,7 +22,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Read(docs/features/cert-tags/MANIFEST.md) — state: planned · go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=risk review=end · contract: open"
+          "text": "⏺ Bash(node <builder>/scripts/docs.mjs build) — EXECUTION.md · REFERENCE §Contract and the contract freeze … §Walk readiness · .claude/builder.md · Read(docs/features/cert-tags/MANIFEST.md) — state: planned · go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=risk review=end · contract: open"
         },
         {
           "role": "tool",
@@ -30,7 +30,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Write(.builder/cert-tags/progress.md) — # builder ledger — plan: docs/features/cert-tags/PLAN.md"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --ledger \"<the pre-flight table>\" --ledger \"Ruling: …\") — ledger: .builder/cert-tags/progress.md (# builder ledger — plan: docs/features/cert-tags/PLAN.md)"
         },
         {
           "role": "claude",
@@ -43,8 +43,8 @@
         }
       ],
       "stamp": {
-        "hash": "7c112ef27c8c",
-        "version": "4.12.0",
+        "hash": "a483a1006c23",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -63,11 +63,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(<builder>/scripts/task-brief docs/features/cert-tags/PLAN.md 2 \".builder/cert-tags/task-2-brief.md\") — + SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — task-2-brief.md (+ SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints) · dispatch-implementer-task-2.md · BASE 3f2a1c0"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(implementer — Task 2: Tag create / rename / delete endpoints) — DONE · 1 commit · its 6 new tests and api typecheck green"
+          "text": "⏺ Agent(implementer — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
         },
         {
           "role": "claude",
@@ -80,7 +80,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(<builder>/scripts/review-package 3f2a1c0 6e81b0d \".builder/cert-tags/review-3f2a1c0..6e81b0d.diff\")"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs task-review docs/features/cert-tags --task 2) — review-3f2a1c0..6e81b0d.diff · findings: .builder/cert-tags/task-2-review.md"
         },
         {
           "role": "tool",
@@ -93,11 +93,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ SendMessage(implementer — Task 2, fix round 1: DELETE /tags/:id doesn't check owner_id)"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · SendMessage(implementer — Task 2, fix round 1: \"Read .builder/cert-tags/dispatch-implementer-task-2-round-1.md and do what it says.\")"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(re-review — Task 2, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs re-review docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · Agent(re-review — Task 2, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
         },
         {
           "role": "claude",
@@ -110,8 +110,8 @@
         }
       ],
       "stamp": {
-        "hash": "7f9d892fe8a3",
-        "version": "4.12.0",
+        "hash": "22cc5d28dd06",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -150,8 +150,8 @@
         }
       ],
       "stamp": {
-        "hash": "6fb33b82d780",
-        "version": "4.12.0",
+        "hash": "49746c00ed4d",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -241,11 +241,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(final whole-branch review — most capable model, + §Contract, deferred minors) — 2 findings"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs final-review docs/features/cert-tags) · Agent(final whole-branch review — most capable model, + §Contract, deferred minors) — 2 findings → .builder/cert-tags/final-review.md"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(fix wave — 2 findings, web) · Agent(scoped re-review) — 2 ADDRESSED · 9c41e7a"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --final) · Agent(fix wave — 2 findings, web) · Agent(scoped re-review) — 2 ADDRESSED · 9c41e7a"
         },
         {
           "role": "tool",
@@ -284,6 +284,10 @@
           "text": "⏺ Bash(curl GET /tags · PUT /certificates/:id/tags · GET /certificates?tag=… ) · Chrome(localhost:5173/certificates) · Bash(pnpm -F mobile ios) — smoke"
         },
         {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/walk-script.mjs docs/features/cert-tags) — walk.md: api · web · mobile, [risk] tagged · Update(.builder/cert-tags/walk.md) — the marked blocks · Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set state=built --set \"ready=yes 2026-10-22 9c41e7a\" --set \"next=🔒 your walk → /builder:signoff --path docs/features/cert-tags\" --head --commit built) · Bash(node <builder>/scripts/handoff.mjs write docs/features/cert-tags)"
+        },
+        {
           "role": "claude",
           "text": "**cert-tags is built.**\n\n**What landed** — 3 phases (api, web, mobile) · 12 slices · 13 commits; mobile's 3 approved by you for the phase. Test plan own · risk · end: each slice ran its own tests; the api, web and mobile suites ran once, above. Final review: 2 findings in web (the tag filter didn't reset to page 1; `TagChip` had no accessible name) — one fix wave, re-review: both addressed (9c41e7a).\n\n**Contract** — frozen 2026-10-22 at phase 1 (api).\n\n**Walk readiness** — migration `20261022093000_add_tags` applied to acme_dev (status: up to date). Prisma client regenerated; the api dev server is yours, so you restarted it. Smoke: `GET /tags`, `PUT /certificates/:id/tags`, `GET /certificates?tag=…&tag=…` all 200, server log clean; `/certificates` in web loaded with a clean console; mobile's list screen up in the iOS simulator, Metro log clean.\n\n**Staged commits awaiting approval** — none. **Blockers** — none.\n\n**Rulings I made**\n1. Tag names unique per owner, case-insensitive — §Decisions D3 says \"no duplicate tags\" without saying case. *If wrong:* one migration relaxing the unique index.\n2. Slice 10's build-time risk: mobile's offline list cache now keys on the sorted tag ids, and deleting a tag clears cached filtered lists. *If wrong:* a stale filtered list on mobile after a delete, until the next refresh.\n3. A tag with no colour renders neutral grey — §Contract allows `color: null` and the spec shows no default. *If wrong:* a default in the migration and a one-line change in both chips.\n\n**Walk script** — `.builder/cert-tags/walk.md`:\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\nNothing here has been human-tested yet — agents built it, ran each app's suite once at the end and smoked the running stack. The walk is yours, on web and on mobile; record the verdict with `/builder:signoff --path docs/features/cert-tags <your words>`.",
           "inferred": true
@@ -298,8 +302,8 @@
         }
       ],
       "stamp": {
-        "hash": "0c48b98c7936",
-        "version": "4.12.0",
+        "hash": "f13bd316f91f",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -325,11 +329,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(.builder/cert-tags/ledger.md) — Task 12: done 71d0e3a"
+          "text": "⏺ Bash(echo \"Task 12: done 71d0e3a\" >> .builder/cert-tags/ledger.md)"
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(cert-tags): built here — not walked\" -- docs/features/cert-tags/MANIFEST.md)"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set state=built --set walk=none --set ready=none --head --commit \"chore({feature}): built here — not walked\")"
         },
         {
           "role": "claude",
@@ -346,8 +350,8 @@
         }
       ],
       "stamp": {
-        "hash": "60153d25ab0f",
-        "version": "4.12.0",
+        "hash": "a0c4cda3c4c8",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -403,8 +407,8 @@
         }
       ],
       "stamp": {
-        "hash": "af3c70433127",
-        "version": "4.12.1",
+        "hash": "9ce752ea61e9",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -510,8 +514,8 @@
         }
       ],
       "stamp": {
-        "hash": "38aabef73cae",
-        "version": "4.11.3",
+        "hash": "9ee4cc698635",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -584,8 +588,8 @@
         }
       ],
       "stamp": {
-        "hash": "71893f70e39b",
-        "version": "4.11.3",
+        "hash": "98931b0c8db4",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -610,7 +614,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) — cut ## Plan → ## Fixes · Bash(git rm docs/features/cert-tags/PLAN.md)"
+          "text": "⏺ Bash(node <builder>/scripts/condense.mjs docs/features/cert-tags --signoff human --name \"Luke Keith\" --words \"…\" --sha 9c41e7a) — SPEC: §Plan index stripped · header written · PLAN.md: removed · commit"
         },
         {
           "role": "tool",
@@ -627,8 +631,8 @@
         }
       ],
       "stamp": {
-        "hash": "cca92870bde4",
-        "version": "4.11.3",
+        "hash": "0f2f675b0600",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -682,8 +686,8 @@
         }
       ],
       "stamp": {
-        "hash": "874049f0cda5",
-        "version": "4.12.0",
+        "hash": "c72c95627000",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -710,8 +714,8 @@
         }
       ],
       "stamp": {
-        "hash": "8d5c0f5894be",
-        "version": "4.11.3",
+        "hash": "5381b3670ac5",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -771,6 +775,10 @@
         },
         {
           "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"pr=#57\" --set \"next=watch CI, then /builder:ship --path docs/features/cert-tags\" --head --commit \"docs({key}): {feature} — PR #57 open\")"
+        },
+        {
+          "role": "tool",
           "text": "⏺ Bash(gh pr checks 57 --watch) — 4/4 passing"
         },
         {
@@ -789,8 +797,8 @@
         }
       ],
       "stamp": {
-        "hash": "491a581e9285",
-        "version": "4.12.1",
+        "hash": "7440c8164f4f",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -819,15 +827,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) · Bash(git rm docs/features/cert-tags/MANIFEST.md)"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(<builder>/scripts/workspace --remove cert-tags)"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(git mv docs/features/cert-tags docs/features/_archive/cert-tags) · Bash(git commit -m \"docs(ACME-412): cert-tags shipped in PR #57\")"
+          "text": "⏺ Bash(node <builder>/scripts/condense.mjs docs/features/cert-tags --ship --pr 57) — SPEC: header flipped to SHIPPED · MANIFEST.md: removed · workspace: removed · archived: docs/features/_archive/cert-tags · commit: docs(ACME-412): cert-tags shipped in PR #57"
         },
         {
           "role": "claude",
@@ -844,8 +844,8 @@
         }
       ],
       "stamp": {
-        "hash": "19c1de6a18c8",
-        "version": "4.11.3",
+        "hash": "9719840f39ad",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -876,7 +876,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(walker — round 1, most capable model, foreground) — .builder/cert-tags/agent-walk/round-1/report.md"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs agent-walk docs/features/cert-tags) · Agent(walker — round 1, most capable model, foreground — \"Read .builder/cert-tags/dispatch-agent-walk-round-1.md and do what it says.\") — .builder/cert-tags/agent-walk/round-1/report.md"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/condense.mjs docs/features/cert-tags --signoff agent) — SPEC: §Plan index stripped · header written · PLAN.md: removed · manifest: walk=agent-pass 2026-10-22 9c41e7a · state=signed-off · commit"
         },
         {
           "role": "claude",
@@ -893,8 +897,8 @@
         }
       ],
       "stamp": {
-        "hash": "76f0a92ac3da",
-        "version": "4.12.1",
+        "hash": "d6ac0e37d188",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     }

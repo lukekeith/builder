@@ -185,8 +185,8 @@
         }
       ],
       "stamp": {
-        "hash": "dd64d326a318",
-        "version": "4.12.0",
+        "hash": "d23e0e9a0363",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -238,7 +238,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) · Edit(MANIFEST.md) — state: audited"
+          "text": "⏺ Edit(docs/features/cert-tags/SPEC.md) — corrections in place, §Findings & risks rows"
         },
         {
           "role": "tool",
@@ -246,7 +246,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"docs(ACME-412): cert-tags audited\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set state=audited --set \"next=/builder:resume --path docs/features/cert-tags\" --head --add docs/features/cert-tags/SPEC.md --commit audited) — commit: docs(ACME-412): cert-tags audited"
         },
         {
           "role": "claude",
@@ -262,8 +262,8 @@
         }
       ],
       "stamp": {
-        "hash": "33a35c67dc21",
-        "version": "4.12.1",
+        "hash": "76b15566ae58",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -373,11 +373,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Write(docs/features/cert-tags/PLAN.md) · Edit(SPEC.md §Plan) · Edit(MANIFEST.md) — state: planned"
+          "text": "⏺ Write(docs/features/cert-tags/PLAN.md) · Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --index --write) — SPEC §Plan: written (12 tasks)"
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"docs(ACME-412): plan cert-tags\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set state=planned --head --add docs/features/cert-tags/PLAN.md --add docs/features/cert-tags/SPEC.md --commit plan) — commit: docs(ACME-412): plan cert-tags"
         },
         {
           "role": "tool",
@@ -397,11 +397,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 · tests: slice=own end=risk review=end · target: main"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (own · risk · end)\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"go-ahead=Luke Keith 2026-10-22\" --set \"tests=slice=own end=risk review=end\" --set target=main --head --commit \"chore({key}): {feature} — go-ahead (own · risk · end)\")"
         },
         {
           "role": "tool",
@@ -417,7 +413,7 @@
         }
       ],
       "stamp": {
-        "hash": "3114cb3358a7",
+        "hash": "470c723d96c3",
         "version": "4.12.2",
         "date": "2026-10-23"
       }
@@ -444,11 +440,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 (here) · tests: slice=own end=risk review=end"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(cert-tags): cert-tags — go-ahead (here)\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"go-ahead=Luke Keith 2026-10-22 (here)\" --set \"tests=slice=own end=risk review=end\" --head --commit \"chore({key}): {feature} — go-ahead (here)\")"
         },
         {
           "role": "tool",
@@ -468,7 +460,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (own · risk · end)\") · Skill(builder:build --path docs/features/cert-tags)"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"go-ahead=…\" --set \"tests=…\" --head --commit \"chore({key}): {feature} — go-ahead (own · risk · end)\") · Skill(builder:build --path docs/features/cert-tags)"
         },
         {
           "role": "note",
@@ -476,8 +468,8 @@
         }
       ],
       "stamp": {
-        "hash": "445fd8b937f3",
-        "version": "4.12.1",
+        "hash": "0823f1ad70ca",
+        "version": "4.12.2",
         "date": "2026-10-23"
       }
     },
@@ -636,11 +628,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Edit(docs/features/cert-tags/MANIFEST.md) — go-ahead: Luke Keith 2026-10-22 · tests: slice=full end=risk review=end · target: main"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Bash(git commit -m \"chore(ACME-412): cert-tags — go-ahead (full · risk · end)\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"go-ahead=Luke Keith 2026-10-22\" --set \"tests=slice=full end=risk review=end\" --set target=main --head --commit \"chore({key}): {feature} — go-ahead (full · risk · end)\")"
         },
         {
           "role": "tool",
@@ -652,7 +640,7 @@
         }
       ],
       "stamp": {
-        "hash": "98e6d080aa5c",
+        "hash": "53c3a6766d8b",
         "version": "4.12.2",
         "date": "2026-10-23"
       }

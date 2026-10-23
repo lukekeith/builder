@@ -9,7 +9,8 @@ the spec formats belong to `/builder:spec`.
 
 `.builder/<feature>/brainstorm.md` (`<builder>/scripts/workspace <feature>` prints the directory).
 **Rewrite it after every answer** — it is how a long conversation survives `/clear`, and it is the only
-thing `/builder:spec` reads. The header is the lines before the first blank line; scripts read only
+thing `/builder:spec` reads. (Under `--auto`, brainstorm writes a stub instead — §Steering and --auto ·
+§The `--auto` stub record.) The header is the lines before the first blank line; scripts read only
 the header, so keep it exactly this shape:
 
 ```markdown
@@ -270,7 +271,7 @@ end the last part with the three ways on as §Ways on's list —
 ## Size and the small path
 
 Size the **confirmed concept**, not the first request: REFERENCE §Sizes and §The classifier are the
-rules — read just those two sections. (The conversation reads exactly four REFERENCE sections: §Sizes and §The classifier here, §The review at §Confirm and the small path's approval, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
+rules — `docs.mjs brainstorm` (or `docs.mjs intake`) already printed just those two sections. (The conversation reads exactly four REFERENCE sections: §Sizes and §The classifier here, §The review at §Confirm and the small path's approval, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
 overrides. Record it: `status: sized <size>`.
 
 **Splitting (lg and xl) is one question, and "one spec" is always an option.** Before anything else
@@ -340,5 +341,39 @@ each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recomm
 chosen; §Confirm proceeds without waiting, prints no review (REFERENCE §The review — nobody approves; the human sees it at the walk) and takes **Build it**. §Size takes the splitting
 question's recommendation — the fewest specs whose each slice ships value — recorded the same way. xs and sm take
 the one approval as the recommendation, recorded the same way. md and above run
-`/builder:spec --path <registry>/<feature> --auto` in the same turn. The human reads the assumptions
-and every auto ruling in the review at the walk (REFERENCE §The review, under `--auto`).
+`/builder:spec --path <registry>/<feature> --auto` in the same turn — intake by invoking it, brainstorm
+by writing the spec itself (below). The human reads the assumptions and every auto ruling in the review
+at the walk (REFERENCE §The review, under `--auto`).
+
+### The `--auto` stub record (brainstorm only)
+
+Under `--auto` nobody reads a long record: the spec is written in the same turn, from the
+conversation this turn holds. So **brainstorm's record under `--auto` is a stub**, never the full
+§The record body — intake keeps its full record (its claims, evidence and prototype material are what
+`/builder:spec` writes from):
+
+```markdown
+# <feature> — brainstorm
+status: exploring | sized <md|lg|xl> | handed-off
+source: brainstorm
+input: <kind>
+ticket: <id>
+updated: <ISO 8601 timestamp>
+auto: stub — the design is written straight into SPEC.md
+spec: <registry>/<feature>/SPEC.md
+
+## Intent
+<the outcome in one line> (assumed)
+Request: "<the user's request, verbatim — everything after the flags>"
+
+## Size
+<size> — evidence: <one line>
+```
+
+The order, each step safe to repeat: **the stub first** (at the first turn, `status: exploring`) →
+`status: sized <size>` once sized → the spec written and committed (SKILL §Spec under `--auto`) →
+`status: handed-off`. **A crash anywhere: re-run the same command** (`/builder:brainstorm --path
+<registry>/<feature> --auto`). A stub whose SPEC is committed (`git log -1 --oneline --
+<registry>/<feature>/SPEC.md` names a commit) only needs its `status: handed-off`; one whose SPEC is
+not committed re-runs the `--auto` run from its `Request:` line — grounding, recon and the
+recommendations are redone, and the spec is written over anything half-written.

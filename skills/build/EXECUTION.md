@@ -15,6 +15,12 @@ what they need. That also preserves your own context for coordination.
 **Narration:** between tool calls, narrate at most one short line — the ledger and the tool results
 carry the record.
 
+**Type only judgment.** Every subagent prompt is rendered by `<plugin>/scripts/dispatch.mjs` and every
+ledger line, manifest key and controller commit is written by `<plugin>/scripts/advance.mjs` (build
+§Dispatch, review, fix). Both are idempotent: 🔴 **after a crash or a compaction, re-run the same
+command** — a ledger line already there is skipped, a BASE already recorded is reused, a commit
+already made says `already applied`.
+
 **Continuous execution.** Do not pause to check in between tasks. Execute every task the phase
 holds. "Should I continue?" prompts and progress summaries waste the human's time — they approved
 the plan, so execute it.
@@ -51,7 +57,9 @@ ledger file, not only in todos.**
    🔴 **On the config's `base_branch`, dispatch nothing and commit nothing** — stop and say the human
    cuts the branch. (Upstream got this guard from its worktree step, which this family does not use.)
 3. **Ledger** `<WS>/progress.md`, whose first line is its identity:
-   `# builder ledger — plan: <folder>/PLAN.md`. Create it with that line if absent. If an existing
+   `# builder ledger — plan: <folder>/PLAN.md`. Every write goes through
+   `<plugin>/scripts/advance.mjs <folder> --ledger "<line>"`, which creates it with that line if absent
+   and refuses another feature's. If an existing
    ledger's first line names a different plan, it is another feature's — leave it and start a fresh
    one. Keep an `## env notes` section: an environment fact that cost time here saves it next
    session. **The ledger is your recovery map** — the commits it names exist in git even when your
@@ -69,9 +77,10 @@ ledger file, not only in todos.**
    - 🔴 one row per task for whether its **Files stay inside its `App:`** — a task reaching into
      another app breaks that phase's gates, which are one app's commands.
 
-   "The scan is clean" without those rows is not a scan you ran. Write the table to the ledger, rule
-   on every finding with the SPEC as binding authority, record each as `Ruling: …`, then dispatch
-   Task 1. On a resume the table is already in the ledger — do not re-run it.
+   "The scan is clean" without those rows is not a scan you ran. Rule on every finding with the SPEC
+   as binding authority, then write the table and each `Ruling: …` to the ledger in one call
+   (`advance.mjs <folder> --ledger "<the table>" --ledger "Ruling: …"`), then dispatch Task 1. On a
+   resume the table is already in the ledger — do not re-run it.
 
 ---
 
@@ -122,16 +131,20 @@ guaranteeing a stuck or lost child is noticed within minutes, not at the end of 
 
 ### 1. Dispatch the implementer
 
-Record **BASE** (`git rev-parse HEAD`) before dispatching — the review package and fix-round diffs
-need it.
+`<plugin>/scripts/dispatch.mjs implementer <folder> --task N [--context "<one paragraph>"]` records
+**BASE** (HEAD now) the first time — the review package and fix-round diffs need it — writes the
+brief and the whole prompt to the workspace, and prints the Agent call: send
+`Read <file> and do what it says.`, naming the model.
 
-- **Task brief:** `<plugin>/scripts/task-brief <folder>/PLAN.md N "<WS>/task-N-brief.md"`. The brief
-  is the single source of requirements; exact values (numbers, strings, signatures, test cases)
-  appear only there. **Never make a subagent read the whole plan file.**
-- **The dispatch carries:** one line on where this task fits; the brief path, introduced as *"read
-  this first — it is your requirements, with the exact values to use verbatim"*; interfaces and
-  decisions from earlier tasks the brief cannot know; your resolution of any ambiguity you noticed;
-  and the report-file path.
+- **Task brief:** `<WS>/task-N-brief.md` — the task block exactly as `<plugin>/scripts/task-brief`
+  cuts it, plus what build §Composing the brief adds. The brief is the single source of
+  requirements; exact values (numbers, strings, signatures, test cases) appear only there. **Never
+  make a subagent read the whole plan file.**
+- **The dispatch carries:** one line on where this task fits (the script writes it: task i of n, its
+  phase and goal); the brief path, introduced as *"read this first — it is your requirements, with
+  the exact values to use verbatim"*; and the report-file path. **Your `--context` carries only what
+  the script can't know:** interfaces and decisions from earlier tasks the brief cannot know, and
+  your resolution of any ambiguity you noticed.
 - **Report file:** `<WS>/task-N-report.md`, named in the dispatch.
 - A dispatch describes ONE task, not the session's history. Do not paste accumulated prior-task
   summaries into later dispatches — a real session's dispatch hit 42k chars of which 99% was pasted
@@ -174,15 +187,18 @@ report missing either verdict** — spec compliance AND task quality. Implemente
 replaces it. Under `review=app` the same review runs once over the phase's whole diff at its close
 (build §Phase close), its fix loop below, each finding against the task it names.
 
-- **Hand the reviewer its diff as a file:**
-  `<plugin>/scripts/review-package BASE HEAD "<WS>/review-<base7>..<head7>.diff"`. Use the BASE you
-  recorded — **never `HEAD~1`**, which silently truncates a multi-commit task. Never dispatch a task
-  reviewer without a diff file.
+- **`<plugin>/scripts/dispatch.mjs task-review <folder> --task N`** hands the reviewer its diff as a
+  file — `review-package BASE HEAD "<WS>/review-<base7>..<head7>.diff"` from the BASE it recorded,
+  **never `HEAD~1`**, which silently truncates a multi-commit task. Never dispatch a task reviewer
+  without a diff file.
 - **Reviewer inputs:** the same brief file, the report file, the review package — plus the global
   constraints, **plus SPEC §Contract**, so the diff is judged against the contract rather than
-  against the implementer's description.
-- The global-constraints block is the reviewer's attention lens: copy it verbatim from the config's
-  §Global constraints and the SPEC. The template already carries the process rules.
+  against the implementer's description. The script fills each of them.
+- The global-constraints block is the reviewer's attention lens: the script copies it verbatim from
+  the config's §Global constraints. The template already carries the process rules.
+- **The reviewer writes its report to the file its dispatch names** (`findings: <WS>/task-N-review.md`)
+  as well as replying with it. That file is what the fix round carries — never paste a review into
+  a dispatch.
 - Do not add open-ended directives ("check all uses") without a concrete reason. Do not ask a
   reviewer to re-run tests the implementer already ran. 🔴 **Do not pre-judge findings** — if your
   prompt contains "do not flag", "don't treat X as a defect", "at most Minor" or "the plan chose",
@@ -198,8 +214,8 @@ Template: [prompts/task-reviewer.md](prompts/task-reviewer.md)
 Triggered by spec ❌, any Critical or Important finding, or a ⚠️ item you confirmed. Two routes leave
 it immediately:
 
-- **Minor findings** go to the ledger (`Task <N>: minor (deferred): <one-liner>`) and the final review
-  is pointed at that list. They never enter the loop.
+- **Minor findings** go to the ledger (`advance.mjs <folder> --ledger "Task <N>: minor (deferred): <one-liner>"`)
+  and the final review is pointed at that list. They never enter the loop.
 - **A plan-mandated finding** — or any finding conflicting with the plan's text — is yours to rule on:
   weigh it against the plan with the SPEC as binding authority, and ledger the ruling before acting.
   Do not dismiss a finding because the plan mandates it, and do not dispatch a fix that contradicts
@@ -216,20 +232,26 @@ per task.**
   same finding keeps coming back, the implementer is treating a symptom. Put
   [`systematic-debugging`](../systematic-debugging/SKILL.md) in the next dispatch and say which
   symptom has survived which attempts.
-- **Rounds 1–3 — resume the original implementer.** Send the open findings verbatim; its context is
-  intact. If your harness cannot message a live subagent, dispatch a fresh one carrying the brief
-  path, the report path and the findings — the report file is the persistent memory either way.
+- **Every round's dispatch:** `<plugin>/scripts/dispatch.mjs implementer <folder> --task N --round R
+  --findings-file <the findings file the last review printed>` — the findings verbatim, scoped to the
+  open ones, with the craft skills each round names. A ⚠️ item you confirmed is added with
+  `--findings "<it>"`.
+- **Rounds 1–3 — resume the original implementer.** Send it `Read <the round's file> and do what it
+  says.`; its context is intact. If your harness cannot message a live subagent, dispatch a fresh one
+  with the same file — the report file is the persistent memory either way.
 - **Rounds 4–5 — a fresh implementer, one tier up**, with this framing: *"A prior implementer
   attempted this task N times; you own it now. Read the report file for what was tried."* A loop that
   survives three resumes usually means the implementer cannot see its own problem.
 - **Every round:** the implementer fixes, re-runs the tests covering the amended code, appends its
   fix report to the same report file, and returns the short contract. Confirm the fix report names the
   covering tests, the command and the output before re-dispatching the reviewer.
-- **The re-review is scoped:** `review-package FIX_BASE HEAD …` where FIX_BASE is the head the
-  previous review saw. The re-reviewer verdicts each finding ADDRESSED or NOT ADDRESSED and flags new
+- **The re-review is scoped:** `<plugin>/scripts/dispatch.mjs re-review <folder> --task N --round R
+  --findings-file <the same file>` packages `FIX_BASE..HEAD`, where FIX_BASE is the head the previous
+  review saw (the script recorded it). Its report goes to `<WS>/task-N-re-review-R.md` — the next
+  round's `--findings-file`. The re-reviewer verdicts each finding ADDRESSED or NOT ADDRESSED and flags new
   breakage **in the fix diff only**. New Critical/Important breakage joins the open list;
   out-of-scope observations go to the ledger as deferred minors and never extend the loop.
-- **After each round:** `Task <N>: fix round <R>/5 (<X> addressed, <Y> open — <one-liners>; commits <a7>..<b7>)`
+- **After each round:** `advance.mjs <folder> --ledger "Task <N>: fix round <R>/5 (<X> addressed, <Y> open — <one-liners>; commits <a7>..<b7>)"`
 
 🔴 **Never fix findings yourself in the controller.** Your context stays clean for coordination, and
 controller fixes skip review entirely.
@@ -252,7 +274,7 @@ name. Every adjudication is a ledger entry — a silent discard is forbidden.
 ### 5. Complete the task
 
 When the review is clean — or every open finding is parked with a ruling at the cap, or the test
-plan sets no task review — append:
+plan sets no task review — append, with `<plugin>/scripts/advance.mjs <folder> --ledger "<line>"`:
 
 - `Task <N>: complete (commits <base7>..<head7>, review clean)`
 - `Task <N>: complete (commits <base7>..<head7>, <K> parked)` after a tripped breaker
@@ -265,14 +287,18 @@ Critical/Important issues** that are neither fixed nor parked-with-ruling at the
 
 ## The final whole-branch review
 
-After the last phase's tasks, not after each phase — under every test plan: it is a floor. Run
-`review-package <merge-base> HEAD "<WS>/review-final.diff"` and dispatch
-[prompts/final-reviewer.md](prompts/final-reviewer.md) **on the most capable available model**,
-pointed at the ledger's deferred-minor and parked lines and at SPEC §Contract.
+After the last phase's tasks, not after each phase — under every test plan: it is a floor.
+`<plugin>/scripts/dispatch.mjs final-review <folder>` runs
+`review-package <merge-base> HEAD "<WS>/review-final.diff"` and renders
+[prompts/final-reviewer.md](prompts/final-reviewer.md) — dispatch it **on the most capable available
+model**, pointed at the ledger's deferred-minor and parked lines and at SPEC §Contract. Its report is
+written to `<WS>/final-review.md`.
 
 If it returns findings, dispatch **ONE** fix subagent with the complete list — not one fixer per
-finding. Per-finding fixers each rebuild context and re-run suites; a real session's final-review fix
-wave cost more than all its tasks combined. Then run **exactly one** scoped re-review of the fix wave.
+finding: `dispatch.mjs implementer <folder> --final` (it takes `<WS>/final-review.md`). Per-finding
+fixers each rebuild context and re-run suites; a real session's final-review fix
+wave cost more than all its tasks combined. Then run **exactly one** scoped re-review of the fix wave:
+`dispatch.mjs re-review <folder> --final --round 1 --findings-file <WS>/final-review.md`.
 Adjudicate residuals as in the breaker. **There is no second fix wave** — residual load-bearing
 findings surface to the human in the hand-off.
 

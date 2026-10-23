@@ -34,6 +34,22 @@ agree — see [RELEASING.md](RELEASING.md).
   minutes of output that nobody reads. Instead you see the full review of **what was built** where
   you next look: the walk hand-off after an `--auto` run, and the fleet's report for every merged
   feature, autopilot rulings marked `(auto)`. Design: `docs/specs/2026-10-23-cli-review-design.md`.
+
+**Faster:**
+- **The orchestrator stops typing what a script can write** — internal; nothing you see changes
+  (the measured number comes with the release). Every subagent prompt (implementer, task review,
+  re-review, final review and its fix wave, agent walk) is rendered by `scripts/dispatch.mjs` and
+  the Agent call becomes "Read <file> and do what it says"; reviewers write their findings to a
+  workspace file the fix round passes on instead of pasting. Every manifest / ledger / commit change
+  is one `scripts/advance.mjs` call, the sign-off and ship condense is `scripts/condense.mjs`, and
+  SPEC §Plan is `plan-slices.mjs --index --write`. Each step reads its docs in one
+  `scripts/docs.mjs <step>` call. The build writes `walk.md` with `scripts/walk-script.mjs` and ends
+  with a `scripts/handoff.mjs` note the fleet's walk lane reads instead of re-deriving the state
+  (falling back to the old way when it is stale). Under `--auto`, brainstorm writes the SPEC itself
+  and keeps only a stub record. Every script is idempotent — after a crash, the skills re-run the
+  same command — so unattended runs still finish with no human. Separators are `echo ---`, never
+  a row of `=` (zsh). Design: `docs/specs/2026-10-23-lean-orchestrator-design.md`.
+
 ## 4.12.2
 
 **Fixed:**

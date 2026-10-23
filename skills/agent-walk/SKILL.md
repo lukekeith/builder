@@ -8,6 +8,12 @@ description: The unattended stand-in for the human walk and sign-off, run only u
 Invocation: **`/builder:agent-walk --path <folder> [--ticket <id>]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — ignore any flag this step does not use.
 
+**Read the docs in one call:** `node <builder>/scripts/docs.mjs agent-walk` — builder:ship §At
+sign-off, REFERENCE §Condense · §How a park reads · §The park record · §Agent model tiering, and
+`.claude/builder.md`. The walker's prompt comes from `dispatch.mjs`, the sign-off from `condense.mjs`,
+every other manifest write from `advance.mjs` (REFERENCE §The scripts) — 🔴 each is idempotent:
+**after a crash, re-run the same command**; it finishes what is missing or says `already applied`.
+
 🔴 **This is the agent's sign-off, never the human's.** It never writes `✅ SIGNED OFF`, never writes a
 name into `walk:`, and never runs `/builder:signoff` (which stays human-only). On a pass it writes
 its own, differently-labelled record — `walk: agent-pass`, `> 🤖 AGENT SIGNED OFF …` — and condenses,
@@ -19,7 +25,8 @@ levers say. `end` sets how much is walked:
 
 - **`end=none`** or **`end=touched`** → no walk, no walker. After the precondition table passes, go
   straight to §4 **AGENT-PASS**'s sign-off at HEAD, the header line
-  `> 🤖 AGENT SIGNED OFF — no walk (tests: end=<none|touched>) — not human-tested · YYYY-MM-DD — <sha>`.
+  `> 🤖 AGENT SIGNED OFF — no walk (tests: end=<none|touched>) — not human-tested · YYYY-MM-DD — <sha>`
+  — `node <builder>/scripts/condense.mjs <folder> --signoff agent --no-walk`.
 - **`end=risk`** → walk only the `[risk]` items and the `## Cross-app (verify E2E)` section.
   Neither present → no walker: AGENT-PASS with `0 items in scope` in the verdict and the hand-off.
 - **`end=everything`** → the walk as written.
@@ -55,14 +62,17 @@ fleet writes `<WS>/agent-walk/unparked-after` (the highest round number at that 
 unparks a feature; rounds up to that number are history and don't count — a feature named again
 always gets five fresh rounds. The park is written to REFERENCE §How a park reads:
 `blocked: "the agent walk failed five rounds running on <what still fails, as behaviour, in plain words> — next: a human walk, then /builder:signoff --path <folder>"`,
-with `<folder>/PARKED.md` in the same commit (REFERENCE §The park record, `kind: stuck`): each item
+with `<folder>/PARKED.md` in the same commit — write PARKED.md, then
+`node <builder>/scripts/advance.mjs <folder> --set 'blocked="…"' --add <folder>/PARKED.md --head --commit "chore({key}): {feature} — parked: agent walk failed"`
+(REFERENCE §The park record, `kind: stuck`): each item
 still failing with its *expected* and *saw* from every round it failed, quoted from the reports; the
 fix each round tried and its commit; the evidence paths; and *Where to dig* — the code the failing
 behaviour runs through, and what the five rounds have ruled out. A human or a later run starts the
 dig from there.
 🔴 **Between rounds** — before dispatching any round after the first — check for
 `$BUILDER_FLEET_DIR/requests/<feature>.pause` (unset → `.builder/fleet/requests/<feature>.pause`). On one, write `blocked: "revising — next: /builder:revise --path <folder>"`
-to the manifest, commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) and stop.
+to the manifest and commit it (`chore(<ticket-or-feature>): <feature> — parked: revising`) — one call,
+`node <builder>/scripts/advance.mjs <folder> --set 'blocked="revising — next: /builder:revise --path <folder>"' --head --commit "chore({key}): {feature} — parked: revising"` — and stop.
 **Under `persist=low`**, one failed round since the last unpark is the limit: the next one parks
 the same way, `failed five rounds running` written as `failed its one round`.
 An item that fails because the SPEC never said what it should do is not a fix to retry: rule what
@@ -72,7 +82,11 @@ instead — `kind: decision` (REFERENCE §The park record), naming what the spec
 ## 2. Dispatch the walker
 
 **One fresh subagent** — Agent tool, on the most capable model (REFERENCE §Agent model tiering) — and
-never the build's context: the agent that built it does not grade it. Its brief is exactly:
+never the build's context: the agent that built it does not grade it.
+`node <builder>/scripts/dispatch.mjs agent-walk <folder>` picks the round (§1), writes the brief to
+`<WS>/dispatch-agent-walk-round-<n>.md` and prints the Agent call; send
+`Read <file> and do what it says.` — the one paragraph a failed round's fix needs, if any, goes in
+`--context`. Its brief is exactly — the script writes it; this is what it holds:
 
 - the path to `<WS>/walk.md`, to read in full;
 - the config's `agent_walk.driver`, verbatim — how it drives the UI. **No driver** → "there is no UI
@@ -105,7 +119,10 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
 ## 4. Write it
 
-**AGENT-PASS — the agent sign-off**
+**AGENT-PASS — the agent sign-off** — the whole of it is one call,
+`node <builder>/scripts/condense.mjs <folder> --signoff agent` (it finds the newest round whose report
+ends `verdict: PASS`; `--round <n>` names one). Whether the walk passed is §3's judgment, made before
+it runs. What it writes:
 - Manifest: `walk: agent-pass YYYY-MM-DD <sha>` — `<sha>` from the passing round's `sha:` line —, `state: signed-off`, `verify: none`, `head`,
   `next: /builder:verify --path <folder>`.
 - **Condense** exactly as [`builder:ship`](../ship/SKILL.md) §At sign-off does — the §Plan index cut
@@ -118,14 +135,16 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 **AGENT-PASS under `walk=you`** — no sign-off, no condense. Manifest: `walk:` stays
 `none`; `blocked: "waiting for your walk — next: /builder:resume --path <folder>"`; `<folder>/PARKED.md`
 with `kind: human-step` (REFERENCE §The park record) citing the passing round. Commit:
-`chore(<ticket-or-feature>): <feature> — agent walk round <n> passed, waiting for your walk`, and end
+`chore(<ticket-or-feature>): <feature> — agent walk round <n> passed, waiting for your walk` — write
+PARKED.md, then `node <builder>/scripts/advance.mjs <folder> --set 'blocked="waiting for your walk — next: /builder:resume --path <folder>"' --add <folder>/PARKED.md --head --commit "chore({key}): {feature} — agent walk round <n> passed, waiting for your walk"` — and end
 the run. The fleet treats it as a human step; your `/builder:signoff` lands it.
 
 **AGENT-PROBLEMS**
 - Each failing item becomes `- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)`
   under SPEC `## Fixes` — created as the SPEC's last section if absent.
 - Manifest: `walk:` stays `none`; `next: /builder:resume --path <folder>`.
-- Commit: `docs(<ticket-or-feature>): <feature> — agent walk round <n>: <k> fixes`.
+- Commit: `docs(<ticket-or-feature>): <feature> — agent walk round <n>: <k> fixes` — after the
+  `## Fixes` edit, `node <builder>/scripts/advance.mjs <folder> --set "next=/builder:resume --path <folder>" --add <folder>/SPEC.md --head --commit "docs({key}): {feature} — agent walk round <n>: <k> fixes"`.
 - `/builder:resume` works them (§Working `## Fixes`), re-runs walk readiness, and routes back here.
 
 ## Hand off

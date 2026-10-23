@@ -87,6 +87,22 @@ Below, `<builder>/scripts/x` means that resolved path.
 | `workspace <feature>` | prints and ensures the git-ignored workspace for one feature. `--remove <feature>` deletes it — the ship step's call, because `rm -rf "$(…)"` is refused by the harness |
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
+| `docs.mjs <step>` | every doc section one step reads — the REFERENCE sections it names, its own companion files, the config — printed whole in one call (`--list` shows the map; `--prompts` adds build's four prompt templates). Read-only |
+| `advance.mjs <folder> --set k=v… [--head] [--ledger "<line>"] [--add <path>] --commit <subject\|preset>` | ONE state change: manifest keys in §MANIFEST.md's order, `head:`/`branch:`, a ledger line, and a commit of only the manifest plus the `--add` paths. Presets: `audited` · `aligned` · `plan` · `built` · `walk-lane` · `verify-ready` · `verify-incomplete` |
+| `condense.mjs <folder> --signoff agent\|human … \| --ship (--pr N \| --into <branch>)` | the SPEC surgery of §Condense — header line, §Plan cut, `git rm` PLAN.md, the archive move at ship — plus its manifest write and commit |
+| `plan-slices.mjs <folder> --index --write` | SPEC §Plan's index from PLAN.md's headings, put into SPEC.md |
+| `dispatch.mjs <kind> <folder> …` | a subagent's whole prompt — implementer, task-review, re-review, final-review, agent-walk — rendered from `skills/build/prompts/` into the workspace; the Agent call is "Read <file> and do what it says" |
+| `walk-script.mjs <folder>` | `<WS>/walk.md` from SPEC §Testing, per app, `[risk]`-tagged, with the cross-app E steps under `--agent-walk`; the orchestrator fills only its marked blocks |
+| `handoff.mjs write\|read <folder>` | the build lane's end state for the walk lane (`<WS>/handoff.md`); `read` exits 3 with `stale:` when the manifest or the code moved since |
+
+🔴 **Every one of these is idempotent — after a crash, a `/clear` or a session that died, re-run the
+same command.** Each looks before it writes: a ledger line already there is skipped, an unchanged
+manifest is not rewritten, a commit already made prints `already applied`, a condense already done
+prints `already condensed` / `already shipped`. Never hand-edit what one of them half-wrote; run it
+again. Unattended runs (`--agent-walk`, the fleet) rely on exactly this.
+
+**Separate outputs with `echo ---`**, never a row of `=` signs: under zsh a word starting with `=` is a
+filename expansion, the command fails, and its output is cut off.
 
 Every one of them reads `.claude/builder.md` and fails with the one line that fixes it when it
 cannot.
