@@ -3,17 +3,26 @@
  * the tests each adds, where it lands, then the test plan in plain words and what it costs.
  *
  *   node scripts/plan-slices.mjs <folder> [--tests "<value>"] [--json]
+ *   node scripts/plan-slices.mjs <folder> --index [--write]
+ *
+ * --index prints SPEC §Plan's index (REFERENCE §Plan): the pointer to PLAN.md, then one
+ * `- Phase N · Task M · <name>` line per `### Task N` — the phase from the `## Phases` table (the
+ * membership source), else the block's `Phase:` line. --write puts it into SPEC.md: an existing
+ * `## Plan` section is replaced by its heading, else it goes after §Findings & risks (before any
+ * later section — §Prototype, §Replaced surfaces, `## Fixes`), else at the end. Re-running it writes
+ * the same file.
  *
  * Levers: --tests, else the manifest's tests:/profile: line, else the recommendation for the folder.
  */
 import { readFileSync, existsSync } from 'node:fs'
-import { join, resolve, basename } from 'node:path'
+import { join, resolve, basename, relative, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 import { RECOMMENDED, parseTests, parseTestPlan, recommend, cost, formatTests, section } from './profile.mjs'
 import { readDurations } from './gates-core.mjs'
+import { headings, writeAtomic } from './feature-core.mjs'
 
 const FENCE = /^\s*(`{3,}|~{3,})/
 const TEST_CASE = /(?<![\w.$])(?:it|test)\s*\(|\bdef test_\w*|\bfunc Test\w*|#\[test\]/g
@@ -39,9 +48,9 @@ export const countTests = (text) => fenced(text).reduce((n, { line, inside }) =>
 
 const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
 
-/** Phases table → { byPhase: phase → app, byTask: task → app } */
+/** Phases table → { byPhase: phase → app, byTask: task → app, phaseOf: task → phase } */
 function phaseApps(planText) {
-  const byPhase = new Map(), byTask = new Map()
+  const byPhase = new Map(), byTask = new Map(), phaseOf = new Map()
   let seenSep = false
   for (const line of section(planText, 'Phases').split('\n')) {
     if (!line.trim().startsWith('|')) continue
@@ -52,10 +61,13 @@ function phaseApps(planText) {
     if (/^\d+$/.test(phase)) byPhase.set(+phase, app)
     for (const part of (tasks ?? '').split(/[,\s]+/)) {
       const m = /^(\d+)(?:[-–](\d+))?$/.exec(part)
-      if (m) for (let n = +m[1]; n <= +(m[2] ?? m[1]); n++) byTask.set(n, app)
+      if (m) for (let n = +m[1]; n <= +(m[2] ?? m[1]); n++) {
+        byTask.set(n, app)
+        if (/^\d+$/.test(phase)) phaseOf.set(n, +phase)
+      }
     }
   }
-  return { byPhase, byTask }
+  return { byPhase, byTask, phaseOf }
 }
 
 /** PLAN.md → [{ n, app, phase, name, tests }], one per `### Task N` outside a fence. */
@@ -76,6 +88,33 @@ export function slices(planText) {
     const phase = p ? +p : null
     return { n, app: app ?? byPhase.get(phase) ?? byTask.get(n) ?? '—', phase, name, tests: countTests(lines.map((l) => l.line).join('\n')) }
   })
+}
+
+/** SPEC §Plan's index for a plan in `rel` (the feature folder, relative to the repo). */
+export function planIndex(planText, rel) {
+  const { phaseOf } = phaseApps(planText)
+  const rows = slices(planText).map((s) => `- Phase ${phaseOf.get(s.n) ?? s.phase ?? '?'} · Task ${s.n} · ${s.name}`)
+  return ['## Plan', '', `The plan, with its code: \`${rel}/PLAN.md\` (§PLAN.md).`, '', ...rows].join('\n')
+}
+
+/** SPEC text with `index` as its §Plan — replacing one by its heading, else after §Findings & risks. */
+export function spliceIndex(specText, index) {
+  const lines = String(specText).replace(/\n*$/, '').split('\n')
+  const heads = headings(specText).filter((h) => h.level === 2)
+  const after = (h) => heads.find((x) => x.i > h.i)?.i ?? lines.length
+  const trim = (arr) => { while (arr.length && arr.at(-1).trim() === '') arr.pop(); return arr }
+  const put = (start, end) => {
+    const head = trim(lines.slice(0, start))
+    const tail = lines.slice(end)
+    return [...head, '', index, ...(tail.length ? ['', ...tail] : [])].join('\n') + '\n'
+  }
+  const plan = heads.find((h) => h.title.trim() === 'Plan')
+  if (plan) return put(plan.i, after(plan))
+  const findings = heads.find((h) => /^Findings/.test(h.title))
+  if (findings) return put(after(findings), after(findings))
+  const fixes = heads.find((h) => h.title.trim() === 'Fixes')
+  if (fixes) return put(fixes.i, fixes.i)
+  return put(lines.length, lines.length)
 }
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -151,11 +190,22 @@ function main(argv) {
   const flag = (f) => argv.includes(f)
   const arg = (f) => argv[argv.indexOf(f) + 1]
   const folder = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--tests')
-  if (!folder) { console.error('usage: plan-slices.mjs <folder> [--tests "<value>"] [--json]'); process.exit(2) }
+  if (!folder) { console.error('usage: plan-slices.mjs <folder> [--tests "<value>"] [--json] | <folder> --index [--write]'); process.exit(2) }
   const dir = resolve(folder)
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '')
   const planText = read('PLAN.md')
   if (!planText) { console.error(`builder: no PLAN.md in ${dir}`); process.exit(1) }
+  if (flag('--index')) {
+    const root = repoRoot(dir)
+    const index = planIndex(planText, relative(root, dir).split(sep).join('/'))
+    if (!flag('--write')) { console.log(index); return }
+    const spec = read('SPEC.md')
+    if (!spec) { console.error(`builder: no SPEC.md in ${dir}`); process.exit(1) }
+    const next = spliceIndex(spec, index)
+    if (next === spec) console.log(`SPEC §Plan: already current (${slices(planText).length} tasks)`)
+    else { writeAtomic(join(dir, 'SPEC.md'), next); console.log(`SPEC §Plan: written (${slices(planText).length} tasks) → ${join(dir, 'SPEC.md')}`) }
+    return
+  }
   const manifest = parseManifest(read('MANIFEST.md'))
   const root = repoRoot(existsSync(dir) ? dir : process.cwd())
   const c = loadConfig(root)
