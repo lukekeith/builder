@@ -8,6 +8,7 @@
  *   node <plugin>/scripts/gate.mjs --all              # every app's fast set
  *   node <plugin>/scripts/gate.mjs … --force          # run even when the memo says unchanged
  *   node <plugin>/scripts/gate.mjs … --whole          # run every @scoped line over its whole suite
+ *   node <plugin>/scripts/gate.mjs <app>… --typecheck # only each app's @typecheck lines (none → passes)
  *   node <plugin>/scripts/gate.mjs --baseline         # measure every @delta gate here and record it
  *
  * Exit 0 = every set green (run or quoted). 1 = a gate is red. 2 = usage / unknown app.
@@ -20,6 +21,9 @@
  *                                                                 fleet at start; else measured on
  *                                                                 first sight)
  *   <command>                       # inherited debt @known-red — run and reported, never counted
+ *   <command>                       # the app type-checks @typecheck — the line `--typecheck` runs:
+ *                                                 the floor the test plan keeps when nothing else
+ *                                                 runs. Combines with the other markers.
  *   <runner> {tests}   # … @scoped <glob>        — only the tests in <glob> this branch can reach
  *                                                 (impact.mjs: what it changed, the code reading a
  *                                                 schema field it changed, everything importing or
@@ -36,16 +40,18 @@
  * The memo lives in <repo>/.builder/gates/ (git-ignored, per worktree). A set is QUOTED when the
  * tree is clean and the hash of its inputs — the app's path, everything not owned by another app,
  * and the gate commands themselves — equals the hash of its last GREEN run. A red run is never
- * quoted. The output says which happened, and at which sha.
+ * quoted. The output says which happened, and at which sha. After a green run of an app's WHOLE
+ * fast set (not quoted, no @scoped subset, not --typecheck), each command's time goes to
+ * .builder/gates/durations.json (readDurations).
  */
 import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline } from './gates-core.mjs'
+import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
-const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole]'
+const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole] [--typecheck]'
 const argv = process.argv.slice(2)
 const flag = (f) => argv.includes(f)
 const names = argv.filter((a) => !a.startsWith('--'))
@@ -53,7 +59,9 @@ if (flag('--help') || flag('-h')) {
   console.log(USAGE)
   process.exit(0)
 }
-for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
+for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole', '--typecheck'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
+const TYPECHECK = flag('--typecheck')
+if (TYPECHECK && (flag('--deep') || flag('--baseline'))) die(`--typecheck runs app fast sets only. ${USAGE}`)
 
 function die(msg, code = 2) {
   console.error(msg)
@@ -117,8 +125,17 @@ const registry = CFG.registry
 let baseline = readBaseline(MAIN)
 let anyRed = false
 
+// --typecheck: only each app's @typecheck lines, as a set of its own (its own memo — it never stands
+// in for the full set). An app with none marked has nothing to run and passes, saying so.
+const fastSets = TYPECHECK
+  ? wanted.filter((n) => {
+      if (GATES.fast[n].some((g) => g.typecheck)) return true
+      console.log(`no @typecheck line for ${n}`)
+      return false
+    })
+  : wanted
 const sets = [
-  ...wanted.map((n) => ({ key: `fast-${n}`, label: `${n} — fast`, gates: GATES.fast[n], exclude: [registry, ...CFG.apps.filter((a) => a.name !== n).map((a) => a.path)], expand: { root: ROOT, appPath: appPath(n), baseBranch: CFG.baseBranch } })),
+  ...fastSets.map((n) => ({ app: n, key: `fast-${n}${TYPECHECK ? '-typecheck' : ''}`, label: `${n} — ${TYPECHECK ? 'typecheck' : 'fast'}`, gates: TYPECHECK ? GATES.fast[n].filter((g) => g.typecheck) : GATES.fast[n], exclude: [registry, ...CFG.apps.filter((a) => a.name !== n).map((a) => a.path)], expand: { root: ROOT, appPath: appPath(n), baseBranch: CFG.baseBranch } })),
   ...(flag('--deep') ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
 ]
 // A --whole run and a scoped one prove different things on the same tree: each quotes only its own.
@@ -153,6 +170,8 @@ for (const set of sets) {
   const secs = Math.round((Date.now() - t0) / 1000)
   console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`} · ${sha} · ${secs}s`)
   if (!dirty) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
+  // What the whole app set costs, for the test plan: only a green run of every line, whole.
+  if (set.app && !TYPECHECK && r.exit === 0 && !r.partial) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
   if (r.exit !== 0) anyRed = true
 }
 

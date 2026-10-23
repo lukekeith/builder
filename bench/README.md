@@ -1,7 +1,8 @@
 # bench — the pipeline benchmark
 
-`/builder:benchmark` runs one small feature through builder at each build profile and through
-superpowers and GSD, unattended, and reports time per step, what happened in each step, tokens,
+`/builder:benchmark` runs one small feature through builder — `builder` (the recommended test plan)
+and `builder-everything` (`tests: slice=own+app end=everything review=slice`, pre-set on the manifest
+before the fleet runs) — and through superpowers and GSD, unattended, and reports time per step, what happened in each step, tokens,
 cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-design.md`.
 
 - `fixture/` — the project every run starts from: a notes CLI with its own tests and `.claude/builder.md`.
@@ -12,7 +13,8 @@ cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-de
 GSD's `--auto` may run the whole pipeline in its first session; the benchmark then stops after the session that verifies the phase and says so in the report.
 
 Run it: `/builder:benchmark` (or `node scripts/bench.mjs run tags`). Watch it:
-`/builder:benchmark --status`. Rebuild a report: `node scripts/bench.mjs report <run-id>`.
+`/builder:benchmark --status`. Rebuild a report: `node scripts/bench.mjs report <run-id>` (runs from before the test plan, with
+`builder-rush` / `-standard` / `-thorough` configs, rebuild as they were).
 
 The fleet's own idle and run timeouts (`FLEET_IDLE_TIMEOUT_MS`, `FLEET_RUN_TIMEOUT_MS`) govern
 builder's fleet sessions; `BENCH_IDLE_TIMEOUT_MS` and `BENCH_RUN_TIMEOUT_MS` govern the sessions the

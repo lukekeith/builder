@@ -126,9 +126,11 @@ apps, and list each change. When the config has **no `agent_walk:` block**, that
 silently — **offer it once**: "Add an agent_walk block for unattended /builder:agent and
 /builder:fleet runs? (not yet / yes)". On yes, run §3's `agent_walk` questions and write the block; on
 *not yet*, leave the config without one and don't ask again this run. With an `agent_walk:` block,
-make sure the frontmatter documents **`build_profile_default`** — the build profile the go-ahead
-pre-selects when the spec doesn't call for Thorough (`rush` · `standard` · `thorough`; absent →
-`standard`) — as the template's commented-out line unless the user names one.
+make sure the frontmatter documents **`build_profile_default`** — the project's default test plan,
+which the go-ahead recommends when the spec raises no signal (`rush` · `standard` · `thorough`, each
+read as the test plan it maps to; absent → the recommended plan: each slice's own tests, the touched
+apps' suites once at the end, one review at the end) — as the template's commented-out line unless
+the user names one.
 
 ## 5. Prove it
 

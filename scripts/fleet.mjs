@@ -25,7 +25,7 @@ import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
-import { planSize, parseProfile } from './profile.mjs'
+import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
@@ -91,17 +91,17 @@ const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
 // Progress is read live from each feature's worktree (or the root before it has one): the manifest's
 // state, the plan's tasks and the ledger's completed ones. A few small files per feature.
 const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
-// The table's Profile before the fleet has noted a row's facts: what its manifest resolves to.
-const profileOf = (feature, f) => {
+// The table's Tests before the fleet has noted a row's facts: what its manifest's test plan reads as.
+const testsOf = (feature, f) => {
   const p = join(specDir(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature), 'MANIFEST.md')
-  return existsSync(p) ? parseProfile(parseManifest(readFileSync(p, 'utf8')).profile).preset : null
+  return existsSync(p) ? parseTestPlan(parseManifest(readFileSync(p, 'utf8'))).label : null
 }
 
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
-    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), profileOf) : 'No fleet has run in this repo yet.')
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf) : 'No fleet has run in this repo yet.')
     // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
@@ -206,7 +206,7 @@ function preflight(feature) {
     const on = prior?.target ?? TARGET
     return `${feature} already landed on ${on} — merge ${on} into this branch to pick up the shipped spec`
   }
-  // The go-ahead recorded where it lands (plan §The build profile); a run into another branch isn't it.
+  // The go-ahead recorded where it lands (plan §The go-ahead); a run into another branch isn't it.
   if (isSet(mf.target) && unquote(mf.target) !== TARGET) return `${feature}'s go-ahead lands it on ${unquote(mf.target)} — run with --into ${unquote(mf.target)}`
   if (lane === 'unknown') return `${spec} is at a state the fleet doesn't know (${mf.state ?? 'none'})`
   const branch = branchOf(feature, mf)
@@ -565,7 +565,7 @@ const unlock = () => {
   } catch {}
 }
 process.on('exit', unlock)
-const save = () => saveFleet(ROOT, fleet, progressOf, profileOf)
+const save = () => saveFleet(ROOT, fleet, progressOf, testsOf)
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {
@@ -767,17 +767,26 @@ const snapshot = (wt, feature) => `${readManifest(wt, feature)}\n@${tryGit(['rev
 const QUEUED = { build: 'queued', walk: 'awaiting-walk', ship: 'awaiting-ship' }
 
 /**
- * What the estimates need from a landing: the plan's size and the manifest's profile. /builder:ship
+ * What the estimates need from a landing: the plan's size and the manifest's test plan (`tests`, the
+ * formatTests value; `profile` keeps the old preset key for rows read by an older builder). /builder:ship
  * removes both files before the landing, so the fleet notes them on the row (f.facts, kept in
  * fleet.json) each time it reads a live manifest — the last reading before the ship run wins.
- * Without a manifest to read, the earlier reading stands; with none at all: size null, 'thorough'.
+ * Without a manifest to read, the earlier reading stands; with none at all: size null, the plan a
+ * go-ahead'd feature with neither line maps to (thorough's).
  */
 function noteFacts(f, feature) {
   if (!f.worktree || !existsSync(f.worktree)) return
   const mf = readManifest(f.worktree, feature)
   if (mf == null) return
   const plan = readDoc(f.worktree, feature, 'PLAN.md')
-  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), profile: parseProfile(parseManifest(mf).profile).preset }
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)) }
+}
+
+/** A manifest → { tests, profile }: the resolved plan as a manifest value, and the old `profile:` as written (null without one). */
+function planFacts(mf) {
+  // The fleet only lands go-ahead'd features, so a manifest with neither line is the thorough mapping.
+  const m = { 'go-ahead': 'yes', ...mf }
+  return { tests: formatTests(parseTestPlan(m).levers), profile: isSet(mf.profile) ? mf.profile : null }
 }
 
 function landingFacts(f, feature) {
@@ -785,14 +794,14 @@ function landingFacts(f, feature) {
   const base = f.worktree && existsSync(f.worktree) ? f.worktree : ROOT
   const plan = readDoc(base, feature, 'PLAN.md')
   const mf = readManifest(base, feature)
-  return { size: plan == null ? null : planSize(plan), profile: parseProfile(mf == null ? undefined : parseManifest(mf).profile).preset }
+  return { size: plan == null ? null : planSize(plan), ...planFacts(mf == null ? {} : parseManifest(mf)) }
 }
 
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature, facts) {
   clearPause(feature)
   const f = fleet.features[feature]
-  const { size, profile } = facts ?? landingFacts(f, feature)
+  const { size, tests, profile } = facts ?? landingFacts(f, feature)
   const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
   appendArchive(ROOT, {
     feature,
@@ -805,7 +814,8 @@ function archiveRow(feature, facts) {
     timing: f.timing ?? [],
     lanes: laneTotals(f.timing),
     size,
-    profile,
+    tests: tests ?? null,
+    profile: profile ?? null,
     tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
     costUsd: sum('costUsd'),
     landedAt: new Date().toISOString(),
@@ -1287,11 +1297,11 @@ function ensureParkRecord(feature) {
   tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
 }
 
-/** agent_walk.auto_unpark, except 0 for a feature whose profile has low persistence (rush). */
+/** agent_walk.auto_unpark, except 0 for a feature whose test plan has low persistence (persist=low; an old rush). */
 function retryBudget(f, feature) {
   const live = [f.worktree, ROOT].filter(Boolean).map((b) => readManifest(b, feature)).find(Boolean)
-  const value = live ? parseManifest(live).profile : f.facts?.profile
-  return parseProfile(value).levers.persist === 'low' ? 0 : AW.autoUnpark
+  const mf = live ? parseManifest(live) : { tests: f.facts?.tests, profile: f.facts?.profile }
+  return parseTestPlan(mf).levers.persist === 'low' ? 0 : AW.autoUnpark
 }
 
 /**

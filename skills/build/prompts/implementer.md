@@ -49,9 +49,11 @@ Subagent (general-purpose):
     **Tests you run:** the test files for the code you are changing, plus the
     type-check, once each at the end. 🔴 Do NOT run the app's whole suite or
     any gate block from the project config: the controller runs the full set
-    once when the phase closes, on the committed tree. Measured on a real
+    where the go-ahead's test plan puts it, on the committed tree. If your
+    dispatch says `tests: slice=none`, write the tests but run only the
+    type-check — they run at the end. Measured on a real
     build, implementers re-running the suite before every commit was the
-    single largest cost of the whole run and proved nothing the phase close
+    single largest cost of the whole run and proved nothing the gate runner
     did not prove again minutes later.
 
     **Processes:** run every command in the foreground — never

@@ -182,26 +182,34 @@ test('a vendored copy behind the newest release on this machine says so in --sta
   assert.doesNotMatch(list(root, '--status').stdout, /⬆️/)
 })
 
-test('a feature with a go-ahead reports its build profile; before one, null', () => {
+test('a feature with a go-ahead (or a tests: line written ahead) reports its test plan label; before one, null', () => {
   const rows = repo({
-    a: 'state: planned\ngo-ahead: x\nprofile: rush',
+    a: 'state: planned\ngo-ahead: x\ntests: slice=own end=touched review=end',
     b: 'state: planned\ngo-ahead: x',
     c: 'state: audited\nprofile: rush',
     d: 'state: planned\ngo-ahead: x\nprofile: bogus',
+    e: 'state: planned\ngo-ahead: x\nprofile: rush',
+    f: 'state: audited\ntests: slice=own end=risk review=app walk=you',
+    g: 'state: planned\ngo-ahead: x\nprofile: rush\ntests: slice=own end=everything review=end',
   })
-  assert.equal(rows.a.profile, 'rush')
-  assert.equal(rows.b.profile, 'thorough')
-  assert.equal(rows.c.profile, null)
-  assert.equal(rows.d.profile, 'thorough')
+  assert.equal(rows.a.tests, 'own · touched · end')
+  assert.equal(rows.b.tests, 'own+app · everything · slice', 'neither line: the thorough mapping')
+  assert.equal(rows.c.tests, null)
+  assert.equal(rows.d.tests, 'own+app · everything · slice')
+  assert.equal(rows.e.tests, 'own+app · touched · end')
+  assert.equal(rows.f.tests, 'own · risk · app · you', 'written ahead by /builder:agent')
+  assert.equal(rows.g.tests, 'own · everything · end', 'tests: wins over profile:')
+  assert.equal('profile' in rows.a, false)
 })
 
-test('--status shows each feature\'s profile, and a dash before a go-ahead', () => {
-  const root = setup({ a: 'state: planned\ngo-ahead: x\nprofile: rush', b: 'state: audited' })
+test('--status shows each feature\'s Tests, and a dash before a go-ahead', () => {
+  const root = setup({ a: 'state: planned\ngo-ahead: x\ntests: slice=own end=touched review=end', b: 'state: audited', c: 'state: planned\ngo-ahead: x\nprofile: rush' })
   const st = list(root, '--status')
   assert.equal(st.status, 0, st.stderr)
-  assert.match(st.stdout, /\| Feature \| Profile \|/)
-  assert.match(st.stdout, /\| \*\*a\*\* \| rush \|/)
+  assert.match(st.stdout, /\| Feature \| Tests \|/)
+  assert.match(st.stdout, /\| \*\*a\*\* \| own · touched · end \|/)
   assert.match(st.stdout, /\| \*\*b\*\* \| — \|/)
+  assert.match(st.stdout, /\| \*\*c\*\* \| own\+app · touched · end \|/)
 })
 
 test('a feature the fleet landed elsewhere says to merge its target, not its manifest step', () => {
@@ -222,8 +230,8 @@ test('a feature built here reports `here`, from the moment it is chosen, never a
     a: 'state: audited\nbuild: here',
     b: 'state: built\ngo-ahead: x (here)\nbuild: here',
   })
-  assert.equal(rows.a.profile, 'here')
-  assert.equal(rows.b.profile, 'here')
+  assert.equal(rows.a.tests, 'here')
+  assert.equal(rows.b.tests, 'here')
 })
 
 test('rows say when a session is building a feature, and which features share its branch', () => {

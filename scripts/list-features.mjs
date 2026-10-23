@@ -36,7 +36,7 @@ import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { parseProfile, profileLabel } from './profile.mjs'
+import { parseTestPlan } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
 import { ago, landedRows, buildingInSession, sharedBranch } from './fleet-core.mjs'
@@ -111,7 +111,7 @@ const inspect = (root, name) => {
     path: `${root}/${name}`,
     done: false,
     next: null,
-    profile: null,
+    tests: null,
     blocked: null,
     state: null,
     source: null,
@@ -128,9 +128,10 @@ const inspect = (root, name) => {
     out.layout = mf.tier === 'program' ? 'program' : 'manifest'
     out.source = 'MANIFEST.md'
     out.next = mf.next ?? null
-    // The resolved preset once the go-ahead is given; a misspelling reads as thorough (its warning is not printed here — the statusline reads this).
+    // The test plan's label (`own · touched · end`) once the go-ahead is given — or a `tests:` line written
+    // ahead; a bad value is skipped (its warning is not printed here — the statusline reads this).
     // `build: here` (the human builds it in a session, no fleet) shows from the moment it is chosen.
-    out.profile = mf.build === 'here' ? 'here' : isSet(mf['go-ahead']) ? parseProfile(mf.profile).preset : null
+    out.tests = mf.build === 'here' ? 'here' : isSet(mf['go-ahead']) || isSet(mf.tests) ? parseTestPlan(mf).label : null
     out.pr = mf.pr && mf.pr !== 'none' ? mf.pr : null
     out.blocked = mf.hold && mf.hold !== 'none' ? `🛑 PR HELD — ${mf.hold}` : null
     if (out.layout === 'program') {
@@ -499,11 +500,11 @@ if (asStatus) {
   // A pipe inside a cell would split it into two columns.
   const cell = (s, n) => clip(String(s ?? '—'), n).replace(/\|/g, '\\|')
   console.log(`**${CFG.project}** — ${open.length} in progress, most recent first\n`)
-  console.log('| # | Feature | Profile | What it is | Last done | Next step | Updated | Pick it up |')
+  console.log('| # | Feature | Tests | What it is | Last done | Next step | Updated | Pick it up |')
   console.log('|---|---|---|---|---|---|---|---|')
   open.forEach((r, i) =>
     console.log(
-      `| ${i + 1} | **${cell(r.feature, 40)}** | ${profileLabel(r.profile)} | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
+      `| ${i + 1} | **${cell(r.feature, 40)}** | ${cell(r.tests ?? '—')} | ${cell(r.description, 60)} | ${cell(r.lastDone, 40)} | ${cell(r.nextStep, 50)} | ${cell(r.updated, 20)} | \`${r.command}\` |`
     )
   )
   // The pipeline commits on the feature's branch, so resuming from another one is the usual trap.
