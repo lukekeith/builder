@@ -1,0 +1,850 @@
+{
+  "stages": [
+    {
+      "id": "init-questions",
+      "skill": "init",
+      "title": "Setting up a repo: only what recon can't tell",
+      "when": "The first time builder runs in a repo, or whenever a step says .claude/builder.md is missing.",
+      "source": "skills/init/SKILL.md §3. Ask only what recon couldn't answer",
+      "sources": [
+        "skills/init/SKILL.md §2. Recon — read the repo, don't ask about it"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:init"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:init) · Bash(git rev-parse --show-toplevel · ls .claude/builder.md · cat pnpm-workspace.yaml apps/*/package.json .github/workflows/ci.yml …)"
+        },
+        {
+          "role": "claude",
+          "text": "Read the repo. Here's what it already told me:\n\n- **project** `acme-certs` (root package.json) · **base** `main` (origin/HEAD) · **registry** `docs/features` (template default — no feature folder yet)\n- **apps** from `pnpm-workspace.yaml`: `api` (apps/api — Fastify + Prisma), `web` (apps/web — React + Vite), `mobile` (apps/mobile — React Native, `released_artifact: true`: it ships through the stores)\n- **fast gates** from each package.json: `pnpm -F api test` · `pnpm -F api typecheck` · `pnpm -F web test` · `pnpm -F web lint`\n- **walk readiness** from Prisma: `pnpm -F api prisma migrate status` / `deploy` / `generate`; dev start `pnpm dev`\n- **ticket keys** like `ACME-207` in branch names and commit subjects → Jira\n- no design resolver → prototype mode stays off\n\nA few things only you can answer. Two in plain words:\n\n1. **Known-red gates** — do any of the four gates above fail on `main` today?\n2. **Flaky tests** — any test file that fails in the whole suite but passes alone?\n\nThe rest in the picker, my recommendation first on each.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "Is api the producer and web and mobile its consumers?",
+          "header": "Roles",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "api → web, mobile (Recommended)",
+              "description": "api owns the Prisma schema and serves the routes; web and mobile code against its contract. Phases run api first."
+            },
+            {
+              "label": "All three independent",
+              "description": "No producer/consumer order — each app phases on its own and no contract freezes between them."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Commit mode per app — may an agent commit, or only stage?",
+          "header": "Commits",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "All auto (Recommended)",
+              "description": "Agents commit in every app as each task lands."
+            },
+            {
+              "label": "mobile manual, rest auto",
+              "description": "api and web commit as they go; in mobile an agent stages its changes and stops — that commit is yours."
+            },
+            {
+              "label": "All manual",
+              "description": "Every app stages and stops; you make every commit."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "When a build adds a migration, how should it reach your dev database?",
+          "header": "Migrations",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "ask (Recommended)",
+              "description": "The pipeline asks before applying a pending migration, so a walk never runs against an old schema."
+            },
+            {
+              "label": "agent",
+              "description": "Applied without asking when it is additive; one that drops or rewrites data still asks."
+            },
+            {
+              "label": "human",
+              "description": "Never applied for you — the pipeline names the command and waits."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Add an agent_walk block for unattended /builder:agent and /builder:fleet runs?",
+          "header": "Agent walk",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Not yet (Recommended)",
+              "description": "No unattended runs for now; /builder:init --update offers it again later."
+            },
+            {
+              "label": "Yes",
+              "description": "A few more questions: the walk driver, claude_args (bypassPermissions lets every headless run execute any command in its fleet worktree), reset/start/smoke/stop, worktree_env."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Ticket keys like ACME-207 appear in branches and commits — write a Jira ticket block?",
+          "header": "Tickets",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Jira, key ACME (Recommended)",
+              "description": "Specs and branches carry the ticket key; builder reads tickets but never writes to Jira."
+            },
+            {
+              "label": "No ticket block",
+              "description": "Ticket ids are never asked for or checked."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "Asked in one message: the two free-text questions in chat, the choices as AskUserQuestion (the tool takes up to four per call)."
+        },
+        {
+          "role": "user",
+          "text": "None red, no flaky ones. Roles yes, mobile manual, ask, not yet, Jira."
+        }
+      ],
+      "stamp": {
+        "hash": "1c89ea8c6ca6",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "init-report",
+      "skill": "init",
+      "title": "The config written — the closing summary",
+      "when": "Right after .claude/builder.md is written and proved to parse.",
+      "source": "skills/init/SKILL.md §6. Report",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(cp $CLAUDE_PLUGIN_ROOT/PROJECT.template.md .claude/builder.md) · Edit(.claude/builder.md) · Bash(node …/scripts/list-features.mjs · grep -n '<[a-z][^>]*>' .claude/builder.md)"
+        },
+        {
+          "role": "claude",
+          "text": "```\n✅ .claude/builder.md written for acme-certs\n   apps: api (producer, auto) · web (consumer, auto) · mobile (consumer, manual)\n   base: main · registry: docs/features · ticket: jira · design: off\n   inferred, check these: mobile released_artifact: true · web's deep set `pnpm -F web exec playwright test {tests}` from ci.yml · dev start `pnpm dev`\n   tracked test output: none\n📍 next: /builder:brainstorm <what you want built>\n```\n\nIt belongs in git so the whole team runs the same pipeline — I've left the commit to you. When you want agents to build unattended, `/builder:init --update` adds the `agent_walk:` block."
+        }
+      ],
+      "stamp": {
+        "hash": "8bfc43b8943f",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "intake-playback",
+      "skill": "intake",
+      "title": "Intake: the ticket played back",
+      "when": "A worked-out ticket or spec is handed to /builder:intake — the first turn, before anything is checked.",
+      "source": "skills/intake/SKILL.md §1. Extract",
+      "sources": [
+        "skills/intake/SKILL.md §Where to start",
+        "skills/brainstorm/CONVERSATION.md §Ways on",
+        "skills/intake/SKILL.md §Every pause"
+      ],
+      "feature": "bulk-renew",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:intake ACME-388"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:intake) · jira issue view ACME-388 · Write(.builder/bulk-renew/brainstorm.md)"
+        },
+        {
+          "role": "claude",
+          "text": "Naming this **bulk-renew**, from the ticket's title \"Bulk renew certificates\" — say if you want another name.\n\n⚠ You're on `main`, which doesn't carry ACME-388 in its name.\n\n**What ACME-388 asks for:** owners renewing certificates one at a time is the slow part of their year-end — the ticket wants them to \"tick any number of certificates on the list and renew them in one go\", with a shortcut to \"renew everything expiring in the next 30 days\". Each renewal \"extends the certificate 12 months from today\", a run is \"capped at 500 certificates\", and \"mobile is out of scope for this ticket\". It also says the list \"already supports multi-select\" and that renewals are \"linked to the certificate they replace\".\n\nI pulled **15 claims** out of it — 6 requirements, 4 decisions, 2 constraints, 1 non-goal and 2 claims about how the code works today.\n\nA. That's it (recommended) — I check all 15 against the code and report what holds\nB. Let's correct it — tell me what the playback gets wrong before I check\nReply A or B — \"go\" is A.  Or say what's wrong.\n📍 bulk-renew: intake (0 contradicted, 0/15 settled) — resume with /builder:intake --path docs/features/bulk-renew",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "A bare \"go\" picks A. Intent is played back from the document, the author's rules quoted — intake never interviews for intent."
+        }
+      ],
+      "stamp": {
+        "hash": "c0d26c43b0e6",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "intake-claims",
+      "skill": "intake",
+      "title": "Intake: claims checked, the first contradiction asked",
+      "when": "After the sub-agents have checked every claim against the code.",
+      "source": "skills/intake/SKILL.md §4. Report, then ask",
+      "sources": [
+        "skills/intake/SKILL.md §2. Verify",
+        "skills/intake/SKILL.md §3. Find the gaps",
+        "skills/brainstorm/CONVERSATION.md §Rounds",
+        "skills/intake/SKILL.md §Every pause"
+      ],
+      "feature": "bulk-renew",
+      "turns": [
+        {
+          "role": "user",
+          "text": "go"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ 4 Explore agents (sonnet) — verifying 15 claims against apps/api and apps/web"
+        },
+        {
+          "role": "claude",
+          "text": "**12 of 15 claims confirmed · 2 contradicted · 1 unverifiable · 4 gaps**\n\n**Confirmed**\n- single renew exists — `POST /certificates/:id/renew` (apps/api/src/routes/certificates.ts:88)\n- only the owner may renew — `assertOwner` guards it (apps/api/src/certificates/renew.service.ts:14)\n- renewal sets `status: active` and writes a `renewed` event (renew.service.ts:36, :42)\n- the list already filters by expiry window — `?expiresWithin=30` (apps/web/src/features/certificates/useCertificates.ts:21)\n- mobile reads `expires_at` from the same list endpoint and needs no change (apps/mobile/src/api/certificates.ts:12)\n- …and 7 more, each with its `file:line` in the record\n\n**Contradicted**\n- \"renewal extends 12 months from today\" — the code extends 12 months from the **current** `expires_at` (renew.service.ts:31)\n- \"the list already supports multi-select\" — `CertificateTable` has no selection; the only checkbox column is in `AdminUsersTable` (apps/web/src/features/certificates/CertificateTable.tsx:18)\n\n**Unverifiable**\n- \"500 renewals finish in under 2 seconds\" — only running it against real data can say\n\n**Gaps the ticket never decides** — a revoked or already-expired certificate in the selection · a run where some renewals fail · one history event per certificate or one for the batch (the History tab reads `/certificates/:id/events`) · what the \"renew expiring\" shortcut does when nothing is expiring\n\n**How it works today:** renewing is one certificate at a time from the owner view — `renewCertificate` checks ownership, adds 12 months to the current expiry, sets the status back to active and records a `renewed` event[^1]. Nothing links a renewal to the certificate it replaced — the row is updated in place[^2].\n\n[^1]: apps/api/src/certificates/renew.service.ts:14–42\n[^2]: apps/api/prisma/schema.prisma:41 — no `renewed_from_id`\n\n---\n\n**Q1 of ~7 — where a renewal's new expiry starts**\n\nThe ticket says 12 months from today; single renew runs 12 months from the current expiry. Which side changes?\n\n**Why it matters:** renewing early either keeps or throws away the unexpired time — and if bulk and single renew disagree, two certificates renewed the same afternoon get different dates.\n**What it affects:** `renewCertificate` (renew.service.ts:31), the Renew button on the owner view, the new bulk endpoint, the expiry dates web and mobile show.\n**Recommendation:** change the document — keep \"from the current expiry\". Single renew has done that since ACME-207 (`git log -S addMonths`), so bulk matches it and nobody loses paid-for time. It costs nothing in code; the ticket's line is corrected in the spec.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 7 open questions, then it's sized and specced\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n📍 bulk-renew: intake (2 contradicted, 12/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+        },
+        {
+          "role": "picker",
+          "question": "Where should a renewal's new expiry start — the ticket's rule or the code's?",
+          "header": "Expiry rule",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Keep the code's rule (Recommended)",
+              "description": "Bulk renew extends from the current expires_at, exactly like single renew; the ticket's line is corrected in the spec. Early renewals keep their unexpired time."
+            },
+            {
+              "label": "Change code to the ticket's",
+              "description": "Single and bulk renew both run 12 months from today — renew.service.ts changes, and anyone renewing early loses the time they had left."
+            },
+            {
+              "label": "Today, for bulk only",
+              "description": "Bulk uses today, single keeps its rule — two rules for one action, which the spec has to explain."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "A contradiction is always asked as 'which side changes — the document or the code'. Confirmed claims are reported, never asked."
+        }
+      ],
+      "stamp": {
+        "hash": "ec65e2fe2c0e",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "intake-confirm",
+      "skill": "intake",
+      "title": "Intake: the shared understanding",
+      "when": "When every contradicted, unverifiable and open row is settled.",
+      "source": "skills/brainstorm/CONVERSATION.md §Confirm",
+      "sources": [
+        "skills/intake/SKILL.md §5. Confirm, size, hand on",
+        "skills/brainstorm/CONVERSATION.md §Approaches"
+      ],
+      "feature": "bulk-renew",
+      "turns": [
+        {
+          "role": "user",
+          "text": "Keep the code's rule"
+        },
+        {
+          "role": "claude",
+          "text": "13 of 19 settled — 6 open.\n\n**Q2 of ~7 — the list has no selection yet** …"
+        },
+        {
+          "role": "note",
+          "text": "Q2–Q7 run the same way — one briefing, the three ways on, one picker. Skipped here."
+        },
+        {
+          "role": "user",
+          "text": "(answers Q7)"
+        },
+        {
+          "role": "claude",
+          "text": "No real fork in the design — one approach, so no approaches step.\n\n**Here's the shared understanding** — owners tick certificates on the web list (or take the \"renew expiring in 30 days\" shortcut) and renew them in one action; each renewal extends from its current expiry, exactly like single renew. A new `POST /certificates/bulk-renew` wraps the existing `renewCertificate`, skips revoked certificates and reports partial failures; mobile is untouched. **19 decisions, 2 assumptions.** Is anything missing or wrong?\n\nAssumed:\n- **B11** one `renewed` event per certificate, so each History tab shows its own renewal — `renewCertificate` already writes it (renew.service.ts:42). Say if not.\n- **B14** the 500 cap is enforced by the endpoint and the selection bar both — the web pattern for capped actions (apps/web/src/features/exports/ExportBar.tsx:30).\n\nA. Build it (recommended) — sized next, then the spec\nB. Park it — keep the conversation; nothing is built\nC. Stop here — the understanding is the outcome; nothing written to the repo\nReply A, B or C — \"go\" is A.  Or say what's missing or wrong.\n📍 bulk-renew: intake (0 contradicted, 19/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+        }
+      ],
+      "stamp": {
+        "hash": "2a41414d484d",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "intake-size-handoff",
+      "skill": "intake",
+      "title": "Intake: sized lg, handed to /builder:spec",
+      "when": "After the user confirms the understanding and picks Build it.",
+      "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
+      "sources": [
+        "skills/intake/SKILL.md §5. Confirm, size, hand on",
+        "skills/resume/REFERENCE.md §The classifier"
+      ],
+      "feature": "bulk-renew",
+      "turns": [
+        {
+          "role": "user",
+          "text": "A"
+        },
+        {
+          "role": "claude",
+          "text": "**Size: lg** — evidence: two apps (api: a new `POST /certificates/bulk-renew` endpoint and its contract row; web: selection on the certificate list, a selection bar, a confirm dialog and a results summary); mobile ⬜ — it reads `expires_at` already. Rule 4: two apps → lg.\n\n**Split it?**\n\nOne spec, or two that each ship on their own?\n\n**Why it matters:** each spec is its own build, walk and merge — two means two walks, but the first lands sooner.\n**What it affects:** the order api and web phases run in, and when owners get anything.\n**Recommendation:** one spec — the \"renew expiring\" shortcut is one button over the same endpoint; splitting it off saves little and costs a second walk."
+        },
+        {
+          "role": "picker",
+          "question": "One lg spec, or two value-sized specs?",
+          "header": "Split",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "One spec (Recommended)",
+              "description": "bulk-renew as one lg spec: endpoint, selection and the shortcut together — one build, one walk."
+            },
+            {
+              "label": "2 value-sized specs",
+              "description": "bulk-renew-selected (owners tick and renew) first; bulk-renew-expiring (the 30-day shortcut) after — each usable on its own, two walks."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "One spec"
+        },
+        {
+          "role": "claude",
+          "text": "Recorded: `status: sized lg`.\n\nA. Write the spec (recommended) — /builder:spec --path docs/features/bulk-renew\nB. Park it — keep the conversation, build nothing yet\nReply A or B — \"go\" is A.\n📍 bulk-renew: concept confirmed (lg) — next: /builder:spec --path docs/features/bulk-renew · or say go"
+        },
+        {
+          "role": "note",
+          "text": "At md the list also offers \"B. Build it in chat anyway\"; lg and xl list only Write the spec and Park it."
+        }
+      ],
+      "stamp": {
+        "hash": "d88ae85a1b53",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "status-dashboard",
+      "skill": "status",
+      "title": "The dashboard of work in progress",
+      "when": "Any time the user asks where things stand.",
+      "source": "skills/status/SKILL.md §2. Show it",
+      "sources": [
+        "skills/status/SKILL.md §1. Run it"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:status"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node $CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs --status) · Bash(node $CLAUDE_PLUGIN_ROOT/scripts/inventory.mjs --summary)"
+        },
+        {
+          "role": "claude",
+          "text": "**acme-certs** — 4 in progress, most recent first\n\n| # | Feature | Profile | What it is | Last done | Next step | Updated | Pick it up |\n|---|---|---|---|---|---|---|---|\n| 1 | **bulk-renew** | — | — | sized lg — spec not written | Write the spec | 25m ago | `/builder:spec --path docs/features/bulk-renew` |\n| 2 | **cert-tags** | — | Let owners tag certificates and filter the list by tag | Plan written | Approve the plan, then build | 3 hours ago | `/builder:resume --path docs/features/cert-tags` |\n| 3 | **cert-history** | — | Show a certificate's change history | Audit done | Settle open decisions, then plan | 1 day ago | `/builder:resume --path docs/features/cert-history` |\n| 4 | **customer-portal** | — | Customer portal | 1/3 children shipped | Continue child portal-cert-list (building) | 2 days ago | `/builder:resume --path docs/features/customer-portal` |\n\n📦 4 shipped features archived · list-features.mjs --archived lists them.\n\nrepo: 1 merged branch to delete → /builder:tidy"
+        },
+        {
+          "role": "note",
+          "text": "Printed verbatim — no extra line here, since nothing is held or flagged. Replying with a feature's name runs that row's command."
+        }
+      ],
+      "stamp": {
+        "hash": "f5edc2b72aea",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "agent-pick",
+      "skill": "agent",
+      "title": "Hand work to agents: the multi-select",
+      "when": "The user runs /builder:agent, or answers a two-way footer with \"2\" / \"agent\".",
+      "source": "skills/agent/SKILL.md §2. Pick — one multi-select",
+      "sources": [
+        "skills/agent/SKILL.md §1. What can be picked",
+        "skills/resume/REFERENCE.md §How a park reads"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:agent"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:agent) · Bash(node $CLAUDE_PLUGIN_ROOT/scripts/list-features.mjs --json)"
+        },
+        {
+          "role": "claude",
+          "text": "~~~\n⛔ portal-downloads — parked 2 days ago · building\n   why:  a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n   next: answer D3 in SPEC §Decisions, then /builder:agent\n~~~\n\nPicking it now would park it again on the same question — answering D3 first is the step I'd recommend."
+        },
+        {
+          "role": "picker",
+          "question": "Which features should agents finish? Each runs in its own worktree until it's merged into main.",
+          "header": "Features",
+          "multiSelect": true,
+          "options": [
+            {
+              "label": "cert-tags",
+              "description": "not built yet · agents audit, plan, build, test and merge it"
+            },
+            {
+              "label": "cert-history",
+              "description": "not built yet · agents audit, plan, build, test and merge it"
+            },
+            {
+              "label": "portal-downloads",
+              "description": "parked — revoked certificate's PDF: refuse or stamp REVOKED? [D3] · picking it unparks and retries"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "cert-tags, cert-history"
+        }
+      ],
+      "stamp": {
+        "hash": "34ad8e8e599a",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "agent-profile",
+      "skill": "agent",
+      "title": "Hand work to agents: build profile and landing branch",
+      "when": "Straight after the pick, for every pick whose manifest has no profile yet.",
+      "source": "skills/plan/SKILL.md §Picking the profile ahead — `/builder:agent` and `/builder:fleet`",
+      "sources": [
+        "skills/plan/SKILL.md §The build profile (`agent_walk:` set)",
+        "skills/agent/SKILL.md §3. Check, confirm, launch"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/profile.mjs --recommend docs/features/cert-tags · --estimate … ×3) · Bash(… cert-history …)"
+        },
+        {
+          "role": "picker",
+          "question": "How should agents build \"cert-tags\"?  → lands on main\nRecommended: Thorough — a released_artifact consumer (mobile), a schema change, a cross-app contract",
+          "header": "cert-tags",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Thorough (Recommended)",
+              "description": "~110 min · ~6.2M tokens (3 similar features) · the full pipeline: every task reviewed, full agent walk, deep verify with cross-app E2E."
+            },
+            {
+              "label": "Standard",
+              "description": "~80 min · ~4.0M tokens (3 similar features) · every task reviewed, the agent walks the [risk] items, full verify."
+            },
+            {
+              "label": "Rush",
+              "description": "~45 min · ~1.9M tokens (3 similar features) · final review and fast gates only; no agent walk — you test it once it lands. ⚠ This feature has a released_artifact consumer: nothing walks it before it lands."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "How should agents build \"cert-history\"?  → lands on main\nRecommended: Standard — one app, no schema change",
+          "header": "cert-history",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Standard (Recommended)",
+              "description": "faster · every task reviewed, the agent walks the [risk] items, full verify."
+            },
+            {
+              "label": "Rush",
+              "description": "fastest · fewest tokens · final review and fast gates only; no agent walk — you test it once it lands."
+            },
+            {
+              "label": "Thorough",
+              "description": "full pipeline · every task reviewed, full agent walk, deep verify with cross-app E2E."
+            }
+          ]
+        },
+        {
+          "role": "picker",
+          "question": "Land on?",
+          "header": "Land on?",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "main (Recommended)",
+              "description": "merge_into — where finished features merge. Other takes any other branch name."
+            }
+          ]
+        },
+        {
+          "role": "note",
+          "text": "One AskUserQuestion call, three tabs. cert-history has no PLAN.md yet, so no estimate — its options show the ladder words. Land on? lists main only because merge_into, base_branch and the current branch are all main; the tool's Other takes any branch."
+        },
+        {
+          "role": "user",
+          "text": "Thorough · Standard · main"
+        },
+        {
+          "role": "picker",
+          "question": "Walk it yourself before it lands?",
+          "header": "Your walk",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "No (Recommended)",
+              "description": "thorough — the agent walks it and signs it off; it lands on main without your walk."
+            },
+            {
+              "label": "Yes",
+              "description": "thorough + you — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "No"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(git commit -m \"chore(cert-tags): build profile thorough → main\") · Bash(git commit -m \"chore(cert-history): build profile standard → main\")"
+        }
+      ],
+      "stamp": {
+        "hash": "69a6ca4b8064",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "agent-launch",
+      "skill": "agent",
+      "title": "Hand work to agents: the one confirmation and the launch",
+      "when": "After the profiles are recorded — the dry run, one yes, then the fleet starts detached.",
+      "source": "skills/agent/SKILL.md §3. Check, confirm, launch",
+      "sources": [
+        "skills/fleet/SKILL.md §3. Confirm once",
+        "skills/fleet/SKILL.md §4. Launch"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs cert-tags cert-history --into main --dry-run)"
+        },
+        {
+          "role": "claude",
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
+        },
+        {
+          "role": "picker",
+          "question": "Start the fleet? 2 specs (cert-tags, cert-history) · worktrees under /Users/sam/code/acme-certs.fleet · runs as claude --permission-mode bypassPermissions · merges each finished feature into main (merge_into, or --into), one merge commit each; nothing is pushed. main is checked out here with no uncommitted changes.",
+          "header": "Fleet",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Start the fleet",
+              "description": "Launch it detached: builds in parallel, walks one at a time, each merged into main when done."
+            },
+            {
+              "label": "Not now",
+              "description": "Nothing starts; the profiles stay recorded for next time."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Start the fleet"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs cert-tags cert-history --into main --detach)"
+        },
+        {
+          "role": "claude",
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet --status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet --status\n~~~"
+        }
+      ],
+      "stamp": {
+        "hash": "182e33dc9337",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "fleet-add",
+      "skill": "fleet",
+      "title": "Fleet: more specs join the running fleet",
+      "when": "Specs are named with /builder:fleet while a fleet is already running.",
+      "source": "skills/fleet/SKILL.md §4. Launch",
+      "sources": [
+        "skills/fleet/SKILL.md §2. Always dry-run first",
+        "skills/fleet/SKILL.md §3. Confirm once"
+      ],
+      "feature": "customer-portal",
+      "turns": [
+        {
+          "role": "user",
+          "text": "I answered D3. /builder:fleet portal-cert-list portal-downloads"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:fleet) · Bash(node …/scripts/fleet.mjs portal-cert-list portal-downloads --dry-run)"
+        },
+        {
+          "role": "claude",
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `profile:`, so there are no profile questions."
+        },
+        {
+          "role": "picker",
+          "question": "Add 2 specs to the running fleet (pid 48213)? They join its queue and start as lanes free — its --parallel 3 stands. portal-downloads waits for portal-cert-list to merge. Each merges into main, one merge commit each; nothing is pushed.",
+          "header": "Fleet",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Add to the running fleet",
+              "description": "Drop both in the fleet's inbox; it picks each up the moment a lane frees."
+            },
+            {
+              "label": "Not now",
+              "description": "Nothing is queued."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Add to the running fleet"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs portal-cert-list portal-downloads --detach)"
+        },
+        {
+          "role": "claude",
+          "text": "```\n  ↳ portal-cert-list — queued for the running fleet (pid 48213)\n  ↳ portal-downloads — queued for the running fleet (pid 48213)\n```\n\n~~~\n📍 fleet: 2 spec(s) added to the running fleet — next: /builder:fleet --status\n~~~"
+        },
+        {
+          "role": "note",
+          "text": "With no fleet running, the same command is a fresh launch: Start the fleet / Not now, then `fleet started detached (pid N)` — as in the /builder:agent launch."
+        }
+      ],
+      "stamp": {
+        "hash": "7df8b722c53e",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "fleet-status",
+      "skill": "fleet",
+      "title": "Fleet: --status mid-run",
+      "when": "Any time while the fleet runs.",
+      "source": "skills/fleet/SKILL.md §1. `--status`",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:fleet --status"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs --status)"
+        },
+        {
+          "role": "claude",
+          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · --status --archived for the latest 20\nlast 4 landed, mean per lane: build 52m · walk 21m\n\n| Feature | Status | Profile | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | standard | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | thorough | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | standard | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | standard | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
+        },
+        {
+          "role": "note",
+          "text": "Markdown, never fenced. The bar counts steps, not time — asked how long is left, the honest answer is the lane means above, offered as an estimate."
+        }
+      ],
+      "stamp": {
+        "hash": "1194bb83fcca",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "fleet-report",
+      "skill": "fleet",
+      "title": "Fleet: the final report",
+      "when": "Asked after the fleet has ended — every row landed, parked or failed.",
+      "source": "skills/fleet/SKILL.md §5. When it finishes",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:fleet --status"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Read(.builder/fleet/STATUS.md)"
+        },
+        {
+          "role": "claude",
+          "text": "# builder fleet — 1 feature(s): 1 parked · ▓▓▓▓▓▓▓▓░░ 75%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · --status --archived for the latest 20\nlast 5 landed, mean per lane: build 1h04m · walk 22m\n\n| Feature | Status | Profile | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | thorough | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
+        },
+        {
+          "role": "note",
+          "text": "The table and its notes are STATUS.md verbatim; the two bullets after them are the skill's brief relay of done and parked."
+        }
+      ],
+      "stamp": {
+        "hash": "f3db3b544b56",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "tidy-table",
+      "skill": "tidy",
+      "title": "Tidy: the picture and the one confirmation",
+      "when": "The user asks to clean up, or a status/fleet report ends in a repo: line naming /builder:tidy.",
+      "source": "skills/tidy/SKILL.md §2. The safe batch — one question",
+      "sources": [
+        "skills/tidy/SKILL.md §1. The picture",
+        "skills/tidy/SKILL.md §3. The rest — one question each",
+        "skills/tidy/SKILL.md §4. Done"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:tidy"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:tidy) · Bash(node …/scripts/inventory.mjs) · Bash(node …/scripts/tidy.mjs plan --json)"
+        },
+        {
+          "role": "claude",
+          "text": "# acme-certs — branches and worktrees against main\n\n| Group | Branch / worktree | Ahead | Worktree | Why · next | Action |\n|---|---|---|---|---|---|\n| ready | ACME-377-expiry-reminder | 9 | — | — | merge |\n| in-progress | ACME-401-owner-view | 7 | — | /builder:agent --path docs/features/owner-view | ask |\n| parked | builder/cert-tags | 31 | — | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] · answer D7 in SPEC §Decisions, then /builder:agent | keep |\n| merged | builder/overdue-filter | 0 | — | — | delete |\n| unknown | spike/pdf-render | 3 | — | — | ask |\n| dead | /Users/sam/code/acme-certs.fleet/cert-search | — | — | its folder is gone | remove-worktree |\n\nrepo: 1 merged branch to delete · 1 dead worktree · 1 ready to merge · 1 parked · 1 in progress · 1 unknown → /builder:tidy"
+        },
+        {
+          "role": "picker",
+          "question": "Do the safe batch? Delete (merged into main): builder/overdue-filter · Remove (dead worktree): /Users/sam/code/acme-certs.fleet/cert-search · Merge into main (verified): ACME-377-expiry-reminder",
+          "header": "Tidy",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Do all of it (Recommended)",
+              "description": "Deletes the merged branch, prunes the dead worktree and merges the verified branch into main. Nothing is pushed."
+            },
+            {
+              "label": "Not now",
+              "description": "Nothing changes; the remaining branches still get their own questions."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Do all of it"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/tidy.mjs apply delete-branch builder/overdue-filter) · Bash(… remove-worktree …) · Bash(… merge ACME-377-expiry-reminder)"
+        },
+        {
+          "role": "claude",
+          "text": "```\n✓ builder/overdue-filter — deleted\n✓ /Users/sam/code/acme-certs.fleet/cert-search — already gone; pruned\n✓ ACME-377-expiry-reminder — merged into main\n```"
+        },
+        {
+          "role": "note",
+          "text": "Then one question each (up to four per AskUserQuestion, one tab each) for ACME-401-owner-view, builder/cert-tags and spike/pdf-render: Finish with agents · Merge as is · Keep · Delete — the unknown branch recommends Keep. Afterwards the table is printed again and it ends in `📍 repo: clean`, or the repo: line with what was kept by your choice."
+        }
+      ],
+      "stamp": {
+        "hash": "b5f852e8e820",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "version",
+      "skill": "version",
+      "title": "Which builder is this?",
+      "when": "The user asks what version of builder the session runs, or whether it's current.",
+      "source": "skills/version/SKILL.md §2. Show it",
+      "sources": [
+        "skills/version/SKILL.md §1. Run it"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:version"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node \"<base directory>/../../scripts/version.mjs\" --root \"<base directory>/../..\")"
+        },
+        {
+          "role": "claude",
+          "text": "```\nbuilder 4.11.2 — loaded in this session from the user-scope plugin install\ninstalled on this machine: 4.11.2\nnewest release known here: 4.11.2 (marketplace refreshed 2026-10-22)\n✅ up to date — the newest release this machine knows about (marketplace refreshed 2026-10-22). /builder:update --check looks for a newer one.\n```\n\n~~~\n📍 builder 4.11.2: ✅ up to date\n~~~"
+        },
+        {
+          "role": "note",
+          "text": "When the session loaded an older copy than is installed, the last line is `⬆️ … /reload-plugins loads it` — that one is yours to type."
+        }
+      ],
+      "stamp": {
+        "hash": "0efdec9cb925",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    },
+    {
+      "id": "help-card",
+      "skill": "help",
+      "title": "The help card",
+      "when": "/builder:help, or --help on brainstorm, intake, spec or resume.",
+      "source": "skills/help/SKILL.md §Which command do I run?",
+      "sources": [
+        "skills/help/SKILL.md §The idea in one paragraph",
+        "skills/help/SKILL.md §It reads ONE config file",
+        "skills/help/SKILL.md §The sizes",
+        "skills/help/SKILL.md §The order (md and lg)",
+        "skills/help/SKILL.md §The human gates (three, plus the PR lock)",
+        "skills/help/SKILL.md §Resuming",
+        "skills/help/SKILL.md §FAQ"
+      ],
+      "turns": [
+        {
+          "role": "user",
+          "text": "/builder:help"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:help)"
+        },
+        {
+          "role": "claude",
+          "text": "# `/builder:*` — how the pipeline works\n\n## The idea in one paragraph\n\n**Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea\nwith you — a vague idea framed, started from the project's design system, then looked further — installed plugins, a suggested one, the web — only when you allow it, and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and\n`/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is\nconfirmed it is sized (REFERENCE §Sizes): **xs and sm** are designed and built in chat and write\nnothing under `docs/`; **md and lg** go to `/builder:spec`, which writes one `SPEC.md` (opening with\nthe idea, in prose) plus a ~12-line `MANIFEST.md` and runs the pipeline below; **xl** becomes a\n`PROGRAM.md` whose children each run it. A finished, specced design\ncan be the requirements instead of an interview. A spec is audited against the codebase **once**\nbefore any code, then built **one app per phase, the producer before its consumers**, with that\napp's gates at every phase close, then 🔒 **walked by you**: your sign-off condenses the folder and\nonly then come the one deep verify pass and **one PR for the whole feature**. Building the feature\noutranks recording it — git history is the full record.\n\n## It reads ONE config file\n\n🔴 **The plugin knows nothing about your project.** Every project fact — the apps, the gate commands,\nthe house rules, the environment landmines, the recipe skills, the design source — lives in\n**`.claude/builder.md`**. Writing it is the whole per-repo setup:\n\n```\n/builder:init             # reads the repo, asks what it can't tell, writes .claude/builder.md\n/builder:init --update    # fill the gaps in an existing one\n```\n\nNothing else is needed. The plugin ships its own scripts and its own execution engine; there is no\nsecond plugin to install. If a step says it cannot find the config, that file is what's missing.\n\n## Which command do I run?\n\n| You are… | Run |\n|---|---|\n| **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |\n| **Wanting a view of everything in progress** | `/builder:status` — one table: what each feature is, the step last done, the step next, and the command to paste to pick it up |\n| **Any time — \"where are things / what's next?\"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |\n| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, the project's design system first, then installed plugins, a suggested plugin or the web offered, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. A small change in existing code skips all that: the first turn proposes it and replying A builds it. Every pause ends in a lettered list of ways on — reply a letter, \"go\" is A. The normal way in |\n| **A spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code (confirmed · contradicted · unverifiable), finds the gaps, asks only about those |\n| Building from a design that is already specced | `/builder:intake --<design.flag> <ref>` — the contracts are the requirements. The flag's name comes from your config |\n| A confirmed concept to write up | `/builder:spec --path <folder>` — normally reached by brainstorm's or intake's hand-off |\n| Wondering whether a design is ready to build from | `/builder:check --<design.flag> <ref>` — the pre-flight; it writes nothing |\n| Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |\n| Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |\n| Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |\n| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent`, except the plan go-ahead, which launches agents itself |\n| **Build it yourself, without the ceremony** | Pick `3. here` (or `2.` without `agent_walk`) on a handoff before the build, or `/builder:resume --path <folder> --here`. The audit and plan still run in full; then this session works `PLAN.md` task by task, test first, fast gates at each phase close. No fleet, no reviewer agents, no walk lock, no sign-off or verify. It stops at `state: built`, so `/builder:resume` can still walk, verify and ship it later |\n| **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |\n| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |\n| **Is builder fast enough, and where does its time go?** | `/builder:benchmark` — one small feature through builder at rush, standard and thorough and through superpowers and GSD, unattended; a report of time per step, what each step did, tokens, cost and whether the feature works. `--status` while it runs |\n| **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold \"<reason>\"` means \"it works, don't push yet\" |\n| **Which builder am I on?** | `/builder:version` — the version this session loaded, what's installed, the newest release known here, and the one step that brings it current. Never fetches |\n| **Watch it run** | `/builder:statusline` — adds a `builder` progress bar to your status line: fleet progress, a build in the chat, running gates. `idle` when nothing runs; `--off` removes it |\n| **Wanting the newest builder** | `/builder:update` — refreshes the plugin install, says what changed, and names any older install shadowing it in this repo. `--check` only reports. Not in a vendored copy |\n| **A repo that won't take an outside plugin** | `/builder:vendor` — a local copy in the repo naming nothing outside it; run it again to update. `--check` proves it clean |\n| Changing something after the spec exists | `/builder:revise --path <folder> <the change>` — post-build the default is a code fix plus at most one doc line |\n| Verify is READY and the PR is open | `/builder:ship --path <folder>` — flips the SPEC header to SHIPPED citing the PR, removes the manifest and the workspace |\n\nFlags come first and the free text after them is the work; quote a ref containing spaces. The whole\nfamily parses the same set — REFERENCE §Flags — plus `--hold`, which only sign-off takes.\n\n## The four craft skills\n\nFour more skills ship inside the plugin. They are not pipeline steps — they bind the *way* work is\ndone, and they apply whether or not you are running a feature through the pipeline at all:\n\n| Skill | Read it when |\n|---|---|\n| `/builder:test-driven-development` | implementing any feature or bugfix, before writing implementation code |\n| `/builder:systematic-debugging` | any bug, test failure or unexpected behaviour — **before proposing a fix** |\n| `/builder:receiving-code-review` | review feedback has come back, before you implement any of it |\n| `/builder:verification-before-completion` | about to claim anything is complete, fixed or passing |\n\nThe pipeline hands all four to every implementer by path, and cites them where they bite: the plan's\nsteps are written in the TDD cycle, a fix round that stops converging gets the debugging skill, a\n`## Fixes` row from a review is read through the review skill, and every gate claim is governed by\nthe verification skill's iron law — *no completion claim without fresh verification evidence.*\n\n**No command here creates a branch, a worktree or a ticket**, and none writes to your ticket system\n— those are yours.\n\n## The sizes\n\nThe verdict is announced with its evidence once the concept is confirmed, and you can override it there. It\n**ratchets up only**: complexity found mid-task stops the work and writes the spec then.\n\n**Two things draw the sm/md line, and neither is file count.** A change staying inside existing\ncontracts *and inside one app* is sm however many files it brushes. It earns a spec the moment it\nadds a model, a schema row, an endpoint, a permission, a route or a screen — **or the moment it\ncrosses an app boundary**, because the contract between the apps is the thing that breaks. Where your\nconfig marks an app `released_artifact: true`, it breaks somewhere nobody can hot-fix. A feasibility\nquestion (\"can we…\") is a **spike**: answered as a question, not wrapped in a feature folder.\n\n## The order (md and lg)\n\n```\ndesign → (align) → audit (1 pass) → [decisions] → plan → [go-ahead] → build (one app per phase)\n              ↑ prototype mode only\n   → 🔒 your walk + /builder:signoff (condenses) → verify (the ONE deep pass) → ship\n```\n\n**The walk is you, in the running app — or apps.** When the last phase lands, the pipeline runs the\nfast gates, makes the dev environment run this build — **asking before it applies a pending\nmigration to your dev database**, restarting what went stale, and smoking every changed surface for\nerrors (one it finds is fixed, not handed to you) — prints a script the build wrote **per app**, and stops. Nothing moves until you have\ntried it and typed `/builder:signoff`. The walk precedes verify because the deep pass needs every app\nup at once, so it runs once, on a build a human has already accepted.\n\n## The multi-app rules (what this pipeline has that a single-app one doesn't)\n\n1. **§Apps gives every app a row, including the ones it doesn't touch.** A ⬜ row states why not in\n   one line, and the audit checks that claim — a wrong \"not affected\" is the most expensive finding\n   there is, because it ships.\n2. **§Contract is one interface table every consumer codes against**, each row naming its consumers.\n   🔴 **It FREEZES when the producer's phase verifies.** A consumer needing a different shape goes\n   through `/builder:revise`, which re-opens the freeze deliberately and names every consumer to\n   re-check.\n3. **One app per phase, the producer before its consumers.** Each app's gates are different commands,\n   so a two-app phase cannot be gated — and consumers parallelize when they don't import each other.\n4. **An app your config marks `commit: manual` is never committed by an agent** — at any size, under\n   any flag.\n\n`node <builder>/scripts/check-obligations.mjs <feature>` turns rules 1 and 2 from habits into a gate.\n\n**In a single-app repo** all of this costs one `§Apps` row and stays quiet — and still works the day\nthe repo grows a second app.\n\n## The human gates (three, plus the PR lock)\n\n1. **Decisions gate** — the OPEN rows in SPEC §Decisions, asked in one message, recommendation first.\n2. **Build go-ahead** — one approval of `PLAN.md`'s `## Phases` table. One artifact, one approval —\n   an approved design is not re-approved as a plan. With an `agent_walk:` block, the go-ahead also\n   asks **How should agents build \"<feature>\"?** and launches agents on the answer — the build\n   profile, recorded as `profile:` on the manifest:\n   - **Rush** — final review and fast gates only; no agent walk — you test it once it lands.\n   - **Standard** — every task reviewed, the agent walks the `[risk]` items, full verify.\n   - **Thorough** — today's full pipeline: every task reviewed, full agent walk, deep verify with\n     cross-app E2E.\n   - **Thorough + you** — Thorough, then your own walk and `/builder:signoff` before it lands.\n   - *Customize* sets the levers one by one — stronger models and a second reviewer on contract and\n     schema tasks are only there. **The floors hold under every profile:** each\n     app's fast gates at its phase close, the final whole-branch review, and consumer parity when a\n     `released_artifact` consumer is affected.\n3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished\n   feature and said, in your own words, that it works. A green gate run or a code review is evidence\n   for you, never your sign-off. Spend it with `/builder:signoff`.\n\nOtherwise the pipeline keeps working instead of stopping to ask. **`--auto`** takes the recommended\nanswer at each decision gate and runs until the walk script is printed — **the walk is its terminal\nstate**, and no flag passes the PR lock or commits in a manual-commit app.\n\n**`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, works every conflict, red gate\nand failed walk through to done, parks only on a decision your spec left open, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT\nSIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the `merge_into` branch (default `base_branch`; `--into` for one run)** — locally, one merge commit per feature; it never pushes or opens a PR.\nYour `/builder:signoff` over it takes the feature back into the human flow.\n\n## Resuming\n\n**The manifest is the resume point.** `<registry>/<feature>/MANIFEST.md` is ~12 lines, commits at\nevery transition, and its `next:` line names the one command that does the next work. Every step ends\nwith that line:\n\n```\n📍 <feature>: <state> — next: <command>\n```\n\n**You don't have to paste it.** Reply **go** (or yes, proceed, continue) and the footer's command runs.\nThe exceptions are the ones that are yours by design: `/builder:signoff` and the walk, a step only you\ncan do, a hold, and opening the PR, which asks once. \"go, but …\" is a change, not a go.\n\nAfter any `/clear`: `/builder:resume --path <registry>/<feature>`, or just ask to continue. Status of everything:\n`/builder:status`. Process scratch — briefs, the ledger, the walk script —\nlives in a git-ignored workspace; it is never something you have to read.\n\n## FAQ\n\n- **Can it one-shot a feature?** xs and sm, yes — once you have approved the design in chat. md and\n  lg, no: one app at a time, that app's gates fresh at each phase close, your walk before the deep\n  pass.\n- **Where is the plan?** `<registry>/<feature>/PLAN.md`, committed beside the SPEC: a `## Phases`\n  table, then one block per task naming its app, its files and the recipe skill to read first, with\n  bite-sized steps carrying the actual code, its test, the command and the commit. SPEC §Plan is only\n  the index. Both go at sign-off; `git log` keeps them.\n- **Where did a shipped spec go?** `<registry>/_archive/<name>/SPEC.md` — `/builder:ship` moves it\n  there in the ship commit. `list-features.mjs --archived` lists them, newest first.\n- **Where's the cross-app E2E walk?** Once, in `/builder:verify`, after your sign-off. Never per\n  phase: it needs every app up at once, and the phases under it are already covered in seconds.\n- **Does it need other plugins?** No. The execution engine, the plan format and the four craft\n  skills are vendored (see `LICENSE-THIRD-PARTY.md`), the scripts ship with the plugin, and the only\n  thing you supply is `.claude/builder.md`.\n- **The audit found problems.** Normal — they become §Findings rows and in-place spec fixes. It is\n  capped at **one pass** (a scoped second only when pass 1 changed a contract); anything still\n  uncertain rides into the build as a named `build-time risk`. Re-reading prose was measured to find\n  nothing that running the software finds.\n- **A small change after the build?** Fix the code. A doc line only if a human ruled on it, or an\n  un-built task depends on it. `/builder:revise` exists for the contract change that un-built work\n  needs, not for every edit.\n- **My walk found problems — where do they go?** Into `## Fixes`, the SPEC's last section: `- [ ]`\n  tasks worked like build tasks in the main context, **each naming its app**, ticking each box as it\n  lands. Then you re-walk what changed and sign off again. A verify INCOMPLETE fills the same list.\n- **What stops a shipped feature being rebuilt?** The SPEC header. `✅ SHIPPED` means done and every\n  command refuses to run on it. `✅ SIGNED OFF` is *not* done — verify and the PR still run.\n- **Does it touch my design system?** It **reads** it and never writes it. A gap is routed to the\n  command your config's `design.owned_by` names.\n- **Does it update my tickets, or deploy?** Never. Both are explicit commands of yours.\n"
+        },
+        {
+          "role": "note",
+          "text": "The skill renders the parts relevant to what was asked; a bare /builder:help gets the whole card, shown here."
+        }
+      ],
+      "stamp": {
+        "hash": "0debf225eaf0",
+        "version": "4.11.3",
+        "date": "2026-10-23"
+      }
+    }
+  ]
+}

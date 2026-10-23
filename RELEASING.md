@@ -1,6 +1,8 @@
 # Releasing
 
-1. **Make the change** and update `CHANGELOG.md`.
+1. **Make the change** and update `CHANGELOG.md`. If it changes what a skill prints, bring the
+   response preview along: `node preview/preview.mjs --check`, refresh the stale stages, `--stamp`
+   them (see [preview/README.md](preview/README.md)).
 2. **Bump `version`** in `.claude-plugin/plugin.json`. **Default to a patch** — most releases are
    one:
    - **Patch** (`x.y.Z`) — how an existing skill behaves: a new or changed rule, better prompts or
