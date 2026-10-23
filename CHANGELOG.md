@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.12.2
+
+**Fixed:**
+- **Only a breaking schema change raises the end recommendation.** An ADD-only §Schema row is new
+  surface nothing relies on yet, so it no longer recommends an agent walk; EDIT, RENAME and REMOVE
+  still do, as do migrations, a released consumer, auth or delete, and 3+ apps. On the benchmark a
+  CLI field addition was getting a full walk it didn't need.
+- **The fleet waits out a Claude Code update.** An auto-update swaps the `claude` binary out for a
+  few seconds; an unattended run started in that window ended `spawn claude ENOENT` and failed its
+  feature. The fleet now waits up to 3 minutes for `claude` to be back before starting a run.
+
 ## 4.12.1
 
 **Changed:**
