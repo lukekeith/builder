@@ -396,11 +396,15 @@
         {
           "role": "note",
           "text": "On the walk line, 'go' and '1' both answer with the command to type — they never run /builder:signoff. '2' or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), verifies and merges locally."
+        },
+        {
+          "role": "note",
+          "text": "This feature's design was approved in the chat at spec, so the hand-off starts at the gates. After an --auto run (the manifest carries auto: on or agent-walk: on) nobody approved the design, the audit or the go-ahead — so step 1c opens the hand-off with the full review of what was built, written from SPEC.md, every autopilot ruling marked (auto), in parts with A. Looks right — next part · B. Change something; the last part ends with this walk script. That's where an unattended run is checked."
         }
       ],
       "stamp": {
-        "hash": "02198e67be96",
-        "version": "4.12.0",
+        "hash": "af3c70433127",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -737,7 +741,7 @@
         },
         {
           "role": "claude",
-          "text": "cert-tags is verified READY, no hold, no PR yet. A local review first is on offer — the config's §Companion skills names `/code-review`; say so and it runs before the PR. Skipping it is fine: you walked it and verify swept the house rules.",
+          "text": "cert-tags is verified READY, no hold, no PR yet. A local review first is on offer — the config's §Companion skills names `/code-review`; say so and it runs before the PR. Skipping it is fine: you walked it and verify swept the house rules.\n\nThis is what the PR will say:\n\n> **feat(ACME-412): cert-tags**\n>\n> ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n>\n> **What changes for users** — owners tag their certificates and filter the certificate list by tag on web and mobile; picking several tags shows the certificates carrying all of them. Tags are added, renamed and deleted on the web; deleting one takes it off every certificate after a confirm naming the count.\n>\n> **Added** — tags on certificates · the tag filter (web, mobile) · the tag editor on the owner view (web) · tag endpoints in api\n> **Changed** — the certificate list takes a repeatable tag filter · renaming a certificate now checks the caller owns it (it didn't)\n> **Removed** — nothing\n>\n> **Data** — one additive migration, `20261022093000_add_tags`: a tag table and a tag–certificate link. Existing certificates are untouched; it rolls back by dropping the two tables.\n>\n> **Apps**\n> - **api** — `GET`/`POST /tags`, `DELETE /tags/:id`, `PUT /certificates/:id/tags`, repeatable `?tag=` on `GET /certificates`, `tags` on the list response; owner guard on `PATCH /certificates/:id`\n> - **web** — tag chips, the `ListFilters` tag filter, the tag editor on the owner view\n> - **mobile** — tag chips on the list and owner view, the tag filter sheet; the released 3.2 app is unaffected (the new field is additive)\n>\n> **Tested** — walked by Luke Keith on web and the iOS simulator; verify READY: every app's gates, consumer parity with mobile, the cross-app walk.\n>\n> Spec: docs/features/cert-tags/SPEC.md",
           "inferred": true
         },
         {
@@ -748,7 +752,7 @@
           "options": [
             {
               "label": "Open the PR",
-              "description": "gh pr create --base main --title \"feat(ACME-412): cert-tags\" — the body is the sign-off line plus what changed per app."
+              "description": "gh pr create --base main --title \"feat(ACME-412): cert-tags\" with the body above."
             },
             {
               "label": "Not yet",
@@ -771,7 +775,7 @@
         },
         {
           "role": "claude",
-          "text": "**PR #57 is open** — `feat(ACME-412): cert-tags`, base `main`.\n\n> ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n- **api** — Tag and CertificateTag (`20261022093000_add_tags`), `GET`/`POST /tags`, `DELETE /tags/:id`, `PUT /certificates/:id/tags`, repeatable `?tag=` filter, `tags` on the list response; owner guard on `PATCH /certificates/:id`\n- **mobile** — tag chips on the list and owner view, tag filter sheet; released 3.2 unaffected (additive field)\n- **web** — tag chips, `ListFilters` tag filter, tag editor on the owner view\n\nManifest: `pr: #57` · `next: watch CI, then /builder:ship --path docs/features/cert-tags` — committed. CI is green; merging is your call.",
+          "text": "**PR #57 is open** — `feat(ACME-412): cert-tags`, base `main`, with the body above.\n\nManifest: `pr: #57` · `next: watch CI, then /builder:ship --path docs/features/cert-tags` — committed. CI is green; merging is your call.",
           "inferred": true
         },
         {
@@ -781,12 +785,12 @@
         },
         {
           "role": "note",
-          "text": "'go' continued the pipeline; it did not name an outward-facing action — so Open the PR / Not yet is always asked. One PR for the whole feature, never one per phase. Under --agent-walk no PR opens at all: agent mode ships and merges into the target branch locally."
+          "text": "The PR body is printed in full before the question (REFERENCE §The review) — the human approves what the PR will say, never a title and a path; an edit they ask for is made and the body shown again. 'go' continued the pipeline; it did not name an outward-facing action — so Open the PR / Not yet is always asked. One PR for the whole feature, never one per phase. Under --agent-walk no PR opens at all: agent mode ships and merges into the target branch locally."
         }
       ],
       "stamp": {
-        "hash": "5bbfac56ae63",
-        "version": "4.11.3",
+        "hash": "491a581e9285",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     },
@@ -885,12 +889,12 @@
         },
         {
           "role": "note",
-          "text": "Not numbered: no human reads a footer under --agent-walk, and the run goes straight on — verify, then ship and a local merge into main (no PR, no push). A failing round writes '- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)' fixes instead; five failed rounds in a row park it for a human walk."
+          "text": "Not numbered: no human reads a footer under --agent-walk, and the run goes straight on — verify, then ship and a local merge into main (no PR, no push). A failing round writes '- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)' fixes instead; five failed rounds in a row park it for a human walk. No review is printed here: the run is headless and nobody reads it — the fleet's report shows the review of what landed, and under walk=you your walk does."
         }
       ],
       "stamp": {
-        "hash": "ae26897d018c",
-        "version": "4.12.0",
+        "hash": "76f0a92ac3da",
+        "version": "4.12.1",
         "date": "2026-10-23"
       }
     }

@@ -249,11 +249,15 @@ lost. No fork → no approaches step, and say so in one line.
 
 ## Confirm
 
-When the frontier is empty: **"Here's the shared understanding — <intent in two lines>, <the approach>,
-<n> decisions, <k> assumptions. Is anything missing or wrong?"** List every `assumed` branch. Nothing
-leaves the workspace before a yes; a correction reopens its branch. Set `status: confirmed`, then
-offer the three ways on as §Ways on's list — `A. Build it (recommended)` · `B. Park it` ·
-`C. Stop here` — with "Or say what's missing or wrong." as its last line:
+When the frontier is empty, show the shared understanding as **the review** — REFERENCE §The review,
+sections 1, 2, 3, 6, 7 and 8, written from the record: what changes for users, what they'll see,
+added · changed · removed, the decisions (every `assumed` branch marked `(assumed)`, every Rejected
+option with why it lost), the risks and what is still open, and what is not included — opening with
+the concept and the approach. Over ~40 lines it goes in parts, each but the last ending
+`A. Looks right — next part` · `B. Change something — say what`. Nothing leaves the workspace before
+a yes; a correction reopens its branch, and that part is shown again. Set `status: confirmed`, then
+end the last part with the three ways on as §Ways on's list —
+`A. Build it (recommended)` · `B. Park it` · `C. Stop here` — with "Or say what's missing or wrong." as its last line:
 
 - **Build it** → §Size and the small path.
 - **Park it** → `status: parked`. With `--keep`, also write `<registry>/<feature>/NOTES.md` — a
@@ -266,7 +270,7 @@ offer the three ways on as §Ways on's list — `A. Build it (recommended)` · `
 ## Size and the small path
 
 Size the **confirmed concept**, not the first request: REFERENCE §Sizes and §The classifier are the
-rules — read just those two sections. (The conversation reads exactly three REFERENCE sections: §Sizes and §The classifier here, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
+rules — read just those two sections. (The conversation reads exactly four REFERENCE sections: §Sizes and §The classifier here, §The review at §Confirm and the small path's approval, §Walk readiness at the small path's human look.) Announce the size with its evidence; the user confirms or
 overrides. Record it: `status: sized <size>`.
 
 **Splitting (lg and xl) is one question, and "one spec" is always an option.** Before anything else
@@ -291,9 +295,11 @@ the size: one spec → lg; two or more → xl, its children those slices.
   B appears only at md (lg and xl list A and *B. Park it*); picking it records the override and
   runs the small path from step 1, sm.
 - **xs · sm** — no spec, no folder:
-  1. **Design in chat.** xs: one sentence. sm: the app · approach · the design-system components it
-     uses, when it has a UI · files touched · the recipe skills it will read · tests · what you will
-     see in the running app.
+  1. **Design in chat, as a compact review** — REFERENCE §The review, one part: what changes for
+     users, what they'll see, added · changed · removed, and the data when anything stored changes.
+     xs: those in a line or two. sm: then the approach · the design-system components it uses, when
+     it has a UI · the recipe skills it will read · tests. The files it touches go last, as a
+     reference line — never the thing approved.
   2. **One approval.** Stop until yes — §Ways on's list: `A. Build it (recommended) — <what
      changes>` · `B. Talk it through more — back to the rounds`, and "Or say what to change." Presenting
      and starting in the same turn skips the gate.
@@ -331,8 +337,8 @@ person's yes — §Discovery · *Design system* is still written, and *Research*
 §Discovery, and the recommended concept is taken — `Concept:` carries it with
 `auto (recommended) YYYY-MM-DD`; every question settles on its recommendation (no AskUserQuestion),
 each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
-chosen; §Confirm proceeds without waiting and takes **Build it**. §Size takes the splitting
+chosen; §Confirm proceeds without waiting, prints no review (REFERENCE §The review — nobody approves; the human sees it at the walk) and takes **Build it**. §Size takes the splitting
 question's recommendation — the fewest specs whose each slice ships value — recorded the same way. xs and sm take
 the one approval as the recommendation, recorded the same way. md and above run
 `/builder:spec --path <registry>/<feature> --auto` in the same turn. The human reads the assumptions
-and every auto ruling at the go-ahead.
+and every auto ruling in the review at the walk (REFERENCE §The review, under `--auto`).
