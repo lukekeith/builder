@@ -14,7 +14,7 @@ Render the parts relevant to what was asked. The family's SKILL.md files and
 ## The idea in one paragraph
 
 **Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea
-with you — a vague idea framed, researched outside the repo when you allow it (Mobbin or the web), and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
+with you — a vague idea framed, started from the project's design system, then looked further — installed plugins, a suggested one, the web — only when you allow it, and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
 `/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is
 confirmed it is sized (REFERENCE §Sizes): **xs and sm** are designed and built in chat and write
 nothing under `docs/`; **md and lg** go to `/builder:spec`, which writes one `SPEC.md` (opening with
@@ -47,7 +47,7 @@ second plugin to install. If a step says it cannot find the config, that file is
 | **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |
 | **Wanting a view of everything in progress** | `/builder:status` — one table: what each feature is, the step last done, the step next, and the command to paste to pick it up |
 | **Any time — "where are things / what's next?"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |
-| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, research on Mobbin or the web offered, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. A small change in existing code skips all that: the first turn proposes it and replying A builds it. Every pause ends in a lettered list of ways on — reply a letter, "go" is A. The normal way in |
+| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, the project's design system first, then installed plugins, a suggested plugin or the web offered, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. A small change in existing code skips all that: the first turn proposes it and replying A builds it. Every pause ends in a lettered list of ways on — reply a letter, "go" is A. The normal way in |
 | **A spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code (confirmed · contradicted · unverifiable), finds the gaps, asks only about those |
 | Building from a design that is already specced | `/builder:intake --<design.flag> <ref>` — the contracts are the requirements. The flag's name comes from your config |
 | A confirmed concept to write up | `/builder:spec --path <folder>` — normally reached by brainstorm's or intake's hand-off |

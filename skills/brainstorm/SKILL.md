@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, offers research outside the repo (a community resource such as Mobbin when the session has one, otherwise the web) and runs it only on your yes, and proposes two to four concepts built from all of it until you name one; offers a small change in existing code a quick path — the change proposed in the first turn and built on one yes, no rounds; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
+description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, starts from the project's own design system and how it should be used, then offers what the session has installed, a plugin worth adding or the web, and looks outside only on your yes, and proposes two to four concepts built from all of it until you name one; offers a small change in existing code a quick path — the change proposed in the first turn and built on one yes, no rounds; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
 ---
 
 # `/builder:brainstorm` — understand it together, then decide what to build
@@ -134,8 +134,8 @@ confirm (the derived name is stated):
 Quick path — this is a small change in existing code (<xs|sm>: <the evidence, one line>).
 
 <What you asked, grounded: each of your terms → what it is in the code, one line each.>
-<The change. xs: one sentence. sm: the app · the approach · files touched · the recipe skills
-it will read · tests · what you will see in the running app.>
+<The change. xs: one sentence. sm: the app · the approach · the design-system components it uses
+(a UI change) · files touched · the recipe skills it will read · tests · what you will see.>
 ```
 
 Then the ways on, as a lettered list (CONVERSATION §Ways on) — no picker:
@@ -195,47 +195,66 @@ answers it (then stated as `assumed`, with what it was taken from):
 
 ### Research
 
-After the frame is played back and before concepts — once, every discovery:
+After the frame is played back and before concepts — once, every discovery. **Always start with
+what is already here, and how it should be used, before looking anywhere new** — in this order,
+each rung said in chat before the next is offered:
 
-1. **What the session has.** Read your own tool list. A tool that searches a library of real product
-   screens, flows or patterns — Mobbin's `mcp__mobbin__search_screens`, `mcp__mobbin__search_flows`,
-   `mcp__mobbin__search_sections`, or another plugin or MCP server of that kind — is a **community
-   resource**. `WebSearch` / `WebFetch` are **online research**. Nothing is configured for this; a
-   session with neither says so in one line and moves on to concepts, recording
-   `Research: skipped (no research tools in this session)`.
-2. **Weigh it, out loud.** One or two lines: would research help this idea, and why — a user-facing
-   surface, a flow other products have solved, an unfamiliar domain → likely yes, and name what you
-   would look for ("how other apps let people filter a list by tags"); an internal refactor, a CLI
-   flag, a data migration → likely no, said so.
-3. **Offer it — the one closed question in discovery**, an AskUserQuestion (consent to go outside the
-   repo is a closed choice). The options are exactly these, each present only when the session has
-   the tool for it, in this order: *Research on <resource>* (the community resource) · *Search the
-   web* · *Both* (only when both exist) · *Skip* — never merged into fewer, never reworded into one
-   combined choice. Your evaluation marks one `(Recommended)`, and each description names what it
-   would search for. *Other* carries the user's own search terms.
-4. **Do it, bounded.** A community resource: a handful of searches around the frame's terms, read as
-   patterns — how a flow is laid out, what a screen offers, what is common and what is rare — never
-   as designs to copy. Online: a few searches and the pages that answer them — how products in the
-   domain solve it, the common UX patterns and their names, libraries or standards that exist — with
-   sources kept. Write §Discovery · *Research* in plain words: what others do, what is common, what
-   is worth borrowing and what is not, each with where it was seen.
-5. **It feeds the concepts.** A concept may be built from a pattern research found as well as from
-   the product's own, and says which is which — a borrowed pattern is one the product does not have
-   yet, marked "(from research: <where>)" in *built from*.
+1. **The project's own design system and patterns — always, never asked.** For anything with a UI
+   or UX side, the design system the project has (CONVERSATION §Discovery recon item 2 — its
+   components, tokens, layouts and documented patterns, and the config's `design:` block) is the
+   foundation: say in a few lines what it already offers for this idea and **how it should be used
+   here** — which components, which existing screen to follow, which rule it sets ("lists filter with
+   `FilterChips` above the table, as on the certificate list"). A project with no design system says
+   so plainly — that is a finding, not a gap to paper over. For an idea with no UI, the same for the
+   libraries and house patterns already in use. Recorded under §Discovery · *Design system*.
+2. **What this session has installed — read, never assumed.** Read your own tool list for plugins,
+   MCP servers and skills that could help with this idea: a library of real product screens and
+   flows, a component registry, a design-file tool, the docs of a library the project uses. Name
+   each by what it is in this session and what it would be used for here. Builder names no product
+   — whatever is installed is what is offered. `WebSearch` / `WebFetch` are online research.
+3. **Weigh it, out loud.** One or two lines: does rung 1 already cover the idea, or would looking
+   further help, and why — a flow other products have solved, a surface the design system has no
+   pattern for, an unfamiliar domain → likely yes, and name what you would look for ("how other apps
+   let people filter a list by tags"); an internal refactor, a CLI flag, a data migration → likely
+   no, said so.
+4. **Offer it — a lettered list** (CONVERSATION §Ways on), the entries that apply, in this order:
+   - *Stay with what we have* — concepts built from the design system and the product's own
+     patterns. Always present; recommended when rung 1 covers the idea.
+   - *Look at <installed tool>* — one entry per installed tool that would help, saying what it
+     would search for.
+   - *Search the web* — when the session has it, saying what for.
+   - *Suggest a plugin* — only when nothing installed covers a kind of reference that would help
+     (screen libraries for a new UI flow, say): name the kind of plugin and what it would add, an
+     example only if you know one. Installing it is the user's step; picking this entry says how and
+     carries on with what is here.
+   Four entries at most — when more apply, keep the most useful; the user can name two ("B and C").
+   Your evaluation picks one: it moves to **A** marked `(recommended)`, the rest keep this order
+   (§Ways on: A is always the default). The user's own words carry their own search terms.
+5. **Do it, bounded — and read through the design system.** An installed reference tool: a handful
+   of searches around the frame's terms, read as patterns — how a flow is laid out, what a screen
+   offers, what is common and what is rare — never as designs to copy. Online: a few searches and
+   the pages that answer them — how products in the domain solve it, the common UX patterns and
+   their names, libraries or standards — with sources kept. Every pattern found is said in the
+   design system's terms: which existing components would build it, and what the design system
+   lacks for it. Write §Discovery · *Research* in plain words, each finding with where it was seen.
+6. **It feeds the concepts.** Concepts are built from the design system and the product's own
+   patterns first; a pattern from outside is one the product does not have yet, marked "(from
+   research: <where>)" in *built from*, with what building it would take.
 
-🔴 **Never research outside the repo unasked.** Under `--auto` the evaluation is written, no research
-runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and --auto).
+🔴 **Never look outside the repo unasked** — rung 1 and the reading of the tool list need no
+consent; any search outside does. Under `--auto` rung 1 is written, the evaluation is written, no
+search runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and --auto).
 
 ### Concepts
 
-When the frame is played back, research (if any) is in and recon (CONVERSATION §Discovery recon) is
+When the frame is played back, the design system is stated, research (if any) is in and recon (CONVERSATION §Discovery recon) is
 in, propose **two to four concepts** in chat, lettered — **A** is the one you recommend, marked
 `(recommended)`, and the turn closes with `Reply with a letter — "go" is A. Or combine them, ask
 "what if …", or say none fit.` (CONVERSATION §Ways on). Each:
 
 - its letter and a short name
 - what the user would experience, as a paragraph, from their point of view
-- **the existing patterns it is built from, named** — "the filter chips the certificate list uses",
+- **the design-system components and existing patterns it is built from, named** — "the filter chips the certificate list uses",
   "a side panel like the owner view" — a borrowed one marked "(from research: <where>)", and
   anything it needs that the product does not have
 - what it is good at, and what it closes off
@@ -247,7 +266,7 @@ ASCII layout or mermaid diagram when parts move); add their own; or say none fit
 frame with what was learned. Every turn rewrites §Discovery · *Concepts* with each concept's
 standing and why.
 
-🔴 **No AskUserQuestion in discovery, except the research offer.** The exit is the user naming the
+🔴 **No AskUserQuestion in discovery** — the research offer and the concepts are lettered lists. The exit is the user naming the
 concept. **A letter (or a concept's name) names it outright**: state the two-line confirmation below
 and go on in the same turn — no "Right?". A combination, or a concept in the user's own words,
 is confirmed in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
@@ -270,7 +289,8 @@ Once the intent is confirmed (under `--auto`, once it is played back), explain w
 **to the user**, in plain words: what exists that the idea touches, how it works, where it lives —
 with a small diagram when several parts move.
 Scale it to the input: a paragraph for a directed request, a real walk-through for an abstract idea.
-Name **what already exists that must not be rebuilt**. `file:line` goes in footnotes, never instead
+Name **what already exists that must not be rebuilt** — for a change with a UI, the design-system
+components and the existing screen it should follow, and how they are used here. `file:line` goes in footnotes, never instead
 of the explanation. Record it under *How it works today*.
 
 From here on, "explain X" works at any point (CONVERSATION §Rounds).

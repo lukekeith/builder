@@ -30,7 +30,8 @@ Assumed (not yet confirmed): …
 ## Discovery
 Frame: for <who> · pain/outcome: <what is hard, slow, missing — or what becomes possible> · today: <how it is handled now> · better: <what the user would notice>   — each "(assumed)" until the user confirms it
 What the product already has: <plain prose — the capabilities near the idea, the components, layouts and UX patterns in use with where each is used, prior art, constraints; file:line only as footnotes>
-Research: <skipped (<why>) | not run (auto) | on <resource> / online — what others do, what is common, what is worth borrowing and what is not, each with where it was seen>
+Design system: <what the project has for this idea and how it should be used here — components, tokens, the screen to follow; or "none" — said before anything outside is offered>
+Research: <stayed with what we have | not run (auto) | on <installed tool> / online — what others do, what is common, what is worth borrowing and what is not, each with where it was seen and how the design system would build it> · suggested: <a plugin kind, when one was suggested>
 Concepts:
 - <name> — <what the user would experience, one line> · built from: <the product's own patterns, named; a borrowed one marked "(from research: <where>)"> · standing: chosen | open | rejected (<why>)
 Concept: <the chosen one — two lines: what it is, and the patterns it uses>
@@ -131,8 +132,10 @@ only how the touched code works. Each agent reports, in plain words with `file:l
    idea neighbours or overlaps, and what must not be rebuilt.
 2. **The design system and UX patterns in use** — the components, layouts, navigation and
    interaction conventions, and the empty, loading and error states, each named with where it is
-   used ("filter chips: the certificate list, the owner view"). When the config's `design:` block is
-   configured, its `contracts` directory is read as well.
+   used ("filter chips: the certificate list, the owner view"), and **how the design system says to
+   use them** — its docs, a Storybook, a tokens file, a component folder's README, wherever the project
+   keeps it. When the config's `design:` block is configured, its `contracts` directory is read as
+   well. No design system found is reported as such.
 3. **Prior art** — the registry's `_archive/` specs, `NOTES.md` files and `.builder/*/brainstorm.md`
    records that touch the idea, and `git log -S <term> --oneline | head` for the idea's terms.
 4. **Constraints** — that app's §House rules, apps marked `released_artifact: true`, and the
@@ -164,8 +167,8 @@ Reply A, B or C — "go" is A.<  Or say what's wrong.>
 - **Plain chat, not AskUserQuestion** — the list sits above the 📍 footer, which still follows it.
   In a round (below) the list sits between the briefing and the picker, and a letter typed into the
   picker's *Other* counts the same.
-- **Where:** the quick path (SKILL §Quick path), the intent playback, the concepts (each concept
-  lettered), every round, §Confirm, the small path's approval and the md+ hand-off (§Size and the
+- **Where:** the quick path (SKILL §Quick path), the intent playback, discovery's research offer,
+  the concepts (each concept lettered), every round, §Confirm, the small path's approval and the md+ hand-off (§Size and the
   small path). The frame's open questions in discovery are the exception — they end in the
   question, so the user answers in their own words.
 
@@ -288,8 +291,9 @@ the size: one spec → lg; two or more → xl, its children those slices.
   B appears only at md (lg and xl list A and *B. Park it*); picking it records the override and
   runs the small path from step 1, sm.
 - **xs · sm** — no spec, no folder:
-  1. **Design in chat.** xs: one sentence. sm: the app · approach · files touched · the recipe skills
-     it will read · tests · what you will see in the running app.
+  1. **Design in chat.** xs: one sentence. sm: the app · approach · the design-system components it
+     uses, when it has a UI · files touched · the recipe skills it will read · tests · what you will
+     see in the running app.
   2. **One approval.** Stop until yes — §Ways on's list: `A. Build it (recommended) — <what
      changes>` · `B. Talk it through more — back to the rounds`, and "Or say what to change." Presenting
      and starting in the same turn skips the gate.
@@ -323,7 +327,7 @@ under *Steering* in the record with the user as Who.
 **Under `--auto`**: the quick path is never offered (SKILL §Quick path) — the run is the one it has
 always been; play the intent back as `(assumed)`; when discovery runs, the frame is written as
 `(assumed)` from the input, recon runs, no research runs — nothing outside the repo without a
-person's yes — and §Discovery · *Research* reads `not run (auto)`, the concepts are written to
+person's yes — §Discovery · *Design system* is still written, and *Research* reads `not run (auto)`, the concepts are written to
 §Discovery, and the recommended concept is taken — `Concept:` carries it with
 `auto (recommended) YYYY-MM-DD`; every question settles on its recommendation (no AskUserQuestion),
 each recorded with `auto (recommended) YYYY-MM-DD` as its Who / date; the recommended approach is
