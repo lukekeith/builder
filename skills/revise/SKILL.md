@@ -137,10 +137,20 @@ where `/builder:verify` item 2 blocks READY on it.
 ## Hand off
 
 Commit docs with (or ahead of) the fix they describe; the commit key is `--ticket` when given, else
-the manifest's `ticket:`, else the feature name. State: what changed and where (one line per file,
-grouped by app), what it invalidated (usually nothing; a re-taken go-ahead, a re-opened freeze or a
-voided sign-off surface when real), and the next command. Keep going — the fix task is usually
-startable in the same turn.
+the manifest's `ticket:`, else the feature name. State:
+
+1. **The change, as a review delta** — REFERENCE §The review §The delta form: each section it moves
+   (what users get or see, added · changed · removed, data, apps, decisions, not included), before →
+   after, in plain words. A bug fix that changes nothing the owner approved says so in one line.
+2. **What it invalidated** — usually nothing; a re-taken go-ahead, a re-opened freeze (and the
+   consumers to re-check) or a voided sign-off surface when real.
+3. **Where** — the files touched, grouped by app, as reference lines under the delta, never instead
+   of it.
+4. The next command.
+
+When the route re-takes the go-ahead, the delta is what it is re-taken on. Under `--auto` or
+`--agent-walk` the delta is not printed (REFERENCE §The review): one line naming the route. Keep
+going — the fix task is usually startable in the same turn.
 
 ```
 📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder> · or say go

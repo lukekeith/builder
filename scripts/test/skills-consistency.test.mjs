@@ -466,8 +466,8 @@ test('4.10.1: spec asks no section approvals — only open product choices, as r
   assert.match(spec, /§Rounds format/)
   assert.match(spec, /Never "Right \/ Change\s+something"/)
   assert.match(spec, /\*\*An implementation detail\*\*[\s\S]*\(assumed at spec\) YYYY-MM-DD/)
-  assert.match(spec, /Close with one plain summary — and no question/)
-  assert.match(spec, /Anything wrong\? Just say what/)
+  // 4.13.0: the closing summary became the review — assumed details are still listed, marked (assumed).
+  assert.match(spec, /every detail assumed at spec,\s+each ending `\(assumed\)`/)
 })
 
 test('4.10.0: build here — offered before the build, audit and plan still run, the build stops at built', () => {
@@ -592,4 +592,54 @@ test('4.11.3: research starts from the design system, offers what is installed, 
   assert.match(research, /Never look outside the repo unasked/)
   assert.match(conv, /^Design system: </m)
   assert.match(conv, /how the design system says to\s+use them/)
+})
+
+test('4.13.0: every approval shows the review — REFERENCE defines it, the approval points cite it, no file path is approved', () => {
+  const ref = read('skills/resume/REFERENCE.md')
+  assert.match(ref, /^## The review — what an approval shows$/m)
+  const r = ref.slice(ref.indexOf('## The review — what an approval shows'), ref.indexOf('## Branch and ticket'))
+  assert.match(r, /No approval asks anyone to read a file/)
+  assert.match(r, /A file path is a\s+\*\*reference line\*\*/)
+  // the sections, D2
+  for (const h of ['What changes for users', "What they'll see", 'Added · Changed · Removed', 'Data', 'Apps', 'Decisions', 'Risks and open questions', 'Not included', 'How it gets built and tested'])
+    assert.match(r, new RegExp(`\\| \\*\\*${h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*\\* \\|`), h)
+  // the parts rule, D3, with a filled three-part example
+  assert.match(r, /^### Screen-sized parts$/m)
+  assert.match(r, /~40 lines/)
+  assert.match(r, /^A\. Looks right — next part$/m)
+  assert.match(r, /^B\. Change something — say what$/m)
+  assert.match(r, /The last part ends with the step's own ways on/)
+  for (const p of ['Part 1 of 3 — What users get', 'Part 2 of 3 — Data and apps', 'Part 3 of 3 — Decisions and risks']) assert.match(r, new RegExp(`^${p}$`, 'm'), p)
+  assert.match(r, /^> a$/m)
+  // the delta form, and --auto (D5: no review where no approval is asked; shown at the walk and the fleet report)
+  assert.match(r, /^### The delta form$/m)
+  assert.match(r, /The audit changed nothing in the design you approved\./)
+  assert.match(r, /^### Under `--auto` and `--agent-walk`$/m)
+  assert.match(r, /No approval is asked, so no review is printed/)
+  assert.match(r, /resume §🔒 The walk[\s\S]{0,80}fleet §5/)
+  // every approval point cites it
+  for (const f of ['skills/spec/SKILL.md', 'skills/plan/SKILL.md', 'skills/audit/SKILL.md', 'skills/revise/SKILL.md', 'skills/brainstorm/CONVERSATION.md', 'skills/brainstorm/SKILL.md', 'skills/intake/SKILL.md', 'skills/resume/SKILL.md', 'skills/agent/SKILL.md', 'skills/fleet/SKILL.md'])
+    assert.match(read(f), /REFERENCE §The review/, `${f} cites REFERENCE §The review`)
+  // spec: the review in parts is the design approval; the old plain summary is gone
+  const spec = read('skills/spec/SKILL.md')
+  assert.doesNotMatch(spec, /Close with one plain summary/)
+  assert.doesNotMatch(spec, /Anything wrong\? Just say what/)
+  assert.match(spec, /\*\*Then the review — it is the design approval\.\*\*/)
+  assert.match(spec, /Full spec: <registry>\/<feature>\/SPEC\.md/)
+  assert.match(spec, /\*\*Under `--auto`\*\* no review is printed/)
+  // the go-ahead recaps what it builds and what the audit changed, above the slices
+  const plan = read('skills/plan/SKILL.md')
+  const g = plan.slice(plan.indexOf('## The go-ahead'), plan.indexOf('### Build here'))
+  assert.ok(g.indexOf('**0. The recap') > 0 && g.indexOf('**0. The recap') < g.indexOf('**1. The slices'), 'the recap comes before the slices')
+  assert.match(g, /what the audit changed since the design was approved/)
+  // audit and revise show a delta; the PR body is printed before the question; the walk shows an --auto run's review
+  assert.match(read('skills/audit/SKILL.md'), /What the audit changed in the design/)
+  assert.match(read('skills/revise/SKILL.md'), /The change, as a review delta/)
+  const resume = read('skills/resume/SKILL.md')
+  assert.match(resume, /Print the body in full in the chat first/)
+  assert.match(resume, /After an `--auto` run, the review first/)
+  assert.match(read('skills/fleet/SKILL.md'), /Then the review of what landed/)
+  // the conversation reads four REFERENCE sections now, and says so where it is counted
+  assert.match(read('skills/brainstorm/CONVERSATION.md'), /exactly four REFERENCE sections[^)]*§The review/)
+  for (const f of ['skills/brainstorm/SKILL.md', 'skills/intake/SKILL.md']) assert.match(read(f), /the four sections CONVERSATION\.md/, f)
 })

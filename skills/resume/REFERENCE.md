@@ -232,6 +232,174 @@ other than the walk — 🛑 held, a human's step, a placeholder, more than one 
 a spec exists (brainstorm, intake) or after the feature merged; and plan's go-ahead footer, which
 launches the agents itself, builds here, or, without the block, names `/builder:init --update`.
 
+## The review — what an approval shows
+
+🔴 **No approval asks anyone to read a file.** Every point where the human approves shows, in the
+chat, what they are approving — in plain words, with the product's own names (screens, commands,
+fields, buttons), never spec shorthand (`D3`, `§Contract`, `T#`, `SC#`). A file path is a
+**reference line** under the review (`Full spec: <registry>/<feature>/SPEC.md`), never the thing
+approved. 🔴 **A bare approval request — "Spec written, approve?" — with nothing summarized is not an
+approval**, and no step may ask one.
+
+This is not the section-by-section approval 4.10.1 removed ("§Apps: right?" — a format nobody can
+judge). The review is about **impact**, which a person can judge.
+
+### The sections
+
+Each is present only when it has content, in this order:
+
+| # | Section | What it says |
+|---|---|---|
+| 1 | **What changes for users** | before → after, from the user's side; who is affected and who sees nothing new |
+| 2 | **What they'll see** | the UI/UX change per screen or command; an ASCII sketch when a layout changes |
+| 3 | **Added · Changed · Removed** | three short lists — screens, endpoints, commands, behaviours. `Removed: nothing` is said, never left out: a removal is what users miss |
+| 4 | **Data** | every schema change in plain words: what is stored, what happens to existing data, whether a migration runs and whether it can be undone |
+| 5 | **Apps** | what changes in each app; for a `released_artifact` app, what its users see before they update |
+| 6 | **Decisions** | each choice settled, one line, with what lost; one assumed rather than asked ends `(assumed)`, one taken under `--auto` ends `(auto)` — so a wrong one stands out |
+| 7 | **Risks and open questions** | what could go wrong, what is still open, each with the recommendation |
+| 8 | **Not included** | what is out of scope, so nobody assumes it is coming |
+| 9 | **How it gets built and tested** | the go-ahead only: the slices and the test plan (plan §The go-ahead) |
+
+### Screen-sized parts
+
+A review that fits in **~40 lines** is shown whole. Longer → **parts**, one per turn, by default:
+*Part 1 of 3 — What users get* (1–3) · *Part 2 of 3 — Data and apps* (4–5) · *Part 3 of 3 —
+Decisions and risks* (6–8). A part with nothing in it is dropped and the rest renumbered. Every part
+but the last ends in the lettered ways on (CONVERSATION §Ways on — plain chat, never AskUserQuestion):
+
+```
+A. Looks right — next part
+B. Change something — say what
+Reply A or B — "go" is A.
+```
+
+🔴 **The last part ends with the step's own ways on** — its footer, its A/B/C — and the reference
+line just above them. A change at any part is applied (the record, the SPEC, the plan — whatever
+holds it) and **that part re-shown**, with the same two ways on; the review goes on from there. A
+reply in the user's own words is a change, never an A.
+
+A filled example — the design approval at the end of `/builder:spec`, three parts, three turns:
+
+```
+Here's what cert-tags will do — 3 parts, one at a time.
+
+Part 1 of 3 — What users get
+
+What changes for users
+  Before: an owner finds "everything for the site B audit" by scrolling the certificate list.
+  After:  an owner tags certificates with their own labels ("audit 2026", "site B") and filters
+          the list by one or more tags — on the web and in the mobile app.
+  Who:    certificate owners. Other viewers see nothing new — tags are private to the owner.
+
+What they'll see
+  Certificate list (web, mobile) — chips under each name, a Tags filter beside Status:
+    ┌ Certificates ─────────────────── [Status ▾] [Tags ▾] ┐
+    │ Boiler 3 — gas safety                  due 12 Nov    │
+    │   (audit 2026) (site B)                              │
+    └──────────────────────────────────────────────────────┘
+  Owner view — a Tags row with "+ Add tag"; typing offers the tags you already have.
+  Settings → Tags — rename, recolour, delete. Delete asks first:
+    "Remove 'site B' from 14 certificates?"
+
+Added · Changed · Removed
+  Added:   tags on certificates · the Tags filter · Settings → Tags · tag endpoints in api
+  Changed: the certificate list takes an optional tag filter
+  Removed: nothing
+
+A. Looks right — next part
+B. Change something — say what
+Reply A or B — "go" is A.
+
+> a
+
+Part 2 of 3 — Data and apps
+
+Data
+  New:       a tag (name, colour, owner) and a link between tags and certificates.
+  Existing:  certificates are untouched — every one starts with no tags.
+  Migration: one, additive — two new tables, nothing altered; undone by dropping them.
+  Deleting a tag deletes its links only; the certificates are never touched.
+
+Apps
+  api    — stores tags, returns them to the owner only, filters the list. Built first.
+  web    — the chips, the filter, the owner-view editor, Settings → Tags.
+  mobile — the same chips, filter and editor. Released app: people on today's version see
+           no change and nothing breaks — every field it reads stays as it is.
+
+A. Looks right — next part
+B. Change something — say what
+Reply A or B — "go" is A.
+
+> a
+
+Part 3 of 3 — Decisions and risks
+
+Decisions
+  · Deleting a tag takes it off every certificate, after a confirm naming the count
+    — not blocking the delete while in use (owners stuck untagging one by one).
+  · Only the certificate's owner sees its tags — not every viewer (private notes made public).
+  · A tag name is 1–32 characters, unique per owner ignoring case (assumed)
+  · Up to 200 tags per owner, 20 per certificate (assumed)
+  · Adding a tag name you already have reuses that tag (assumed)
+  · Colours come from the 8 chip colours already in use — no free colour picker (assumed)
+
+Risks and open questions
+  · Filtering a long list by several tags could be slow — an index on the link is planned;
+    the audit checks the query.
+  · Nothing open.
+
+Not included
+  · Tags shared between owners or across a team.
+  · Tagging many certificates at once.
+  · Tags in exports and reports.
+
+Full spec: docs/features/cert-tags/SPEC.md
+
+📍 cert-tags: designed (lg, api+web+mobile) — next:
+   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags
+   …
+```
+
+### Where it is shown, and how much
+
+| Step | The review shown |
+|---|---|
+| brainstorm / intake — CONVERSATION §Confirm | 1, 2, 3, 6, 7, 8 from the record — the shared understanding |
+| the small path and the quick path (xs · sm) | 1–3, and 4 when anything stored changes — compact, one part |
+| **spec, end — the design approval** (spec §3) | **the full review, 1–8, in parts** |
+| audit, end | the review delta (below) — what the audit changed in the design |
+| plan, the go-ahead (plan §The go-ahead) | a one-part recap (1, 3, 4) + anything the audit changed since the design was approved, above section 9 — the slices and the test plan |
+| revise | the change as a review delta |
+| ship — opening the PR (resume §Ship) | the PR body, printed in full before the question |
+| agent / fleet — the one confirmation | per feature, one line of 1 and its test plan |
+| the 🔒 walk hand-off, after an `--auto` run (resume §🔒 The walk) · the fleet's report (fleet §5) | the full review of **what was built**, from `SPEC.md`, in parts |
+
+### The delta form
+
+Audit and revise change a design the human already approved, so they show **only what moved**: each
+section that changed, by name, as before → after, in the same plain words.
+
+```
+What the audit changed in the design
+  Data      before: tags are deleted with their owner's account
+            after:  an owner's tags are deleted with the account and their links with them —
+                    the audit found accounts are soft-deleted, so links would have dangled
+  Not included  + Tag filter in the mobile offline cache — the cache has no filter support
+```
+
+Nothing changed → one line: `The audit changed nothing in the design you approved.`
+
+### Under `--auto` and `--agent-walk`
+
+🔴 **No approval is asked, so no review is printed** — not at §Confirm, the small path, spec, audit,
+the go-ahead or revise. In an unattended run writing it costs minutes of output and nobody reads it.
+Each of those steps says in one line what it did and how many rulings it took as `auto
+(recommended)`.
+
+The review is shown **where the human next looks**, so nothing lands unseen: the 🔒 walk hand-off of
+an `--auto` run (resume §🔒 The walk) and the fleet's report (fleet §5) open with the full review of
+what was built, written from `SPEC.md` — sections 1–8, in parts, every `(auto)` ruling marked.
+
 ## Branch and ticket
 
 No skill in the family creates a branch, a worktree or a ticket — those belong to the developer.

@@ -4,6 +4,37 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## Unreleased
+
+**Changed:**
+- **Every approval shows what you are approving — in the chat, never a file to open.** A new shared
+  format, REFERENCE §The review, sets what an approval shows, in plain words with the product's own
+  names: what changes for users (before → after, who), what they'll see (an ASCII sketch when a
+  layout changes), added · changed · removed, data and migrations (can it be undone?), each app (and
+  what a released app's users see before they update), the decisions with what lost and the assumed
+  ones marked `(assumed)`, risks and open questions, and what is not included. A file path is only a
+  reference line under it.
+- **Long reviews come in screen-sized parts.** Over ~40 lines, a review is split — *Part 1 of 3 —
+  What users get* · *Part 2 — Data and apps* · *Part 3 — Decisions and risks* — each ending
+  `A. Looks right — next part` · `B. Change something — say what`. A change is applied and that part
+  shown again; the last part ends with the step's usual footer.
+- **Where you see it:**
+  - **`/builder:spec`** — the full review, in parts, *is* the design approval. It replaces the
+    two-to-four-sentence summary; the product questions before writing are unchanged.
+  - **Brainstorm and intake confirm** — the shared understanding as a review; the **small path** and
+    the **quick path** show a compact one (what changes, what you'll see, added/changed/removed, data).
+  - **`/builder:audit`** and **`/builder:revise`** — what they changed in the design you approved,
+    section by section, before → after ("The audit changed nothing…" when nothing moved).
+  - **The plan go-ahead** — a one-part recap of what is being built and what the audit and the
+    decisions gate changed since you approved the design, above the slices and the test plan.
+  - **Opening the PR** — the PR body is printed in full before you're asked.
+  - **`/builder:agent` / `/builder:fleet`** — one line per feature above the confirmation: what it
+    changes for users, and its test plan.
+- **Under `--auto` and agent mode no review is printed where nothing is asked** — writing one costs
+  minutes of output that nobody reads. Instead you see the full review of **what was built** where
+  you next look: the walk hand-off after an `--auto` run, and the fleet's report for every merged
+  feature, autopilot rulings marked `(auto)`. Design: `docs/specs/2026-10-23-cli-review-design.md`.
+
 ## 4.12.1
 
 **Changed:**

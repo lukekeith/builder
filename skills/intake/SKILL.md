@@ -13,7 +13,7 @@ use.
 
 **The mechanics live in [../brainstorm/CONVERSATION.md](../brainstorm/CONVERSATION.md)** — the
 record, rounds, confirm, size, steering. Read it now. Read `.claude/builder.md`. Load REFERENCE
-§Prototype mode only for a design ref, and the three sections CONVERSATION.md names, when the
+§Prototype mode only for a design ref, and the four sections CONVERSATION.md names, when the
 conversation reaches them — never REFERENCE wholesale.
 
 **The difference from brainstorm:** brainstorm draws out what the user wants; intake takes what is
@@ -85,6 +85,12 @@ recommendation.
 ## 5. Confirm, size, hand on
 
 CONVERSATION §Confirm and §Size and the small path. md, lg and xl hand on to `/builder:spec`.
+
+The confirm is the review — REFERENCE §The review, sections 1, 2, 3, 6, 7 and 8, written from the
+record — never "the document is confirmed" over a path. Intake adds the verification to it: under
+Decisions, what the document decided and the code confirmed; under Risks and open questions, every
+contradiction and how it was ruled (document changed or code changed), and anything still
+`unverifiable`.
 
 ## Prototype mode — a design ref
 

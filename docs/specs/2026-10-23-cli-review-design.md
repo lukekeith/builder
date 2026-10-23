@@ -57,6 +57,13 @@ impact, in plain words, which is what a person can judge.)
   | revise | the change as a review delta |
   | ship, Open the PR | the PR body shown before asking |
   | agent / fleet confirmation | per feature: one line of 1 and its test plan |
-- **D5 — `--auto` prints the review and does not wait.** The transcript keeps it; an unattended run
-  shows it in the step's output for the human to read at the walk.
+  | the 🔒 walk hand-off after an `--auto` run · the fleet's report | the full review of what was built, from `SPEC.md`, 1–8, in parts |
+- **D5 — `--auto` / `--agent-walk` print no review where no approval is asked.** (Revised
+  2026-10-23 from timing data: orchestrator time is dominated by output tokens, ~7.5 ms/token, so a
+  review nobody reads costs minutes per unattended run.) Spec, audit, plan and revise — and §Confirm
+  and the small path — say in one line what they did and how many `auto (recommended)` rulings they
+  took. The review is shown **where the human next looks**: the 🔒 walk hand-off of an `--auto` run
+  (resume §🔒 The walk) and the fleet's report (fleet §5) open with the full review of what was built,
+  written from `SPEC.md`, every auto ruling marked `(auto)` — so nothing lands unseen. The headless
+  agent walk prints none.
 - **D6 — Release: a minor (4.13.0)** — every approval changes what it shows.
