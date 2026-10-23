@@ -1,0 +1,11 @@
+{
+  "name": "@notes-hub/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "notes": "src/cli.mjs" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-reporter=tap test/*.test.mjs",
+    "check": "node --check src/cli.mjs && node --check src/store.mjs"
+  }
+}

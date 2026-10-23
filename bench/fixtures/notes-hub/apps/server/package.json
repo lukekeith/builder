@@ -1,0 +1,11 @@
+{
+  "name": "@notes-hub/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-concurrency=1 --test-reporter=tap test/*.test.mjs",
+    "check": "for f in src/*.mjs; do node --check \"$f\" || exit 1; done"
+  }
+}

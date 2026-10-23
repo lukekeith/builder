@@ -4,10 +4,10 @@ builder 4.12.0 · superpowers 7.0.0 · gsd — · default model · 2026-10-23T18
 
 ## Summary
 
-| Config | Status | Wall | Turns | Tokens (in+out) | Cost | Accept | Fixture tests | Longest step |
-|---|---|---|---|---|---|---|---|---|
-| builder | done | 14m | 79 | 53k | $5.24 | 7/7 | 4/4 | builder:build 5m |
-| builder-everything | done | 14m | 84 | 52k | $5.34 | 7/7 | 4/4 | builder:build 6m |
+| Config | Status | Wall | Turns | Tokens (in+out) | Cost | Accept | Fixture tests | Longest step | Orchestrator · Agents · Tools |
+|---|---|---|---|---|---|---|---|---|---|
+| builder | done | 14m | 79 | 53k | $5.24 | 7/7 | 4/4 | builder:build 5m | 10.0m 73% · 3.3m 24% · 0.5m 3% |
+| builder-everything | done | 14m | 84 | 52k | $5.34 | 7/7 | 4/4 | builder:build 6m | 9.1m 66% · 4.4m 32% · 0.3m 2% |
 
 ## Time per step
 
@@ -23,6 +23,8 @@ copy: `/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1336-ta
 
 ### brainstorm — 2m, 14 turns
 
+split: orchestrator 2.4m (99%) · agents 0.0m (0%) · tools 0.0m (1%)
+
 prompt: `/builder:brainstorm --auto Notes can carry tags.`
 plugins: builder 4.12.0
 
@@ -34,6 +36,8 @@ plugins: builder 4.12.0
   - longest waits: 57s after Bash mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10- · 9s after Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133 · 5s after Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133 · 4s after Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133 · 3s after Bash cd /Users/lukekeith/www/builder; sed -n 252,560p skills/resume/REFERENCE.md
 
 ### fleet 01 (build) — 7m, 37 turns
+
+split: orchestrator 5.1m (65%) · agents 2.4m (31%) · tools 0.4m (4%)
 
 prompt: `/builder:resume --path docs/features/note-tags --agent-walk`
 plugins: builder 4.12.0
@@ -53,6 +57,8 @@ plugins: builder 4.12.0
   - longest waits: 18s after Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133 · 14s after Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-133 · 13s after Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); /Users/lukekeith · 12s after Bash F=docs/features/note-tags; python3 - <<'EOF' · 10s after Bash sed -n 1,30p test/tags.test.mjs
 
 ### fleet 02 (walk) — 3m, 28 turns
+
+split: orchestrator 2.5m (73%) · agents 0.9m (25%) · tools 0.1m (2%)
 
 prompt: `/builder:resume --path docs/features/note-tags --agent-walk`
 plugins: builder 4.12.0
@@ -96,6 +102,8 @@ copy: `/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1336-ta
 
 ### brainstorm — 2m, 17 turns
 
+split: orchestrator 2.3m (99%) · agents 0.0m (0%) · tools 0.0m (1%)
+
 prompt: `/builder:brainstorm --auto Notes can carry tags.`
 plugins: builder 4.12.0
 
@@ -107,6 +115,8 @@ plugins: builder 4.12.0
   - longest waits: 55s after Bash mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10- · 8s after Bash git add docs/features/note-tags && git commit -q -m "docs(note-tags): design not · 3s after Bash cd /Users/lukekeith/www/builder/skills/resume; sed -n 235,360p REFERENCE.md; sed · 3s after Edit /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-23-1336-tags/builder-everything/docs/features/note-tags/SPEC.md · 2s after Bash cat > docs/features/note-tags/MANIFEST.md <<EOF
 
 ### fleet 01 (build) — 8m, 38 turns
+
+split: orchestrator 4.9m (57%) · agents 3.6m (41%) · tools 0.2m (2%)
 
 prompt: `/builder:resume --path docs/features/note-tags --agent-walk`
 plugins: builder 4.12.0
@@ -126,6 +136,8 @@ plugins: builder 4.12.0
   - longest waits: 24s after Bash D=$(mktemp -d) && export NOTES_FILE=$D/n.json && C=src/cli.mjs · 15s after Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); cat >> "$WS/prog · 14s after Bash B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start deep-notes -- node · 14s after Bash cat -n src/cli.mjs src/store.mjs && git diff 2ccc22d dd15440 -- README.md src/st · 13s after Bash WS=$(/Users/lukekeith/www/builder/scripts/workspace note-tags); /Users/lukekeith
 
 ### fleet 02 (walk) — 2m, 29 turns
+
+split: orchestrator 1.9m (68%) · agents 0.8m (28%) · tools 0.1m (3%)
 
 prompt: `/builder:resume --path docs/features/note-tags --agent-walk`
 plugins: builder 4.12.0

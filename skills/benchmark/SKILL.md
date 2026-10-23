@@ -13,8 +13,9 @@ The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it a
 
 **What it does:** for each configuration — `builder` (the recommended test plan: what a user who
 says "go" gets), `builder-everything` (`slice=own+app end=everything review=slice`: the full
-pipeline), `superpowers`, `gsd` — it copies the fixture project (`bench/fixture/`, a notes CLI), makes
-it a repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
+pipeline), `superpowers`, `gsd` — it copies the feature's fixture project (`bench/fixtures/<name>/`:
+`notes`, a notes CLI, unless the feature's `feature.json` names another, such as `notes-hub`, a CLI
+and a server with slow suites), makes it a repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
 brainstorm → spec → the fleet engine (audit, plan, build, agent walk, verify, ship, merge);
 superpowers as one session from brainstorming to a merged branch; GSD as its four commands. Every
 session gets an owner prompt that answers every question with the recommendation and never waits;
@@ -34,8 +35,10 @@ then its table and the path.
 ## 2. Pre-flight
 
 - `claude` on the PATH (`which claude`); if not, stop and say so.
-- The feature: `<feature>` if given, else `tags` — the only one today, so no question. An unknown
-  one is refused by the script with the list.
+- The feature: `<feature>` if given, else `tags`. `bench/features/` has `tags` (one app, small — the
+  quick run) and `share` (two apps on the `notes-hub` fixture, ~10–12 slices and ~30 s test suites —
+  where the test-plan levers have something to save; a run takes far longer). With no `<feature>`,
+  run `tags` without asking. An unknown one is refused by the script with the list.
 - Superpowers in the plugin cache: the script's dry run names the `--plugin-dir` it found; if the
   `superpowers` line has none, say that row will run without the plugin and offer `--only` without it.
 - No run in progress: `status` says `running:` → offer `--status` and stop. The launch itself also refuses with `a benchmark is running (pid N, …)`

@@ -10,9 +10,11 @@ streams showed three things the report hides:
 
 - **One rep is noise.** The 2026-10-14 runs ranged 805–956 s for near-identical work; the review
   lever's real saving (build 323 s vs 399 s) is smaller than that spread.
-- **The orchestrator is two thirds of the time.** In the build lane, 287 s of 476 s was the
-  controlling session itself — reading skills, writing briefs, ledgers and commits — against 147 s
-  of subagents doing the work and 42 s of tools. Nothing in the report shows that split.
+- **The orchestrator is most of the time.** In the build lane, 308 s of 476 s was the controlling
+  session itself — reading skills, writing briefs, ledgers and commits — against 147 s of subagents
+  doing the work and 21 s of its own tools; across the whole run it is 73% (10 of 14 min). Nothing
+  in the report shows that split. (An earlier hand count said 287 s by counting the subagents' own
+  tool calls twice — they sit inside the Agent calls.)
 - **The fixture can't exercise the levers.** One app, three slices, a test suite that runs in
   seconds: per-slice testing has nothing to save, and an end walk is the same size either way.
 
