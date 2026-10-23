@@ -197,7 +197,7 @@ when the gate runner has timed the suites, minutes. Never redraw it as a table, 
 column. The `## Phases` table stays in `PLAN.md` for the build; the human sees slices. Under the
 block, one line each for what rides along: the slices carrying a `build-time risk`, **which slice
 freezes the contract**, anything deferred with a decider, and the path to read the plan at. When
-`node <builder>/scripts/profile.mjs --recommend <folder>` returns `signals` (a schema change, a
+`node <builder>/scripts/profile.mjs --recommend <folder>` returns `signals` (a breaking schema change, a
 released consumer… raised the end to the risky parts), say its `reason` in one line — unless the
 block already does.
 
@@ -231,7 +231,7 @@ not `null`. Then what it runs, in the words below. The recommendation's option i
   an agent tries the risky parts** — the `[risk]` walk items in the running app, and `@scoped` deep
   lines (`risk`) · **Everything** — the deep set, the cross-app E2E, the full walk (`everything`) ·
   **Nothing — I'll test it** — the type-check only; the verdict says nothing was tested (`none`). On a
-  feature with a released consumer or a schema change, `none`'s description adds `⚠ This feature has
+  feature with a released consumer or a breaking schema change, `none`'s description adds `⚠ This feature has
   a <signal>: nothing tests it before it lands.` It warns; it never refuses.
 - **Review:** **Once at the end** — one whole-branch review (`review=end`) · **Once per app** — after
   each app's slices (`app`) · **After every slice** (`slice`).
