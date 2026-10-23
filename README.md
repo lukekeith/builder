@@ -208,7 +208,7 @@ unattended, and writes
 and whether the feature passes acceptance tests the agent never saw. Configs run one at a time;
 nothing in your Claude home changes. `/builder:benchmark --status` while it runs.
 
-The recommended plan is the fast one; a schema change or a released consumer raises only the end, and
+The recommended plan is the fast one; a breaking schema change, a migration or a released consumer raises only the end, and
 says why. *Other* reaches the rest (models, persistence, open choices), and an agent build that tests
 the risky parts or everything can add your own walk before it lands. Landing is always the local
 merge; PR + CI landing is deferred, since the fleet never pushes. **The floors hold under every

@@ -189,7 +189,9 @@ export function recommend({ specText, planText, cfg }) {
   const schema = tableRows(section(specText, 'Schema & API changes'))
   const released = new Set(cfg?.released ?? [])
   const signals = []
-  if (schema.length) signals.push('schema change')
+  // An ADD is new surface nothing reads yet; an EDIT, RENAME or REMOVE changes what existing data or
+  // callers rely on. (A stored-schema ADD that needs a migration is caught by the migration signal.)
+  if (schema.some((r) => /^(EDIT|RENAME|REMOVE)$/i.test((r[1] ?? '').replace(/[`*]/g, '')))) signals.push('breaking schema change')
   if (mentionsMigration(planText)) signals.push('migration')
   if (contract.some((r) => (r[2] ?? '').split(/[,\s/]+/).some((c) => released.has(c.replace(/[`*]/g, ''))))) signals.push('released consumer')
   if (apps >= 3) signals.push(`${apps} apps`)

@@ -482,3 +482,24 @@ export function sharedBranch(feature, manifests, cfg) {
  *  feature only specced in a session (its record written minutes ago) is not being built. */
 export const buildingInSession = (root, feature, mf, now = Date.now()) =>
   (mf?.state === 'building' || (mf?.state === 'planned' && isSet(mf['go-ahead']))) && activeInSession(root, feature, now)
+
+/** The executable `cmd` resolves to on `env.PATH` (or `cmd` itself when it is a path), or null. */
+export function findOnPath(cmd, env = process.env) {
+  const isExe = (f) => { try { return statSync(f).isFile() && (statSync(f).mode & 0o111) !== 0 } catch { return false } }
+  if (cmd.includes('/')) return isExe(cmd) ? cmd : null
+  for (const dir of String(env.PATH ?? '').split(':').filter(Boolean)) if (isExe(join(dir, cmd))) return join(dir, cmd)
+  return null
+}
+
+/**
+ * Wait until `cmd` is on PATH again — a Claude Code auto-update swaps its binary out for a few
+ * seconds, and an unattended run that starts in that window would fail the feature for nothing.
+ * Resolves true when found, false after `timeoutMs`.
+ */
+export async function waitForCommand(cmd, { env = process.env, timeoutMs = 180000, everyMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  for (let waited = 0; ; waited += everyMs) {
+    if (findOnPath(cmd, env)) return true
+    if (waited >= timeoutMs) return false
+    await sleep(everyMs)
+  }
+}
