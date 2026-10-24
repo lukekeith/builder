@@ -4,7 +4,7 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
-## Unreleased
+## 4.14.0
 
 **Faster:**
 - **The orchestrator stops typing what a script can write** — internal; nothing you see changes
