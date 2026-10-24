@@ -180,9 +180,9 @@
         }
       ],
       "stamp": {
-        "hash": "c0d26c43b0e6",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "f430d177bc51",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -209,7 +209,7 @@
         },
         {
           "role": "claude",
-          "text": "**12 of 15 claims confirmed · 2 contradicted · 1 unverifiable · 4 gaps**\n\n**Confirmed**\n- single renew exists — `POST /certificates/:id/renew` (apps/api/src/routes/certificates.ts:88)\n- only the owner may renew — `assertOwner` guards it (apps/api/src/certificates/renew.service.ts:14)\n- renewal sets `status: active` and writes a `renewed` event (renew.service.ts:36, :42)\n- the list already filters by expiry window — `?expiresWithin=30` (apps/web/src/features/certificates/useCertificates.ts:21)\n- mobile reads `expires_at` from the same list endpoint and needs no change (apps/mobile/src/api/certificates.ts:12)\n- …and 7 more, each with its `file:line` in the record\n\n**Contradicted**\n- \"renewal extends 12 months from today\" — the code extends 12 months from the **current** `expires_at` (renew.service.ts:31)\n- \"the list already supports multi-select\" — `CertificateTable` has no selection; the only checkbox column is in `AdminUsersTable` (apps/web/src/features/certificates/CertificateTable.tsx:18)\n\n**Unverifiable**\n- \"500 renewals finish in under 2 seconds\" — only running it against real data can say\n\n**Gaps the ticket never decides** — a revoked or already-expired certificate in the selection · a run where some renewals fail · one history event per certificate or one for the batch (the History tab reads `/certificates/:id/events`) · what the \"renew expiring\" shortcut does when nothing is expiring\n\n**How it works today:** renewing is one certificate at a time from the owner view — `renewCertificate` checks ownership, adds 12 months to the current expiry, sets the status back to active and records a `renewed` event[^1]. Nothing links a renewal to the certificate it replaced — the row is updated in place[^2].\n\n[^1]: apps/api/src/certificates/renew.service.ts:14–42\n[^2]: apps/api/prisma/schema.prisma:41 — no `renewed_from_id`\n\n---\n\n**Q1 of ~7 — where a renewal's new expiry starts**\n\nThe ticket says 12 months from today; single renew runs 12 months from the current expiry. Which side changes?\n\n**Why it matters:** renewing early either keeps or throws away the unexpired time — and if bulk and single renew disagree, two certificates renewed the same afternoon get different dates.\n**What it affects:** `renewCertificate` (renew.service.ts:31), the Renew button on the owner view, the new bulk endpoint, the expiry dates web and mobile show.\n**Recommendation:** change the document — keep \"from the current expiry\". Single renew has done that since ACME-207 (`git log -S addMonths`), so bulk matches it and nobody loses paid-for time. It costs nothing in code; the ticket's line is corrected in the spec.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 7 open questions, then it's sized and specced\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n📍 bulk-renew: intake (2 contradicted, 12/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+          "text": "**12 of 15 claims confirmed · 2 contradicted · 1 unverifiable · 4 gaps**\n\n**Confirmed**\n- single renew exists — `POST /certificates/:id/renew` (apps/api/src/routes/certificates.ts:88)\n- only the owner may renew — `assertOwner` guards it (apps/api/src/certificates/renew.service.ts:14)\n- renewal sets `status: active` and writes a `renewed` event (renew.service.ts:36, :42)\n- the list already filters by expiry window — `?expiresWithin=30` (apps/web/src/features/certificates/useCertificates.ts:21)\n- mobile reads `expires_at` from the same list endpoint and needs no change (apps/mobile/src/api/certificates.ts:12)\n- …and 7 more, each with its `file:line` in the record\n\n**Contradicted**\n- \"renewal extends 12 months from today\" — the code extends 12 months from the **current** `expires_at` (renew.service.ts:31)\n- \"the list already supports multi-select\" — `CertificateTable` has no selection; the only checkbox column is in `AdminUsersTable` (apps/web/src/features/certificates/CertificateTable.tsx:18)\n\n**Unverifiable**\n- \"500 renewals finish in under 2 seconds\" — only running it against real data can say\n\n**Gaps the ticket never decides** — a revoked or already-expired certificate in the selection · a run where some renewals fail · one history event per certificate or one for the batch (the History tab reads `/certificates/:id/events`) · what the \"renew expiring\" shortcut does when nothing is expiring\n\n**How it works today:** renewing is one certificate at a time from the owner view — `renewCertificate` checks ownership, adds 12 months to the current expiry, sets the status back to active and records a `renewed` event[^1]. Nothing links a renewal to the certificate it replaced — the row is updated in place[^2].\n\n[^1]: apps/api/src/certificates/renew.service.ts:14–42\n[^2]: apps/api/prisma/schema.prisma:41 — no `renewed_from_id`\n\n---\n\n**Q1 of ~7 — where a renewal's new expiry starts**\n\nThe ticket says 12 months from today; single renew runs 12 months from the current expiry. Which side changes?\n\n**Why it matters:** renewing early either keeps or throws away the unexpired time — and if bulk and single renew disagree, two certificates renewed the same afternoon get different dates.\n**What it affects:** `renewCertificate` (renew.service.ts:31), the Renew button on the owner view, the new bulk endpoint, the expiry dates web and mobile show.\n**Recommendation:** change the document — keep \"from the current expiry\". Single renew has done that since ACME-207 (`git log -S addMonths`), so bulk matches it and nobody loses paid-for time. It costs nothing in code; the ticket's line is corrected in the spec.\n\n📍 bulk-renew: intake (2 contradicted, 12/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
         },
         {
           "role": "picker",
@@ -237,9 +237,9 @@
         }
       ],
       "stamp": {
-        "hash": "ec65e2fe2c0e",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "fb76b687b4b0",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
