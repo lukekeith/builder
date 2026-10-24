@@ -248,6 +248,26 @@ other than the walk — 🛑 held, a human's step, a placeholder, more than one 
 a spec exists (brainstorm, intake) or after the feature merged; and plan's go-ahead footer, which
 launches the agents itself, builds here, or, without the block, names `/builder:init --update`.
 
+## Before a picker
+
+🔴 **When a choice is offered in a picker (AskUserQuestion), the text above it explains the choice —
+it is never a second menu.** The user selects with the arrow keys; what they need on screen first is
+what each option means and why the recommended one is first:
+
+- **What is being decided**, in one plain sentence, and why it matters.
+- **Your options** — one line per picker option, its label in bold exactly as the picker shows it,
+  in the picker's order: what picking it does, what it is good at, what it costs or closes off.
+- **Why the recommended one** — the evidence behind it and what you give up by picking it.
+
+Never letters, numbers or a "Reply A, B or C" line above a picker, and never an option for "answer
+the question below" — answering is what the picker is for. A lettered list belongs only where the
+reply is typed in chat (CONVERSATION §Ways on). A picker whose options are self-evident (Run it /
+Not now, Open the PR / Not yet) needs only the sentence saying what happens on each.
+
+brainstorm and intake rounds (CONVERSATION §Rounds), spec's product choices, the splitting question,
+approaches, the decisions gate, the go-ahead's test-plan questions, the test plan picked ahead
+(agent, fleet), and every other AskUserQuestion in the family follow this.
+
 ## The review — what an approval shows
 
 🔴 **No approval asks anyone to read a file.** Every point where the human approves shows, in the

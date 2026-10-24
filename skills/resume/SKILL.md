@@ -161,7 +161,8 @@ Present the conversion, take one explicit approval — it changes how the folder
 ## The decisions gate (human, unconditional)
 
 Present every OPEN row from SPEC §Decisions in **one AskUserQuestion** — recommendation first,
-related rows folded into the same message. **Translate each answer into an implementable statement**
+related rows folded into the same message, each briefed first in chat per REFERENCE §Before a picker
+(the options explained, and why the recommended one). **Translate each answer into an implementable statement**
 before it becomes the row's Ruling; REFERENCE §SPEC.md's §Decisions comment block says what that
 means. An answer given as "yes, do that", or one carrying an "etc.", is not yet a ruling: write the
 version a later session can check code against, and read it back when the translation added anything

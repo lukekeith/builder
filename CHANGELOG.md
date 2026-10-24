@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.2
+
+**Changed:**
+- **Before a picker, the options are explained — never a second menu.** When a choice is offered
+  in a picker you select with the arrow keys, the text above it now explains each option (its label
+  in bold, as the picker shows it: what it does, what it's good at, what it costs) and why the
+  recommended one is first — instead of a one-line recommendation. No letters, no "Reply …" line,
+  and never an option for "answer the question below" above a picker. One rule, REFERENCE §Before a
+  picker, for every picker: brainstorm and intake rounds, spec's product choices, the splitting
+  question, approaches, the decisions gate, the go-ahead's test-plan questions, agent and fleet picks.
+
 ## 4.14.1
 
 **Fixed:**

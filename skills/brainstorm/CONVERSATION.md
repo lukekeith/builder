@@ -193,8 +193,19 @@ Reply A, B or C — "go" is A.<  Or say what's wrong.>
 
      **Why it matters:** <what depends on it; what goes wrong if it's decided badly or not at all>
      **What it affects:** <the screens, data, apps, users or later decisions it touches — concrete names from the code>
-     **Recommendation:** <the option and why — the evidence behind it, and what it costs you>
+
+     **Your options:**
+     - **<the recommended option's label>** — <what it does, what it's good at, what it costs>
+     - **<the next option's label>** — <the same, in a sentence or two>
+     - …
+
+     **Why <the recommended label>:** <the evidence behind it, and what you give up by picking it>
      ```
+
+     🔴 **The briefing explains; the picker is where you choose** (REFERENCE §Before a picker). One
+     line per picker option, its label in bold exactly as the picker shows it, in the picker's order —
+     never letters, numbers or a "Reply …" line, never a menu the user could mistake for something
+     to answer, and never an option for answering the question below.
 
   2. **The choice — one AskUserQuestion**, straight after the briefing: `question` restates it in
      one line; 2–4 options, **your recommendation first with ` (Recommended)` on its label**; each
