@@ -39,9 +39,9 @@
         }
       ],
       "stamp": {
-        "hash": "b88c1d1005d2",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "7fe1d452664b",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -134,9 +134,9 @@
         }
       ],
       "stamp": {
-        "hash": "f190c76ea999",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "fbdf4ac46ab3",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -180,7 +180,7 @@
       "turns": [
         {
           "role": "claude",
-          "text": "2 of 6 settled — 2 open, 2 assumed.\n\n**Q1 of ~2 — What \"only the filtered rows\" covers**\n\nWhen a filter matches more rows than one page shows, should Export give every matching row, or just the 25 on screen?\n\n**Why it matters:** it decides what the CSV is for. \"Every match\" is a report you can hand on; \"this page\" quietly drops rows once a filter matches more than 25, and nobody notices until a number doesn't add up.\n**What it affects:** the export request in `exportCertificates()`, the CSV owners send on, and whether the table's paging leaks into the export.\n**Recommendation:** every matching row — the endpoint already filters server-side, so it's the same cost as today, and it's what \"the filtered rows\" means everywhere else (the result count says \"42 certificates\", not \"25\").\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 2 open questions, then it's sized and built here\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 export-in-toolbar: brainstorming (2/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+          "text": "2 of 6 settled — 2 open, 2 assumed.\n\n**Q1 of ~2 — What \"only the filtered rows\" covers**\n\nWhen a filter matches more rows than one page shows, should Export give every matching row, or just the 25 on screen?\n\n**Why it matters:** it decides what the CSV is for. \"Every match\" is a report you can hand on; \"this page\" quietly drops rows once a filter matches more than 25, and nobody notices until a number doesn't add up.\n**What it affects:** the export request in `exportCertificates()`, the CSV owners send on, and whether the table's paging leaks into the export.\n**Recommendation:** every matching row — the endpoint already filters server-side, so it's the same cost as today, and it's what \"the filtered rows\" means everywhere else (the result count says \"42 certificates\", not \"25\").\n\n📍 export-in-toolbar: brainstorming (2/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
         },
         {
           "role": "picker",
@@ -201,12 +201,16 @@
         {
           "role": "note",
           "text": "The ways-on block sits between the briefing and the picker and is the same three entries every round. B is the 'just build it' steer and says where it lands (built here, since this looks sm so far); C is 'that's enough'. The 📍 footer's position inside a round (here, before the picker) is inferred."
+        },
+        {
+          "role": "note",
+          "text": "One menu per screen: the picker is the only menu in a round, so no lettered list is printed above it. Every third round (while two or more questions are open) the picker carries a second tab, **Keep going?** — Keep answering (Recommended) · Build it now · That's enough. Typing \"just build it\" or \"that's enough\" in Other works in any round."
         }
       ],
       "stamp": {
-        "hash": "51dbd743b8d4",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "eed568cb371f",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -223,7 +227,7 @@
         },
         {
           "role": "claude",
-          "text": "3 of 6 settled — 1 open, 2 assumed.\n\n**Q2 of ~2 — Where Export sits in the toolbar**\n\nShould Export be a visible button at the right end of the toolbar, or an item in a \"⋯\" menu there?\n\n**Why it matters:** the move is about Export reading as part of the filtered view; tucked in a menu it stops being findable, which undoes the point of moving it.\n**What it affects:** `ListToolbar`'s `actions` slot on the certificate list, and the toolbar's wrap at narrow widths (it already wraps the chips under the search box below 640px).\n**Recommendation:** a visible button at the right end — the owners list puts *Invite* in exactly that slot, so it matches what people already see; the cost is one more control competing for width on small screens.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 1 open question, then it's sized and built here\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 export-in-toolbar: brainstorming (3/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
+          "text": "3 of 6 settled — 1 open, 2 assumed.\n\n**Q2 of ~2 — Where Export sits in the toolbar**\n\nShould Export be a visible button at the right end of the toolbar, or an item in a \"⋯\" menu there?\n\n**Why it matters:** the move is about Export reading as part of the filtered view; tucked in a menu it stops being findable, which undoes the point of moving it.\n**What it affects:** `ListToolbar`'s `actions` slot on the certificate list, and the toolbar's wrap at narrow widths (it already wraps the chips under the search box below 640px).\n**Recommendation:** a visible button at the right end — the owners list puts *Invite* in exactly that slot, so it matches what people already see; the cost is one more control competing for width on small screens.\n\n📍 export-in-toolbar: brainstorming (3/6 settled) — resume with /builder:brainstorm --path docs/features/export-in-toolbar"
         },
         {
           "role": "picker",
@@ -249,9 +253,9 @@
         }
       ],
       "stamp": {
-        "hash": "3fb370bba472",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "43fe6d1b065c",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -494,9 +498,9 @@
         }
       ],
       "stamp": {
-        "hash": "d603e32201df",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "ec9b14f35494",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       },
       "sources": [
         "skills/brainstorm/CONVERSATION.md §Discovery recon",
@@ -537,9 +541,9 @@
         }
       ],
       "stamp": {
-        "hash": "3e5e8d0f1b91",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "b1bb2786e961",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {
@@ -560,7 +564,7 @@
         },
         {
           "role": "claude",
-          "text": "**Concept:** Quick views — a row of one-tap views above the certificate list answering the questions owners repeat (expiring soon, overdue, by site). It uses `Tabs` over `DataTable` from `packages/ui` (as the owner view does), the status filters web already keeps in the URL, and views over a list as a pattern from GitHub's and Linear's docs (web research).\n\nSearch everything and Tags go to *Rejected* (search: you said the questions repeat, so one tap beats typing; tags: duplicates `cert-tags`). The views' open questions start the tree.\n\n**How it works today** — beyond what discovery covered: mobile's `CertificatesScreen` has no filter state at all; its list query (`useCertificates`, apps/mobile/src/certificates/useCertificates.ts:12) takes no params, so the views need the same filter params web sends. And there is no \"site\" on a certificate — sites live on the owner's `Location` rows (schema.prisma:77).\n\n1 of 5 settled — 4 open.\n\n**Q1 of ~4 — Fixed views or views owners save**\n\nAre the views a fixed set we ship, or can owners save their own filter combinations as views?\n\n**Why it matters:** fixed views need no new data; saved views need somewhere to keep them (a new model and endpoints), and that decides whether this is a spec in two apps or a small change.\n**What it affects:** the API (a `SavedView` model and endpoints, or none), both list screens, and the released mobile app, which has to understand any new data shape.\n**Recommendation:** a fixed set — you named the three or four questions that repeat, and a fixed set answers them without new data; owners' own views can be a later feature.\n\nA. Answer below (recommended) — pick from the options; mine is first\nB. Build it now — my recommendations settle the 4 open questions, then it's sized and specced\nC. That's enough — straight to the summary, what's open listed as assumptions\nReply in the picker — a letter in Other works too.\n\n📍 find-certs: brainstorming (1/5 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+          "text": "**Concept:** Quick views — a row of one-tap views above the certificate list answering the questions owners repeat (expiring soon, overdue, by site). It uses `Tabs` over `DataTable` from `packages/ui` (as the owner view does), the status filters web already keeps in the URL, and views over a list as a pattern from GitHub's and Linear's docs (web research).\n\nSearch everything and Tags go to *Rejected* (search: you said the questions repeat, so one tap beats typing; tags: duplicates `cert-tags`). The views' open questions start the tree.\n\n**How it works today** — beyond what discovery covered: mobile's `CertificatesScreen` has no filter state at all; its list query (`useCertificates`, apps/mobile/src/certificates/useCertificates.ts:12) takes no params, so the views need the same filter params web sends. And there is no \"site\" on a certificate — sites live on the owner's `Location` rows (schema.prisma:77).\n\n1 of 5 settled — 4 open.\n\n**Q1 of ~4 — Fixed views or views owners save**\n\nAre the views a fixed set we ship, or can owners save their own filter combinations as views?\n\n**Why it matters:** fixed views need no new data; saved views need somewhere to keep them (a new model and endpoints), and that decides whether this is a spec in two apps or a small change.\n**What it affects:** the API (a `SavedView` model and endpoints, or none), both list screens, and the released mobile app, which has to understand any new data shape.\n**Recommendation:** a fixed set — you named the three or four questions that repeat, and a fixed set answers them without new data; owners' own views can be a later feature.\n\n📍 find-certs: brainstorming (1/5 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
         },
         {
           "role": "picker",
@@ -588,9 +592,9 @@
         }
       ],
       "stamp": {
-        "hash": "9340f31aa063",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "5254319dbf8e",
+        "version": "4.14.0",
+        "date": "2026-10-24"
       }
     },
     {

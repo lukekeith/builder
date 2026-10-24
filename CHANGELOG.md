@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.1
+
+**Fixed:**
+- **A question round shows one menu, not two.** Each round printed a lettered `A. Answer below ·
+  B. Build it now · C. That's enough` list and then opened the picker — which takes the input, so
+  the letters were a menu nobody could answer. Now a lettered list appears only where you type the
+  reply in chat (the quick path, confirm, the research offer, concepts, hand-offs — unchanged); a
+  round's choices all live in its picker. Every third round, while two or more questions are open,
+  the picker carries a second tab, **Keep going?** — Keep answering · Build it now · That's enough.
+  "just build it" and "that's enough" still work typed in any round.
+
 ## 4.14.0
 
 **Faster:**
