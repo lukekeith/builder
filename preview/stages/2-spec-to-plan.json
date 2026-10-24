@@ -141,9 +141,9 @@
         }
       ],
       "stamp": {
-        "hash": "30d3643c67bc",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "e64591453096",
+        "version": "4.14.2",
+        "date": "2026-10-24"
       }
     },
     {
@@ -808,9 +808,9 @@
         }
       ],
       "stamp": {
-        "hash": "0da8e687e84e",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "257ddd40d33b",
+        "version": "4.14.2",
+        "date": "2026-10-24"
       }
     },
     {
@@ -835,54 +835,35 @@
         },
         {
           "role": "claude",
-          "text": "Wrote `docs/features/customer-portal/PROGRAM.md`:\n\n```markdown\n# customer-portal — program\n> tier: program · ACME-430\n\n## Overview\nA portal where a customer signs in and sees the certificates issued to them, and downloads them.\nOwners keep issuing in the existing web app; the portal is read-only for customers.\n\n## Children\n| # | Feature (folder) | Size | Apps | One line | Depends on |\n|---|---|---|---|---|---|\n| 1 | portal-auth | md | api+web | A customer can sign in to the portal with an emailed link | — |\n| 2 | portal-cert-list | md | api+web | A signed-in customer sees every certificate issued to them | 1 |\n| 3 | portal-downloads | md | api+web | A customer downloads any of their certificates as a PDF | 2 |\n\n## Shared decisions\n| # | Decision | Ruling | Who / date |\n|---|---|---|---|\n| D1 | Customer identity | A Customer is matched to certificates by verified email; no customer passwords. Rejected: accounts with passwords — a second credential store to secure | Luke 2026-10-23 |\n| D2 | Portal surface | The portal is routes under /portal in apps/web; mobile is out. Rejected: a separate app — a second deploy for three screens | Luke 2026-10-23 |\n\n## Out of scope\n- Customers editing or disputing a certificate.\n- The portal in the mobile app.\n```",
-          "inferred": true
+          "text": "Here's customer-portal as a program of three — 2 parts, one at a time.\n\n**Part 1 of 2 — What customers get**\n\n**What changes for users**\n  Before: an owner emails a customer their certificates one at a time; the customer has nowhere to look them up.\n  After:  customers have their own portal — they sign in with a link sent to their email, see every\n          certificate issued to them, and download any of them as a PDF.\n  Who:    customers. Owners keep issuing in the web app exactly as today.\n\n**What they'll see** — the portal, under /portal in the web app:\n```\n  ┌ Acme Certificates — customer portal ───────────────────┐\n  │ Sign in   [ you@company.com            ] [Send link]    │\n  └─────────────────────────────────────────────────────────┘\n  ┌ Your certificates ──────────────────────────────────────┐\n  │ Boiler 3 — gas safety     valid · expires 12 Nov  [PDF] │\n  │ Lift 2 — LOLER            expired 3 Oct           [PDF] │\n  └─────────────────────────────────────────────────────────┘\n```\n\n**Added · Changed · Removed**\n  Added:   the portal (sign-in, certificate list, downloads) in web · customer endpoints in api\n  Changed: nothing owners use\n  Removed: nothing\n\n**The children — built and shipped in this order**\n  1. **portal-auth** — customers sign in with an emailed link, and a company admin chooses who in\n     their company has access. api + web. Waits on nothing.\n  2. **portal-cert-list** — a signed-in customer sees their certificates, with status and expiry.\n     api + web. Waits on portal-auth.\n  3. **portal-downloads** — a customer downloads any of their certificates as a PDF. api + web.\n     Waits on portal-cert-list.\n  Why this order: portal-auth creates the customer session the other two read, and downloads start\n  from the list — each child builds on the contract the one before it ships. Each ships, and is\n  walked, on its own.\n\nA. Looks right — next part\nB. Change something — say what\nReply A or B — \"go\" is A."
         },
         {
           "role": "note",
-          "text": "~50 lines. Children are cut by value (each One line is something a customer can do once that child ships) and ordered by the contract — portal-auth produces the session the others consume. check-obligations is skipped at xl; spec self-reviews the PROGRAM instead."
-        },
-        {
-          "role": "picker",
-          "question": "Approve the program for customer-portal — three children, built in this order, one PR each?",
-          "header": "Program",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "Yes",
-              "description": "Record the program go-ahead; each child then gets its own audit, plan, go-ahead and walk."
-            },
-            {
-              "label": "No",
-              "description": "Leave it unapproved and say what to change — the split, the order or a shared decision."
-            }
-          ],
-          "inferred": true
-        },
-        {
-          "role": "note",
-          "text": "spec takes 'the one program go-ahead' before committing; the skill gives no literal wording for it."
+          "text": "The program go-ahead is the program's review (REFERENCE §The review, the program row) — never PROGRAM.md shown raw and never a bare Yes / No. The children are cut by value: each line is something customers can do once that child alone ships."
         },
         {
           "role": "user",
-          "text": "Yes"
+          "text": "a"
+        },
+        {
+          "role": "claude",
+          "text": "**Part 2 of 2 — Data, apps and decisions**\n\n**Data**\n  New:       a customer — an email address, matched to certificates already issued to it; no passwords.\n  Existing:  certificates are untouched; a customer sees the ones whose recipient email matches theirs.\n  Migration: one, additive — a customers table; undone by dropping it.\n\n**Apps**\n  api — customer sign-in links, the session, and read-only certificate and PDF endpoints.\n  web — the portal pages under /portal.\n  mobile — out: the portal isn't in the app.\n\n**Decisions** (shared by all three children)\n  · Customers sign in with an emailed link — no passwords (a second credential store to secure).\n  · The portal lives in the web app — not a separate app (a second deploy for three screens).\n  · A sign-in link expires after 15 minutes and works once *(assumed)*\n\n**Risks and open questions**\n  · A customer whose email changes loses access until the owner updates the certificate's recipient\n    — portal-auth's audit checks how often recipients change.\n  · Nothing open.\n\n**Not included**\n  · The portal in the mobile app.\n  · Customers changing or disputing anything — the portal is read-only.\n\nFull program: `docs/features/customer-portal/PROGRAM.md`\n\nA. Approve the program (recommended) — commit it and start portal-auth\nB. Change something — say what\nC. One spec instead — the whole portal as one lg spec\nReply A, B or C — \"go\" is A."
+        },
+        {
+          "role": "user",
+          "text": "a"
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(git commit -m \"docs(ACME-430): design customer-portal\")"
+          "text": "⏺ Bash(node scripts/advance.mjs docs/features/customer-portal --set go-ahead=\"Luke 2026-10-24\" --commit \"docs(ACME-430): design customer-portal\")"
         },
         {
           "role": "claude",
-          "text": "Written and committed as `docs(ACME-430): design customer-portal`. It fits on one screen, so here's the whole review.\n\n**What changes for users**\n- Before: customers get certificates by email from the owner, one at a time.\n- After: customers have their own portal — they sign in with a link sent to their email, see every certificate issued to them, and download any of them as a PDF.\n- Who: customers. Owners keep issuing in the web app as today.\n\n**What they'll see** — a sign-in page asking for an email; then a list of their certificates, each with *Download PDF*.\n\n**Added · Changed · Removed** — Added: the portal (sign-in, certificate list, downloads) under /portal in web, and the customer endpoints in api · Changed: nothing owners use · Removed: nothing\n\n**Data** — a customer, matched to certificates by verified email; no passwords stored.\n\n**Apps** — api and web in every child; mobile is out. It ships as three features, one after another, each useful on its own: sign-in, then the list, then downloads.\n\n**Decisions**\n- Customers sign in with an emailed link — no passwords (a second credential store to secure).\n- The portal lives in the web app — not a separate app (a second deploy for three screens).\n- The sign-in link expires after 15 minutes and works once *(assumed)*\n\n**Not included** — mobile; customers changing anything.\n\nFull program: `docs/features/customer-portal/PROGRAM.md`"
-        },
-        {
-          "role": "claude",
-          "text": "```\n📍 customer-portal: designed (xl, api+web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/customer-portal\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/customer-portal\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/customer-portal --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```",
-          "inferred": true
+          "text": "Approved and committed as `docs(ACME-430): design customer-portal`.\n\n```\n📍 customer-portal: designed (xl, 3 children) — next: /builder:resume --path docs/features/customer-portal — it picks portal-auth · or say go\n```"
         },
         {
           "role": "note",
-          "text": "The footer template is spec's own, filled with xl. Whether a program (which has no state: of its own) gets the numbered form is not spelled out; rendered here as spec writes it."
+          "text": "A program has no state: of its own, so its footer is one line, not the numbered form; resume picks the child."
         },
         {
           "role": "user",
@@ -890,21 +871,21 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Skill(builder:resume --path docs/features/customer-portal) — tier: program"
+          "text": "⏺ Skill(builder:resume --path docs/features/customer-portal) — tier: program · child: portal-auth — spec · child: portal-cert-list — spec · child: portal-downloads — spec"
         },
         {
-          "role": "tool",
-          "text": "⏺ Read(MANIFEST.md) — child: portal-auth — spec · child: portal-cert-list — spec · child: portal-downloads — spec"
+          "role": "claude",
+          "text": "customer-portal — 0 of 3 children shipped. Which one to start?\n\n**Your options:**\n- **portal-auth (Recommended)** — customers sign in, and an admin picks who has access. Waits on nothing; nothing else can be walked without it.\n- **portal-cert-list** — the certificate list. It reads portal-auth's customer session, so starting it now means building against a sign-in that doesn't exist yet.\n- **portal-downloads** — PDF downloads from the list. Waits on both the others.\n\n**Why portal-auth:** it's the only child with nothing to wait on, and the other two consume the session it creates — the order the program was approved in."
         },
         {
           "role": "picker",
-          "question": "customer-portal — 0/3 children shipped. Which child next?",
           "header": "Child",
+          "question": "customer-portal — 0/3 children shipped. Which child next?",
           "multiSelect": false,
           "options": [
             {
               "label": "portal-auth (Recommended)",
-              "description": "spec — no dependencies; produces the customer session the other two consume"
+              "description": "spec — waits on nothing"
             },
             {
               "label": "portal-cert-list",
@@ -917,12 +898,8 @@
           ]
         },
         {
-          "role": "note",
-          "text": "Ordered by PROGRAM §Children's Depends on; the recommendation is the next unblocked child — every dependency reads '— shipped'."
-        },
-        {
           "role": "user",
-          "text": "portal-auth (Recommended)"
+          "text": "[picker] portal-auth (Recommended)"
         },
         {
           "role": "tool",
@@ -930,13 +907,13 @@
         },
         {
           "role": "note",
-          "text": "A child at '— spec' with no folder yet starts its own brainstorm, seeded from PROGRAM §Shared decisions — its grill is short and its audit treats those as settled. A child already in flight goes to /builder:resume --path docs/features/<child>. Each child keeps its own decisions gate, go-ahead and walk, and ships one PR, serially by default; the last child's ship flips PROGRAM's header."
+          "text": "A child at '— spec' with no folder starts its own brainstorm, seeded from PROGRAM's shared decisions, so its questions are few and its audit treats them as settled. Each child keeps its own design review, go-ahead and walk, and ships one PR; the last child's ship flips PROGRAM's header to SHIPPED."
         }
       ],
       "stamp": {
-        "hash": "7e8102699d12",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "a53ccfe999d0",
+        "version": "4.14.2",
+        "date": "2026-10-24"
       }
     },
     {

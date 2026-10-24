@@ -111,8 +111,13 @@ producer change), `hold: none`, `go-ahead`/`walk`/`verify: none`, the design key
 (A revision keeps the manifest it has and changes only what the amendment moves.)
 
 **When the record says `sized xl`** write `PROGRAM.md` per REFERENCE §PROGRAM.md instead — the children, their order
-(🔴 ordered by the contract), the decisions they share — plus a program manifest; take the one program
-go-ahead, then continue to §3.
+(🔴 ordered by the contract), the decisions they share — plus a program manifest; then take **the one
+program go-ahead as the program's review** (REFERENCE §The review, the program row) — never the file
+shown raw, never a bare Yes / No. Its last part ends in the lettered ways on, typed in chat:
+`A. Approve the program (recommended) — commit it and start <the first child>` · `B. Change something —
+say what` · `C. One spec instead — the whole thing as one lg spec`. A writes `go-ahead:` on the program
+manifest and continues to §3; B amends `PROGRAM.md` and shows that part again; C rewrites it as an lg
+SPEC (§2 above). Under `--auto`, A is taken and nothing is printed.
 
 ## 3. Prove it, commit, hand on
 
@@ -120,7 +125,9 @@ go-ahead, then continue to §3.
 node <builder>/scripts/check-obligations.mjs <folder>
 ```
 
-(At xl skip this: the script checks a SPEC.md, not a PROGRAM.md — self-review the PROGRAM instead.)
+(At xl skip this: the script checks a SPEC.md, not a PROGRAM.md — self-review the PROGRAM instead.
+The program's hand-off footer is one line — a program has no `state:` of its own, so no numbered
+form: `📍 <program>: designed (xl, <n> children) — next: /builder:resume --path <registry>/<program> — it picks <the first child> · or say go`.)
 
 Fix every FAIL; resolve every WARN or say why it stands. **Self-review** with fresh eyes: placeholder
 scan; internal consistency (does §Testing cover every interface §Contract declares? does every ✅ in

@@ -733,3 +733,13 @@ test('4.14.2: before a picker, the options are explained — never a second menu
   assert.match(conv, /The briefing explains; the picker is where you choose/)
   for (const f of ['skills/brainstorm/CONVERSATION.md', 'skills/spec/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md', 'skills/fleet/SKILL.md']) assert.match(read(f), /§Before a picker/, f)
 })
+
+test('4.14.3: the program go-ahead is the program review — never a raw file or a bare Yes / No', () => {
+  const spec = read('skills/spec/SKILL.md'), ref = read('skills/resume/REFERENCE.md'), resume = read('skills/resume/SKILL.md')
+  assert.match(spec, /the one\s+program go-ahead as the program's review/)
+  assert.match(spec, /never the file\s+shown raw, never a bare Yes \/ No/)
+  assert.match(spec, /A\. Approve the program \(recommended\)/)
+  assert.match(ref, /\*\*spec at xl — the one program go-ahead\*\*/)
+  assert.match(resume, /Pick the child the way the picker picks a feature\.\*\* Brief it first \(REFERENCE §Before a picker\)/)
+  assert.match(spec, /designed \(xl, <n> children\)/)
+})
