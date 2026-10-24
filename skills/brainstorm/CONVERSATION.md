@@ -166,11 +166,13 @@ Reply A, B or C — "go" is A.<  Or say what's wrong.>
   steer from §Steering — "just build it" still works and picks the build entry. Anything else is
   the user's own words: a correction, an answer, a question — handle it as such.
 - **Plain chat, not AskUserQuestion** — the list sits above the 📍 footer, which still follows it.
-  In a round (below) the list sits between the briefing and the picker, and a letter typed into the
-  picker's *Other* counts the same.
+- 🔴 **One menu per screen.** A lettered list only where the user types the reply in chat. A turn
+  that opens a picker (AskUserQuestion) puts every choice in the picker and prints **no** lettered
+  list beside it — the picker takes the input, so letters above it are a menu nobody can answer.
+  A round's ways on live inside its picker (§Rounds).
 - **Where:** the quick path (SKILL §Quick path), the intent playback, discovery's research offer,
-  the concepts (each concept lettered), every round, §Confirm, the small path's approval and the md+ hand-off (§Size and the
-  small path). The frame's open questions in discovery are the exception — they end in the
+  the concepts (each concept lettered), §Confirm, the small path's approval and the md+ hand-off (§Size and the
+  small path) — never a round, which has its picker. The frame's open questions in discovery are the exception — they end in the
   question, so the user answers in their own words.
 
 ## Rounds
@@ -202,18 +204,13 @@ Reply A, B or C — "go" is A.<  Or say what's wrong.>
      option. Options that differ in shape (a layout, a data shape, a message's wording) carry a
      `preview`.
 
-  Between the briefing and the picker, the round's ways on (§Ways on) — the same three every
-  round, so they become familiar:
-
-  ```
-  A. Answer below (recommended) — pick from the options; mine is first
-  B. Build it now — my recommendations settle the <k> open questions, then it's sized and <built here | specced>
-  C. That's enough — straight to the summary, what's open listed as assumptions
-  Reply in the picker — a letter in Other works too.
-  ```
-
-  B says where it lands: *built here* when the work looks xs/sm so far, *specced* otherwise — it is
-  the "just build it" steer (§Steering and --auto). C is "that's enough".
+  **The way ahead lives in the picker, never above it** (§Ways on — one menu per screen). Every
+  third round, while two or more questions are still open, the same AskUserQuestion carries a second
+  question, header `Keep going?`: **Keep answering (Recommended)** — the next question · **Build it
+  now** — my recommendations settle the <k> open questions, then it's sized and <built here |
+  specced> (the "just build it" steer, §Steering and --auto) · **That's enough** — straight to the
+  summary, what's open listed as assumptions. Its answer is applied after the round's own answer.
+  Other rounds carry no second question; the typed steers work in any round, in *Other* or in chat.
 
   Every option must be a real, defensible answer the user could pick — never a filler to reach two.
   A question with only one defensible answer is not a question: state it as `assumed` (below). A
