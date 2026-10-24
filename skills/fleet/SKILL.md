@@ -102,7 +102,8 @@ was asked for → stop here.
 
 **First, the test plan.** Every spec whose manifest has no `tests:` gets the test plan asked ahead
 — `/builder:plan` §Picking the test plan ahead: the slice table per spec when `PLAN.md` exists, the
-questions in plain words when it doesn't (up to four specs per AskUserQuestion call), **Land on?**
+questions in plain words when it doesn't (up to four specs per AskUserQuestion call, briefed first per
+REFERENCE §Before a picker), **Land on?**
 once for the run, the *Walk it yourself before it lands?* follow-up. Write and commit `tests:` and
 `target:`; the target becomes the run's `--into`. A spec already carrying `tests:` — or an old
 `profile:` line, which `profile.mjs` maps — isn't asked again. These choices set how much the agents
