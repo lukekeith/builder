@@ -20,6 +20,11 @@ agree — see [RELEASING.md](RELEASING.md).
   and keeps only a stub record. Every script is idempotent — after a crash, the skills re-run the
   same command — so unattended runs still finish with no human. Separators are `echo ---`, never
   a row of `=` (zsh). Design: `docs/specs/2026-10-23-lean-orchestrator-design.md`.
+- **Measured** against the 4.12.1 baseline: **tags 13m → 8m** (3 reps; 12–14 → 7–9, no overlap),
+  orchestrator 8.6 → 5.4 min, tokens −37%, cost $4.92 → $3.91, 7/7 accept every rep. **share 24m →
+  24m** (2 reps; 21–27 → 22–25): the orchestrator fell 14.5 → 12.6 min and tokens −19%, but the
+  big feature's time is now mostly its agents and slow test suites (9.3 min), which this release
+  doesn't touch (`bench/results/2026-10-24-1901-tags`, `…-1927-share`).
 
 ## 4.13.0
 

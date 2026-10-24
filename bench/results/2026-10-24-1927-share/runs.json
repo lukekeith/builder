@@ -1,0 +1,1541 @@
+{
+  "runId": "2026-10-24-1927-share",
+  "feature": "share",
+  "fixture": "notes-hub",
+  "model": null,
+  "startedAt": 1792801620391,
+  "endedAt": 1792804539979,
+  "versions": {
+    "builder": "4.14.0",
+    "superpowers": "7.0.0",
+    "gsd": null
+  },
+  "runs": [
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792801620461,
+      "endedAt": 1792802990651,
+      "ms": 1370190,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-1/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "52a19b3f-2612-4b58-96df-f93fef5dcbf0",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be shared through the server: share a note, get a short code, and anyone with the code\ncan fetch a copy of it until it expires.\n\nThe server (`apps/server`):\n\n- It keeps shared notes behind a share code: 8 characters, lower-case letters and digits, unique.\n  Shares live in the server's store, so with `STORE_FILE` set they survive a restart.\n- Every share has an owner. A request names its owner with the `x-owner-token` header; any\n  non-empty string is a token. Creating, listing and deleting shares need it (401 without it);\n  fetching one by its code does not.\n- `POST /shares` with `{ \"text\": \"...\", \"days\": n }` stores a share and answers 201\n  `{ \"code\", \"expiresAt\" }`. `days` is a whole number from 1 to 30 and defaults to 7; `expiresAt`\n  is the creation time plus that many days, as an ISO 8601 string. Empty text or a bad `days` is\n  a 400.\n- `GET /shares/:code` answers 200 `{ \"code\", \"text\", \"expiresAt\" }`; 404 for a code it doesn't\n  know, 410 once the share has expired (the current time is at or past `expiresAt`).\n- `GET /shares` answers 200 with the token's owner's unexpired shares, oldest first, each\n  `{ \"code\", \"text\", \"expiresAt\" }`.\n- `DELETE /shares/:code` deletes the owner's share: 204; 404 for an unknown code; 403 when the\n  share belongs to another owner.\n- Errors answer `{ \"error\": \"<message>\" }`, as the server's other routes do.\n- When `NOTES_NOW` is set (an ISO 8601 timestamp) the server takes it as the current time — that\n  is how expiry gets tested.\n\nThe CLI (`apps/cli`):\n\n- It reads the server's URL from `NOTES_SERVER` (e.g. `http://localhost:4000`). A command that\n  needs the server fails when `NOTES_SERVER` is unset (the message says so) or the server can't be\n  reached.\n- Its owner token is made on first use and kept in the notes file, so a different `NOTES_FILE` is\n  a different owner. Existing notes files keep working.\n- `notes share <id> [--days <n>]` shares the note's text and prints only the code. A missing note\n  fails with `no note <id>`.\n- `notes fetch <code>` adds the shared text as a new local note and prints its id. An unknown code\n  fails with `no share <code>`; an expired one fails with a message saying it has expired.\n- `notes shares` lists your unexpired shares, oldest first, one per line as\n  `<code>  <YYYY-MM-DD>  <text>`, the date being the UTC day of `expiresAt`. With none it prints\n  nothing.\n- `notes unshare <code>` deletes your share and prints `unshared <code>`; someone else's share or\n  an unknown code fails.\n- Every failure exits 1 with a one-line message on stderr.\n\nThe entry points stay `apps/cli/src/cli.mjs` and `apps/server/src/server.mjs` (which listens on\n`PORT`), each app's tests stay under its `test/` and run with `npm test --prefix apps/<app>`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and `npm test`\nis green.",
+          "totals": {
+            "ms": 174162,
+            "turns": 14,
+            "tokens": {
+              "input": 26,
+              "output": 16742,
+              "cacheRead": 788832
+            },
+            "costUsd": 1.1060064000000003,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792801625688,
+              "end": 1792801796368,
+              "ms": 170680,
+              "turns": 25,
+              "toolCalls": {
+                "Bash": 11,
+                "Write": 2
+              },
+              "files": [
+                "docs/features/note-sharing/SPEC.md",
+                "docs/features/note-sharing/MANIFEST.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ----; git ls",
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | tail -40; e",
+                "cat .claude/builder.md; for f in apps/server/src/*.mjs apps/cli/src/*.mjs apps/s",
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | grep -n \"St",
+                "/Users/lukekeith/www/builder/scripts/workspace note-sharing; cat .gitignore; nod",
+                "mkdir -p .builder/note-sharing && cat > .builder/note-sharing/brainstorm.md <<'E",
+                "sed -n 200,700p /tmp/spec-auto-note-sharing.txt",
+                "node -v; cat test-support/slow.mjs apps/cli/test/errors.test.mjs apps/server/tes",
+                "f=.builder/note-sharing/brainstorm.md && sed -i '' 's/^status: exploring/status:",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no",
+                "git status --short && git add docs/features/note-sharing && git commit -q -m \"do"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 73328,
+                  "after": "Bash f=.builder/note-sharing/brainstorm.md && sed -i '' 's/^status: exploring/status:"
+                },
+                {
+                  "ms": 32781,
+                  "after": "Bash sed -n 200,700p /tmp/spec-auto-note-sharing.txt"
+                },
+                {
+                  "ms": 8358,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace note-sharing; cat .gitignore; nod"
+                },
+                {
+                  "ms": 8197,
+                  "after": "Bash git status --short && git add docs/features/note-sharing && git commit -q -m \"do"
+                },
+                {
+                  "ms": 3799,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | tail -40; e"
+                }
+              ],
+              "split": {
+                "ms": 170680,
+                "orchestrator": 168727,
+                "agents": 0,
+                "tools": 1953
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 170680,
+            "orchestrator": 168727,
+            "agents": 0,
+            "tools": 1953
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-1/session-fleet-note-sharing-01.jsonl",
+          "lane": "build",
+          "sessionId": "00b7b870-e3f7-4633-95fd-1f3a1a773724",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-sharing --agent-walk",
+          "totals": {
+            "ms": 986558,
+            "turns": 47,
+            "tokens": {
+              "input": 88,
+              "output": 47940,
+              "cacheRead": 5401234
+            },
+            "costUsd": 4.736010900000003,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792801802783,
+              "end": 1792801815819,
+              "ms": 13036,
+              "turns": 6,
+              "toolCalls": {
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md 2>/dev/null | head -100; echo ---; cat docs/features/note",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs --help 2>&1 | head -",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/note-s"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3717,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs --help 2>&1 | head -"
+                },
+                {
+                  "ms": 3682,
+                  "after": "Bash cat .claude/builder.md 2>/dev/null | head -100; echo ---; cat docs/features/note"
+                },
+                {
+                  "ms": 2669,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/note-s"
+                },
+                {
+                  "ms": 939,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 606,
+                  "after": "Bash cat .claude/builder.md 2>/dev/null | head -100; echo ---; cat docs/features/note"
+                }
+              ],
+              "split": {
+                "ms": 13036,
+                "orchestrator": 12168,
+                "agents": 0,
+                "tools": 868
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792801815819,
+              "end": 1792801916531,
+              "ms": 100712,
+              "turns": 13,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat docs/features/note-sharing/SPEC.md; echo ----; find apps test-support -type ",
+                "for f in apps/server/src/*.mjs apps/server/test/helpers.mjs apps/cli/src/*.mjs a",
+                "node -v; grep -rn \"usage\" apps/*/test; cat -n apps/cli/test/errors.test.mjs | he",
+                "cd docs/features/note-sharing && python3 - <<'EOF'",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/note-sharing"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 43711,
+                  "after": "Bash for f in apps/server/src/*.mjs apps/server/test/helpers.mjs apps/cli/src/*.mjs a"
+                },
+                {
+                  "ms": 16150,
+                  "after": "Bash node -v; grep -rn \"usage\" apps/*/test; cat -n apps/cli/test/errors.test.mjs | he"
+                },
+                {
+                  "ms": 11188,
+                  "after": "Bash node -v; grep -rn \"usage\" apps/*/test; cat -n apps/cli/test/errors.test.mjs | he"
+                },
+                {
+                  "ms": 7919,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 7187,
+                  "after": "Bash cat docs/features/note-sharing/SPEC.md; echo ----; find apps test-support -type "
+                }
+              ],
+              "split": {
+                "ms": 100712,
+                "orchestrator": 100013,
+                "agents": 0,
+                "tools": 699
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792801916531,
+              "end": 1792802167878,
+              "ms": 251347,
+              "turns": 15,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 5,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/docs/features/note-sharing/PLAN.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -A15 ",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --recommend docs/fea",
+                "cd docs/features/note-sharing && python3 - <<'EOF'",
+                "python3 - <<'EOF'",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 133852,
+                  "after": "Bash cd docs/features/note-sharing && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 70054,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -A15 "
+                },
+                {
+                  "ms": 15031,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/docs/features/note-sharing/PLAN.md"
+                },
+                {
+                  "ms": 8150,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --recommend docs/fea"
+                },
+                {
+                  "ms": 5465,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/docs/features/note-sharing/PLAN.md"
+                }
+              ],
+              "split": {
+                "ms": 251347,
+                "orchestrator": 249996,
+                "agents": 0,
+                "tools": 1351
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792802167878,
+              "end": 1792802784867,
+              "ms": 616989,
+              "turns": 45,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 63,
+                "Agent": 8,
+                "Read": 15,
+                "Write": 6,
+                "Edit": 6
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-implementer-task-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-1-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/apps/server/test/shares.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/apps/server/src/app.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-implementer-task-2.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-2-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/apps/server/test/shares-owner.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-2-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/apps/server/test/notes-now.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/apps/server/src/server.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/README.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-3-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-implementer-task-4.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-4-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-implementer-task-5.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/task-5-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/review-final.diff",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-implementer-final-fix.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/final-fix-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-re-review-final-round-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/review-5117321..a703047.diff",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/final-fix-report.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; cat $B/skills/build/EXECUTION.md; node $B/script",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; $B/scripts/workspa",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/dispatch.mjs implementer docs/fe",
+                "git status --short && git log --oneline -3 && cat apps/server/src/app.mjs && ech",
+                "cat apps/server/src/http.mjs && echo ---- && cat apps/server/src/store.mjs && ec",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares.test.mjs 2>&1 | ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares.test.mjs 2>&1 | tail -60",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares.test.mjs 2>&1 | tail -12; ec",
+                "npm run check --prefix apps/server >/dev/null 2>&1; echo \"check exit=$?\"; git ad",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; git log --oneline ",
+                "git status --short && git log --oneline -3 && ls apps/server apps/server/src app",
+                "cat apps/server/test/helpers.mjs apps/server/src/http.mjs apps/server/package.js",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-owner.test.mjs 2",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs 2>&1 | grep -",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs apps/server/t",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs apps/server/t",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; git log --oneline ",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-19",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-19",
+                "cat /Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md | head ",
+                "cat -n apps/server/src/server.mjs && echo --- && ls apps/server/test test-suppor",
+                "SLOW_TESTS_MS=0 timeout 60 node --test apps/server/test/notes-now.test.mjs 2>&1 ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/notes-now.test.mjs 2>&1 | tail -70",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/notes-now.test.mjs 2>&1 | tail -12;",
+                "git status --short && git diff --stat && git diff -- apps/server/src/server.mjs ",
+                "git add apps/server README.md apps/server/test/notes-now.test.mjs && git commit ",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; git status --short",
+                "git ls-files | grep -v '^.builder' | head -60 && wc -l apps/cli/src/* apps/cli/t",
+                "cat apps/cli/src/store.mjs apps/cli/src/cli.mjs apps/cli/test/helpers.mjs apps/c",
+                "cat > apps/cli/test/helpers.mjs <<'EOF'",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/share.test.mjs 2>&1 | grep",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/share.test.mjs 2>&1 | head",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^ℹ (pas",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^ℹ (pas",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs apps/cli/test/errors.te",
+                "git add apps/cli && git commit -q -m \"feat(cli): notes share, with an owner toke",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; git log --oneline ",
+                "git status --short && ls apps/cli apps/cli/src apps/cli/test && cat apps/cli/src",
+                "cat > apps/cli/test/fetch-unshare.test.mjs <<'EOF'",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/fetch-unshare.test.mjs 2>&",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/fetch-unshare.test.mjs 2>&1 | grep -E ",
+                "python3 - <<'EOF'",
+                "git add apps/cli README.md && git commit -q -m \"feat(cli): notes fetch, shares a",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/dispatch.mjs final-review docs/f",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad",
+                "cat apps/cli/src/cli.mjs | head -80; cat apps/cli/test/errors.test.mjs; grep -rn",
+                "cat apps/cli/test/helpers.mjs | head -60; sed -n 80,140p apps/cli/src/cli.mjs; g",
+                "cat >> apps/cli/test/errors.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "cat > .builder/note-sharing/final-fix-report.md <<'EOF'",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/dispatch.mjs re-review docs/feat",
+                "grep -n \"catch\" -A8 apps/cli/src/cli.mjs | tail -25; grep -n \"fails\\|file\" apps/",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad",
+                "B=/Users/lukekeith/www/builder; cat $($B/scripts/workspace note-sharing)/../jobs",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start gates-final2 -- no",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad",
+                "B=/Users/lukekeith/www/builder; W=$($B/scripts/workspace note-sharing)/walk.md; ",
+                "B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad"
+              ],
+              "tests": [
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares.test.mjs 2>&1 | ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares.test.mjs 2>&1 | tail -60",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares.test.mjs 2>&1 | tail -12; ec",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-owner.test.mjs 2",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs 2>&1 | grep -",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs apps/server/t",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-owner.test.mjs apps/server/t",
+                "SLOW_TESTS_MS=0 timeout 60 node --test apps/server/test/notes-now.test.mjs 2>&1 ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/notes-now.test.mjs 2>&1 | tail -70",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/notes-now.test.mjs 2>&1 | tail -12;",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/share.test.mjs 2>&1 | grep",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/share.test.mjs 2>&1 | head",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^ℹ (pas",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^ℹ (pas",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs apps/cli/test/errors.te",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/fetch-unshare.test.mjs 2>&",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/fetch-unshare.test.mjs 2>&1 | grep -E ",
+                "grep -n \"catch\" -A8 apps/cli/src/cli.mjs | tail -25; grep -n \"fails\\|file\" apps/"
+              ],
+              "subagents": [
+                {
+                  "type": "agent",
+                  "first": "Implement Task 1: POST /shares and GET /shares/:code"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 2: list and delete shares"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 3: NOTES_NOW at startup"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 4: CLI plumbing and share"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 5: fetch, shares, unshare"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final review: note-sharing"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final-review fix wave"
+                },
+                {
+                  "type": "agent",
+                  "first": "Re-review final fix wave"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 62619,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start gates-final2 -- no"
+                },
+                {
+                  "ms": 62594,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/note-sharing; node $B/scripts/ad"
+                },
+                {
+                  "ms": 34346,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 30267,
+                  "after": "Read /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/review-final.diff"
+                },
+                {
+                  "ms": 13305,
+                  "after": "Bash cat apps/cli/src/store.mjs apps/cli/src/cli.mjs apps/cli/test/helpers.mjs apps/c"
+                }
+              ],
+              "split": {
+                "ms": 616989,
+                "orchestrator": 143419,
+                "agents": 344038,
+                "tools": 129532
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 982084,
+            "orchestrator": 505596,
+            "agents": 344038,
+            "tools": 132450
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-1/session-fleet-note-sharing-02.jsonl",
+          "lane": "walk",
+          "sessionId": "3f95ca51-18da-4db8-a1d6-b7c9c5666bcc",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-sharing --agent-walk",
+          "totals": {
+            "ms": 196421,
+            "turns": 28,
+            "tokens": {
+              "input": 50,
+              "output": 7480,
+              "cacheRead": 1791418
+            },
+            "costUsd": 1.5763350000000003,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792802791697,
+              "end": 1792802821910,
+              "ms": 30213,
+              "turns": 15,
+              "toolCalls": {
+                "Bash": 7
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/note-sharing/MAN",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/handoff.mjs read docs/features/n",
+                "export PORT=4917; curl -sf localhost:$PORT/health; echo \" smoke=$?\"; git log --o",
+                "sed -n 127,180p docs/features/note-sharing/SPEC.md",
+                "export PORT=4917; S=localhost:$PORT; T=$(mktemp -d)",
+                "grep -n \"D14\\|D15\\|D16\\|D17\" docs/features/note-sharing/SPEC.md | head; export P",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/note-s"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5988,
+                  "after": "Bash sed -n 127,180p docs/features/note-sharing/SPEC.md"
+                },
+                {
+                  "ms": 5125,
+                  "after": "Bash grep -n \"D14\\|D15\\|D16\\|D17\" docs/features/note-sharing/SPEC.md | head; export P"
+                },
+                {
+                  "ms": 3643,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/handoff.mjs read docs/features/n"
+                },
+                {
+                  "ms": 2835,
+                  "after": "Bash export PORT=4917; S=localhost:$PORT; T=$(mktemp -d)"
+                },
+                {
+                  "ms": 2400,
+                  "after": "Bash export PORT=4917; curl -sf localhost:$PORT/health; echo \" smoke=$?\"; git log --o"
+                }
+              ],
+              "split": {
+                "ms": 30213,
+                "orchestrator": 28611,
+                "agents": 0,
+                "tools": 1602
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792802821910,
+              "end": 1792802925793,
+              "ms": 103883,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 12,
+                "Agent": 1,
+                "Read": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1.fleet/note-sharing/.builder/note-sharing/dispatch-agent-walk-round-1.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur",
+                "git rev-parse --short HEAD && cat .builder/note-sharing/walk.md && ls apps apps/",
+                "E=.builder/note-sharing/agent-walk/round-1 && mkdir -p $E && echo \"PORT=$PORT\" &",
+                "E=.builder/note-sharing/agent-walk/round-1 && B=localhost:4917 && T1=walk-tok-a-",
+                "E=.builder/note-sharing/agent-walk/round-1 && B=localhost:4917 && source $E/toke",
+                "E=$PWD/.builder/note-sharing/agent-walk/round-1 && S=$(mktemp -d) && echo $S > $",
+                "E=$PWD/.builder/note-sharing/agent-walk/round-1 && S=$(cat $E/scratch-dir.txt) &",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace note-sharing)\"; cat \"$WS/ag",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace note-sharing)\"; grep -n \"\\[",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/condense.mjs docs/features/note-"
+              ],
+              "tests": [
+                "E=.builder/note-sharing/agent-walk/round-1 && mkdir -p $E && echo \"PORT=$PORT\" &"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Agent walk round 1"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 20371,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 10204,
+                  "after": "Bash E=$PWD/.builder/note-sharing/agent-walk/round-1 && S=$(mktemp -d) && echo $S > $"
+                },
+                {
+                  "ms": 9526,
+                  "after": "Bash E=.builder/note-sharing/agent-walk/round-1 && B=localhost:4917 && source $E/toke"
+                },
+                {
+                  "ms": 9465,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 8400,
+                  "after": "Bash E=.builder/note-sharing/agent-walk/round-1 && mkdir -p $E && echo \"PORT=$PORT\" &"
+                }
+              ],
+              "split": {
+                "ms": 103883,
+                "orchestrator": 20228,
+                "agents": 82907,
+                "tools": 748
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792802925793,
+              "end": 1792802970440,
+              "ms": 44647,
+              "turns": 22,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 8
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-gates -- no",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace note-sharing)\"; grep -nE \"P",
+                "git diff main...HEAD -- apps/server/src apps/cli/src",
+                "grep -nE \"^\\s*(find|all|insert|remove|get)\\b|find\\(|all\\(|remove\\(\" apps/server/",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-fast -- nod",
+                "grep -n \"ownerOr401(req)\\|has expired\\|belongs to another\\|t < Date.parse\\|const",
+                "F=docs/features/note-sharing/SPEC.md; sed -i '' -E '/^\\| SC[1-6] \\|/s/\\| planned",
+                "git merge --no-edit main; echo \"exit=$?\"; git status --short | head"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5695,
+                  "after": "Bash grep -n \"ownerOr401(req)\\|has expired\\|belongs to another\\|t < Date.parse\\|const"
+                },
+                {
+                  "ms": 5189,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start verify-fast -- nod"
+                },
+                {
+                  "ms": 4611,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 4238,
+                  "after": "Bash git diff main...HEAD -- apps/server/src apps/cli/src"
+                },
+                {
+                  "ms": 3399,
+                  "after": "Bash WS=\"$(/Users/lukekeith/www/builder/scripts/workspace note-sharing)\"; grep -nE \"P"
+                }
+              ],
+              "split": {
+                "ms": 44647,
+                "orchestrator": 42938,
+                "agents": 0,
+                "tools": 1709
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792802970440,
+              "end": 1792802985522,
+              "ms": 15082,
+              "turns": 4,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "ls docs/features/_archive 2>&1 | head; node /Users/lukekeith/www/builder/scripts"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 9417,
+                  "after": "Bash ls docs/features/_archive 2>&1 | head; node /Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 2977,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 2316,
+                  "after": "Bash ls docs/features/_archive 2>&1 | head; node /Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 365,
+                  "after": "Bash ls docs/features/_archive 2>&1 | head; node /Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 8,
+                  "after": "Skill builder:ship"
+                }
+              ],
+              "split": {
+                "ms": 15082,
+                "orchestrator": 14709,
+                "agents": 0,
+                "tools": 373
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 193825,
+            "orchestrator": 106486,
+            "agents": 82907,
+            "tools": 4432
+          }
+        }
+      ],
+      "totals": {
+        "ms": 1357141,
+        "turns": 89,
+        "tokens": {
+          "input": 164,
+          "output": 72162,
+          "cacheRead": 7981484
+        },
+        "costUsd": 7.418352300000003,
+        "split": {
+          "ms": 1346589,
+          "orchestrator": 780809,
+          "agents": 426945,
+          "tools": 138835
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 9,
+          "failed": 0,
+          "total": 9
+        },
+        "fixture": {
+          "passed": 18,
+          "failed": 0,
+          "total": 18
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-1",
+      "gitLog": [
+        "63aa20e merge(note-sharing): agent-verified, not human-tested",
+        "02da174 docs(note-sharing): note-sharing shipped into main",
+        "f962ceb docs(note-sharing): note-sharing — verify READY",
+        "e174acf docs(note-sharing): note-sharing agent signed off (not human-tested)",
+        "e00da67 chore(note-sharing): note-sharing — built, awaiting the walk",
+        "0e7414b chore(note-sharing): note-sharing — phases closed, awaiting the walk lane",
+        "a703047 test(server): T0 is a plain const, not an export",
+        "51466b4 fix(cli): a corrupt notes file fails with one stderr line",
+        "5117321 feat(cli): notes fetch, shares and unshare",
+        "2a047f8 feat(cli): notes share, with an owner token in the notes file",
+        "81ef7f4 chore(note-sharing): note-sharing — contract frozen at phase 1",
+        "9cf5095 feat(server): NOTES_NOW fixes the clock at startup",
+        "d82925a feat(server): list and delete an owner's shares",
+        "68553bb feat(server): POST /shares and GET /shares/:code",
+        "0c20d6a chore(note-sharing): note-sharing — go-ahead (own · risk · end)",
+        "6a566aa docs(note-sharing): plan note-sharing",
+        "60f2cae docs(note-sharing): note-sharing audited",
+        "cad4161 chore(note-sharing): agent walk on",
+        "2cd8a85 docs(note-sharing): design note-sharing",
+        "003b9e0 fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792802990717,
+      "endedAt": 1792804539979,
+      "ms": 1549262,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-2/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "f517062e-5895-4138-bcd4-fe9a2333b4dc",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be shared through the server: share a note, get a short code, and anyone with the code\ncan fetch a copy of it until it expires.\n\nThe server (`apps/server`):\n\n- It keeps shared notes behind a share code: 8 characters, lower-case letters and digits, unique.\n  Shares live in the server's store, so with `STORE_FILE` set they survive a restart.\n- Every share has an owner. A request names its owner with the `x-owner-token` header; any\n  non-empty string is a token. Creating, listing and deleting shares need it (401 without it);\n  fetching one by its code does not.\n- `POST /shares` with `{ \"text\": \"...\", \"days\": n }` stores a share and answers 201\n  `{ \"code\", \"expiresAt\" }`. `days` is a whole number from 1 to 30 and defaults to 7; `expiresAt`\n  is the creation time plus that many days, as an ISO 8601 string. Empty text or a bad `days` is\n  a 400.\n- `GET /shares/:code` answers 200 `{ \"code\", \"text\", \"expiresAt\" }`; 404 for a code it doesn't\n  know, 410 once the share has expired (the current time is at or past `expiresAt`).\n- `GET /shares` answers 200 with the token's owner's unexpired shares, oldest first, each\n  `{ \"code\", \"text\", \"expiresAt\" }`.\n- `DELETE /shares/:code` deletes the owner's share: 204; 404 for an unknown code; 403 when the\n  share belongs to another owner.\n- Errors answer `{ \"error\": \"<message>\" }`, as the server's other routes do.\n- When `NOTES_NOW` is set (an ISO 8601 timestamp) the server takes it as the current time — that\n  is how expiry gets tested.\n\nThe CLI (`apps/cli`):\n\n- It reads the server's URL from `NOTES_SERVER` (e.g. `http://localhost:4000`). A command that\n  needs the server fails when `NOTES_SERVER` is unset (the message says so) or the server can't be\n  reached.\n- Its owner token is made on first use and kept in the notes file, so a different `NOTES_FILE` is\n  a different owner. Existing notes files keep working.\n- `notes share <id> [--days <n>]` shares the note's text and prints only the code. A missing note\n  fails with `no note <id>`.\n- `notes fetch <code>` adds the shared text as a new local note and prints its id. An unknown code\n  fails with `no share <code>`; an expired one fails with a message saying it has expired.\n- `notes shares` lists your unexpired shares, oldest first, one per line as\n  `<code>  <YYYY-MM-DD>  <text>`, the date being the UTC day of `expiresAt`. With none it prints\n  nothing.\n- `notes unshare <code>` deletes your share and prints `unshared <code>`; someone else's share or\n  an unknown code fails.\n- Every failure exits 1 with a one-line message on stderr.\n\nThe entry points stay `apps/cli/src/cli.mjs` and `apps/server/src/server.mjs` (which listens on\n`PORT`), each app's tests stay under its `test/` and run with `npm test --prefix apps/<app>`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and `npm test`\nis green.",
+          "totals": {
+            "ms": 160169,
+            "turns": 14,
+            "tokens": {
+              "input": 26,
+              "output": 14775,
+              "cacheRead": 817687
+            },
+            "costUsd": 1.0805574,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792802995923,
+              "end": 1792803152736,
+              "ms": 156813,
+              "turns": 23,
+              "toolCalls": {
+                "Bash": 12,
+                "Write": 1
+              },
+              "files": [
+                "docs/features/share-notes/SPEC.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ----; git ls",
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm > /tmp/bs-docs.txt",
+                "grep -n \"Steering and --auto\" -A60 /tmp/bs-docs.txt | sed -n '1,120p'",
+                "for f in apps/server/src/*.mjs apps/cli/src/*.mjs apps/server/test/helpers.mjs a",
+                "awk '/^## Steering and --auto/,/^--- skills\\/resume/' /tmp/bs-docs.txt | head -8",
+                "/Users/lukekeith/www/builder/scripts/workspace share-notes; git check-ignore -v ",
+                "cat > .builder/share-notes/brainstorm.md <<'EOF'",
+                "tail -c 16200 /tmp/spec-docs.txt",
+                "node -v; cat apps/cli/test/errors.test.mjs apps/server/test/errors.test.mjs; ls ",
+                "sed -i '' 's/^status: exploring/status: sized lg/; s/^(pending)$/lg — evidence: ",
+                "cat > docs/features/share-notes/MANIFEST.md <<EOF",
+                "git add docs/features/share-notes && git commit -q -m \"docs(share-notes): design"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 68867,
+                  "after": "Bash sed -i '' 's/^status: exploring/status: sized lg/; s/^(pending)$/lg — evidence: "
+                },
+                {
+                  "ms": 34567,
+                  "after": "Bash tail -c 16200 /tmp/spec-docs.txt"
+                },
+                {
+                  "ms": 7975,
+                  "after": "Bash git add docs/features/share-notes && git commit -q -m \"docs(share-notes): design"
+                },
+                {
+                  "ms": 5848,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace share-notes; git check-ignore -v "
+                },
+                {
+                  "ms": 3688,
+                  "after": "Bash node -v; cat apps/cli/test/errors.test.mjs apps/server/test/errors.test.mjs; ls "
+                }
+              ],
+              "split": {
+                "ms": 156813,
+                "orchestrator": 155091,
+                "agents": 0,
+                "tools": 1722
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 156813,
+            "orchestrator": 155091,
+            "agents": 0,
+            "tools": 1722
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-2/session-fleet-share-notes-01.jsonl",
+          "lane": "build",
+          "sessionId": "e4aacb6a-36ad-4a53-9dc9-b77eaa0b232c",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/share-notes --agent-walk",
+          "totals": {
+            "ms": 1081566,
+            "turns": 43,
+            "tokens": {
+              "input": 78,
+              "output": 42747,
+              "cacheRead": 4378462
+            },
+            "costUsd": 4.1261822000000015,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792803162733,
+              "end": 1792803172329,
+              "ms": 9596,
+              "turns": 5,
+              "toolCalls": {
+                "Bash": 2
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/share-notes/MANI",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/share-notes "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4317,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/share-notes/MANI"
+                },
+                {
+                  "ms": 2490,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/share-notes "
+                },
+                {
+                  "ms": 821,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 633,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/share-notes/MANI"
+                },
+                {
+                  "ms": 539,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/share-notes "
+                }
+              ],
+              "split": {
+                "ms": 9596,
+                "orchestrator": 8800,
+                "agents": 0,
+                "tools": 796
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792803172329,
+              "end": 1792803254813,
+              "ms": 82484,
+              "turns": 16,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat docs/features/share-notes/SPEC.md; echo ----; find apps test-support -type f",
+                "for f in apps/server/src/*.mjs apps/cli/src/*.mjs apps/server/test/helpers.mjs a",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/sh",
+                "cd apps/server && SLOW_TESTS_MS=0 node -e \"",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/share-notes "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 31884,
+                  "after": "Bash for f in apps/server/src/*.mjs apps/cli/src/*.mjs apps/server/test/helpers.mjs a"
+                },
+                {
+                  "ms": 18484,
+                  "after": "Bash cd apps/server && SLOW_TESTS_MS=0 node -e \""
+                },
+                {
+                  "ms": 7165,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 5024,
+                  "after": "Bash cd apps/server && SLOW_TESTS_MS=0 node -e \""
+                },
+                {
+                  "ms": 4433,
+                  "after": "Bash cat docs/features/share-notes/SPEC.md; echo ----; find apps test-support -type f"
+                }
+              ],
+              "split": {
+                "ms": 82484,
+                "orchestrator": 81682,
+                "agents": 0,
+                "tools": 802
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792803254813,
+              "end": 1792803471709,
+              "ms": 216896,
+              "turns": 17,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/docs/features/share-notes/PLAN.md"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md; sed -n '/## Compani",
+                "sed -n 79,200p .claude/builder.md; cat apps/cli/test/add-list.test.mjs apps/serv",
+                "cat apps/cli/test/errors.test.mjs apps/cli/test/show-rm.test.mjs; ls /Users/luke",
+                "cd docs/features/share-notes && node -e \"",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "B=/Users/lukekeith/www/builder/scripts; grep -E \"^(tests|target|profile):\" docs/"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 110958,
+                  "after": "Bash cat apps/cli/test/errors.test.mjs apps/cli/test/show-rm.test.mjs; ls /Users/luke"
+                },
+                {
+                  "ms": 48021,
+                  "after": "Bash sed -n 79,200p .claude/builder.md; cat apps/cli/test/add-list.test.mjs apps/serv"
+                },
+                {
+                  "ms": 10123,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/docs/features/share-notes/PLAN.md"
+                },
+                {
+                  "ms": 10123,
+                  "after": "Bash cd docs/features/share-notes && node -e \""
+                },
+                {
+                  "ms": 7136,
+                  "after": "Bash cat apps/cli/test/errors.test.mjs apps/cli/test/show-rm.test.mjs; ls /Users/luke"
+                }
+              ],
+              "split": {
+                "ms": 216896,
+                "orchestrator": 214448,
+                "agents": 0,
+                "tools": 2448
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792803471709,
+              "end": 1792804236994,
+              "ms": 765285,
+              "turns": 42,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 56,
+                "Agent": 7,
+                "Read": 15,
+                "Write": 6,
+                "Edit": 10
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-implementer-task-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-1-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/server/test/shares-api.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/server/src/app.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/server/test/helpers.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/server/src/server.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/README.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-implementer-task-2.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-2-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-2-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-implementer-task-4.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-4-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-implementer-task-5.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-5-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/cli/test/shares-unshare.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/apps/cli/src/cli.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/task-5-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-implementer-final-fix.md",
+                "/Users/lukekeith/www/builder/skills/receiving-code-review/SKILL.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-re-review-final-round-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/review-21b236d..99bb623.diff",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/final-fix-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/final-re-review.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs build 2>&1 | sed -n '/^# /p;/",
+                "F=docs/features/share-notes; node /Users/lukekeith/www/builder/scripts/advance.m",
+                "git status --short && git log --oneline -3 && ls apps/server apps/server/src app",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-api.test.mjs 2>&",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs 2>&1 | grep -E ",
+                "sed -n 6,12p README.md && SLOW_TESTS_MS=0 node --test apps/server/test/shares-ap",
+                "git add apps/server/src/app.mjs apps/server/src/server.mjs apps/server/test/help",
+                "git show --stat HEAD | tail -8; git show HEAD -- apps/server/src/server.mjs READ",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv",
+                "git status --short && git log --oneline -3 && ls apps/server apps/server/src app",
+                "cat apps/server/test/shares-api.test.mjs && echo ---- && cat apps/server/test/he",
+                "cat >> apps/server/test/shares-api.test.mjs <<'EOF'",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-api.test.mjs > /",
+                "which timeout; SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs > /tmp/share-gr",
+                "npm run check --prefix apps/server; echo \"check exit $?\"; git status --short",
+                "git add README.md apps/server/src/app.mjs apps/server/test/shares-api.test.mjs &",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; git show --",
+                "git ls-files | grep -v '^.builder' | head -50",
+                "cat -n apps/cli/src/cli.mjs; cat apps/cli/test/helpers.mjs; grep -rn \"notes(\" ap",
+                "cat > apps/cli/test/helpers.mjs <<'EOF'",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^# (pas",
+                "ps -axo pid,ppid,command | grep -E \"share-notes.*(share.test|server.mjs)\" | grep",
+                "ps -p 67541 -o pid,command | cat; kill 67541 67560; sleep 1; ps -p 67541,67560 |",
+                "python3 - <<'EOF'",
+                "cat > .builder/share-notes/task-4-report.md <<'EOF'",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv",
+                "git status --short && git log --oneline -3 && cat apps/cli/src/cli.mjs && echo -",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/shares-unshare.test.mjs 2>",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/shares-unshare.test.mjs 2>&1 | tail -4",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/shares-unshare.test.mjs apps/cli/test/",
+                "git status --short && git add apps/cli/src/cli.mjs apps/cli/test/shares-unshare.",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv",
+                "node /Users/lukekeith/www/builder/scripts/dispatch.mjs final-review docs/feature",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "W=/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/tmp.IyXhhaV15m/wt; cd \"$W\"; S",
+                "pkill -f \"tmp.IyXhhaV15m/wt/apps/server/src/server.mjs\"; pkill -f \"tmp.IyXhhaV15",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192",
+                "node /Users/lukekeith/www/builder/scripts/dispatch.mjs re-review docs/features/s",
+                "B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start share-gates2 -- no",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv",
+                "WS=$(/Users/lukekeith/www/builder/scripts/workspace share-notes); node -e \"",
+                "F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv"
+              ],
+              "tests": [
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-api.test.mjs 2>&",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs 2>&1 | grep -E ",
+                "sed -n 6,12p README.md && SLOW_TESTS_MS=0 node --test apps/server/test/shares-ap",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/server/test/shares-api.test.mjs > /",
+                "which timeout; SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs ",
+                "SLOW_TESTS_MS=0 node --test apps/server/test/shares-api.test.mjs > /tmp/share-gr",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^# (pas",
+                "SLOW_TESTS_MS=0 timeout 120 node --test apps/cli/test/shares-unshare.test.mjs 2>",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/shares-unshare.test.mjs 2>&1 | tail -4",
+                "SLOW_TESTS_MS=0 node --test apps/cli/test/shares-unshare.test.mjs apps/cli/test/",
+                "W=/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/tmp.IyXhhaV15m/wt; cd \"$W\"; S",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+              ],
+              "subagents": [
+                {
+                  "type": "agent",
+                  "first": "Implement Task 1: create and fetch a share"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 2: list and delete shares"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 4: share and fetch"
+                },
+                {
+                  "type": "agent",
+                  "first": "Implement Task 5: shares and unshare"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final review: share-notes"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final fix wave: share-notes"
+                },
+                {
+                  "type": "agent",
+                  "first": "Re-review final fix round 1"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 120236,
+                  "after": "Bash SLOW_TESTS_MS=0 node --test apps/cli/test/share.test.mjs 2>&1 | grep -E \"^# (pas"
+                },
+                {
+                  "ms": 53167,
+                  "after": "Bash F=docs/features/share-notes; B=/Users/lukekeith/www/builder/scripts; node $B/adv"
+                },
+                {
+                  "ms": 42153,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 36132,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-192"
+                },
+                {
+                  "ms": 32008,
+                  "after": "Bash B=/Users/lukekeith/www/builder/scripts; node $B/job.mjs start share-gates2 -- no"
+                }
+              ],
+              "split": {
+                "ms": 765285,
+                "orchestrator": 142630,
+                "agents": 533663,
+                "tools": 88992
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 1074261,
+            "orchestrator": 447560,
+            "agents": 533663,
+            "tools": 93038
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-24-1927-share/builder-2/session-fleet-share-notes-02.jsonl",
+          "lane": "walk",
+          "sessionId": "9c1ea57d-6885-41cb-bd9d-74c3a7b13d82",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/share-notes --agent-walk",
+          "totals": {
+            "ms": 293745,
+            "turns": 28,
+            "tokens": {
+              "input": 50,
+              "output": 10407,
+              "cacheRead": 1728906
+            },
+            "costUsd": 2.0668412,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 4.14.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792804244081,
+              "end": 1792804283410,
+              "ms": 39329,
+              "turns": 19,
+              "toolCalls": {
+                "Bash": 10
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/share-notes/MANI",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/handoff.mjs read docs/features/s",
+                "export PORT=4917; curl -sf localhost:$PORT/health; echo \" smoke=$?\"; git log --o",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start gates-walk -- node",
+                "grep -n -A25 '^## Contract' docs/features/share-notes/SPEC.md | head -50",
+                "P=localhost:4917; T=readiness-$$;",
+                "D=$(mktemp -d); export NOTES_FILE=$D/a.json NOTES_SERVER=http://localhost:4917; ",
+                "D=$(mktemp -d); export NOTES_FILE=$D/a.json NOTES_SERVER=http://localhost:4917; ",
+                "grep -n -i 'notes fetch' docs/features/share-notes/SPEC.md | head -5",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/share-"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4899,
+                  "after": "Bash D=$(mktemp -d); export NOTES_FILE=$D/a.json NOTES_SERVER=http://localhost:4917; "
+                },
+                {
+                  "ms": 4491,
+                  "after": "Bash grep -n -A25 '^## Contract' docs/features/share-notes/SPEC.md | head -50"
+                },
+                {
+                  "ms": 3649,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/handoff.mjs read docs/features/s"
+                },
+                {
+                  "ms": 2648,
+                  "after": "Bash D=$(mktemp -d); export NOTES_FILE=$D/a.json NOTES_SERVER=http://localhost:4917; "
+                },
+                {
+                  "ms": 2434,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/share-"
+                }
+              ],
+              "split": {
+                "ms": 39329,
+                "orchestrator": 36750,
+                "agents": 0,
+                "tools": 2579
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792804283410,
+              "end": 1792804429489,
+              "ms": 146079,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 13,
+                "Agent": 1,
+                "Read": 1,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/dispatch-agent-walk-round-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/agent-walk/round-1/report.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur",
+                "cat .builder/share-notes/walk.md && git rev-parse --short HEAD && ls apps apps/*",
+                "mkdir -p .builder/share-notes/agent-walk/round-1 && sed -n 1,200p apps/cli/src/c",
+                "E=.builder/share-notes/agent-walk/round-1 && (cd apps/server && node --test --te",
+                "E=.builder/share-notes/agent-walk/round-1 && {",
+                "E=.builder/share-notes/agent-walk/round-1 && U=localhost:4917 && {",
+                "E=.builder/share-notes/agent-walk/round-1 && U=localhost:4917 && {",
+                "E=$PWD/.builder/share-notes/agent-walk/round-1 && S=$(mktemp -d) && export NOTES",
+                "mkdir -p /tmp/walk-share-notes-r1 && cat > /tmp/walk-share-notes-r1/lib.sh <<'EO",
+                "cat > /tmp/walk-share-notes-r1/e2e.sh <<'EOF'",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace share-notes)\"; grep -n -i -",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace share-notes)\"; sed -n 9,13p",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace share-notes)\"; cat > \"$WS/a"
+              ],
+              "tests": [
+                "E=.builder/share-notes/agent-walk/round-1 && (cd apps/server && node --test --te"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Agent walk round 1"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 21082,
+                  "after": "Bash cat > /tmp/walk-share-notes-r1/e2e.sh <<'EOF'"
+                },
+                {
+                  "ms": 20096,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2.fleet/share-notes/.builder/share-notes/agent-walk/round-1/report.md"
+                },
+                {
+                  "ms": 14140,
+                  "after": "Bash WS=\"$(/Users/lukekeith/www/builder/scripts/workspace share-notes)\"; sed -n 9,13p"
+                },
+                {
+                  "ms": 10338,
+                  "after": "Bash E=$PWD/.builder/share-notes/agent-walk/round-1 && S=$(mktemp -d) && export NOTES"
+                },
+                {
+                  "ms": 8789,
+                  "after": "Bash WS=\"$(/Users/lukekeith/www/builder/scripts/workspace share-notes)\"; sed -n 9,13p"
+                }
+              ],
+              "split": {
+                "ms": 146079,
+                "orchestrator": 42814,
+                "agents": 102600,
+                "tools": 665
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792804429489,
+              "end": 1792804519549,
+              "ms": 90060,
+              "turns": 14,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 8,
+                "Agent": 1
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace share-notes)\"; node $",
+                "B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace share-notes)\"; node $",
+                "git diff main...HEAD --stat -- apps test-support README.md && cat docs/features/",
+                "cat -n apps/server/src/app.mjs apps/server/src/server.mjs apps/server/src/http.m",
+                "cat -n apps/cli/src/cli.mjs apps/cli/src/store.mjs; git diff main...HEAD --stat ",
+                "git diff main...HEAD -- apps/server/src apps/server/test/helpers.mjs apps/cli/te",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/share-",
+                "git merge --no-edit main; git log --oneline -1"
+              ],
+              "tests": [],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Contract parity and spec trace"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 28420,
+                  "after": "Bash git diff main...HEAD -- apps/server/src apps/server/test/helpers.mjs apps/cli/te"
+                },
+                {
+                  "ms": 16450,
+                  "after": "Bash cat -n apps/cli/src/cli.mjs apps/cli/src/store.mjs; git diff main...HEAD --stat "
+                },
+                {
+                  "ms": 6808,
+                  "after": "Bash B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace share-notes)\"; node $"
+                },
+                {
+                  "ms": 6706,
+                  "after": "Bash B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace share-notes)\"; node $"
+                },
+                {
+                  "ms": 3538,
+                  "after": "Skill builder:verify"
+                }
+              ],
+              "split": {
+                "ms": 90060,
+                "orchestrator": 35275,
+                "agents": 52873,
+                "tools": 1912
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792804519549,
+              "end": 1792804534925,
+              "ms": 15376,
+              "turns": 4,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "ls docs/features/_archive/share-notes 2>/dev/null && echo COLLISION; node /Users"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 9242,
+                  "after": "Bash ls docs/features/_archive/share-notes 2>/dev/null && echo COLLISION; node /Users"
+                },
+                {
+                  "ms": 3469,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 2301,
+                  "after": "Bash ls docs/features/_archive/share-notes 2>/dev/null && echo COLLISION; node /Users"
+                },
+                {
+                  "ms": 356,
+                  "after": "Bash ls docs/features/_archive/share-notes 2>/dev/null && echo COLLISION; node /Users"
+                },
+                {
+                  "ms": 9,
+                  "after": "Skill builder:ship"
+                }
+              ],
+              "split": {
+                "ms": 15376,
+                "orchestrator": 15011,
+                "agents": 0,
+                "tools": 365
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 290844,
+            "orchestrator": 129850,
+            "agents": 155473,
+            "tools": 5521
+          }
+        }
+      ],
+      "totals": {
+        "ms": 1535480,
+        "turns": 85,
+        "tokens": {
+          "input": 154,
+          "output": 67929,
+          "cacheRead": 6925055
+        },
+        "costUsd": 7.273580800000001,
+        "split": {
+          "ms": 1521918,
+          "orchestrator": 732501,
+          "agents": 689136,
+          "tools": 100281
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 9,
+          "failed": 0,
+          "total": 9
+        },
+        "fixture": {
+          "passed": 18,
+          "failed": 0,
+          "total": 18
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-24-1927-share/builder-2",
+      "gitLog": [
+        "cefd326 merge(share-notes): agent-verified, not human-tested",
+        "fd08ddd docs(share-notes): share-notes shipped into main",
+        "13bc166 docs(share-notes): share-notes — verify READY",
+        "bb179d0 docs(share-notes): share-notes agent signed off (not human-tested)",
+        "6470dd1 chore(share-notes): share-notes — built, awaiting the walk",
+        "bb11623 chore(share-notes): share-notes — phases closed, awaiting the walk lane",
+        "99bb623 fix(cli): final review findings",
+        "21b236d feat(cli): list and take down shares",
+        "3240371 feat(cli): share and fetch notes through the server",
+        "a9271b1 chore(share-notes): share-notes — contract frozen at phase 1",
+        "8a3d668 feat(server): list and delete shares",
+        "7c60925 feat(server): create and fetch shares",
+        "f5a1dab chore(share-notes): share-notes — go-ahead (own · risk · end)",
+        "7e9d5eb docs(share-notes): plan share-notes",
+        "b497d06 docs(share-notes): share-notes audited",
+        "aa0bbf6 chore(share-notes): agent walk on",
+        "580b8e1 docs(share-notes): design share-notes",
+        "50bca60 fixture"
+      ]
+    }
+  ]
+}
