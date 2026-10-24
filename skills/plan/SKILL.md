@@ -226,7 +226,9 @@ A's description: no `agent_walk:` block → `build it now, in this session`; wit
 in its own worktree and land it on <target>`, the target being the config's `merge_into` (default
 `base_branch`). A reply naming another branch with A ("A, onto develop") lands it there.
 
-**3. B → one AskUserQuestion, three questions** (four with an `agent_walk:` block: **Land on?** last).
+**3. B → one AskUserQuestion, three questions** (four with an `agent_walk:` block: **Land on?** last),
+briefed first in chat per REFERENCE §Before a picker — each option explained with its cost, and why
+the recommended plan is first.
 Each option's description **leads with what it costs for this plan**: run
 `node <builder>/scripts/profile.mjs --cost <folder> --tests "<value>"` for each option — its own lever
 set, the other two held where they stand — → `{ ownRuns, suiteRuns, reviews, walk, minutes }`, and
