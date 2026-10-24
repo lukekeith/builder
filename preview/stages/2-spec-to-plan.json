@@ -22,7 +22,7 @@
         },
         {
           "role": "claude",
-          "text": "The design conversation settled most of cert-tags. Drafting the spec left two choices it never ruled on — both change what an owner sees or what data is kept, so they're yours. Everything else (limits, field types, error codes) I'll record as assumed and list at the end.\n\n**Q1 — What deleting a tag does**\n\nWhen an owner deletes a tag, what happens to the certificates that carry it?\n\n**Why it matters:** this decides whether a delete can silently lose information an owner put on many certificates, and whether a delete can fail.\n**What it affects:** the `CertificateTag` join rows in `api`, the tag manager in `web` and `mobile`, and the confirm dialog both consumers show.\n**Recommendation:** remove the tag from every certificate, after a confirm that names how many carry it — it's how the existing \"delete owner group\" flow behaves (`apps/web/src/features/owners/DeleteGroupDialog.tsx:22`), and it never leaves an owner stuck on a delete they can't finish."
+          "text": "The design conversation settled most of cert-tags. Drafting the spec left two choices it never ruled on — both change what an owner sees or what data is kept, so they're yours. Everything else (limits, field types, error codes) I'll record as assumed and list at the end.\n\n**Q1 — What deleting a tag does**\n\nWhen an owner deletes a tag, what happens to the certificates that carry it?\n\n**Why it matters:** this decides whether a delete can silently lose information an owner put on many certificates, and whether a delete can fail.\n**What it affects:** the `CertificateTag` join rows in `api`, the tag manager in `web` and `mobile`, and the confirm dialog both consumers show.\n**Your options:**\n- **Untag everywhere (Recommended)** — delete removes the tag from every certificate after a confirm showing how many carry it. Simple, and matches the owner-group delete; the tagging is gone for good.\n- **Block while in use** — delete is refused until no certificate carries the tag. Nothing is lost by accident, but the owner must untag each certificate first.\n- **Archive instead** — the tag is hidden from pickers and filters but stays on certificates. Nothing is lost; adds an archived state and a way to restore it.\n\n**Why Untag everywhere:** it's how the existing \"delete owner group\" flow behaves (`apps/web/src/features/owners/DeleteGroupDialog.tsx:22`), and it never leaves an owner stuck on a delete they can't finish. You give up the tagging on those certificates — the confirm's count is the only warning."
         },
         {
           "role": "picker",
@@ -50,7 +50,7 @@
         },
         {
           "role": "claude",
-          "text": "**Q2 — Who sees a certificate's tags**\n\nShould a certificate's tags be visible to everyone who can see the certificate, or only to its owner?\n\n**Why it matters:** tags are free text owners type; showing them to other viewers makes a private note public.\n**What it affects:** the `tags` field on `GET /certificates` and `GET /certificates/:id` in `api`, the chips on the list in `web` and `mobile`, and the read-only owner view.\n**Recommendation:** owner only — the owner view already hides `notes` from non-owners (`apps/api/src/routes/certificates.ts:61`), and tags are the same kind of owner-authored text."
+          "text": "**Q2 — Who sees a certificate's tags**\n\nShould a certificate's tags be visible to everyone who can see the certificate, or only to its owner?\n\n**Why it matters:** tags are free text owners type; showing them to other viewers makes a private note public.\n**What it affects:** the `tags` field on `GET /certificates` and `GET /certificates/:id` in `api`, the chips on the list in `web` and `mobile`, and the read-only owner view.\n**Your options:**\n- **Owner only (Recommended)** — tags are returned only to the certificate's owner; other viewers see no chips and can't filter by them.\n- **Everyone who can see it** — every viewer sees the chips and can filter by them. Tags become shared labels, so owners must not put private text in them.\n\n**Why Owner only:** the owner view already hides `notes` from non-owners (`apps/api/src/routes/certificates.ts:61`), and tags are the same kind of owner-authored text. You give up tags as labels other viewers can filter by."
         },
         {
           "role": "picker",
@@ -78,9 +78,9 @@
         }
       ],
       "stamp": {
-        "hash": "d9f45d07d54a",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "a15a7f46b3d1",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -212,7 +212,7 @@
         },
         {
           "role": "claude",
-          "text": "One thing in the existing code needs your call before I write the pass up.\n\n**A defect in app code, not in the spec:** `PATCH /certificates/:id` never checks that the caller owns the certificate (`apps/api/src/routes/certificates.ts:88`) — any signed-in user can rename anyone's certificate. The new tag endpoints sit next to it and would copy the same handler shape.\n\n**Recommendation:** fix it in this feature — the tag endpoints need the same ownership guard, so writing it once covers both, and it's one task in the api phase.",
+          "text": "One thing in the existing code needs your call before I write the pass up.\n\n**A defect in app code, not in the spec:** `PATCH /certificates/:id` never checks that the caller owns the certificate (`apps/api/src/routes/certificates.ts:88`) — any signed-in user can rename anyone's certificate. The new tag endpoints sit next to it and would copy the same handler shape.\n\n**Your options:**\n- **Code fix here (Recommended)** — a task in the api phase adds the owner guard to `PATCH /certificates/:id` and the new tag endpoints, with a test for a non-owner. The spec gains one §Findings row; the api phase grows by one task.\n- **Doc fix only** — the spec records it as a known risk, out of scope. The tag endpoints get their own guard, but PATCH stays open until someone fixes it separately.\n\n**Why Code fix here:** the tag endpoints need the same ownership guard, so writing it once covers both, and it's one task. You give up keeping this feature's scope to tags alone.",
           "inferred": true
         },
         {
@@ -263,8 +263,8 @@
       ],
       "stamp": {
         "hash": "76b15566ae58",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -296,7 +296,7 @@
         },
         {
           "role": "claude",
-          "text": "The audit left two open decisions. Both are below in one question — the recommendation is first on each.",
+          "text": "The audit left two open decisions, both in the picker below — the recommendation first on each.\n\n**Several tags in the filter (D9)** — when an owner filters by more than one tag, which certificates show? It decides whether adding a tag narrows or widens the list.\n\n**Your options:**\n- **Match all tags (Recommended)** — only certificates carrying every selected tag show; each extra tag narrows the list.\n- **Match any tag** — certificates carrying at least one selected tag show; each extra tag widens the list.\n\n**Why Match all tags:** the existing status and owner filters already combine this way, so tags behave like every other filter. You give up \"show me anything tagged A or B\" in one go.\n\n**Tags on mobile (D10)** — can owners edit tags in the mobile app, or only filter by them? It sets the size of the mobile phase.\n\n**Your options:**\n- **Filter and edit (Recommended)** — mobile gets the tag editor on the owner view as well as chips and the filter, same as web. One more screen in the mobile phase.\n- **Filter only** — mobile shows chips and filters; tags are added and removed on the web. A smaller mobile phase, but owners on the road can't tag.\n\n**Why Filter and edit:** owners renew and inspect certificates on site, which is where they'd tag them, and parity with web means one rule to explain. You give up a smaller mobile phase.",
           "inferred": true
         },
         {
@@ -354,9 +354,9 @@
         }
       ],
       "stamp": {
-        "hash": "8c97b0bb2d4f",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "3c3bf79e4283",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -413,9 +413,9 @@
         }
       ],
       "stamp": {
-        "hash": "470c723d96c3",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "dc3809cade28",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -492,6 +492,11 @@
         {
           "role": "tool",
           "text": "⏺ Bash(node <builder>/scripts/profile.mjs --cost docs/features/cert-tags --tests \"…\") × 11 — one per option, the other two levers held where they stand"
+        },
+        {
+          "role": "claude",
+          "inferred": true,
+          "text": "Three choices set how much testing this build gets, and a fourth where it lands. Each option leads with what it costs for cert-tags' 12 slices.\n\n**Testing while building — your options:**\n- **Its own tests (Recommended)** — 12 quick runs + 3 suite runs: each slice runs the tests it adds and the type-check. Fastest feedback; a break in another part of the app shows only at the end.\n- **Its own, plus the app's suite when the app's slices are done** — 12 quick runs + 6 suite runs: also each app's suite once its last slice is in. Catches cross-slice breaks per app.\n- **The app's suite after every slice** — 12 quick runs + 15 suite runs: the slowest; catches a break at the slice that caused it.\n- **None while building** — 0 quick runs + 3 suite runs: tests are still written, but nothing runs until the end.\n\n**Testing at the end — your options:**\n- **Plus an agent tries the risky parts (Recommended)** — every touched app's suite, then an agent walks the [risk] items in the running app.\n- **The touched apps' suites, once** — every touched app's fast set and the tests §Testing names; no one tries it in the app.\n- **Everything** — the deep set, the cross-app E2E and the full walk; the slowest.\n- **Nothing — I'll test it** — the type-check only; the verdict says nothing was tested, and the migration lands untested.\n\n**Review — your options:**\n- **Once at the end (Recommended)** — 1 whole-branch review.\n- **Once per app** — 4 reviews: after each app's slices, and the final one.\n- **After every slice** — 13 reviews: a review per slice, and the final one.\n\n**Land on — your options:**\n- **main (Recommended)** — agents merge the finished feature into main, locally — the config's merge_into.\n- **feat/ACME-412-cert-tags** — land it on the branch you're on now instead.\n\n**Why the recommended plan:** this feature adds a migration and spans 3 apps, so the end is raised to an agent trying the risky parts; per slice, its own tests keep the build fast while the suites still run once before it lands. You give up catching a cross-slice break at the slice that caused it."
         },
         {
           "role": "picker",
@@ -586,6 +591,11 @@
           "text": "The app's suite after every slice · Plus an agent tries the risky parts · Once at the end · main"
         },
         {
+          "role": "claude",
+          "inferred": true,
+          "text": "One more: **No (Recommended)** lets the agent walk stand in for yours and lands it on main marked not human-tested; **Yes** parks it for your walk after the agent's and lands it after your /builder:signoff."
+        },
+        {
           "role": "picker",
           "question": "Walk it yourself before it lands?",
           "header": "Your walk",
@@ -640,9 +650,9 @@
         }
       ],
       "stamp": {
-        "hash": "53c3a6766d8b",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "bad46f8bd661",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {

@@ -56,8 +56,8 @@ what is stored, kept or lost — and sort each one:
   lost, what an agent or AI may read or change, something made visible or irreversible, or a shape a
   released consumer depends on. **Ask it** before writing, as its own question in
   `/builder:brainstorm`'s §Rounds format: the briefing in chat (`**Q<n> — <the decision>**`, the
-  question in one plain sentence, **Why it matters**, **What it affects**, **Recommendation** with its
-  evidence), then one AskUserQuestion whose options are the real alternatives — the recommendation
+  question in one plain sentence, **Why it matters**, **What it affects**, **Your options** — each one
+  explained — and **Why** the recommended one, with its evidence; REFERENCE §Before a picker), then one AskUserQuestion whose options are the real alternatives — the recommendation
   first, each option's description saying what picking it does. 🔴 **Never "Right / Change
   something"** — that is an approval, and this is a decision. Record the answer in the record's tree
   (Who/date the owner) and carry on. The owner's own words in the record already answering it → it was

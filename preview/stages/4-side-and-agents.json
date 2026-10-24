@@ -209,7 +209,7 @@
         },
         {
           "role": "claude",
-          "text": "**12 of 15 claims confirmed · 2 contradicted · 1 unverifiable · 4 gaps**\n\n**Confirmed**\n- single renew exists — `POST /certificates/:id/renew` (apps/api/src/routes/certificates.ts:88)\n- only the owner may renew — `assertOwner` guards it (apps/api/src/certificates/renew.service.ts:14)\n- renewal sets `status: active` and writes a `renewed` event (renew.service.ts:36, :42)\n- the list already filters by expiry window — `?expiresWithin=30` (apps/web/src/features/certificates/useCertificates.ts:21)\n- mobile reads `expires_at` from the same list endpoint and needs no change (apps/mobile/src/api/certificates.ts:12)\n- …and 7 more, each with its `file:line` in the record\n\n**Contradicted**\n- \"renewal extends 12 months from today\" — the code extends 12 months from the **current** `expires_at` (renew.service.ts:31)\n- \"the list already supports multi-select\" — `CertificateTable` has no selection; the only checkbox column is in `AdminUsersTable` (apps/web/src/features/certificates/CertificateTable.tsx:18)\n\n**Unverifiable**\n- \"500 renewals finish in under 2 seconds\" — only running it against real data can say\n\n**Gaps the ticket never decides** — a revoked or already-expired certificate in the selection · a run where some renewals fail · one history event per certificate or one for the batch (the History tab reads `/certificates/:id/events`) · what the \"renew expiring\" shortcut does when nothing is expiring\n\n**How it works today:** renewing is one certificate at a time from the owner view — `renewCertificate` checks ownership, adds 12 months to the current expiry, sets the status back to active and records a `renewed` event[^1]. Nothing links a renewal to the certificate it replaced — the row is updated in place[^2].\n\n[^1]: apps/api/src/certificates/renew.service.ts:14–42\n[^2]: apps/api/prisma/schema.prisma:41 — no `renewed_from_id`\n\n---\n\n**Q1 of ~7 — where a renewal's new expiry starts**\n\nThe ticket says 12 months from today; single renew runs 12 months from the current expiry. Which side changes?\n\n**Why it matters:** renewing early either keeps or throws away the unexpired time — and if bulk and single renew disagree, two certificates renewed the same afternoon get different dates.\n**What it affects:** `renewCertificate` (renew.service.ts:31), the Renew button on the owner view, the new bulk endpoint, the expiry dates web and mobile show.\n**Recommendation:** change the document — keep \"from the current expiry\". Single renew has done that since ACME-207 (`git log -S addMonths`), so bulk matches it and nobody loses paid-for time. It costs nothing in code; the ticket's line is corrected in the spec.\n\n📍 bulk-renew: intake (2 contradicted, 12/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
+          "text": "**12 of 15 claims confirmed · 2 contradicted · 1 unverifiable · 4 gaps**\n\n**Confirmed**\n- single renew exists — `POST /certificates/:id/renew` (apps/api/src/routes/certificates.ts:88)\n- only the owner may renew — `assertOwner` guards it (apps/api/src/certificates/renew.service.ts:14)\n- renewal sets `status: active` and writes a `renewed` event (renew.service.ts:36, :42)\n- the list already filters by expiry window — `?expiresWithin=30` (apps/web/src/features/certificates/useCertificates.ts:21)\n- mobile reads `expires_at` from the same list endpoint and needs no change (apps/mobile/src/api/certificates.ts:12)\n- …and 7 more, each with its `file:line` in the record\n\n**Contradicted**\n- \"renewal extends 12 months from today\" — the code extends 12 months from the **current** `expires_at` (renew.service.ts:31)\n- \"the list already supports multi-select\" — `CertificateTable` has no selection; the only checkbox column is in `AdminUsersTable` (apps/web/src/features/certificates/CertificateTable.tsx:18)\n\n**Unverifiable**\n- \"500 renewals finish in under 2 seconds\" — only running it against real data can say\n\n**Gaps the ticket never decides** — a revoked or already-expired certificate in the selection · a run where some renewals fail · one history event per certificate or one for the batch (the History tab reads `/certificates/:id/events`) · what the \"renew expiring\" shortcut does when nothing is expiring\n\n**How it works today:** renewing is one certificate at a time from the owner view — `renewCertificate` checks ownership, adds 12 months to the current expiry, sets the status back to active and records a `renewed` event[^1]. Nothing links a renewal to the certificate it replaced — the row is updated in place[^2].\n\n[^1]: apps/api/src/certificates/renew.service.ts:14–42\n[^2]: apps/api/prisma/schema.prisma:41 — no `renewed_from_id`\n\n---\n\n**Q1 of ~7 — where a renewal's new expiry starts**\n\nThe ticket says 12 months from today; single renew runs 12 months from the current expiry. Which side changes?\n\n**Why it matters:** renewing early either keeps or throws away the unexpired time — and if bulk and single renew disagree, two certificates renewed the same afternoon get different dates.\n**What it affects:** `renewCertificate` (renew.service.ts:31), the Renew button on the owner view, the new bulk endpoint, the expiry dates web and mobile show.\n**Your options:**\n- **Keep the code's rule (Recommended)** — bulk renew extends from the current `expires_at`, exactly like single renew; the ticket's line is corrected in the spec. Early renewals keep their unexpired time.\n- **Change code to the ticket's** — single and bulk renew both run 12 months from today. `renew.service.ts` changes, and anyone renewing early loses the time they had left.\n- **Today, for bulk only** — bulk uses today, single keeps its rule. Two rules for one action, which the spec has to explain.\n\n**Why Keep the code's rule:** single renew has extended from the current expiry since ACME-207 (`git log -S addMonths`), so bulk matches it and nobody loses paid-for time. It costs nothing in code; you give up the ticket's wording, which the spec corrects.\n\n📍 bulk-renew: intake (2 contradicted, 12/19 settled) — resume with /builder:intake --path docs/features/bulk-renew"
         },
         {
           "role": "picker",
@@ -237,8 +237,8 @@
         }
       ],
       "stamp": {
-        "hash": "fb76b687b4b0",
-        "version": "4.14.0",
+        "hash": "2afbb1bbb6be",
+        "version": "4.14.1",
         "date": "2026-10-24"
       }
     },
@@ -311,7 +311,7 @@
         },
         {
           "role": "claude",
-          "text": "**Size: lg** — evidence: two apps (api: a new `POST /certificates/bulk-renew` endpoint and its contract row; web: selection on the certificate list, a selection bar, a confirm dialog and a results summary); mobile ⬜ — it reads `expires_at` already. Rule 4: two apps → lg.\n\n**Split it?**\n\nOne spec, or two that each ship on their own?\n\n**Why it matters:** each spec is its own build, walk and merge — two means two walks, but the first lands sooner.\n**What it affects:** the order api and web phases run in, and when owners get anything.\n**Recommendation:** one spec — the \"renew expiring\" shortcut is one button over the same endpoint; splitting it off saves little and costs a second walk."
+          "text": "**Size: lg** — evidence: two apps (api: a new `POST /certificates/bulk-renew` endpoint and its contract row; web: selection on the certificate list, a selection bar, a confirm dialog and a results summary); mobile ⬜ — it reads `expires_at` already. Rule 4: two apps → lg.\n\n**Split it?**\n\nOne spec, or two that each ship on their own?\n\n**Why it matters:** each spec is its own build, walk and merge — two means two walks, but the first lands sooner.\n**What it affects:** the order api and web phases run in, and when owners get anything.\n**Your options:**\n- **One spec (Recommended)** — bulk-renew as one lg spec: the endpoint, selection and the \"renew expiring\" shortcut together. One build, one walk.\n- **2 value-sized specs** — bulk-renew-selected (owners tick and renew) first, bulk-renew-expiring (the 30-day shortcut) after. Each usable on its own; the first lands sooner, at the cost of a second walk.\n\n**Why One spec:** the shortcut is one button over the same endpoint, so splitting it off saves little and costs a second walk. You give up landing the selection a little sooner."
         },
         {
           "role": "picker",
@@ -344,8 +344,8 @@
       ],
       "stamp": {
         "hash": "0f25d1f381a0",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -454,7 +454,7 @@
         },
         {
           "role": "claude",
-          "text": "cert-tags is planned — its slices:\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\ncert-history isn't planned yet, so there are no slices to show for it.",
+          "text": "cert-tags is planned — its slices:\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\ncert-history isn't planned yet, so there are no slices to show for it.\n\nNext, the test plan for each and where they land — this sets how much the agents test before anything merges.\n\n**Your options, per feature:**\n- **The recommended plan (Recommended)** — cert-tags: own · risk · end (each slice its own tests; the suites once at the end and an agent tries the risky parts; one review). cert-history: own · touched · end (its own tests; the web suite once; one review). The fast plan, raised only where the feature carries risk.\n- **Change it** — choose testing per slice, at the end, and when to review yourself; three more questions for that feature.\n\n**Land on? — your options:**\n- **main (Recommended)** — merge_into, where finished features merge. Other takes any other branch name.\n\n**Why The recommended plan:** cert-tags adds a migration and spans 3 apps, so its end is raised to an agent trying the risky parts; cert-history is web-only with no migration, so the touched suite once is enough. You give up a slower build that catches breaks earlier.",
           "inferred": true
         },
         {
@@ -508,6 +508,11 @@
         {
           "role": "user",
           "text": "The recommended plan · Change it · main"
+        },
+        {
+          "role": "claude",
+          "inferred": true,
+          "text": "cert-history's test plan, one lever at a time. It has no PLAN.md yet, so each option says where it sits on the ladder rather than a count.\n\n**Testing while building — your options:**\n- **Its own tests (Recommended)** — quick: one small run per slice, the tests that slice adds and the type-check.\n- **Its own, plus the app's suite when the app's slices are done** — adds one suite run per app, once its slices are done.\n- **The app's suite after every slice** — slowest: a suite run per slice; catches a break where it happened.\n- **None while building** — fastest: the type-check only; tests are written but run at the end.\n\n**Testing at the end — your options:**\n- **The touched apps' suites, once (Recommended)** — one suite run per app: the fast set, the tests §Testing names, released-consumer parity.\n- **Plus an agent tries the risky parts** — adds an agent walking the [risk] items in the running app.\n- **Everything** — slowest: the deep set, the cross-app E2E, the full walk.\n- **Nothing — I'll test it** — fastest: the type-check only; the verdict says nothing was tested.\n\n**Review — your options:**\n- **Once at the end (Recommended)** — one whole-branch review.\n- **Once per app** — one after each app's slices.\n- **After every slice** — one per slice.\n\n**Why the recommended levers:** cert-history touches only web and adds no migration, so its own tests per slice and the web suite once cover it. You give up an agent trying it in the running app."
         },
         {
           "role": "picker",
@@ -586,6 +591,11 @@
           "text": "Its own tests · Plus an agent tries the risky parts · Once at the end"
         },
         {
+          "role": "claude",
+          "inferred": true,
+          "text": "One more for cert-history: **No (Recommended)** — the agent walks it and signs it off, and it lands on main without your walk; **Yes** — the fleet parks it for your walk after the agent's and lands it after your /builder:signoff."
+        },
+        {
           "role": "picker",
           "question": "Walk it yourself before it lands?",
           "header": "Your walk",
@@ -616,9 +626,9 @@
         }
       ],
       "stamp": {
-        "hash": "b6cc1588ec8a",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "d6596b72eb72",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -643,7 +653,7 @@
         },
         {
           "role": "claude",
-          "text": "What the agents will build:\n\n```\ncert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · risk · end\ncert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end\n```"
+          "text": "What the agents will build:\n\n```\ncert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · risk · end\ncert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end\n```\n\n**Start the fleet** launches it detached — builds in parallel, walks one at a time, each merged into main when done; **Not now** starts nothing and keeps the test plans and targets for next time."
         },
         {
           "role": "picker",
@@ -679,9 +689,9 @@
         }
       ],
       "stamp": {
-        "hash": "2488b08c412d",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "1f2938755cf3",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
@@ -706,7 +716,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again."
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again. **Add to the running fleet** drops both in its inbox, each picked up the moment a lane frees; **Not now** queues nothing."
         },
         {
           "role": "picker",
@@ -742,9 +752,9 @@
         }
       ],
       "stamp": {
-        "hash": "742b9c3f2a4d",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "3b1f07ffce1d",
+        "version": "4.14.1",
+        "date": "2026-10-24"
       }
     },
     {
