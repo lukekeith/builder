@@ -256,7 +256,9 @@ fast gates green, one commit per fix, and §Ship in agent mode again.
 
 A program manifest tracks one `child: <name> — <state>` line per child instead of a state of its own.
 
-**Pick the child the way the picker picks a feature.** Present the `child:` lines in one
+**Pick the child the way the picker picks a feature.** Brief it first (REFERENCE §Before a picker):
+each child, what users can do once it ships, its state, and why the recommended one is next (what
+it waits on). Then present the `child:` lines in one
 AskUserQuestion — the child's name as the label, its state as the description — ordered by PROGRAM
 §Children's *Depends on* column, and recommend the next **unblocked** child: one whose dependencies
 all read `— shipped`. On selection, continue at Step 1 with that child's path.

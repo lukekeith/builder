@@ -696,7 +696,7 @@
         },
         {
           "role": "claude",
-          "text": "**Size: at least lg, xl if it splits** — evidence:\n- rules 2–3: a new `PortalUser` model, portal auth and endpoints, new routes and screens;\n- rule 4: three apps — api, web (the portal) and mobile (customers' app access); three slices each give customers something on their own;\n- 150+ files.\n\n**Q — How to split customer-portal**\n\nOne spec, or three value-sized specs run as a program?\n\n**Why it matters:** as one spec it's one very long build and one walk across three apps before customers see anything; split, each slice ships when it's walked.\n**What it affects:** whether `/builder:spec` writes a SPEC or a PROGRAM with children, the order they ship in, and the decisions they share (portal auth, which certificates a customer may see).\n**Your options:**\n- **3 value-sized specs (Recommended)** — portal-auth (customers sign in and manage who has access), portal-cert-list (customers see their certificates and status), portal-downloads (customers download a certificate's PDF), run as a program. Each ships when it's walked; three walks.\n- **One spec** — the whole portal as one spec. One walk, but a very long build and a walk across api, web and mobile before anything ships.\n- **2 value-sized specs** — sign-in and the certificate list together, then downloads. Two walks; customers get nothing until sign-in and the list are both done.\n\n**Why 3 value-sized specs:** each slice is usable on its own, and together they're too big to walk in one sitting. You give up a single walk — and the shared decisions (portal auth, which certificates a customer may see) are settled once in the program.\n\n📍 customer-portal: brainstorming (14/14 settled) — resume with /builder:brainstorm --path docs/features/customer-portal"
+          "text": "**Size: at least lg, xl if it splits** — evidence:\n- rules 2–3: a new `PortalUser` model, portal auth and endpoints, new routes and screens;\n- rule 4: two apps — api and web (the portal lives in web; mobile is out) → lg, and three slices each give customers something on their own, so it can split;\n- 150+ files.\n\n**Q — How to split customer-portal**\n\nOne spec, or three value-sized specs run as a program?\n\n**Why it matters:** as one spec it's one very long build and one walk across three apps before customers see anything; split, each slice ships when it's walked.\n**What it affects:** whether `/builder:spec` writes a SPEC or a PROGRAM with children, the order they ship in, and the decisions they share (portal auth, which certificates a customer may see).\n**Your options:**\n- **3 value-sized specs (Recommended)** — portal-auth (customers sign in and manage who has access), portal-cert-list (customers see their certificates and status), portal-downloads (customers download a certificate's PDF), run as a program. Each ships when it's walked; three walks.\n- **One spec** — the whole portal as one spec. One walk, but a very long build and a walk across api and web before anything ships.\n- **2 value-sized specs** — sign-in and the certificate list together, then downloads. Two walks; customers get nothing until sign-in and the list are both done.\n\n**Why 3 value-sized specs:** each slice is usable on its own, and together they're too big to walk in one sitting. You give up a single walk — and the shared decisions (portal auth, which certificates a customer may see) are settled once in the program.\n\n📍 customer-portal: brainstorming (14/14 settled) — resume with /builder:brainstorm --path docs/features/customer-portal"
         },
         {
           "role": "picker",
@@ -710,7 +710,7 @@
             },
             {
               "label": "One spec",
-              "description": "The whole portal as one lg spec — costs one long walk across api, web and mobile before anything ships."
+              "description": "The whole portal as one lg spec — costs one long walk across api and web before anything ships."
             },
             {
               "label": "2 value-sized specs",
@@ -733,7 +733,7 @@
       ],
       "stamp": {
         "hash": "d9f2d03ef98e",
-        "version": "4.14.1",
+        "version": "4.14.2",
         "date": "2026-10-24"
       }
     }

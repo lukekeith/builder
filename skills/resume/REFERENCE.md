@@ -403,6 +403,7 @@ Full spec: docs/features/cert-tags/SPEC.md
 | brainstorm / intake — CONVERSATION §Confirm | 1, 2, 3, 6, 7, 8 from the record — the shared understanding |
 | the small path and the quick path (xs · sm) | 1–3, and 4 when anything stored changes — compact, one part |
 | **spec, end — the design approval** (spec §3) | **the full review, 1–8, in parts** |
+| **spec at xl — the one program go-ahead** (spec §2) | the full review, 1–8, for the **whole program**, in parts, plus **the children** in plain words: each child's name, what users can do once *it alone* ships, its apps, and what it waits on — in build order, with why that order (the contract) |
 | audit, end | the review delta (below) — what the audit changed in the design |
 | plan, the go-ahead (plan §The go-ahead) | a one-part recap (1, 3, 4) + anything the audit changed since the design was approved, above section 9 — the slices and the test plan |
 | revise | the change as a review delta |
