@@ -4,6 +4,17 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.3
+
+**Fixed:**
+- **A program's go-ahead is its review, not a file and a Yes / No.** At xl, spec showed `PROGRAM.md`
+  raw and asked "Approve the program?" before any explanation. Now the one program go-ahead is the
+  whole program's review in parts — what customers get, what they'll see, added · changed · removed,
+  **the children in plain words** (what users can do once each ships, its apps, what it waits on, in
+  build order and why), data, apps, the shared decisions, risks, what's not included — ending in
+  `A. Approve the program` · `B. Change something` · `C. One spec instead`. Resume's child picker is
+  briefed first (each child and why the recommended one is next), and a program's footer is one line.
+
 ## 4.14.2
 
 **Changed:**
