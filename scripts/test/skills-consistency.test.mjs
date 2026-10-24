@@ -559,7 +559,10 @@ test('4.11.2: brainstorm ways on are a lettered list, "go" is A, at every pause 
   assert.match(conv, /A is the default path/)
   assert.match(conv, /"just build it" still works/)
   // every round carries the same three ways on
-  assert.match(conv, /A\. Answer below \(recommended\)[\s\S]*B\. Build it now[\s\S]*C\. That's enough/)
+  // a round has one menu — its picker; the way ahead is a second picker question every third round
+  assert.match(conv, /One menu per screen/)
+  assert.match(conv, /header `Keep going\?`: \*\*Keep answering \(Recommended\)\*\*[\s\S]*\*\*Build it\s+now\*\*[\s\S]*\*\*That's enough\*\*/)
+  assert.doesNotMatch(conv, /A\. Answer below/)
   // confirm, the small path's approval and the md+ hand-off are lettered
   assert.match(conv, /`A\. Build it \(recommended\)` · `B\. Park it` ·\s+`C\. Stop here`/)
   assert.match(conv, /A\. Write the spec \(recommended\)/)

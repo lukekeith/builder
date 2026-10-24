@@ -3,7 +3,7 @@
     "blurb": "A small change in existing code. Brainstorm grounds the words in the code, sees it is small, and proposes the change in its first turn — reply **A** and it is built. No rounds, no confirm, no sizing turn.",
     "steps": ["quick-path-proposal", "quick-path-build"] },
   { "group": "Start with an idea", "id": "small", "title": "Small change, talked through (sm)", "short": "the full conversation, then built in chat",
-    "blurb": "A request with real choices in it: the grounded playback, how it works today, rounds (briefing, lettered ways on, picker), confirm, size, the small path's design and approval, then the build — all in chat, no spec.",
+    "blurb": "A request with real choices in it: the grounded playback, how it works today, rounds (briefing, then the picker — the one menu on screen), confirm, size, the small path's design and approval, then the build — all in chat, no spec.",
     "steps": ["intent-playback", "how-it-works-today", "round-1", "round-2", "confirm", "size-small-path-design", "small-path-build"] },
   { "group": "Start with an idea", "id": "just-build", "title": "Leaving the conversation early", "short": "B. Build it now / \"just build it\"",
     "blurb": "Partway through the rounds the user takes **B. Build it now** (or types \"just build it\"): every open question settles on its recommendation and it sizes straight away.",
