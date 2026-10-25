@@ -81,17 +81,21 @@
         },
         {
           "role": "picker",
-          "question": "Add an agent_walk block for unattended /builder:agent and /builder:fleet runs?",
-          "header": "Agent walk",
+          "question": "How should agents drive the app when they walk a feature (the agent_walk block — always written; it is what turns agent mode on)?",
+          "header": "Walk driver",
           "multiSelect": false,
           "options": [
             {
-              "label": "Not yet (Recommended)",
-              "description": "No unattended runs for now; /builder:init --update offers it again later."
+              "label": "Playwright MCP (Recommended)",
+              "description": "web already depends on playwright; agents click through the web app in a headless browser, in a walk env of its own (other ports, its own database)."
             },
             {
-              "label": "Yes",
-              "description": "A few more questions: the walk driver, claude_args (bypassPermissions lets every headless run execute any command in its fleet worktree), reset/start/smoke/stop, worktree_env."
+              "label": "Playwright scripts",
+              "description": "agents write throwaway Playwright scripts instead of using the MCP tools — slower to author, but no MCP server to load."
+            },
+            {
+              "label": "API checks only",
+              "description": "no browser; agents walk API items with curl and leave UI items for your walk — agent mode still on, but most features wait for you."
             }
           ]
         },
@@ -117,13 +121,13 @@
         },
         {
           "role": "user",
-          "text": "None red, no flaky ones. Roles yes, mobile manual, ask, not yet, Jira."
+          "text": "None red, no flaky ones. Roles yes, mobile manual, ask, Playwright MCP, Jira."
         }
       ],
       "stamp": {
-        "hash": "1c89ea8c6ca6",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "2854a3d15aa9",
+        "version": "4.14.7",
+        "date": "2026-10-25"
       }
     },
     {
@@ -139,13 +143,13 @@
         },
         {
           "role": "claude",
-          "text": "```\n✅ .claude/builder.md written for acme-certs\n   apps: api (producer, auto) · web (consumer, auto) · mobile (consumer, manual)\n   base: main · registry: docs/features · ticket: jira · design: off\n   inferred, check these: mobile released_artifact: true · web's deep set `pnpm -F web exec playwright test {tests}` from ci.yml · dev start `pnpm dev`\n   tracked test output: none\n📍 next: /builder:brainstorm <what you want built>\n```\n\nIt belongs in git so the whole team runs the same pipeline — I've left the commit to you. When you want agents to build unattended, `/builder:init --update` adds the `agent_walk:` block."
+          "text": "```\n✅ .claude/builder.md written for acme-certs\n   apps: api (producer, auto) · web (consumer, auto) · mobile (consumer, manual)\n   base: main · registry: docs/features · ticket: jira · design: off\n   inferred, check these: mobile released_artifact: true · web's deep set `pnpm -F web exec playwright test {tests}` from ci.yml · dev start `pnpm dev`\n   agent mode: on — agent_walk with the Playwright MCP driver, a walk env on its own ports and database\n   tracked test output: none\n📍 next: /builder:brainstorm <what you want built>\n```\n\nIt belongs in git so the whole team runs the same pipeline — I've left the commit to you. When you want agents to build unattended, `/builder:init --update` adds the `agent_walk:` block."
         }
       ],
       "stamp": {
         "hash": "8bfc43b8943f",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "version": "4.14.7",
+        "date": "2026-10-25"
       }
     },
     {

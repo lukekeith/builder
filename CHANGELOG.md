@@ -4,6 +4,16 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.8
+
+**Changed:**
+- **Every install gets agent mode.** `/builder:init` treated the `agent_walk:` block as opt-in and
+  recommended *not yet*, so a repo could be set up with builder and still have no agent mode — no
+  *Agent* option on the build footers, `/builder:agent` and `/builder:fleet` refusing. Now init always
+  writes the block (asking only how agents drive the app and how the walk environment starts), and
+  `--update` treats a missing block as the biggest gap and adds it. A repo goes without agent mode
+  only when you say you don't want agent runs there.
+
 ## 4.14.7
 
 **Fixed:**
