@@ -174,7 +174,7 @@ Write the specs, then hand them over:
 /builder:fleet <feature>…       # while a fleet runs: the specs join its queue, no second fleet
 ```
 
-Or build it yourself, without the ceremony: pick `here` on the handoff (or `/builder:resume --path <folder> --here`).
+Or build it yourself, without the ceremony: pick **In this session** on the handoff (or `/builder:resume --path <folder> --here`).
 The audit and plan still run; then the session works the plan task by task, test first, with each app's fast gates,
 and stops at `built`. No fleet, no reviewer agents, no walk lock, and `/builder:resume` can finish it later.
 

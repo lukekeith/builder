@@ -224,19 +224,25 @@ Standard handoff, in this order:
 3. The next command — **never "another pass"** — and the footer:
 
 ```
-📍 <feature>: audited — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
-   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: audited — how do you want it built?
+   1. Agent — sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed
+   2. Step by step — carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk
+   3. In this session — plan it, then build it right here in this session, without the agents or the extra review rounds
+   Reply 1, 2 or 3 — "go" is 1.
 ```
 
 Append ` · BLOCKED: <n> items` after `audited` when the verdict is BLOCKED. The numbered form is
-REFERENCE §The two-way footer; without a config `agent_walk:` block, the single line
-`📍 <feature>: audited — next: /builder:resume --path <folder> · or say go`.
+REFERENCE §The two-way footer: no `/builder:*` command on an option line, and "go" is option 1.
+Without a config `agent_walk:` block there is no **Agent**: **Step by step** is `1.`, **In this
+session** `2.`, and the reply line reads `Reply 1 or 2 — "go" is 1.`
 
 **Under `--auto`** no delta is printed (REFERENCE §The review — nobody approves): one line with the
 counts, then the footer. The plan's go-ahead and the walk show what moved.
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
+numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
+§Continuing on "go" has the exceptions.

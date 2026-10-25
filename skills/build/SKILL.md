@@ -422,16 +422,32 @@ staged commits awaiting approval, blockers, the next command, and one footer:
 Stopped mid-build, or built and walkable, the footer is two-way (REFERENCE §The two-way footer):
 
 ```
-📍 <feature>: building — phase N/M (<app>), stopped (go continues here; /clear first for a fresh context) — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
 
-📍 <feature>: built (<M> phases across <apps>, <T> tasks) — next:
-   1. resume — 🔒 your walk → /builder:signoff --path <folder>
-   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent")
+📍 <feature>: building — phase N/M (<app>), stopped (/clear first for a fresh context) — how do you want it built?
+   1. Agent — sent to agents who finish the build, walk, sign off and verify it, and merge it on their own; you get the review of what landed
+   2. Step by step — carry on with the build here (next: phase N/M), pausing for you at each decision and for your walk
+   Reply 1 or 2 — "go" is 1.
 ```
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+```
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: built (<M> phases across <apps>, <T> tasks) — what next?
+   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed
+   2. Step by step — you walk it yourself in the running app, then sign it off here
+   Reply 1 or 2 — "go" is 1.
+```
+
+No `/builder:*` command on an option line, and "go" is option 1 — Agent (REFERENCE §Continuing on
+"go"). Without a config `agent_walk:` block only Step by step is left, so the single-line footer is
+printed: `next: /builder:resume --path <folder> · or say go` mid-build, `next: 🔒 your walk →
+/builder:signoff --path <folder>` once built.
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
+numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
+§Continuing on "go" has the exceptions.

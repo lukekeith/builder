@@ -1,6 +1,6 @@
 ---
 name: resume
-description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, ship, and a merge into the project's merge_into branch (default base_branch). Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue"), or "1" / "resume" on a two-way footer.
+description: Where a feature stands and the one next step — reads the feature's MANIFEST.md and drives the family from there: align → audit → the decisions gate → plan → the go-ahead → build (one app per phase) → 🔒 the walk → signoff → verify → ship, pausing only at real human decisions. Invoked without --path it is the picker over every in-flight feature and program, and it is what converts a folder left by an earlier pipeline. Never sizes or designs new work — that is /builder:brainstorm — and never creates a branch, worktree or ticket, or opens a PR before the human has personally tested the feature — except under --agent-walk (agent mode, what /builder:agent and /builder:fleet run), which takes the feature all the way: agent walk, agent sign-off, verify, ship, and a merge into the project's merge_into branch (default base_branch). Resumable after any /clear. Use when the user types /builder:resume, asks to continue, resume or pick up /builder:* work, or answers a /builder:* handoff footer with a bare affirmative ("go", "yes", "proceed", "continue") — except a numbered footer that offers Agent, where "go" is Agent (/builder:agent) — or picks "step by step" / "resume" or "in this session" / "here" (or its number) on a numbered footer.
 ---
 
 # `/builder:resume` — where a feature stands, and the next step
@@ -528,13 +528,18 @@ released artifact nobody can hot-fix.
    ```
 
    ` · or say go` only where an affirmative can continue it — REFERENCE §Continuing on "go". Where
-   agents could take the next step instead, the footer is the numbered choice of REFERENCE §The
-   two-way footer — `1. resume` (this command) / `2. agent` (`/builder:agent --path <folder>`).
-5. **A bare affirmative, `1` or `resume` in reply continues it; `2` or `agent` runs
-   `/builder:agent --path <folder>`.** "go", "yes", "proceed" after a footer runs that
-   footer's command through the Skill tool, in that turn — never ask the human to paste it. The
-   exceptions (signoff, the walk, a human's step, a hold, opening the PR) are REFERENCE §Continuing
-   on "go".
+   another way through the next step exists, the footer is the numbered choice of REFERENCE §The
+   two-way footer — `Full spec:` and the `Pick up where you left off` line above it, then
+   `1. Agent` (only with an `agent_walk:` block) · `2. Step by step` (this command) ·
+   `3. In this session` (only before the build), renumbered when one is absent, each explained in
+   plain words for the state and none carrying a `/builder:*` command.
+5. **A bare affirmative picks option 1** — on a numbered footer that offers Agent, "go" runs
+   `/builder:agent --path <folder>`; otherwise it continues this command. `agent` runs
+   `/builder:agent --path <folder>`; `step by step` or `resume` continues this command; `in this
+   session` or `here` runs `/builder:resume --path <folder> --here`; an option's number picks it.
+   Whatever is picked runs through the Skill tool, in that turn — never ask the human to paste it.
+   The exceptions (signoff, the walk, a human's step, a hold, opening the PR) are REFERENCE
+   §Continuing on "go".
 
 ## Context survival
 

@@ -135,12 +135,21 @@ days or weeks from buildable. Then **one line per app**: what it owes and why. N
 happen in the design rather than the app, with the command that would make it.
 
 ```
-📍 <feature>: aligned — <n> fields aligned, <m> T# owed (<per-app split>) — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
-   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: aligned — <n> fields aligned, <m> T# owed (<per-app split>) — how do you want it built?
+   1. Agent — sent to agents who audit, plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed
+   2. Step by step — carry on here one step at a time (next: checking the spec against the code), pausing for you at each decision and for your walk
+   3. In this session — audit and plan it, then build it right here in this session, without the agents or the extra review rounds
+   Reply 1, 2 or 3 — "go" is 1.
 ```
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+The numbered form is REFERENCE §The two-way footer: options in that order, each only where it
+applies (no **Agent** without a config `agent_walk:` block — the rest renumber), no `/builder:*`
+command on an option line, and "go" is option 1.
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
+numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
+§Continuing on "go" has the exceptions.
