@@ -264,6 +264,26 @@ the current builder on every refresh — so updates need no re-run (a release th
 itself says so; `/builder:statusline` refreshes it). `/builder:statusline --off` puts your
 previous setting back exactly.
 
+## Hooks
+
+The plugin ships two hooks (`hooks/hooks.json`), and both are silent in any repo without
+`.claude/builder.md` — builder is installed for every repo, so the others pay nothing.
+
+- **A session brief** (SessionStart, on startup, `/clear` and compaction) — a dozen lines telling
+  Claude builder is set up here: new work starts with `/builder:brainstorm`, `/builder:status` and
+  `/builder:resume` for work in flight, the features in flight (up to five) with their next step,
+  and that in this repo builder's skills take precedence over their superpowers twins (brainstorm,
+  plan and build, test-driven-development, systematic-debugging, verification-before-completion,
+  receiving-code-review). Skipped under unattended runs.
+- **The PR lock** (PreToolUse on Bash) — `gh pr create` on a builder feature's branch is denied
+  until the feature has been walked and signed off (`walk: none` → "🔒 walk it, then
+  `/builder:signoff`"); an agent's sign-off passes only in agent mode. A PR on any other branch is
+  never touched, and any error in the hook lets the command through.
+
+`/hooks` lists them (labelled with the plugin) and shows what each runs; it is read-only. Claude
+Code has no switch for one plugin's hooks: `"disableAllHooks": true` in your settings turns off every
+hook (builder's included), and disabling the builder plugin turns them off with the rest of builder.
+
 ## What it never does
 
 - **Open a PR before a human has walked the feature.** The PR lock is spent by `/builder:signoff`,

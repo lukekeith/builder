@@ -1,0 +1,21 @@
+#!/bin/bash
+# builder's PreToolUse hook on Bash: the PR lock. Denies `gh pr create` on a builder feature's branch
+# until the human has walked it (or, in agent mode, an agent has signed it off). Everything else —
+# every other command, a PR on a branch no builder feature owns, a repo without .claude/builder.md —
+# passes silently. Any error → allow: the hook never blocks by accident.
+
+trap 'exit 0' ERR
+IFS= read -r -d '' input || true
+# The fast path every Bash call takes — builtins only, before node, git or any file is touched: no
+# `gh pr create` (or `gh <flags> pr create`) in the call, nothing to check.
+[[ $input == *"gh pr create"* || $input == *"gh "*" pr create"* ]] || exit 0
+
+case "${BASH_SOURCE[0]}" in
+  */*) HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)" || exit 0 ;;
+  *) HOOK_DIR="$PWD" ;;
+esac
+# shellcheck source=find-node.sh
+. "$HOOK_DIR/find-node.sh" 2>/dev/null
+[ -n "$NODE" ] || exit 0
+printf '%s' "$input" | "$NODE" "$HOOK_DIR/pr-lock.mjs" 2>/dev/null
+exit 0
