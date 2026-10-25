@@ -62,7 +62,8 @@ design:
 # /builder:agent and /builder:fleet take specs all the way with no human in the
 # loop: a worktree per spec, an agent walk and agent sign-off instead of yours,
 # verify, ship, and a merge into merge_into (below; default base_branch), local and never pushed.
-# Omit the whole block and --agent-walk / /builder:fleet refuse.
+# /builder:init always writes this block. Without it the repo has no agent mode: --agent-walk and
+# /builder:fleet refuse, and the build footers offer no Agent option.
 agent_walk:
   driver: <how the agent drives the UI — e.g. "the Playwright MCP tools (mcp__playwright__*)">
   claude_args: --permission-mode bypassPermissions   # headless runs can't ask; this lets them act in their worktree
