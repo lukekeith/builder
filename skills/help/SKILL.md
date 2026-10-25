@@ -217,3 +217,4 @@ lives in a git-ignored workspace; it is never something you have to read.
 - **Does it touch my design system?** It **reads** it and never writes it. A gap is routed to the
   command your config's `design.owned_by` names.
 - **Does it update my tickets, or deploy?** Never. Both are explicit commands of yours.
+- **What are its hooks?** Two, silent outside a repo with `.claude/builder.md`: a short brief at session start (start with `/builder:brainstorm`, what's in flight, builder's skills over superpowers') and the PR lock — `gh pr create` on a feature's branch is denied until it is walked and signed off. README §Hooks says how to turn them off.

@@ -4,6 +4,20 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## Unreleased
+
+**Added:**
+- **A session brief and the PR lock — builder's first hooks.** In a repo with `.claude/builder.md`,
+  every session (startup, `/clear`, compaction) now opens with a short brief: start new work with
+  `/builder:brainstorm`, `/builder:status` and `/builder:resume` for work in flight, the features in
+  flight (up to five) with their next step, and builder's skills taking precedence over their
+  superpowers twins in this repo — so builder's brainstorm, plan, build, TDD, debugging,
+  verification and review are the ones Claude reaches for. And `gh pr create` on a builder
+  feature's branch is now **denied** until the feature has been walked and signed off (an agent's
+  sign-off passes only in agent mode), with the next step in the reason. Both are silent in every
+  other repo, never touch a PR on a branch no builder feature owns, and let everything through on
+  any error. README §Hooks says how to turn them off.
+
 ## 4.14.3
 
 **Fixed:**
