@@ -4,6 +4,19 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.7
+
+**Fixed:**
+- **A fleet run killed by a timeout says so in its log.** A run stopped by the idle timeout (no
+  output for 30 min) or the run timeout (6 h) left an empty log, which read like a lost one. Its log
+  now ends `[fleet] killed: no output for 30 min (the idle timeout)` — or the run-timeout line.
+- **The test suite is green, reliably.** The fleet's timeout tests used a 400 ms window shorter than
+  the stub `claude` takes to start on a busy machine, so a run was killed before it began — one test
+  failed every time and two passed without testing what they claimed. They now use a window wide
+  enough to start in, prove each run really reached its step, and check log contents, not just that
+  the file exists. Two job tests gave a 2 s job too little margin under load. No user was affected:
+  real runs use a 30-minute idle timeout.
+
 ## 4.14.6
 
 **Changed:**
