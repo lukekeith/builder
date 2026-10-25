@@ -133,24 +133,24 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: designed (lg, api+web+mobile) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: designed (lg, api+web+mobile) — how do you want it built?\n   1. Agent — sent to agents who check it against the code, plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: checking the spec against the code), pausing for you at each decision and for your walk\n   3. In this session — audit and plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
-          "text": "The last part ends with the reference line and then spec's own footer — 1/2/3, \"go\" is 1. A B, or the owner's own words, at any part amends the record and the SPEC, re-runs check-obligations, commits, and shows that part again. Assumed details are marked (assumed) in Decisions so a wrong one stands out. Three footer options because the config has an agent_walk: block; without it 'here' is 2. Under --auto no review is printed — nobody approves; the walk shows it."
+          "text": "The last part ends with the reference line — `Full spec:`, the footer's own first line, so it isn't printed twice — then the rest of spec's footer: the one command to keep (`Pick up where you left off any time`), then the three ways to build it, in plain words, with no command on any option. \"go\" is 1 — Agent. A B, or the owner's own words, at any part amends the record and the SPEC, re-runs check-obligations, commits, and shows that part again. Assumed details are marked (assumed) in Decisions so a wrong one stands out. Three options because the config has an agent_walk: block; without it Step by step is 1 and In this session is 2. Under --auto no review is printed — nobody approves; the walk shows it."
         }
       ],
       "stamp": {
-        "hash": "e64591453096",
-        "version": "4.14.2",
-        "date": "2026-10-24"
+        "hash": "9de534e6e866",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
       "id": "resume-routes-to-audit",
       "skill": "resume",
       "title": "Resume reads the manifest — align skipped, audit runs",
-      "when": "The user answers the spec footer with \"go\" (or 1): resume routes on the manifest's state.",
+      "when": "The user answers the spec footer with \"step by step\" (or 2): resume routes on the manifest's state.",
       "source": "skills/resume/SKILL.md §Step 1 — Detect state",
       "sources": [
         "skills/align/SKILL.md §`/builder:align` — can the app store this, and does everyone call it the same thing?",
@@ -160,7 +160,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "go"
+          "text": "step by step"
         },
         {
           "role": "tool",
@@ -185,9 +185,9 @@
         }
       ],
       "stamp": {
-        "hash": "d23e0e9a0363",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "c1b510fef18b",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -254,7 +254,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: audited — how do you want it built?\n   1. Agent — sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk\n   3. In this session — plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -262,9 +262,9 @@
         }
       ],
       "stamp": {
-        "hash": "76b15566ae58",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "hash": "0711b5a03174",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -280,7 +280,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "1"
+          "text": "2"
         },
         {
           "role": "tool",
@@ -292,7 +292,7 @@
         },
         {
           "role": "note",
-          "text": "\"go\" or 1 continues to the next step; it never answers a gate that step raises. The decisions gate still asks."
+          "text": "2 or \"step by step\" (or \"go\", where no Agent option comes first) continues to the next step; it never answers a gate that step raises. The decisions gate still asks."
         },
         {
           "role": "claude",
@@ -354,9 +354,9 @@
         }
       ],
       "stamp": {
-        "hash": "3c3bf79e4283",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "hash": "e519f9df4087",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -431,7 +431,7 @@
       "turns": [
         {
           "role": "note",
-          "text": "Variant A — the user picked '3. here' on an earlier footer, so the manifest carries build: here. The slices are shown the same way, but there is no A/B/C and no questions: choosing here was the go-ahead, and the test plan is the recommendation, written as tests:."
+          "text": "Variant A — the user picked 'In this session' on an earlier footer, so the manifest carries build: here. The slices are shown the same way, but there is no A/B/C and no questions: choosing here was the go-ahead, and the test plan is the recommendation, written as tests:."
         },
         {
           "role": "claude",
@@ -752,7 +752,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-history: designed (md, web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-history/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-history\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-history: designed (md, web) — how do you want it built?\n   1. Agent — sent to agents who check it against the code, plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: checking the spec against the code), pausing for you at each decision and for your walk\n   3. In this session — audit and plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
@@ -772,7 +772,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-history: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-history/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-history\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-history: audited — how do you want it built?\n   1. Agent — sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk\n   3. In this session — plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
@@ -808,9 +808,9 @@
         }
       ],
       "stamp": {
-        "hash": "257ddd40d33b",
-        "version": "4.14.2",
-        "date": "2026-10-24"
+        "hash": "c1b6a4963f39",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -955,11 +955,11 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: revised (before the go-ahead) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: revised (before the go-ahead) — how do you want it built?\n   1. Agent — sent to agents who build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: your go-ahead, then the build), pausing for you at each decision and for your walk\n   3. In this session — build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
-          "text": "revise's own template is the one-line '📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder> · or say go'; REFERENCE §The two-way footer turns any footer about a feature at planned that would end in '· or say go' into the numbered choice. 1 goes back through /builder:plan's go-ahead."
+          "text": "revise's own template is the one-line '📍 <feature>: revised (<route taken>) — next: /builder:resume --path <folder> · or say go'; REFERENCE §The two-way footer turns any footer about a feature at planned that would end in '· or say go' into the numbered choice. Step by step goes back through /builder:plan's go-ahead."
         },
         {
           "role": "note",
@@ -985,7 +985,7 @@
       "turns": [
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-tags --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: audited — how do you want it built?\n   1. Agent — sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk\n   3. In this session — plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
@@ -993,15 +993,15 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+          "text": "⏺ Skill(builder:agent --path docs/features/cert-tags)"
         },
         {
           "role": "note",
-          "text": "A bare affirmative — go, yes, proceed, continue, ok, next, do it — is option 1. It runs the footer's command itself through the Skill tool, with the run's flags; the user never pastes it. That step's own gates (decisions, go-ahead, a manual-commit app, a migration) still ask."
+          "text": "A bare affirmative — go, yes, proceed, continue, ok, next, do it — is option 1, and where Agent is offered option 1 is Agent: \"go\" hands the feature to the agents, whose own questions (the test plan, Land on?) and one confirmation still ask. Without an agent_walk: block option 1 is Step by step, and \"go\" runs that step's command itself through the Skill tool, with the run's flags; that step's own gates (decisions, go-ahead, a manual-commit app, a migration) still ask. No option line shows a command — the user never pastes one."
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-history: audited — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-history\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-history\n   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path docs/features/cert-history --here\n   Reply 1, 2 or 3 (or \"resume\" / \"agent\" / \"here\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-history/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-history\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-history: audited — how do you want it built?\n   1. Agent — sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk\n   3. In this session — plan it, then build it right here in this session, without the agents or the extra review rounds\n   Reply 1, 2 or 3 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
@@ -1009,20 +1009,20 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Skill(builder:agent --path docs/features/cert-history)"
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-history)"
         },
         {
           "role": "note",
-          "text": "2 or 'agent' runs /builder:agent --path <folder> in that turn — its own questions (the test plan, Land on?) and its one confirmation still ask. 3 or 'here' runs /builder:resume --path <folder> --here."
+          "text": "2 or 'step by step' (or 'resume') runs the command the single-line footer would have named — /builder:resume --path <folder> here — in that turn. 3 or 'in this session' (or 'here') runs /builder:resume --path <folder> --here. 1 or 'agent' runs /builder:agent --path <folder>."
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built (4 phases, 12 tasks) — next:\n   1. resume — continue here, step by step: 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```",
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (4 phases, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```",
           "inferred": true
         },
         {
           "role": "user",
-          "text": "go"
+          "text": "2"
         },
         {
           "role": "claude",
@@ -1031,7 +1031,7 @@
         },
         {
           "role": "note",
-          "text": "Does not continue: the walk/sign-off. Same for a human's step ('say go once it's done'), a placeholder only the human can fill, 🛑 held, ⛔ parked, and more than one candidate (one AskUserQuestion instead). 'here' is gone from this footer because the build has started."
+          "text": "Does not continue: Step by step on the walk — 2 or 'step by step' answers with the command to type, as \"go\" would have before Agent came first; a sign-off an agent starts is void. Same for a human's step ('say go once it's done'), a placeholder only the human can fill, 🛑 held, ⛔ parked, and more than one candidate (one AskUserQuestion instead). In this session is gone from this footer because the build has started."
         },
         {
           "role": "user",
@@ -1047,9 +1047,9 @@
         }
       ],
       "stamp": {
-        "hash": "4405a0d7595d",
-        "version": "4.12.0",
-        "date": "2026-10-23"
+        "hash": "6c89c80f06f8",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     }
   ]

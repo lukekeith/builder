@@ -4,6 +4,23 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.6
+
+**Changed:**
+- **The build options read as a decision, not a list of commands.** The numbered handoff footer now
+  offers, in this order, **1. Agent** (it is sent to agents who carry it to merged on their own, and
+  you get the review of what landed), **2. Step by step** (was `resume`: carry on here one step at a
+  time, pausing for you at each decision and for your walk) and **3. In this session** (was `here`:
+  audit and plan what is still to come, then build it right here without the agents or the extra
+  review rounds) — each present only where it applies and explained in plain words for the state
+  (REFERENCE §The two-way footer has the per-state wording). No option carries a `/builder:*`
+  command any more; above them sit `Full spec:` and the one command to keep, `Pick up where you left
+  off any time: /builder:resume --path <folder>`, for when the session ends or you want to spec
+  several features before building any. **"go" is still option 1 — so where Agent is offered, "go"
+  now hands the feature to the agents**; a reply can also name the option (`agent`, `step by step` /
+  `resume`, `in this session` / `here`).
+  Signoff's PASS hand-off now offers the same choice (verify and merge by agents, or step by step).
+
 ## 4.14.5
 
 **Fixed:**

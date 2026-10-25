@@ -231,15 +231,29 @@ deep checks showed, and whether the cross-app walk ran or was quoted — then:
 📍 <feature>: verify READY (<apps>) — 🛑 held — <the hold's words>
 ```
 
-Otherwise the two-way footer (REFERENCE §The two-way footer) — option 1 `/builder:resume --path
-<folder> (opens the PR)` on READY, `/builder:resume --path <folder>` on INCOMPLETE:
+Otherwise the two-way footer (REFERENCE §The two-way footer) — Step by step runs `/builder:resume
+--path <folder>` either way (on READY it opens the PR, asked once); no `/builder:*` command on an
+option line:
 
 ```
-📍 <feature>: verify <READY (<apps>) | INCOMPLETE — <n> fixes owed> — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>[ (opens the PR)]
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: verify READY (<apps>) — what next?
+   1. Agent — sent to agents who merge it on their own, without a PR; you get the review of what landed
+   2. Step by step — carry on here (next: open the PR — asked once before it opens)
+   Reply 1 or 2 — "go" is 1.
+
+📍 <feature>: verify INCOMPLETE — <n> fixes owed — what next?
+   1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed
+   2. Step by step — fix them here one at a time, then re-verify what they touched
+   Reply 1 or 2 — "go" is 1.
 ```
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+Without a config `agent_walk:` block only Step by step is left: the single line
+`📍 <feature>: verify <…> — next: /builder:resume --path <folder> · or say go`.
+
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
+numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
+§Continuing on "go" has the exceptions.

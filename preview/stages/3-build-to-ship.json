@@ -294,7 +294,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -302,9 +302,9 @@
         }
       ],
       "stamp": {
-        "hash": "f13bd316f91f",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "05524d36d975",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -386,20 +386,20 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — next:\n   1. resume — 🔒 your walk → /builder:signoff --path docs/features/cert-tags\n   2. agent  — agents walk it, sign off, verify and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\")\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
-          "text": "go"
+          "text": "step by step"
         },
         {
           "role": "claude",
-          "text": "The walk is yours — \"go\" can't take it, and a sign-off an agent starts is void. Once you've walked web and mobile, type: `/builder:signoff --path docs/features/cert-tags <what you saw, in your own words>`",
+          "text": "The walk is yours — a sign-off an agent starts is void. Once you've walked web and mobile, type: `/builder:signoff --path docs/features/cert-tags <what you saw, in your own words>`",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "On the walk line, 'go' and '1' both answer with the command to type — they never run /builder:signoff. '2' or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), verifies and merges locally."
+          "text": "On the walk, 2 or 'step by step' answers with the command to type — it never runs /builder:signoff. 'go', 1 or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), verifies and merges locally — Agent is option 1 wherever it is offered. Without an agent_walk: block only Step by step is left, and the footer is the single line '📍 cert-tags: built … — next: 🔒 your walk → /builder:signoff --path …'."
         },
         {
           "role": "note",
@@ -407,9 +407,9 @@
         }
       ],
       "stamp": {
-        "hash": "9ce752ea61e9",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "b29dde53d45c",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -468,9 +468,9 @@
         }
       ],
       "stamp": {
-        "hash": "dcf1c5573a64",
-        "version": "4.12.0",
-        "date": "2026-10-23"
+        "hash": "5b1d684fff8a",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -506,7 +506,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: signed off + condensed — next: /builder:verify --path docs/features/cert-tags · or say go\n```"
+          "text": "Full spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n```\n📍 cert-tags: signed off + condensed — what next?\n   1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here (next: verify — every app's gates fresh, then the PR), pausing for you before the PR opens\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -514,9 +514,9 @@
         }
       ],
       "stamp": {
-        "hash": "9ee4cc698635",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "7a9fe14c9677",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -580,7 +580,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: 2 fixes owed — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: 2 fixes owed — what next?\n   1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed\n   2. Step by step — fix them here one at a time, then re-walk what they touched\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -588,9 +588,9 @@
         }
       ],
       "stamp": {
-        "hash": "98931b0c8db4",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "2ec3f5644deb",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -678,7 +678,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: verify READY (api, mobile, web) — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags (opens the PR)\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: verify READY (api, mobile, web) — what next?\n   1. Agent — sent to agents who merge it on their own, without a PR; you get the review of what landed\n   2. Step by step — carry on here (next: open the PR — asked once before it opens)\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -686,9 +686,9 @@
         }
       ],
       "stamp": {
-        "hash": "c72c95627000",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "dffc3c8760ff",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
@@ -706,7 +706,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: verify INCOMPLETE — 2 fixes owed — next:\n   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: verify INCOMPLETE — 2 fixes owed — what next?\n   1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed\n   2. Step by step — fix them here one at a time, then re-verify what they touched\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -714,16 +714,16 @@
         }
       ],
       "stamp": {
-        "hash": "5381b3670ac5",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "17abd159d363",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
       "id": "ship-open-pr",
       "skill": "resume",
       "title": "Opening the PR — asked once",
-      "when": "Verify is READY with no hold: resume's §Ship asks once before anything outward-facing, even when 'go' brought you here.",
+      "when": "Verify is READY with no hold: resume's §Ship asks once before anything outward-facing, even when Step by step brought you here.",
       "source": "skills/resume/SKILL.md §Ship",
       "sources": [
         "skills/resume/REFERENCE.md §Continuing on \"go\"",
@@ -733,7 +733,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "go"
+          "text": "2"
         },
         {
           "role": "tool",
@@ -788,18 +788,18 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: PR #57 open, CI green — next:\n   1. resume — continue here, step by step: /builder:ship --path docs/features/cert-tags\n   2. agent  — hand it to agents to finish and merge: /builder:agent --path docs/features/cert-tags\n   Reply 1 or 2 (or \"resume\" / \"agent\"; \"go\" is 1)\n```",
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: PR #57 open, CI green — what next?\n   1. Agent — sent to agents who finish it and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here (next: condense it to its shipped spec once the PR merges)\n   Reply 1 or 2 — \"go\" is 1.\n```",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "The PR body is printed in full before the question (REFERENCE §The review) — the human approves what the PR will say, never a title and a path; an edit they ask for is made and the body shown again. 'go' continued the pipeline; it did not name an outward-facing action — so Open the PR / Not yet is always asked. One PR for the whole feature, never one per phase. Under --agent-walk no PR opens at all: agent mode ships and merges into the target branch locally."
+          "text": "The PR body is printed in full before the question (REFERENCE §The review) — the human approves what the PR will say, never a title and a path; an edit they ask for is made and the body shown again. 2 (Step by step) continued the pipeline; it did not name an outward-facing action — so Open the PR / Not yet is always asked. One PR for the whole feature, never one per phase. Under --agent-walk no PR opens at all: agent mode ships and merges into the target branch locally."
         }
       ],
       "stamp": {
-        "hash": "7440c8164f4f",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "6c8824657f0d",
+        "version": "4.14.5",
+        "date": "2026-10-25"
       }
     },
     {
