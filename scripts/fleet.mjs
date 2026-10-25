@@ -656,13 +656,20 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     let result = null // the last `result` event: { duration_ms, num_turns }
     let settled = false
     let timedOut = false
-    const kill = () => {
+    // A killed run has no result event; say why in its log, or an empty log reads as a lost one.
+    const mins = (ms) => (ms >= 60000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 1000)} s`)
+    const kill = (why) => {
+      if (!timedOut) {
+        try {
+          out.write(`\n[fleet] killed: ${why}\n`)
+        } catch {}
+      }
       timedOut = true
       try {
         process.kill(-child.pid, 'SIGKILL')
       } catch {}
     }
-    let idle = setTimeout(kill, IDLE_TIMEOUT_MS)
+    let idle = setTimeout(kill, IDLE_TIMEOUT_MS, `no output for ${mins(IDLE_TIMEOUT_MS)} (the idle timeout)`)
     const finish = (exit) => {
       if (settled) return
       settled = true
@@ -705,7 +712,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     const seen = { lastText: '' }
     child.stdout.on('data', (chunk) => {
       clearTimeout(idle)
-      idle = setTimeout(kill, IDLE_TIMEOUT_MS)
+      idle = setTimeout(kill, IDLE_TIMEOUT_MS, `no output for ${mins(IDLE_TIMEOUT_MS)} (the idle timeout)`)
       raw.write(chunk)
       buf += chunk
       const lines = buf.split('\n')
@@ -722,10 +729,10 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     })
     child.stderr.on('data', (chunk) => {
       clearTimeout(idle)
-      idle = setTimeout(kill, IDLE_TIMEOUT_MS)
+      idle = setTimeout(kill, IDLE_TIMEOUT_MS, `no output for ${mins(IDLE_TIMEOUT_MS)} (the idle timeout)`)
       out.write(chunk)
     })
-    const timer = setTimeout(kill, RUN_TIMEOUT_MS)
+    const timer = setTimeout(kill, RUN_TIMEOUT_MS, `still running after ${mins(RUN_TIMEOUT_MS)} (the run timeout)`)
     child.on('error', (e) => {
       out.write(`\n[fleet] could not start ${CLAUDE}: ${e.message}\n`)
       finish(127)

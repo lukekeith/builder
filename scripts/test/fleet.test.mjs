@@ -150,7 +150,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(git(root, 'branch', '--list', 'builder/a'), '')
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^1 archived \(last: a, just now\)/m)
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^- repo: clean$/m, 'nothing left behind, and the report says so')
-  assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/a/a-01.log')), 'its logs moved with it')
+  assert.match(readFileSync(join(root, '.builder/fleet/logs/_archive/a/a-01.log'), 'utf8'), /did audited/, 'its logs moved with it, written in full')
   assert.equal(existsSync(join(root, '.builder/fleet/logs/a-01.log')), false)
 })
 
@@ -175,22 +175,33 @@ test('one run with no progress runs again; the feature carries on', () => {
   assertLanded(r, 'c2')
 })
 
+// The timeout windows in these tests stay well above the stub's start-up (a node process behind a
+// shebang: 100-450 ms when the machine is busy) — the idle and run timers start at spawn, so a window
+// shorter than start-up kills the stub before it reaches its step, and the test proves nothing.
+const STUB_WINDOW_MS = 1500
+/** How many runs reached `step` in the stub — a run killed while still starting never logs it. */
+const reached = (r, feature, step) => r.calls.filter((c) => c.startsWith(`start ${feature} `) && c.split(' ')[4] === step).length
+
 test('a run that keeps talking outlives the idle timeout; a silent one does not', () => {
   const root = makeRepo(['t1', 't2'])
-  const env = { FLEET_IDLE_TIMEOUT_MS: '400' }
-  const r = runFleet(root, ['t1', 't2'], { t1: ['CHATTY:1200:audited', ...HAPPY.slice(1)], t2: ['HANG', 'HANG'] }, env)
-  assertLanded(r, 't1')
+  const env = { FLEET_IDLE_TIMEOUT_MS: String(STUB_WINDOW_MS) }
+  const r = runFleet(root, ['t1', 't2'], { t1: [`CHATTY:${STUB_WINDOW_MS * 3}:audited`, ...HAPPY.slice(1)], t2: ['HANG', 'HANG'] }, env)
+  const t1 = assertLanded(r, 't1')
+  assert.equal(t1.timing[0].turns, 3, `run 1 was not the chatty run that finished: ${JSON.stringify(t1.timing[0])}`)
   assert.equal(r.fleet.features.t2.status, 'failed')
   assert.match(r.fleet.features.t2.reason, /timed out twice/)
+  // A killed run says why in its log, so an empty-looking log is never mistaken for a lost one.
+  assert.match(readFileSync(join(root, '.builder/fleet/logs/t2-01.log'), 'utf8'), /\[fleet\] killed: no output for \d+ s \(the idle timeout\)/)
+  assert.equal(reached(r, 't2', 'HANG'), 2, 'both silent runs started and hung, rather than dying while starting')
   // A run killed by the timeout has no result event: wall-clock ms, turns null.
   const hung = r.fleet.features.t2.timing
   assert.equal(hung.length, 2)
-  assert.ok(hung.every((t) => t.turns === null && t.ms >= 400), JSON.stringify(hung))
+  assert.ok(hung.every((t) => t.turns === null && t.ms >= STUB_WINDOW_MS), JSON.stringify(hung))
   const log = readFileSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.log'), 'utf8')
   assert.match(log, /· still working/)
   assert.match(log, /did audited/)
   assert.equal(log.match(/did audited/g).length, 1, 'the result repeating the last assistant text is printed once')
-  assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl')))
+  assert.match(readFileSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl'), 'utf8'), /"text":"still working"/)
 })
 
 test('a run that prints more than one result event is timed by the last', () => {
@@ -216,18 +227,20 @@ test('a run that fails once is retried and carries on', () => {
 
 test('a hung run times out twice and fails', () => {
   const root = makeRepo(['e'])
-  const r = runFleet(root, ['e'], { e: ['HANG', 'HANG'] }, { FLEET_RUN_TIMEOUT_MS: '300' })
+  const r = runFleet(root, ['e'], { e: ['HANG', 'HANG'] }, { FLEET_RUN_TIMEOUT_MS: String(STUB_WINDOW_MS) })
   assert.equal(r.fleet.features.e.status, 'failed')
   assert.match(r.fleet.features.e.reason, /timed out twice/)
+  assert.equal(reached(r, 'e', 'HANG'), 2, 'both runs started and hung, rather than dying while starting')
 })
 
 test('a hung run with a grandchild holding stdout still times out and fails', () => {
   const root = makeRepo(['e2'])
   const start = Date.now()
-  const r = runFleet(root, ['e2'], { e2: ['HANG-CHILD', 'HANG-CHILD'] }, { FLEET_RUN_TIMEOUT_MS: '300' })
+  const r = runFleet(root, ['e2'], { e2: ['HANG-CHILD', 'HANG-CHILD'] }, { FLEET_RUN_TIMEOUT_MS: String(STUB_WINDOW_MS) })
   const elapsed = Date.now() - start
   assert.equal(r.fleet.features.e2.status, 'failed')
   assert.match(r.fleet.features.e2.reason, /timed out twice/)
+  assert.equal(reached(r, 'e2', 'HANG-CHILD'), 2, 'both runs reached the step that leaves a grandchild holding stdout')
   assert.ok(elapsed < 10000, `fleet run took ${elapsed}ms — a grandchild holding stdout kept it from settling`)
 })
 

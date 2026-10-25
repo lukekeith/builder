@@ -29,7 +29,9 @@ test('start returns at once; wait reports the exit code and the log tail', () =>
 
 test('wait gives up after --max with "still running" and exit 75; a later wait gets the result', () => {
   const root = repo()
-  job(root, 'start', 'slow', '--', 'sleep 2; echo done')
+  // The job must still be running when the next command starts — on a busy machine starting
+  // `node job.mjs` alone can take a second or two, so the margin is wide.
+  job(root, 'start', 'slow', '--', 'sleep 6; echo done')
   const first = job(root, 'wait', 'slow', '--max', '1')
   assert.equal(first.status, 75)
   assert.match(first.stdout, /slow: still running .* call wait again/)
@@ -50,7 +52,7 @@ test('a job whose process died without an exit code says so', () => {
 
 test('starting a name that is still running is refused; a finished one can be re-run', () => {
   const root = repo()
-  job(root, 'start', 'r', '--', 'sleep 2')
+  job(root, 'start', 'r', '--', 'sleep 6') // wide margin: still running when the next start comes in
   const again = job(root, 'start', 'r', '--', 'true')
   assert.equal(again.status, 2)
   assert.match(again.stderr, /r is still running/)
