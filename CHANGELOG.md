@@ -4,6 +4,15 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 4.14.5
+
+**Fixed:**
+- **A vendored copy carries the hooks.** `/builder:vendor` copied `skills/` and `scripts/` but not
+  `hooks/`, so a repo running its own copy got neither the session brief nor the PR lock. It now
+  copies `hooks/` too, with the entry scripts still executable; the host's marketplace loads the copy
+  as a plugin, so Claude Code runs its hooks exactly as from an install. The vendor step already turns
+  the user-scope builder off in that repo, so its hooks never run twice.
+
 ## 4.14.4
 
 **Added:**
