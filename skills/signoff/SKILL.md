@@ -164,11 +164,19 @@ writes it: `go-ahead: <name YYYY-MM-DD>`, `head`, `next: /builder:resume --path 
 **never as a sign-off**: no header line, no condense, the PR lock untouched.
 
 ```
-📍 <feature>: go-ahead recorded — next:
-   1. resume — continue here, step by step: /builder:resume --path <folder>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   Reply 1 or 2 (or "resume" / "agent"; "go" is 1)
+Full spec: <folder>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <folder>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: go-ahead recorded — how do you want it built?
+   1. Agent — sent to agents who build, walk, sign off and verify it, and merge it on their own; you get the review of what landed
+   2. Step by step — carry on here one step at a time (next: the build), pausing for you at each decision and for your walk
+   3. In this session — build it right here in this session, without the agents or the extra review rounds
+   Reply 1, 2 or 3 — "go" is 1.
 ```
+
+REFERENCE §The two-way footer: no `/builder:*` command on an option line; without a config
+`agent_walk:` block there is no **Agent** and the rest renumber.
 
 ## Re-signing
 
@@ -193,12 +201,13 @@ description, and the SPEC header carries it from then on.
 
 | Outcome | Footer |
 |---|---|
-| PASS | `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
+| PASS | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: signed off + condensed — what next?`, then REFERENCE §The two-way footer's signed-off row: `1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed` · `2. Step by step — carry on here (next: verify — every app's gates fresh, then the PR), pausing for you before the PR opens` (Step by step runs `/builder:verify --path <folder>`) · `Reply 1 or 2 — "go" is 1.` Without an `agent_walk:` block only Step by step is left, so the single line: `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
 | PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder> · or say go` |
-| PROBLEMS / PARTIAL | `📍 <feature>: <n> fixes owed — next:` then the two numbered options of REFERENCE §The two-way footer, option 1 `/builder:resume --path <folder>` |
+| PROBLEMS / PARTIAL | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: <n> fixes owed — what next?`, then REFERENCE §The two-way footer's fixes-owed row: `1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed` · `2. Step by step — fix them here one at a time, then re-walk what they touched` (Step by step runs `/builder:resume --path <folder>`) · `Reply 1 or 2 — "go" is 1.` |
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
+numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
+§Continuing on "go" has the exceptions.
 
 On a hold, name the local-only steps that remain open and that the PR stays parked until the human
 lifts it. The condense's own line names what it removed: `§Plan index stripped · PLAN.md removed`.

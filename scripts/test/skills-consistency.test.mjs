@@ -474,8 +474,8 @@ test('4.10.0: build here — offered before the build, audit and plan still run,
   const ref = read('skills/resume/REFERENCE.md'), resume = read('skills/resume/SKILL.md'), plan = read('skills/plan/SKILL.md'), build = read('skills/build/SKILL.md')
   assert.match(ref, /\| `--here` \|/)
   assert.match(ref, /build: here \| none/)
-  assert.match(ref, /3\. here {3}— audit and plan it, then build it in this session without the ceremony/)
-  for (const f of ['spec', 'align', 'audit']) assert.match(read(`skills/${f}/SKILL.md`), /--here\n {3}Reply 1, 2 or 3 \(or "resume" \/ "agent" \/ "here"; "go" is 1\)/, f)
+  assert.match(ref, /\*\*In this session\*\* — only before the build starts[\s\S]{0,120}`\/builder:resume --path <folder> --here`/)
+  for (const f of ['spec', 'align', 'audit']) assert.match(read(`skills/${f}/SKILL.md`), /\n {3}3\. In this session — [^\n]*right here in this session[^\n]*\n {3}Reply 1, 2 or 3 — "go" is 1\./, f)
   assert.match(resume, /\*\*`--here` \(not under `--agent-walk`\)\*\* → write `build: here`/)
   assert.match(resume, /`build: here` \| `\/builder:build --path <folder> --here`/)
   assert.ok(resume.indexOf('**and** `build: here` |') < resume.indexOf('**and** the config has an `agent_walk:` block, **not** under `--agent-walk` |'), 'the here rows come before the agent rows')
@@ -742,4 +742,41 @@ test('4.14.3: the program go-ahead is the program review — never a raw file or
   assert.match(ref, /\*\*spec at xl — the one program go-ahead\*\*/)
   assert.match(resume, /Pick the child the way the picker picks a feature\.\*\* Brief it first \(REFERENCE §Before a picker\)/)
   assert.match(spec, /designed \(xl, <n> children\)/)
+})
+
+test('the build options: Agent → Step by step → In this session, no command on an option line, one pick-up line', () => {
+  const ref = read('skills/resume/REFERENCE.md')
+  const sec = ref.slice(ref.indexOf('## The two-way footer'), ref.indexOf('**Not numbered:**'))
+  // the order, and each option only where it applies
+  assert.ok(sec.indexOf('- **Agent** — only when the config has an `agent_walk:` block') < sec.indexOf('- **Step by step** — always'))
+  assert.ok(sec.indexOf('- **Step by step** — always') < sec.indexOf('- **In this session** — only before the build starts'))
+  assert.match(sec, /numbered from 1 with no gaps when one is absent/)
+  // the per-state wording is a table, the walk row in the owner's words
+  assert.match(sec, /^\| State \| 1\. Agent — \| 2\. Step by step — \| 3\. In this session — \|$/m)
+  assert.match(sec, /^\| `built` \(the walk\) \|[^\n]*\| you walk it yourself in the running app, then sign it off here \|/m)
+  // "go" is option 1 — Agent where it is offered — and replies may name the option
+  assert.match(sec, /\*\*so where\s+Agent is offered, "go" hands the feature to the agents\*\*/)
+  for (const r of ['`agent`', '`step by step` or `resume`', '`in this session` or `here`']) assert.ok(sec.includes(r), r)
+  assert.match(ref, /\*\*On a numbered footer\*\* \(§The two-way footer\) a bare affirmative picks \*\*option 1\*\*/)
+  // every copy: the Full spec / Pick up lines, the options in order, no /builder: on an option line
+  const footers = [ref, ...['spec', 'align', 'audit', 'build', 'signoff', 'verify'].map((f) => read(`skills/${f}/SKILL.md`))]
+    .flatMap((s) => [...s.matchAll(/^ *```\w*\n([\s\S]*?)^ *```$/gm)].map((m) => m[1]).filter((b) => /^ {3}\d\. (Agent|Step by step|In this session) — /m.test(b)))
+  assert.ok(footers.length >= 9, `found ${footers.length} footers`)
+  for (const b of footers) {
+    assert.match(b, /^Pick up where you left off any time: \/builder:resume --path \S+\n {2}\(if this session ends, or to spec several features before building any of them\)$/m, b)
+    const opts = [...b.matchAll(/^ {3}(\d)\. (Agent|Step by step|In this session) — (.*)$/gm)]
+    for (const [, , , text] of opts) assert.doesNotMatch(text, /\/builder:/, text)
+    const order = ['Agent', 'Step by step', 'In this session']
+    // each 📍 group in the block numbers from 1 in the fixed order
+    for (const group of b.split(/^📍/m).slice(1)) {
+      const g = [...group.matchAll(/^ {3}(\d)\. (Agent|Step by step|In this session) — /gm)]
+      g.forEach(([, n, name], i) => assert.equal(+n, i + 1, group))
+      const idx = g.map(([, , name]) => order.indexOf(name))
+      assert.deepEqual(idx, [...idx].sort(), group)
+      if (!/ — …$/m.test(group)) assert.match(group, /^ {3}Reply 1(, 2)?( or [23])? — "go" is 1\.$/m, group) // the review example is cut short
+    }
+  }
+  // no copy keeps the old option lines
+  for (const f of ['resume/REFERENCE.md', 'resume/SKILL.md', 'spec/SKILL.md', 'align/SKILL.md', 'audit/SKILL.md', 'build/SKILL.md', 'signoff/SKILL.md', 'verify/SKILL.md', 'help/SKILL.md', 'agent/SKILL.md'])
+    assert.doesNotMatch(read(`skills/${f}`), /resume — continue here|2\. agent|3\. here|1\. resume/, f)
 })

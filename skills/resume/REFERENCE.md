@@ -159,7 +159,7 @@ mid-task. When in doubt, the heavier size.
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
 | `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
-| `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (`3. here`). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
+| `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (**In this session**, §The two-way footer). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm move the save button into the header` |
@@ -171,12 +171,18 @@ ref is [`SCOPE-SELECTION.md`](SCOPE-SELECTION.md).
 
 ## Continuing on "go"
 
-Every handoff ends in a 📍 footer naming the one next command. **The human does not have to paste
-it.** When their next message is a **bare affirmative** — "go", "yes", "proceed", "continue",
+Every handoff ends in a 📍 footer naming the one next command (on a numbered footer, each option
+stands for one). **The human does not have to paste it.** When their next message is a **bare affirmative** — "go", "yes", "proceed", "continue",
 "approve", "ok", "next", "do it", "keep going" and the like — and **your previous message** ended in
 a 📍 footer naming one complete command, run that command yourself through the Skill tool, in that
 turn, with the footer's `--path` and the flags the run already carries (`--ticket`, `--auto`). Don't
 re-print it and ask them to type it.
+
+**On a numbered footer** (§The two-way footer) a bare affirmative picks **option 1**. Where the
+footer offers **Agent**, that is Agent: "go" hands the feature to the agents —
+`/builder:agent --path <folder>`, whose own questions and one confirmation still ask. Where it does
+not, option 1 is **Step by step**, the command the single-line footer would have named, and
+everything below applies to it.
 
 **Nothing is skipped.** The command runs exactly as if typed — its own Step 1, the manifest as the
 state, every gate and stop intact. An affirmative continues **to the next step**; it never answers a
@@ -187,7 +193,7 @@ migration). Those still ask, as they would have.
 
 | The footer names | Why | Answer with |
 |---|---|---|
-| `/builder:signoff`, or 🔒 your walk | a sign-off an agent starts is void, and "approve" is not "I walked it" | the exact command to type, with their verdict in their words after it |
+| `/builder:signoff`, or 🔒 your walk (Step by step on the walk, when it is option 1 or picked by name) | a sign-off an agent starts is void, and "approve" is not "I walked it" | the exact command to type, with their verdict in their words after it |
 | a human's step (`<the human's step>`, apply a migration, restart a service) | only they can do it | the step, then "say go once it's done" |
 | a placeholder only the human can fill (`<what you want built>`, `<the change>`) | there is nothing to run yet | ask for the missing text |
 | `🛑 held` | the pipeline is parked on their call | the hold's words, and that lifting it is theirs |
@@ -216,32 +222,67 @@ does-not-continue table above don't carry it.
 
 **Wherever another way through the next step exists, the footer offers it.** A footer about one
 feature whose `state` is one of `spec aligned audited planned building built signed-off verified`
-and that would end in ` · or say go` (or names the walk) is printed as a numbered choice. Its
-options, numbered in this order, are those that apply:
+and that would end in ` · or say go` (or names the walk) is printed as a numbered choice. It is there
+to help the human decide how the feature gets built — less is more: each option says in plain words
+what picking it does, and **no option line carries a `/builder:*` command**. Its options, in this
+order, are those that apply, numbered from 1 with no gaps when one is absent:
 
-- **resume** — always: the command the single-line footer would have named (for the walk,
-  `🔒 your walk → /builder:signoff --path <folder>`).
-- **agent** — only when the config has an `agent_walk:` block: `/builder:agent --path <folder>`.
-- **here** — only before the build starts (`state` is `spec`, `aligned`, `audited` or `planned`):
-  `/builder:resume --path <folder> --here` — the audit and the plan still run; then this session
-  builds it without the ceremony (REFERENCE §Flags `--here`).
+- **Agent** — only when the config has an `agent_walk:` block. Runs `/builder:agent --path <folder>`.
+- **Step by step** — always. Runs the command the single-line footer would have named (for the
+  walk, the human's walk and then `/builder:signoff --path <folder>`).
+- **In this session** — only before the build starts (`state` is `spec`, `aligned`, `audited` or
+  `planned`). Runs `/builder:resume --path <folder> --here` — the audit and the plan still run, only
+  the ones still to come; then this session builds it without the ceremony (REFERENCE §Flags
+  `--here`).
 
 ```
-📍 <feature>: <what just happened> — next:
-   1. resume — continue here, step by step: <the footer's command>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <folder>
-   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <folder> --here
-   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
+Full spec: <registry>/<feature>/SPEC.md
+Pick up where you left off any time: /builder:resume --path <registry>/<feature>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: <what just happened> — how do you want it built?
+   1. Agent — <it is sent to agents who carry it to merged on their own — the steps that remain, in plain words — and you get the review of what landed>
+   2. Step by step — <carry on here one step at a time (next: <the next step in plain words>), pausing for you at each decision and for your walk>
+   3. In this session — <audit and plan it (only the steps still to come), then build it right here in this session, without the agents or the extra review rounds>
+   Reply 1, 2 or 3 — "go" is 1.
 ```
 
-Without an `agent_walk:` block the **here** option is `2.` and the reply line reads `Reply 1 or 2
-(or "resume" / "here"; "go" is 1)`. With only one option left, the single-line footer is printed.
+- **`Full spec:`** — the feature's `SPEC.md` (`PROGRAM.md` for a program). Where the step's own
+  output already ends with that line — spec's design review — it is not printed twice.
+- **`Pick up where you left off any time:`** — the one command the footer shows, always
+  `/builder:resume --path <folder>`, with its reason on the line under it.
+- **The question** — `— how do you want it built?` before the build is done; from the walk on
+  (`built`, `signed-off`, `verified`, fixes owed) it reads `— what next?`.
+- **The reply line** — `Reply 1, 2 or 3 — "go" is 1.`, or `Reply 1 or 2 — "go" is 1.` with two
+  options. With only one option left (no `agent_walk:` block, after the build), the single-line
+  footer is printed instead.
 
-**Replies.** `1`, `resume` or a bare affirmative → option 1, by §Continuing on "go" — so `1` on the
-walk line answers with the signoff command to type, exactly as "go" would. The **agent** number or
-`agent` → run `/builder:agent --path <folder>` through the Skill tool in that turn; its own questions
-and its one confirmation still ask. The **here** number or `here` → run
-`/builder:resume --path <folder> --here` through the Skill tool in that turn.
+**Each explanation is one or two plain lines, written for the state** — the steps that remain, never
+the ones done:
+
+| State | 1. Agent — | 2. Step by step — | 3. In this session — |
+|---|---|---|---|
+| `spec` (designed), `aligned` | sent to agents who check it against the code, plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on here one step at a time (next: checking the spec against the code), pausing for you at each decision and for your walk | audit and plan it, then build it right here in this session, without the agents or the extra review rounds |
+| `audited` | sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk | plan it, then build it right here in this session, without the agents or the extra review rounds |
+| `planned` | sent to agents who build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on here one step at a time (next: the build, after your go-ahead if it isn't given yet), pausing for you at each decision and for your walk | build it right here in this session, without the agents or the extra review rounds |
+| `building` (stopped) | sent to agents who finish the build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on with the build here (next: phase N/M), pausing for you at each decision and for your walk | — |
+| `built` (the walk) | sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed | you walk it yourself in the running app, then sign it off here | — |
+| fixes owed (signoff PROBLEMS / PARTIAL, verify INCOMPLETE) | sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed | fix them here one at a time, then re-walk or re-verify what they touched | — |
+| `signed-off` | sent to agents who verify it and merge it on their own; you get the review of what landed | carry on here (next: verify — every app's gates fresh, then the PR), pausing for you before the PR opens | — |
+| `verified` (READY) | sent to agents who merge it on their own, without a PR; you get the review of what landed | carry on here (next: open the PR — asked once before it opens) | — |
+| `verified`, PR open | sent to agents who finish it and merge it on their own; you get the review of what landed | carry on here (next: condense it to its shipped spec once the PR merges) | — |
+
+**Replies.** `go`, `yes` or any bare affirmative is **option 1**, by §Continuing on "go" — **so where
+Agent is offered, "go" hands the feature to the agents**; where it is not, "go" is Step by step. A
+reply may also name the option:
+
+- **Agent** — its number or `agent` → run `/builder:agent --path <folder>` through the Skill tool in
+  that turn; its own questions and its one confirmation still ask.
+- **Step by step** — its number, `step by step` or `resume` → the command the single-line footer
+  would have named, exactly as §Continuing on "go" runs it — so on the walk it answers with the
+  signoff command to type, after the human has walked it.
+- **In this session** — its number, `in this session` or `here` → run
+  `/builder:resume --path <folder> --here` through the Skill tool in that turn.
 
 **Not numbered:** a footer under `--agent-walk` (no human reads it); one in the does-not-continue table
 other than the walk — 🛑 held, a human's step, a placeholder, more than one candidate; a footer before
@@ -390,10 +431,11 @@ Not included
   · Tags in exports and reports.
 
 Full spec: docs/features/cert-tags/SPEC.md
+Pick up where you left off any time: /builder:resume --path docs/features/cert-tags
+  (if this session ends, or to spec several features before building any of them)
 
-📍 cert-tags: designed (lg, api+web+mobile) — next:
-   1. resume — continue here, step by step: /builder:resume --path docs/features/cert-tags
-   …
+📍 cert-tags: designed (lg, api+web+mobile) — how do you want it built?
+   1. Agent — …
 ```
 
 ### Where it is shown, and how much
