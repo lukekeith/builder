@@ -1,6 +1,6 @@
 ---
 name: vendor
-description: Install or update a local copy of this plugin inside the current repo — for a repo whose policy won't accept a plugin fetched from outside it. Copies only what runs (skills, scripts, the template, the licences) into the repo's own plugin folder, registers it in the repo's own marketplace and settings, removes any settings entry naming where the plugin came from, and refuses to finish if anything it wrote still names its source. Re-running it is the update. Use when the user asks to vendor, install locally, copy builder into the repo, or update the repo's local copy of builder.
+description: Install or update a local copy of this plugin inside the current repo — for a repo whose policy won't accept a plugin fetched from outside it. Copies only what runs (skills, scripts, hooks, the template, the licences) into the repo's own plugin folder, registers it in the repo's own marketplace and settings, removes any settings entry naming where the plugin came from, and refuses to finish if anything it wrote still names its source. Re-running it is the update. Use when the user asks to vendor, install locally, copy builder into the repo, or update the repo's local copy of builder.
 ---
 
 # `/builder:vendor` — a local copy that names nothing outside the repo
