@@ -55,8 +55,8 @@ second plugin to install. If a step says it cannot find the config, that file is
 | Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
 | Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
 | Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it as `2. agent`, except the plan go-ahead, which launches agents itself |
-| **Build it yourself, without the ceremony** | Pick `3. here` (or `2.` without `agent_walk`) on a handoff before the build, or `/builder:resume --path <folder> --here`. The audit and plan still run in full; then this session works `PLAN.md` task by task, test first, fast gates at each phase close. No fleet, no reviewer agents, no walk lock, no sign-off or verify. It stops at `state: built`, so `/builder:resume` can still walk, verify and ship it later |
+| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it first, as **1. Agent** ("go" picks it), except the plan go-ahead, which launches agents itself |
+| **Build it yourself, without the ceremony** | Pick **In this session** on a handoff before the build, or `/builder:resume --path <folder> --here`. The audit and plan still run in full; then this session works `PLAN.md` task by task, test first, fast gates at each phase close. No fleet, no reviewer agents, no walk lock, no sign-off or verify. It stops at `state: built`, so `/builder:resume` can still walk, verify and ship it later |
 | **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |
 | **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
 | **Is builder fast enough, and where does its time go?** | `/builder:benchmark` — one small feature through builder with the recommended test plan and with everything, and through superpowers and GSD, unattended; a report of time per step, what each step did, tokens, cost and whether the feature works. `--status` while it runs |
@@ -179,6 +179,10 @@ with that line:
 ```
 
 **You don't have to paste it.** Reply **go** (or yes, proceed, continue) and the footer's command runs.
+Where there is more than one way on, the footer is numbered instead — **1. Agent** (agents finish it
+and merge it), **2. Step by step** (carry on here, pausing for you), **3. In this session** (build it
+here without the ceremony), only the ones that apply — and **go** picks 1. Above it,
+`Pick up where you left off any time:` is the one command to keep.
 The exceptions are the ones that are yours by design: `/builder:signoff` and the walk, a step only you
 can do, a hold, and opening the PR, which asks once. "go, but …" is a change, not a go.
 

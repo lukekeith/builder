@@ -152,19 +152,24 @@ review that fits in ~40 lines is one part). What spec adds to the sections:
 
 **B, or the owner's own words, at any part** → amend the record's tree and the SPEC, re-run
 `check-obligations.mjs`, commit, and show **that part again**. The last part ends with the reference
-line `Full spec: <registry>/<feature>/SPEC.md`, then the footer:
+line `Full spec: <registry>/<feature>/SPEC.md` (`PROGRAM.md` at xl) — the footer's own `Full spec:`
+line, so it is not printed twice — then the rest of the footer:
 
 ```
-📍 <feature>: designed (<size>, <apps>) — next:
-   1. resume — continue here, step by step: /builder:resume --path <registry>/<feature>
-   2. agent  — hand it to agents to finish and merge: /builder:agent --path <registry>/<feature>
-   3. here   — audit and plan it, then build it in this session without the ceremony: /builder:resume --path <registry>/<feature> --here
-   Reply 1, 2 or 3 (or "resume" / "agent" / "here"; "go" is 1)
+Pick up where you left off any time: /builder:resume --path <registry>/<feature>
+  (if this session ends, or to spec several features before building any of them)
+
+📍 <feature>: designed (<size>, <apps>) — how do you want it built?
+   1. Agent — sent to agents who check it against the code, plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed
+   2. Step by step — carry on here one step at a time (next: checking the spec against the code), pausing for you at each decision and for your walk
+   3. In this session — audit and plan it, then build it right here in this session, without the agents or the extra review rounds
+   Reply 1, 2 or 3 — "go" is 1.
 ```
 
-The numbered form is REFERENCE §The two-way footer (`../resume/REFERENCE.md`); without a config
-`agent_walk:` block there is no **agent** option, so **here** is `2.` and the reply line reads
-`Reply 1 or 2 (or "resume" / "here"; "go" is 1)`.
+The numbered form is REFERENCE §The two-way footer (`../resume/REFERENCE.md`): no `/builder:*`
+command on an option line, and "go" is option 1 — Agent, so a bare affirmative hands it to the
+agents. Without a config `agent_walk:` block there is no **Agent** option: **Step by step** is `1.`,
+**In this session** is `2.`, and the reply line reads `Reply 1 or 2 — "go" is 1.`
 
 **Under `--auto`** no review is printed — nobody approves (REFERENCE §The review): one line —
 written, committed, `<n>` rulings taken as `auto (recommended)` — then the footer. The human sees
