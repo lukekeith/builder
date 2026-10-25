@@ -4,7 +4,7 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
-## Unreleased
+## 4.14.4
 
 **Added:**
 - **A session brief and the PR lock — builder's first hooks.** In a repo with `.claude/builder.md`,
