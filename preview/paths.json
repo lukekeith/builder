@@ -53,5 +53,8 @@
     "steps": ["status-dashboard", "resume-picker", "tidy-table", "version", "help-card"] },
   { "group": "Around the work", "id": "setup", "title": "Setting up a repo", "short": "init",
     "blurb": "`/builder:init` writes `.claude/builder.md` from what the repo contains and asks only what it can't answer.",
-    "steps": ["init-questions", "init-report"] }
+    "steps": ["init-questions", "init-report"] },
+  { "group": "Around the work", "id": "hooks", "title": "Session start and the PR lock", "short": "the brief a session opens with, and gh pr create before the walk",
+    "blurb": "builder's two hooks, both silent outside a builder repo: the SessionStart brief (where to start, what's in flight, builder's skills over superpowers'), and the PR lock denying `gh pr create` on a feature's branch until it has been walked and signed off.",
+    "steps": ["session-brief", "pr-lock"] }
 ]

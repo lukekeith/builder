@@ -1,0 +1,29 @@
+{
+  "description": "builder: a short brief at session start in a builder project, and the PR lock on gh pr create. Silent outside a repo with .claude/builder.md.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/pr-lock\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

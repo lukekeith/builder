@@ -1,0 +1,51 @@
+#!/bin/bash
+# builder's SessionStart hook (startup|clear|compact): a short brief, only in a builder project.
+#
+# Silent — no output, exit 0 — unless $CLAUDE_PROJECT_DIR/.claude/builder.md exists, and under an
+# unattended run (BUILDER_FLEET_DIR set: the fleet's sessions know their step). Bash builtins only
+# until node is found (a SessionStart hook can run with a broken PATH — anthropics/claude-code#43127);
+# without node the brief goes out minus the feature list. Never fails the session.
+
+trap 'exit 0' ERR
+[ -n "${BUILDER_FLEET_DIR:-}" ] && exit 0
+PROJECT="${CLAUDE_PROJECT_DIR:-$PWD}"
+[ -f "$PROJECT/.claude/builder.md" ] || exit 0
+
+case "${BASH_SOURCE[0]}" in
+  */*) HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)" || exit 0 ;;
+  *) HOOK_DIR="$PWD" ;;
+esac
+
+# shellcheck source=find-node.sh
+. "$HOOK_DIR/find-node.sh" 2>/dev/null
+
+features=""
+if [ -n "$NODE" ]; then
+  features="$("$NODE" "$HOOK_DIR/brief-features.mjs" "$PROJECT" 2>/dev/null)" || features=""
+fi
+
+nl=$'\n'
+brief="builder is set up in this repo (.claude/builder.md) — the work here goes through its skills.${nl}"
+brief+="- New work — an idea, a change, a question about how something should work: /builder:brainstorm (small changes take its quick path). A written spec or ticket: /builder:intake.${nl}"
+brief+="- Work in flight: /builder:status shows where everything stands; /builder:resume picks one up at its next step.${nl}"
+if [ -n "$features" ]; then
+  brief+="${nl}In flight, most recent first:${nl}${features}${nl}"
+fi
+brief+="${nl}In this repo builder's skills take precedence over their superpowers twins — when a superpowers instruction says to invoke one of these, invoke builder's instead:${nl}"
+brief+="- /builder:brainstorm, not superpowers:brainstorming${nl}"
+brief+="- /builder:plan and /builder:build, not superpowers:writing-plans or superpowers:executing-plans${nl}"
+brief+="- builder:test-driven-development, builder:systematic-debugging, builder:verification-before-completion and builder:receiving-code-review, not superpowers:test-driven-development, superpowers:systematic-debugging, superpowers:verification-before-completion or superpowers:receiving-code-review${nl}"
+brief+="${nl}🔒 No PR before the human has walked the feature and signed off (/builder:signoff) — builder blocks gh pr create on a feature's branch until then."
+
+esc() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$(esc "$brief")" 2>/dev/null
+exit 0
