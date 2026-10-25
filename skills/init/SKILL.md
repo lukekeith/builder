@@ -76,8 +76,10 @@ the answer is a choice:
 - **flaky tests** — any test file that fails under the whole suite and passes alone. Each becomes a
   `flaky:` entry: `match:` the text that identifies it in the output, `rerun:` the command that runs
   that file alone. The gate runner then re-runs it once instead of a model deciding each time;
-- the **`agent_walk` block** — only if the user wants unattended `/builder:fleet` runs (recommend
-  *not yet* unless they asked). If yes: `driver` — recon first: a Playwright/browser MCP server in
+- the **`agent_walk` block** — 🔴 **always written.** Agent mode (`/builder:agent`, `/builder:fleet`,
+  the *Agent* option on every build footer) is part of every install, and a config without this block
+  silently has none. Ask its questions; leave it out only when the user says in so many words that
+  they don't want agent runs in this repo, and then say what that turns off. The questions: `driver` — recon first: a Playwright/browser MCP server in
   `.mcp.json`, or `playwright`/`cypress` in a manifest; else ask; `claude_args` — recommend
   `--permission-mode bypassPermissions` and **say plainly** it lets every headless run execute any
   command inside its fleet worktree without asking; `reset` and `stop` from the §Walk readiness recon;
@@ -122,10 +124,10 @@ mkdir -p .claude && cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder
   `- none recorded yet` line rather than a placeholder. **No `<…>` may survive** outside a code block.
 
 `--update`: edit the existing file in place — no `cp` — touching only gaps, placeholders and missing
-apps, and list each change. When the config has **no `agent_walk:` block**, that's not a gap to fill
-silently — **offer it once**: "Add an agent_walk block for unattended /builder:agent and
-/builder:fleet runs? (not yet / yes)". On yes, run §3's `agent_walk` questions and write the block; on
-*not yet*, leave the config without one and don't ask again this run. With an `agent_walk:` block,
+apps, and list each change. 🔴 **A config with no `agent_walk:` block is a gap, and the biggest one** —
+without it the repo has no agent mode at all. Run §3's `agent_walk` questions and write the block,
+saying so in the change list ("added agent_walk — agent mode is now on"); leave it out only when the
+user says they don't want agent runs here. With an `agent_walk:` block,
 make sure the frontmatter documents **`build_profile_default`** — the project's default test plan,
 which the go-ahead recommends when the spec raises no signal (`rush` · `standard` · `thorough`, each
 read as the test plan it maps to; absent → the recommended plan: each slice's own tests, the touched

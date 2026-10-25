@@ -780,3 +780,12 @@ test('the build options: Agent → Step by step → In this session, no command 
   for (const f of ['resume/REFERENCE.md', 'resume/SKILL.md', 'spec/SKILL.md', 'align/SKILL.md', 'audit/SKILL.md', 'build/SKILL.md', 'signoff/SKILL.md', 'verify/SKILL.md', 'help/SKILL.md', 'agent/SKILL.md'])
     assert.doesNotMatch(read(`skills/${f}`), /resume — continue here|2\. agent|3\. here|1\. resume/, f)
 })
+
+test('4.14.8: init always writes the agent_walk block — agent mode is part of every install', () => {
+  const init = read('skills/init/SKILL.md'), tpl = read('PROJECT.template.md')
+  assert.match(init, /the \*\*`agent_walk` block\*\* — 🔴 \*\*always written\.\*\*/)
+  assert.match(init, /A config with no `agent_walk:` block is a gap, and the biggest one/)
+  assert.doesNotMatch(init, /recommend\s+\*not yet\*/)
+  assert.doesNotMatch(init, /\(not yet \/ yes\)/)
+  assert.match(tpl, /\/builder:init always writes this block/)
+})
