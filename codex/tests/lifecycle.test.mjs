@@ -283,3 +283,36 @@ test('archived landing target prevents restarting stale source planning artifact
   const stale = path.join(root, 'docs/features/finished'); fs.mkdirSync(stale, { recursive: true }); fs.writeFileSync(path.join(stale, 'SPEC.md'), 'stale source plan\n'); git(root, 'add', '.'); git(root, 'commit', '-m', 'stale source artifacts');
   await assert.rejects(run('start', 'finished', { root, into: 'main' }), /already archived on the landing target/); assert.equal(git(root, 'branch', '--list', 'builder/finished'), '');
 });
+test('merge_into: current lands on the branch the feature starts from; a builder/* branch or detached HEAD falls back to base_branch', async t => {
+  const root = repo(t); git(root, 'branch', 'main');
+  configure(root, 'merge_into: current\nbase_branch: main\n');
+  assert.equal((await run('start', 'on-work', { root })).targetBranch, 'work');
+  git(root, 'checkout', '-b', 'builder/elsewhere'); assert.equal((await run('start', 'on-builder', { root })).targetBranch, 'main');
+  git(root, 'checkout', '--detach'); assert.equal((await run('start', 'detached-current', { root })).targetBranch, 'main');
+});
+test('approval records a test plan, mirrors it as tests:, labels the list and walk=you waits for a human', async t => {
+  const root = repo(t); const m = await verified(root);
+  await assert.rejects(run('approve', m.name, { root, tests: 'slice=bogus' }), /Invalid test plan/);
+  await assert.rejects(run('approve', m.name, { root, tests: 'slice=own', profile: 'rush' }), /not both/);
+  const approved = await run('approve', m.name, { root, tests: 'end=risk' });
+  assert.equal(approved.tests, 'slice=own end=risk review=end'); assert.equal(approved.profileApproved, true); assert.equal(approved.awaitingHuman, undefined);
+  const manifest = fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8');
+  assert.match(manifest, /^tests: slice=own end=risk review=end$/m); assert.doesNotMatch(manifest, /^profile:/m);
+  assert.equal((await run('list', undefined, { root })).find(r => r.name === m.name).profileLabel, 'own · risk · end');
+  const you = await run('approve', m.name, { root, tests: 'slice=own end=everything review=slice walk=you' }); assert.equal(you.awaitingHuman, true);
+  const legacy = await run('approve', m.name, { root, profile: 'rush' }); assert.equal(legacy.tests, undefined); assert.equal(legacy.profile, 'rush');
+  assert.match(fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8'), /^profile: rush$/m);
+});
+test('start\'s profile placeholder is not mirrored as a plan; a stale tests line never outranks a later approval', async t => {
+  const root = repo(t); const m = await run('start', 'plain', { root });
+  await run('checkpoint', 'plain', { root, phase: 'planned', next: 'Go-ahead' });
+  const manifest = () => fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8');
+  assert.doesNotMatch(manifest(), /^(profile|tests):/m, 'no plan before the go-ahead');
+  await run('approve', 'plain', { root, tests: 'end=risk' }); assert.match(manifest(), /^tests: /m);
+  await run('approve', 'plain', { root, profile: 'standard' }); assert.doesNotMatch(manifest(), /^tests:/m); assert.match(manifest(), /^profile: standard$/m);
+});
+test('merge_into: current with no base_branch refuses a detached checkout instead of inventing main', async t => {
+  const root = repo(t); git(root, 'branch', 'main'); configure(root, 'merge_into: current\n');
+  assert.equal((await run('start', 'cur-work', { root })).targetBranch, 'work');
+  git(root, 'checkout', '--detach'); await assert.rejects(run('start', 'cur-detached', { root }), /merge_into: current needs a named branch/);
+});

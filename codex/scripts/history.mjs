@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { run } from './lifecycle.mjs';
-import { parseProfile } from './profile.mjs';
+import { parseProfile, parseTests, formatTests } from './profile.mjs';
 
 export function archivePath(root) {
   const common = execFileSync('git', ['-C', root, 'rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
@@ -26,7 +26,7 @@ export function appendLanding(file, metadata, { tasks, metrics = null, now = new
   const rows = readHistory(file);
   const existing = rows.find(row => row.feature === metadata.name && row.mergedHead === metadata.mergedHead);
   if (existing) return existing;
-  const row = { feature: metadata.name, mergedHead: metadata.mergedHead, target: metadata.targetBranch || metadata.originBranch, profile: parseProfile(metadata.profile).preset, size: { tasks }, landed: now, tokens: null, cost: null, lanes: null };
+  const row = { feature: metadata.name, mergedHead: metadata.mergedHead, target: metadata.targetBranch || metadata.originBranch, ...(metadata.tests ? { tests: formatTests(parseTests(metadata.tests).levers) } : { profile: parseProfile(metadata.profile).preset }), size: { tasks }, landed: now, tokens: null, cost: null, lanes: null };
   if (metrics) {
     if (metrics.tokens) row.tokens = { input: numeric(metrics.tokens.input, 'input tokens'), output: numeric(metrics.tokens.output, 'output tokens') };
     if (metrics.cost !== undefined) row.cost = numeric(metrics.cost, 'cost');

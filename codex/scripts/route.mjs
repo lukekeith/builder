@@ -2,7 +2,7 @@
 import { loadConfig } from './config.mjs'
 import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
-import { parseProfile } from './profile.mjs'
+import { parseTestPlan } from './profile.mjs'
 
 export const DEFAULTS = {
   fast: { model: 'gpt-6-luna', effort: 'high' },
@@ -15,11 +15,12 @@ const ROLES = {
   'fix-review': 'standard', architecture: 'judgment', audit: 'judgment',
   'final-review': 'judgment', 'security-review': 'judgment',
 }
-export function route(role, { models = {}, available, escalate = false, complex = false, profile } = {}) {
+export function route(role, { models = {}, available, escalate = false, complex = false, profile, tests } = {}) {
   if (!Object.hasOwn(ROLES, role)) throw new Error(`Unknown role: ${role}`)
   const tiers = Object.keys(DEFAULTS)
   let tier = ROLES[role]
-  const selected = parseProfile(profile)
+  // The test plan's models lever (an old profile mapped onto it); none → default.
+  const selected = parseTestPlan(tests ? { tests } : profile ? { profile } : {})
   if (selected.levers.models === 'strong' && !['inventory', 'mechanical'].includes(role)) tier = tiers[Math.min(tiers.indexOf(tier) + 1, 2)]
   if (complex || escalate) tier = tiers[Math.min(tiers.indexOf(tier) + 1, 2)]
   const configured = (t) => ({
@@ -42,16 +43,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const args = process.argv.slice(2)
     if (args.includes('--help')) {
-      console.log('route.mjs ROLE [--available MODEL,MODEL] [--complex] [--escalate] [--profile VALUE]')
+      console.log('route.mjs ROLE [--available MODEL,MODEL] [--complex] [--escalate] [--tests VALUE | --profile VALUE]')
     } else {
       const cfg = loadConfig()
       if (!cfg.ok && existsSync(cfg.path)) throw new Error(cfg.reason)
       const profileAt = args.indexOf('--profile')
       if (profileAt >= 0 && !args[profileAt + 1]) throw new Error('--profile requires a value')
+      const testsAt = args.indexOf('--tests')
+      if (testsAt >= 0 && !args[testsAt + 1]) throw new Error('--tests requires a value')
       const at = args.indexOf('--available')
       const result = route(args[0], { models: cfg.ok ? cfg.models : {},
         available: at < 0 ? undefined : (args[at + 1] ?? '').split(','),
         profile: profileAt < 0 ? undefined : args[profileAt + 1],
+        tests: testsAt < 0 ? undefined : args[testsAt + 1],
         complex: args.includes('--complex'), escalate: args.includes('--escalate') })
       console.log(JSON.stringify(result, null, 2))
       if (result.unavailable) process.exitCode = 2

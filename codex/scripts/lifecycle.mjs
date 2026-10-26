@@ -76,8 +76,8 @@ function targetReady(m) {
 function invalidate(m) { m.verifiedHead = null; if (m.integration) m.integration.candidateHead = null; }
 function active(m) { assert(!m.paused, 'Feature is paused; explicit unpause is required'); }
 async function humanReady(m) {
-  const { parseProfile } = await import('./profile.mjs');
-  const required = m.humanWalkRequired || parseProfile(m.profile).levers.testing === 'full+human';
+  const { runtimeTestPlan } = await import('./profile.mjs');
+  const required = m.humanWalkRequired || runtimeTestPlan(m).levers.walk === 'you';
   assert(!m.awaitingHuman && (!required || m.humanHead === head(m.worktree)), 'Feature requires a real human walk report at exact current HEAD');
 }
 async function configFor(root) {
@@ -150,13 +150,26 @@ function importArtifacts(m, file, imports, retry = false) {
   }
   atomic(file, m);
 }
+/**
+ * The plan line the manifest carries: `tests:` once approved under the test plan, an old approved
+ * `profile:` otherwise. start's `profile: thorough` is a placeholder, not a choice — it is written
+ * only for a legacy build already under way (which is Thorough). The other key is removed so a
+ * stale line never outranks the current approval.
+ */
+const UNDER_WAY = ['building', 'built', 'signed-off', 'verified', 'merged', 'blocked'];
+function planLines(m) {
+  if (m.tests) return { tests: m.tests, profile: null };
+  if (m.profileApproved || UNDER_WAY.includes(m.phase)) return { profile: m.profile || 'thorough', tests: null };
+  return { profile: null, tests: null };
+}
 function manifest(m) {
   const file = safeDestination(m.worktree, path.join(m.featurePath, 'MANIFEST.md'));
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-  for (const [key, value] of Object.entries({ phase: m.phase, state: m.phase, next: m.nextAction, 'current-task': m.currentTask || 'none', 'origin-branch': m.originBranch || 'detached', 'origin-head': m.originHead, 'target-branch': targetBranch(m), 'target-start-head': m.targetStartHead || m.originHead, profile: m.profile || 'thorough', branch: m.featureBranch, 'feature-name': m.name, registry: m.registry, ...(m.build ? { build: m.build } : {}) })) {
-    const line = `${key}: ${key === 'next' || key === 'current-task' ? JSON.stringify(value) : value}`;
+  for (const [key, value] of Object.entries({ phase: m.phase, state: m.phase, next: m.nextAction, 'current-task': m.currentTask || 'none', 'origin-branch': m.originBranch || 'detached', 'origin-head': m.originHead, 'target-branch': targetBranch(m), 'target-start-head': m.targetStartHead || m.originHead, ...planLines(m), branch: m.featureBranch, 'feature-name': m.name, registry: m.registry, ...(m.build ? { build: m.build } : {}) })) {
     const re = new RegExp(`^${key}:.*$`, 'm');
+    if (value === null) { text = text.replace(new RegExp(`^${key}:.*\\n?`, 'm'), ''); continue; }
+    const line = `${key}: ${key === 'next' || key === 'current-task' ? JSON.stringify(value) : value}`;
     text = re.test(text) ? text.replace(re, () => line) : `${text}${text && !text.endsWith('\n') ? '\n' : ''}${line}\n`;
   }
   if (!/^size:/m.test(text)) text = `size: md\n${text}`;
@@ -214,12 +227,13 @@ export async function run(command, name, options = {}) {
   if (command === 'list') {
     const folder = path.join(common(root), 'builder-codex', 'features');
     if (!fs.existsSync(folder)) return [];
-    const { profileLabel, parseProfile } = await import('./profile.mjs');
+    const { runtimeTestPlan } = await import('./profile.mjs');
     const now = Date.now();
     return fs.readdirSync(folder).filter(x => x.endsWith('.json')).sort().map(x => {
       const file = path.join(folder, x); const m = JSON.parse(fs.readFileSync(file, 'utf8')); m.profile ||= 'thorough';
-      // `build: here` shows from the moment it is chosen; otherwise the recorded profile's label.
-      return { ...m, build: m.build || 'none', profileLabel: m.build === 'here' ? 'here' : profileLabel(parseProfile(m.profile).preset), touchedAt: fs.statSync(file).mtimeMs, inSession: buildingInSession(m, now), agent: agentOffer(m, now) };
+      // `build: here` shows from the moment it is chosen; otherwise the test plan's label
+      // (`own · touched · end`), an old profile mapped onto it.
+      return { ...m, build: m.build || 'none', profileLabel: runtimeTestPlan(m).label, touchedAt: fs.statSync(file).mtimeMs, inSession: buildingInSession(m, now), agent: agentOffer(m, now) };
     });
   }
   const file = location(root, name);
@@ -240,7 +254,11 @@ export async function run(command, name, options = {}) {
     assert(!fs.existsSync(worktree), 'Worktree path already exists');
     const config = await configFor(originRoot);
     const registry = config.registry || config.frontmatter?.registry || 'docs/features';
-    const landingBranch = options.into ?? (config.mergeIntoConfigured ? config.mergeInto : null) ?? originBranch;
+    // merge_into: current lands on the branch this checkout is on — never a builder/* feature branch
+    // and never a detached HEAD; both fall back to base_branch.
+    const current = config.mergeIntoCurrent && originBranch && !originBranch.startsWith('builder/') ? originBranch : null;
+    assert(options.into || current || !config.mergeIntoCurrent || config.mergeIntoConfigured, 'merge_into: current needs a named branch checked out (not detached, not builder/*) or a configured base_branch; pass --into');
+    const landingBranch = options.into ?? current ?? (config.mergeIntoConfigured ? config.mergeInto : null) ?? originBranch;
     assert(landingBranch, 'Detached HEAD is not supported without an explicit or configured target');
     assert(typeof landingBranch === 'string' && !landingBranch.startsWith('-'), 'Invalid landing target branch');
     try { git(originRoot, 'check-ref-format', `refs/heads/${landingBranch}`); } catch { throw new Error('Invalid landing target branch'); }
@@ -268,6 +286,12 @@ export async function run(command, name, options = {}) {
     // Read-only: whether Codex workers may take this feature now, and what they would do.
     const offer = agentOffer(m);
     assert(offer.offer, offer.reason);
+    // The feature worktree is cut from its target, so workers read the TARGET's config. A target
+    // whose config has no agent_walk block has no agent mode (Claude 5.1.0's fleet refusal).
+    const { CONFIG_PATHS, hasAgentWalk } = await import('./config.mjs');
+    const target = targetBranch(m);
+    const configText = CONFIG_PATHS.map((p) => { try { return git(m.originRoot, 'show', `refs/heads/${target}:${p}`); } catch { return null; } }).find((t) => t != null);
+    assert(hasAgentWalk(configText), `${m.name} — ${target}'s config has no agent_walk block, so workers there have no agent mode; commit the config to ${target}, or start the feature again landing on the branch you are on`);
     return { name: m.name, phase: m.phase, build: m.build || 'none', targetBranch: targetBranch(m), worktree: m.worktree, ...offer };
   }
   assert(m.phase !== 'merged' || command === 'cleanup', 'Merged feature is read-only except for cleanup');
@@ -298,13 +322,22 @@ export async function run(command, name, options = {}) {
   if (command === 'approve') {
     assert(m.phase !== 'merged', 'Merged feature cannot be approved');
     assert(options.into === undefined || options.into === targetBranch(m), 'Landing target is immutable; start a new feature to change it');
-    assert(options.profile, 'Approval requires --profile');
-    const { parseProfile } = await import('./profile.mjs');
-    const profile = parseProfile(options.profile);
-    assert(!profile.warning, `Invalid profile: ${profile.warning}`);
-    m.profile = profile.preset === 'custom' ? options.profile.trim() : profile.preset; m.profileApproved = true;
+    assert(Boolean(options.tests) !== Boolean(options.profile), 'Approval requires --tests (or a legacy --profile), not both');
+    const { parseProfile, parseTests, formatTests } = await import('./profile.mjs');
+    let walkYou;
+    if (options.tests) {
+      const plan = parseTests(options.tests);
+      assert(!plan.warning, `Invalid test plan: ${plan.warning}`);
+      m.tests = formatTests(plan.levers); walkYou = plan.levers.walk === 'you';
+    } else {
+      const profile = parseProfile(options.profile);
+      assert(!profile.warning, `Invalid profile: ${profile.warning}`);
+      m.profile = profile.preset === 'custom' ? options.profile.trim() : profile.preset; delete m.tests;
+      walkYou = profile.levers.testing === 'full+human';
+    }
+    m.profileApproved = true;
     m.humanHead = null;
-    if (profile.levers.testing === 'full+human') m.awaitingHuman = true;
+    if (walkYou) m.awaitingHuman = true;
     invalidate(m); if (m.phase === 'verified') m.phase = 'signed-off';
     manifest(m); atomic(file, m); return m;
   }
@@ -397,14 +430,14 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH]\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --profile VALUE [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH]\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "slice=… end=… review=…" (or a legacy --profile VALUE) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args.includes('--help') || !args.length) console.log(help);
     else {
       const command = args.shift(); const name = args[0]?.startsWith('--') ? undefined : args.shift(); const options = {};
-      while (args.length) { const key = args.shift(); assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--profile', '--report'].includes(key) && args.length, `Invalid option: ${key}`); options[key.slice(2).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = args.shift(); }
+      while (args.length) { const key = args.shift(); assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--tests', '--profile', '--report'].includes(key) && args.length, `Invalid option: ${key}`); options[key.slice(2).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = args.shift(); }
       console.log(JSON.stringify(await run(command, name, options), null, 2));
     }
   } catch (error) { console.error(error.message); process.exitCode = 1; }

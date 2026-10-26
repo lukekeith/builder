@@ -2,7 +2,7 @@
 
 ## Two layers of state
 
-The runtime identity lives under Git's common directory at `builder-codex/features/<feature>.json`. It records originating checkout/branch/SHA, immutable landing target/start SHA, profile, pause/human-wait state, feature worktree and branch, current phase/task/next action, tested feature SHA, and integration candidate. Because every worktree shares this location, a fresh session in the starting checkout can find the build after context clearing. This metadata is machine-local and survives removing ignored scratch files.
+The runtime identity lives under Git's common directory at `builder-codex/features/<feature>.json`. It records originating checkout/branch/SHA, immutable landing target/start SHA, the test plan (`tests`, or an old `profile`), pause/human-wait state, feature worktree and branch, current phase/task/next action, tested feature SHA, and integration candidate. Because every worktree shares this location, a fresh session in the starting checkout can find the build after context clearing. This metadata is machine-local and survives removing ignored scratch files.
 
 The tracked feature folder contains SPEC.md, PLAN.md, MANIFEST.md, ledger.md, and continue.md. It records requirements, task completion ranges, durable decisions, verification summaries, and the next action. Raw logs/diffs can be disposable scratch; **no completed-task identity or unresolved fix exists only in scratch**. Keep the compact current checkpoint separate from append-only progress history. Do not delete PLAN at sign-off.
 
@@ -60,6 +60,6 @@ Finally cold-read the handoff as someone with no chat history: it must say what 
 
 ## Park records and retry
 
-When a build cannot proceed, write PARKED.md in its tracked feature folder before ending the turn. Include the stuck behavior, owner, what was tried, decisive evidence quoted without secrets, where to dig, the recommended next action, and dated retry history. Raw evidence folders may not travel with the branch, so a link alone is insufficient. Distinguish a product decision, an external dependency, and a human step such as protected uncommitted changes or manual commits. Report `<why> — next: <step>` in plain words.
+When a build cannot proceed, write PARKED.md in its tracked feature folder before ending the turn. Include the stuck behavior, owner, what was tried, decisive evidence quoted without secrets, where to dig, the recommended next action, and dated retry history. Raw evidence folders may not travel with the branch, so a link alone is insufficient. Distinguish a product decision, an external dependency, and a human step such as protected uncommitted changes, manual commits or a needed config change (with the exact diff: agents never edit the config). Report `<why> — next: <step>` in plain words.
 
 On explicit resume of a parked feature, read PARKED.md first and investigate from its next action. Naming the feature authorizes rechecking the cause, not bypassing a hold, manual commit rule, or missing product decision. Record the retry and preserve the history. Clear the blocker only when evidence shows it is resolved, then checkpoint the actual resumed phase. Do not repeatedly retry a human step or implement an automatic fleet retry policy: this port has no Claude fleet.

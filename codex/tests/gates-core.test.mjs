@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, baselinePath } from '../scripts/gates-core.mjs'
+import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, baselinePath, readDurations, writeDurations } from '../scripts/gates-core.mjs'
 
 import { run as lifecycle } from '../scripts/lifecycle.mjs'
 
@@ -470,4 +470,23 @@ test('explicit landing target uses its captured baseline rather than unrelated s
   const result = run(feature.worktree, 'server', '--force')
   assert.equal(result.status, 0, result.stderr + result.stdout)
   assert.match(result.stdout, /0 \(baseline 0/)
+})
+
+test('@typecheck and @walk are parsed, stripped from the note, and combine with the other markers', () => {
+  const g = parseGates('## Quality gates\n\n### app — fast\n\n```\nnpx tsc --noEmit   # the app type-checks @delta @typecheck\nnpx playwright test {tests}   # the UI suite @scoped e2e/** @walk\n```\n')
+  assert.deepEqual(g.fast.app, [
+    { cmd: 'npx tsc --noEmit', note: 'the app type-checks', delta: true, knownRed: false, typecheck: true },
+    { cmd: 'npx playwright test {tests}', note: 'the UI suite', delta: false, knownRed: false, scope: 'e2e/**', walk: true },
+  ])
+})
+
+test('runGateSet reports per-line durations; durations persist per app', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-durations-'))
+  const r = runGateSet([{ cmd: 'echo ok', note: '', delta: false, knownRed: false }, { cmd: 'echo two', note: '', delta: false, knownRed: false, walk: true }], { cwd: dir })
+  assert.equal(r.exit, 0); assert.equal(r.partial, false)
+  assert.deepEqual(Object.keys(r.durations), ['echo ok', 'echo two'], 'a @walk line runs as written in this port')
+  assert.deepEqual(readDurations(dir), {})
+  writeDurations(dir, 'web', { total: 1200, commands: r.durations })
+  writeDurations(dir, 'server', { total: 30, commands: {} })
+  assert.equal(readDurations(dir).web.total, 1200); assert.equal(readDurations(dir).server.total, 30)
 })

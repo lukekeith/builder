@@ -41,7 +41,7 @@ test('activity in scratch subfolders and gate logs counts, not only top-level fi
   const building = { ...m, phase: 'building' };
   assert.equal(buildingInSession(building, later + 1000), false, 'nothing written near that time');
   at(path.join(m.worktree, '.builder', 'nested', 'reports', 'task-2', 'report.md'));
-  assert.equal(lastActivity(m), later); assert.equal(buildingInSession(building, later + 1000), true);
+  assert.ok(Math.abs(lastActivity(m) - later) < 1, 'filesystem mtimes keep sub-millisecond precision'); assert.equal(buildingInSession(building, later + 1000), true);
   const g = await run('start', 'gated', { root });
   at(path.join(g.worktree, '.builder', 'gates', 'app-fast-logs', '01.log'));
   assert.equal(buildingInSession({ ...g, phase: 'building' }, later + 1000), true);
@@ -79,8 +79,21 @@ test('picker order: not built yet first, then part-built, then built, most recen
   assert.deepEqual(order, ['new-recent', 'new-old', 'part', 'built-old']);
 });
 
+function agentConfig(root, walk = true) {
+  fs.mkdirSync(path.join(root, '.codex'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.codex', 'builder.md'), `---\napps:\n  - name: app\n    path: app\n${walk ? 'agent_walk:\n  driver: Playwright\n' : ''}---\n`);
+  git(root, 'add', '.'); git(root, 'commit', '-m', 'config');
+}
+test('agent-ready refuses a landing target whose config has no agent_walk block', async t => {
+  const root = repo(t); agentConfig(root, false);
+  const m = await run('start', 'nowalk', { root }); await run('checkpoint', 'nowalk', { root, phase: 'spec', next: 'Audit' });
+  const refused = spawnSync(process.execPath, [CLI, 'agent-ready', m.name, '--root', root], { encoding: 'utf8' });
+  assert.equal(refused.status, 1); assert.match(refused.stderr, /work's config has no agent_walk block/);
+  agentConfig(root, true);
+  assert.equal(JSON.parse(execFileSync(process.execPath, [CLI, 'agent-ready', m.name, '--root', root], { encoding: 'utf8' })).offer, true, 'the target\'s committed config is read, not the feature worktree\'s');
+});
 test('list and agent-ready refuse a feature another session is building; a just-specced one is still offered', async t => {
-  const root = repo(t);
+  const root = repo(t); agentConfig(root);
   const busy = await run('start', 'busy', { root }); await run('checkpoint', 'busy', { root, phase: 'building', next: 'Task 2', task: 'Task 2' }); touch(busy);
   const specced = await run('start', 'specced', { root }); await run('checkpoint', 'specced', { root, phase: 'spec', next: 'Audit' }); touch(specced);
   const rows = Object.fromEntries((await run('list', undefined, { root })).map(r => [r.name, r]));
@@ -114,5 +127,5 @@ test('build here is chosen before the build starts, recorded on the manifest and
   await run('checkpoint', 'local', { root, phase: 'built', next: 'Test it yourself, or resume for walk, verify and delivery' });
   assert.equal(agentOffer({ ...(await run('status', 'local', { root })), worktree: '/none' }).does, 'built here by you, not tested yet · agents review, walk, verify and merge it');
   const other = await run('start', 'fleetless', { root });
-  assert.equal((await run('list', undefined, { root })).find(r => r.name === other.name).profileLabel, 'thorough');
+  assert.equal((await run('list', undefined, { root })).find(r => r.name === other.name).profileLabel, '—', 'no plan until the go-ahead');
 });

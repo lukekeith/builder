@@ -27,6 +27,6 @@ Record role, chosen model/effort, reason, and fallback/escalation in ledger.md. 
 - Reuse the original worker for a scoped fix while its context remains useful. Repeated nonconvergence requires a changed diagnosis, task split, or more capable worker; never repeat the identical failing request.
 - No worker-created reviewers/helpers. The coordinator dispatches independent reviewers once and carries findings into the next action.
 
-## Profile-aware routing
+## Test-plan-aware routing
 
-Pass the recorded profile as `--profile <value>` to route.mjs. Custom models=strong elevates implementation and review roles while leaving bounded inventories/mechanical work economical. Economy preserves role floors and uses the cheapest permitted configured tier. Rush does not silently weaken judgment review. Record effective model/effort and any availability fallback in the ledger.
+Pass the recorded test plan as `--tests "<value>"` to route.mjs (the runtime record's `tests`; a legacy record with only an approved `profile` passes `--profile <value>`, which is mapped). `models=strong` elevates implementation and review roles while leaving bounded inventories/mechanical work economical. `models=economy` preserves role floors and uses the cheapest permitted configured tier. No plan silently weakens judgment review. Record effective model/effort and any availability fallback in the ledger.

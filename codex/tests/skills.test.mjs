@@ -61,3 +61,34 @@ test('the Codex skill names no Claude tools or Claude slash commands as actions'
   }
   assert.match(read('README.md'), /`\/builder:benchmark`[\s\S]*is excluded/);
 });
+
+test('5.x ports: build options read as a decision, the test plan is chosen at the go-ahead, walks are lean, the config is the owner\'s', () => {
+  const skill = read('skills/builder/SKILL.md');
+  assert.match(skill, /1\. \*\*Agent\*\*[\s\S]*2\. \*\*Step by step\*\*[\s\S]*3\. \*\*In this session\*\*/);
+  assert.match(skill, /"go" is option 1 — so where Agent is offered, "go" hands the feature to the workers/);
+  assert.match(skill, /Pick up where you left off any time: \$builder resume <feature>/);
+  assert.match(skill, /never a lettered list or a "reply …" line beside a picker/);
+  assert.match(skill, /`\$builder init` always writes the `agent_walk:` block/);
+  assert.match(skill, /never edit the project config/);
+  const c = ref('conversation');
+  assert.match(c, /## The quick path for a small change/);
+  assert.match(c, /## Discovery for a vague idea/);
+  assert.match(c, /state the project's own design system first/);
+  assert.match(c, /\*\*Keep going\?\*\*/);
+  assert.match(ref('discovery'), /one app, on data it already stores, with no new screen and nothing outside the app calling it, is sm/);
+  assert.match(ref('discovery'), /A\. Approve the program/);
+  const p = ref('profiles');
+  assert.match(p, /\*\*Testing per slice\*\* \(`slice`\)[\s\S]*\*\*Testing at the end\*\* \(`end`\)[\s\S]*\*\*Review\*\* \(`review`\)/);
+  assert.match(p, /approve <feature> --tests/);
+  assert.match(p, /`merge_into: current` means the branch checked out where the feature starts/);
+  assert.match(p, /A landing target with no `agent_walk:` block/);
+  assert.match(p, /fresh, on the exact merge candidate/);
+  assert.match(ref('planning'), /A\. Build it with this plan[\s\S]*B\. Change the test plan[\s\S]*C\. Keep planning/);
+  assert.match(ref('execution'), /gate\.mjs <app> --typecheck/);
+  const d = ref('delivery');
+  assert.match(d, /One app in scope → the verification script is the walk/);
+  assert.match(d, /A re-walk covers only what the fix changed/);
+  assert.match(d, /Walk by screen/);
+  assert.match(d, /§Standing traps/);
+  assert.match(read('assets/PROJECT.template.md'), /@typecheck[\s\S]*@walk/);
+});

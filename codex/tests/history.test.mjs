@@ -36,3 +36,8 @@ test('record reads plan size from landed commit after cleanup on another checkou
   const output = execFileSync(process.execPath, [new URL('../scripts/history.mjs', import.meta.url).pathname, 'record', 'feature', '--root', root], { encoding: 'utf8' });
   assert.equal(JSON.parse(output).size.tasks, 2); assert.equal(git('branch', '--show-current'), 'other');
 });
+test('a landing approved under the test plan records its tests value, comparable by plan label', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'builder-history-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const row = appendLanding(path.join(dir, 'archive.jsonl'), { ...m, tests: 'end=risk' }, { tasks: 2 });
+  assert.equal(row.tests, 'slice=own end=risk review=end'); assert.equal(row.profile, undefined);
+});
