@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Turn an audited feature spec into a committed implementation plan at the feature folder's PLAN.md — dependency-ordered phases, ONE APP PER PHASE with the producer before its consumers (contract + migrations → producer → consumers in parallel → tools → the cross-app E2E walk last), each task naming its app, its phase, the recipe skill to read first, its files and interfaces, and bite-sized steps carrying the actual code and tests. SPEC §Plan becomes a one-line-per-task index pointing at PLAN.md. Runs only after /builder:audit, with no OPEN decisions and no blocked findings. Ends by taking the build go-ahead — the plan shown as slices, each with the tests it adds, and a test plan the user can change (testing per slice, testing at the end, review cadence) with what each choice costs — and recording it on the manifest. Use when the user asks to plan a spec's implementation.
+description: Turns an audited spec into a committed PLAN.md — ordered phases, one app per phase, each step with its code and tests — and takes the build go-ahead with its test plan. Use when asked to plan a spec's implementation.
 ---
 
 # `/builder:plan` — the audited spec becomes phases

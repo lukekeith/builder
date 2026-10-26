@@ -1,6 +1,6 @@
 ---
 name: agent-walk
-description: The unattended stand-in for the human walk and sign-off, run only under --agent-walk (agent mode — /builder:agent and /builder:fleet) — a fresh subagent works the feature's walk.md item by item with the driver the project config's agent_walk block names, records PASS/FAIL per item with evidence, and this step writes an AGENT-PASS or AGENT-PROBLEMS verdict. On AGENT-PASS it writes the AGENT sign-off and condenses the folder, so verify, the PR, CI, ship and merge follow unattended. Never a human sign-off — every record says the feature is not human-tested. Use when /builder:resume routes here under --agent-walk.
+description: Agent mode's stand-in for the human test — a fresh agent works the feature's walk.md item by item, records pass or fail with evidence, and on a pass writes an agent sign-off that says the feature is not human-tested. Run by /builder:resume under --agent-walk.
 ---
 
 # `/builder:agent-walk` — an agent walks it, and says so

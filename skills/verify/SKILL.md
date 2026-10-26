@@ -1,6 +1,6 @@
 ---
 name: verify
-description: The gate of the /builder:* pipeline — verifies a built feature against its spec across every in-scope app and issues a READY / INCOMPLETE verdict with evidence. Runs AFTER the human's walk. The pipeline's ONE deep pass: every affected app's gate suite fresh, consumer parity against the frozen contract, whatever the project config's deep set names, the cross-app E2E walk, a pattern-regression sweep against the config's house rules, and a spec-parity spot-check. Never opens a PR. Use when the user asks to verify a built feature or check whether a feature is done.
+description: The final check on a built feature after it was tested — every affected app's full gates, contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
 ---
 
 # `/builder:verify` — is it actually done?

@@ -1,6 +1,6 @@
 ---
 name: version
-description: Which builder this session is running, and whether it is the newest — the version this session loaded, where it came from (a plugin install, or a copy vendored into the repo), what is installed on this machine, the newest release this machine knows about, and any fleet in this repo still running an older one — ending in the one step that brings it current (/reload-plugins, /builder:update or /builder:vendor). Read-only and fast; never fetches. Use when the user asks what version of builder they are on, whether a session or a repo is current, or whether builder needs updating.
+description: Shows which builder this session runs, what's installed, and the one step that brings it current. Use when asked what version of builder is running or whether it's up to date.
 ---
 
 # `/builder:version` — what this session runs, and whether it's the newest

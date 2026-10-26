@@ -1,6 +1,6 @@
 ---
 name: update
-description: Bring the installed /builder plugin up to the newest release — refreshes the marketplace it came from, updates the user-scope install, prints what changed since the version you had, and names any project-scope install that shadows it in this repo. Only for a copy running from a plugin install; a copy vendored into a repo is updated with /builder:vendor, and this skill is not in one. Use when the user asks to update, upgrade or refresh builder, or asks whether builder is on the latest version.
+description: Updates the installed builder plugin to the newest release and shows what changed. Use when asked to update or upgrade builder; a copy vendored into the repo uses /builder:vendor instead.
 ---
 
 # `/builder:update` — take the newest release

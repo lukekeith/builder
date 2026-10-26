@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Get a design into a state the /builder:* pipeline can consume as requirements — the router into whatever design pipeline the project config names, plus the checklist of what a BUILD needs from a design contract that a faithful spec of the design tool does not always supply. Writes nothing itself: it reports what is missing, names the command that supplies it, and hands to /builder:check. Use when the user asks how to get a design ready to build from, wants to prototype a screen or component for the pipeline, or asks what the build needs that the design doesn't have yet.
+description: Routes a design into the project's design pipeline and lists what a build needs that the design doesn't have yet; writes nothing. Use when asked how to get a design ready to build from.
 ---
 
 # `/builder:prototype` — get a design ready to be requirements

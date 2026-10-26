@@ -1,6 +1,6 @@
 ---
 name: build
-description: The code-changing step of the /builder:* pipeline — executes the feature's committed PLAN.md through the plugin's own task loop: a fresh implementer per task reading the task block with its code, the SPEC section it implements, the frozen contract, the recipe skill and the project's global constraints; testing and review where the go-ahead's test plan puts them (by default each task's own tests, the touched apps' suites once at the end, one whole-branch review); ONE APP PER PHASE; the contract frozen on the manifest when the producer's phase closes; commits left to the human in any app the config marks commit:manual. Works on the current branch, never creates a worktree, never opens a PR. Resumes from the ledger after any /clear. Use when the user asks to build, implement or continue building a specced feature.
+description: Builds a planned feature from its PLAN.md — a fresh agent and a review per task, one app per phase, on the current branch — and resumes after /clear. Use when asked to build, implement or continue building a specced feature.
 ---
 
 # `/builder:build` — PLAN.md, executed by subagents

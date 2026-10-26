@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Collapse a feature's folder to its write-once SPEC matching the implementation — at sign-off, and flip the header to SHIPPED when the PR merges. Run by /builder:signoff on PASS; standalone for a merged PR, a legacy shipped folder, or a signed-off feature that was never condensed.
+description: Condenses a feature's folder to its final SPEC at sign-off and marks it SHIPPED when the PR merges. Run by /builder:signoff; standalone for a merged PR or a folder that was never condensed.
 ---
 
 # `/builder:ship` — the docs match the implementation, and shrink

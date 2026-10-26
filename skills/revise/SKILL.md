@@ -1,6 +1,6 @@
 ---
 name: revise
-description: Apply ONE change to a feature that is already audited, planned or part-built — a new requirement, a reversed ruling, a conflict found mid-build. Post-build the default is a code fix plus at most one line of docs; the SPEC write-back is reserved for contract changes that un-built work depends on. It is also the ONLY way a FROZEN contract re-opens, and it names which consumers must be re-checked. Records human rulings as implementable statements in SPEC §Decisions and never re-audits. Use when a spec needs to change after /builder:brainstorm has run — revising, correcting, extending or reversing part of a feature spec.
+description: Applies one change to a feature that is already audited, planned or part-built — a new requirement, a reversed decision, a conflict found mid-build — and is the only way a frozen contract reopens. Use when a spec must change after the brainstorm.
 ---
 
 # `/builder:revise` — the cheapest honest write-back
