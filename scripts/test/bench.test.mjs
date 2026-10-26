@@ -19,12 +19,14 @@ export function makeRoot() {
   return root
 }
 
+// BENCH_SUPERPOWERS_DIR defaults to the stub dir, so no test depends on this machine's plugin cache
+// (CI has none); a test that wants superpowers missing passes 'none'.
 export function runBench(root, args, scenario = {}, env = {}) {
   writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
   const r = spawnSync('node', [BENCH, ...args], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: root, BENCH_CLAUDE: STUB, BENCH_TMP: join(root, 'tmp'), BENCH_GSD_INSTALL: 'true', BENCH_FLEET: join(HERE, 'fixtures', 'bench', 'stub-fleet.mjs'), STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), BENCH_RUN_TIMEOUT_MS: '20000', BENCH_IDLE_TIMEOUT_MS: '20000', ...env },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, BENCH_CLAUDE: STUB, BENCH_TMP: join(root, 'tmp'), BENCH_GSD_INSTALL: 'true', BENCH_FLEET: join(HERE, 'fixtures', 'bench', 'stub-fleet.mjs'), STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), BENCH_RUN_TIMEOUT_MS: '20000', BENCH_IDLE_TIMEOUT_MS: '20000', BENCH_SUPERPOWERS_DIR: join(root, '.stub'), ...env },
   })
   const calls = existsSync(join(root, '.stub/calls.log')) ? readFileSync(join(root, '.stub/calls.log'), 'utf8').trim().split('\n') : []
   return { ...r, calls }
@@ -363,7 +365,7 @@ test('run: gsd stops after the session that verifies the phase', () => {
   assert.deepEqual(data.runs[0].sessions.map((x) => x.name), ['new-project'])
   assert.equal(data.runs[0].status, 'done')
   assert.equal(data.runs[0].stoppedEarly, 'phase verified after new-project')
-  assert.match(readFileSync(join(dir, id, 'report.md'), 'utf8'), /stopped early: phase verified after new-project/)
+  assert.match(readFileSync(join(dir, id, 'REPORT.md'), 'utf8'), /stopped early: phase verified after new-project/)
 })
 
 test('run: a timed-out session ends the config as timed out; runs.json is still written', () => {
