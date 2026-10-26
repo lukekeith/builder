@@ -12,6 +12,17 @@ Kiro, OpenSpec, BMAD, GSD, Taskmaster and Claude Code's own features
 (`docs/research/2026-10-25-comparison.md`). **Nothing to change in `.claude/builder.md`** — every
 config, manifest and feature folder from 4.x reads as before.
 
+**Measured** (`bench/results/`, 2026-10-26, Opus 5.5, Claude Code 2.1.310, every run passing its
+hidden acceptance tests):
+
+| Feature | builder 5.0 | builder 4.14.8 (same day) | superpowers 7.0.0 | no plugin | GSD |
+|---|---|---|---|---|---|
+| `tags` (md, 3 reps) | 11m · 76 turns · $4.57 | 11m · 70 turns · $4.58 | 9m · $2.66 | 1m · $0.30 | 1h20m · $32.36 (1 rep) |
+| `edit` (xs, 3 reps) | 58s · $0.52 (was 6m · $3.41 before the sizing fix) | — | 4m · $1.21 | 28s · $0.23 | — |
+
+On `tags` 5.0 matches 4.14.8; the 8m of 2026-10-24 is not reached by either today, so that drift is
+not this release's. The turn budgets (`bench/budgets.json`) still flag most steps as over.
+
 **Changed:**
 - **Builder costs every session a third of what it did.** Its skill descriptions sat in every
   session's context — about 6,700 tokens, against superpowers' ~840 — and three were over
