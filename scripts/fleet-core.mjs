@@ -503,3 +503,15 @@ export async function waitForCommand(cmd, { env = process.env, timeoutMs = 18000
     await sleep(everyMs)
   }
 }
+
+/**
+ * A run's stream-json `system/init` event without the builder plugin loaded → why, else null.
+ * Claude Code documents that `--bare` "will become the default for -p", and bare mode skips plugin
+ * hooks (the PR lock) and OAuth sign-in — a fleet run without builder would build with none of its
+ * rules. Anything that isn't an init event, or an init event that names no plugins, is not judged.
+ */
+export function initWithoutBuilder(ev) {
+  if (ev?.type !== 'system' || ev.subtype !== 'init' || !Array.isArray(ev.plugins)) return null
+  if (ev.plugins.some((p) => p?.name === 'builder')) return null
+  return 'the session started without the builder plugin loaded (bare mode, or the plugin is disabled for this repo) — its skills and the PR lock are missing, so the run was stopped. Check `claude plugin list`, and that agent_walk.claude_args has no --bare'
+}

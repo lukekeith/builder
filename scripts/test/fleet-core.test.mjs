@@ -520,3 +520,12 @@ test('waitForCommand: found at once, found after the binary comes back, gives up
   assert.equal(ticks, 2, 'it waited for the update to finish')
   assert.equal(await waitForCommand('nope', { env, timeoutMs: 10000, everyMs: 5000, sleep: async () => {} }), false)
 })
+
+test('initWithoutBuilder: a run that starts without builder is named; with it, or no init, is not', async () => {
+  const { initWithoutBuilder } = await import('../fleet-core.mjs')
+  const init = (plugins) => ({ type: 'system', subtype: 'init', plugins })
+  assert.equal(initWithoutBuilder(init([{ name: 'builder', source: 'builder@claude-builder' }])), null)
+  assert.match(initWithoutBuilder(init([{ name: 'cc-plugin-telemetry' }])), /without the builder plugin loaded[\s\S]*--bare/)
+  assert.equal(initWithoutBuilder({ type: 'assistant' }), null)
+  assert.equal(initWithoutBuilder({ type: 'system', subtype: 'init' }), null) // no plugin list: not judged
+})
