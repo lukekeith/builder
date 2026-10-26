@@ -1,6 +1,6 @@
 ---
 name: intake
-description: Verify a worked-out input against reality before a spec is written — a spec or brief someone already wrote (a file, a pasted doc, a superpowers design spec), a ticket, or a finished design ref (prototype mode). Extracts every decision, architectural claim, requirement and constraint it states, checks each against the code with parallel sub-agents (confirmed with evidence, contradicted with what the code actually does, or unverifiable), hunts the gaps it never decides, then asks only about contradictions and gaps in rounds — confirmed claims are reported, not asked. Ends in a confirmed understanding and a size, then hands on to /builder:spec. Use when the user already has the design written down and wants it grounded in what's real.
+description: Checks a spec, brief, ticket or design someone already wrote against the code, asks only about contradictions and gaps, then hands on to /builder:spec. Use when the user already has the design written down.
 ---
 
 # `/builder:intake` — the document is the authority; check it against the code

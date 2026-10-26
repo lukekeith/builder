@@ -1,6 +1,6 @@
 ---
 name: init
-description: Sets up a repo for the /builder:* pipeline by writing its one project config, .claude/builder.md — copies PROJECT.template.md out of the installed plugin, fills the frontmatter and body from what the repo actually contains (project name, base branch, apps and their paths, the real gate commands, house-rule sources), asks only what the repo cannot answer (app roles, commit mode, optional ticket and design blocks), then proves the result parses. Refuses to overwrite an existing config unless asked; with --update it fills gaps and placeholders in one instead. Use when the user asks to set up, configure, initialise or install builder in a project, when any /builder:* step reports that .claude/builder.md is missing, or when the config still holds template placeholders.
+description: Sets up builder in a repo by writing .claude/builder.md from what the repo contains, asking only what it can't tell; --update fills gaps in an existing one. Use when asked to set up builder, or when a builder step says the config is missing or unfilled.
 ---
 
 # `/builder:init` — configure this repo for `/builder:*`

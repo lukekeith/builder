@@ -1,6 +1,6 @@
 ---
 name: help
-description: Help card for the /builder:* pipeline — explains how work is sized (xs/sm designed and built in chat, md/lg as a SPEC plus a manifest, xl as a program of children), what each /builder:* command does and which one to run for a given situation, how a finished design can be read as the requirements, how one-app-per-phase and the contract freeze keep a multi-app repo safe, where the artifacts live, how resuming after a context clear works, how a folder from an earlier pipeline is converted, and how a signed-off feature condenses to its SPEC. Also explains the .claude/builder.md project config the whole family reads. Use when the user asks how the build pipeline works, what the builder commands are, which build skill to use, or for help getting started with speccing or building a feature.
+description: The builder help card — which command to run when, how work is sized, where its files live and how resuming works. Use when the user asks how builder works or which builder command to use.
 ---
 
 # `/builder:help` — how the `/builder:*` pipeline works

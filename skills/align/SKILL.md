@@ -1,6 +1,6 @@
 ---
 name: align
-description: Prototype-mode step of the /builder:* pipeline, between design and audit — trace every field the in-scope design contracts persist through the producer's model, validation, wire shape and write path, and onward to the property each consumer reads it from, then record what the app lacks as SC# rows in SPEC §Schema & API changes and T# rows in §Findings, tagged by owning app. Runs only when the manifest carries a design ref. Never edits app code and never edits the design source — a naming disagreement leaves as a row or an OPEN decision. Use when the user asks whether the backend can store what a design collects, to align design naming with the app, or invokes /builder:align.
+description: Prototype-mode step between design and audit — checks that every field a design collects can be stored and read by the apps, and records the gaps in the spec. Runs when the manifest carries a design ref, or on /builder:align.
 ---
 
 # `/builder:align` — can the app store this, and does everyone call it the same thing?
