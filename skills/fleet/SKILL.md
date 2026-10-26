@@ -200,6 +200,12 @@ wrong — say what`. B on a merged feature → a fix is new work (`/builder:brai
 `git revert -m 1 <merge>` takes it back out; say which fits. A parked feature gets no review — it
 did not land.
 
+**Then the lessons the agents proposed** — each merged SPEC's `lesson for §Standing traps` rows (ship
+§At ship). None → nothing. Otherwise list them, one line each with its feature, and one
+AskUserQuestion, multi-select, every lesson an option: the ones picked are appended to the config's
+`## Standing traps` as `- <the line> (<feature>, <date>)` and committed on the current branch,
+`chore(builder): standing traps from the fleet`; the rest stay in their SPECs.
+
 ~~~
 📍 fleet: <n> merged into <branch> · <m> parked · <k> failed — next: test <branch>; settle the parked ones, then /builder:fleet again
 ~~~

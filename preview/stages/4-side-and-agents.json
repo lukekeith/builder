@@ -818,17 +818,17 @@
         },
         {
           "role": "claude",
-          "text": "**Part 2 of 3 — portal-cert-list** …\n\n*(Part 3 of 3 — portal-downloads — follows the same way.)*\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
+          "text": "**Part 2 of 3 — portal-cert-list** …\n\n*(Part 3 of 3 — portal-downloads — follows the same way.)*\n\n**Lessons the agents proposed** — one, from portal-downloads: *the api suite needs the `acme-pg` container running — `docker start acme-pg` before `pnpm -F api test`* (it cost a red gate twice). Pick the ones to add to §Standing traps in `.claude/builder.md`; the rest stay in their specs.\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
         },
         {
           "role": "note",
-          "text": "The table and its notes are STATUS.md verbatim; the bullets after them are the skill's brief relay of done and parked. Then the review of what landed (REFERENCE §The review, fleet §5): the run asked nothing, so this is where the human sees each merged feature — the full review from its archived SPEC.md, rulings the run took marked (auto), one part per turn. B on a merged feature is new work (/builder:brainstorm) or git revert -m 1 <merge>. A parked feature gets no review — it didn't land. The footer ends the last part."
+          "text": "The table and its notes are STATUS.md verbatim; the bullets after them are the skill's brief relay of done and parked. Then the review of what landed (REFERENCE §The review, fleet §5): the run asked nothing, so this is where the human sees each merged feature — the full review from its archived SPEC.md, rulings the run took marked (auto), one part per turn. B on a merged feature is new work (/builder:brainstorm) or git revert -m 1 <merge>. A parked feature gets no review — it didn't land. The footer ends the last part. Then the lessons the agents proposed (ship §At ship writes each as a lesson row in its SPEC; they never edit the config): one multi-select, and the picked ones are appended to §Standing traps."
         }
       ],
       "stamp": {
-        "hash": "d4e885a3fc59",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "hash": "3df0745fa4e8",
+        "version": "4.14.8",
+        "date": "2026-10-26"
       }
     },
     {
