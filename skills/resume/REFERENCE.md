@@ -114,7 +114,7 @@ cannot.
 | Size | Looks like | Typical files | Design artifact | Audit | Plan | Execution | Human gates |
 |---|---|---|---|---|---|---|---|
 | **xs** | a copy change, a colour, a prop default, a one-line guard | 1–2 | one sentence in chat | — | — | main context | approve the sentence |
-| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view | 2–10 | short design in chat, once the concept is confirmed in the conversation | — | — | main context | approve the design · a look at the running app before the PR |
+| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view, add a command or an endpoint only its own app uses | 2–10 | short design in chat, once the concept is confirmed in the conversation | — | — | main context | approve the design · a look at the running app before the PR |
 | **md** | add an endpoint + its screen, add a capability to an existing feature, port one screen to a new pattern | 10–40 | `SPEC.md`, short: idea · apps · decisions · contract · testing; per-app sections only where touched (~120 lines) | 1 pass, single agent | `PLAN.md`, 2–4 phases | the task loop | decisions · go-ahead · the walk |
 | **lg** | a new feature: a model + endpoints + screens in each consumer | 40–150 | full `SPEC.md` | 1 pass, parallel agents | `PLAN.md`, 4–7 phases | the task loop | the same three |
 | **xl** | a new area across several subsystems | 150+ | `PROGRAM.md`: the children, their order, the decisions they share; each child runs as its own md/lg | per child | per child | per child | one program go-ahead, then per child |
@@ -125,8 +125,16 @@ Run on the confirmed concept, from recon and the settled tree; the size is annou
 evidence.
 
 1. Does the flow being changed already exist to read? **No → at least md.**
-2. A new model, schema change, endpoint, permission or contract change? **Any → at least md.**
-3. A new route, screen, or shared component? **Any → at least md.**
+2. A new model, schema change, permission or contract change? **Any → at least md.** A new
+   endpoint counts here when another app or a released artifact (`released_artifact: true`) will call
+   it.
+3. A new screen or shared component? **Any → at least md.**
+
+   🔴 **A new command, endpoint or route that only its own app uses is not md on its own.** One app,
+   on data that app already stores, no new screen, nothing outside the app calling it — `notes edit`,
+   a `GET /export` the app's own UI links to — is sm: it is code inside existing contracts. It becomes
+   md the moment another app or a released artifact depends on it, or it needs a model, a schema row,
+   a permission or a screen.
 4. **Apps touched (from the config's `apps:`)? Two+ → lg.** Three+ with independently shippable
    slices → xl. 🔴 **A slice is shippable only when it gives the user something they can use on its
    own** — say, in one sentence, what they can do once it alone lands. A layer is not a slice: a
@@ -144,7 +152,7 @@ never sm, because the contract between the apps is the thing that breaks — and
 released artifact (the config's `released_artifact: true`), it breaks somewhere that cannot be
 hot-fixed. **The sm/md line is drawn by contracts, not file count**: a change inside one app and
 inside existing contracts is sm however many files it brushes; the moment it adds a model, a schema
-row, an endpoint, a permission, a route or a screen, it earns a spec.
+row, a permission, a screen, or an endpoint or route another app depends on, it earns a spec.
 
 **Classification is announced with evidence, overridable, and ratchets up only.** The size is announced with its evidence after the conversation confirms the concept; the user confirms or overrides it.
 Hidden complexity found mid-task upgrades: stop, say so, write the spec then. Nothing downgrades

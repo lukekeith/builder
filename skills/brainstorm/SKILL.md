@@ -129,8 +129,9 @@ all of these — REFERENCE §The classifier read against the grounding, not agai
 - a **directed request** or a **brief** — never an abstract idea, never a revision conversation
   (a live SPEC), never under `--auto`;
 - the flow it changes **exists and was read** (classifier rule 1);
-- **one app**, and no new model, schema row, endpoint, permission, contract, route, screen or
-  shared component (rules 2–4);
+- **one app**, and no new model, schema row, permission, contract, screen or shared component, and
+  no endpoint, command or route anything outside that app depends on (rules 2–4) — a new command
+  or endpoint only its own app uses qualifies;
 - **at most one** product choice left open with more than one defensible answer;
 - it fits one sitting.
 

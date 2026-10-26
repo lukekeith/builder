@@ -56,10 +56,10 @@ The steps `/builder:resume` runs for you can also be run by hand, each with `--p
 
 **Size.** Decided once you agree on what to build, with the reason; you can override it, and it only
 ever goes up.
-- **xs / sm** — stays inside existing code and one app. Designed and built in the chat; nothing is
-  written under `docs/`.
-- **md / lg** — adds a model, a schema field, an endpoint, a permission, a route or a screen, or
-  crosses from one app into another. Gets `SPEC.md` and a ~12-line `MANIFEST.md`.
+- **xs / sm** — stays inside existing code and one app, including a new command or endpoint only
+  that app uses. Designed and built in the chat; nothing is written under `docs/`.
+- **md / lg** — adds a model, a schema field, a permission or a screen, an endpoint another app
+  calls, or crosses from one app into another. Gets `SPEC.md` and a ~12-line `MANIFEST.md`.
 - **xl** — split into several features under one `PROGRAM.md`.
 - "Can we…?" is answered as a question, not turned into a feature.
 

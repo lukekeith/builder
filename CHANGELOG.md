@@ -29,6 +29,12 @@ config, manifest and feature folder from 4.x reads as before.
   feature by the overhead model): every step ends in at most six lines; an `--auto` ruling is one
   table row with its reason in one clause; audit runs straight into plan and a READY verify straight
   into ship, each still committing its own step.
+- **A new command or endpoint only its own app uses stays small.** The sizing rules made any new
+  endpoint or route md, and the benchmark's xs task — adding `notes edit` — went through the full
+  pipeline (spec, audit, plan, agents, walk, verify) in all three reps: 6 minutes and $3.41 where
+  plain Claude Code took 28 seconds. Now one app, on data it already stores, with no new screen and
+  nothing outside the app calling it, is sm — built in the chat. It is md once another app or a
+  released artifact depends on it, or it needs a model, a schema row, a permission or a screen.
 - **`resume` is under 500 lines** — its agent-mode sections moved to `resume/AGENT-MODE.md`, which
   agent runs read in the same one call they already made. Long reference files open with a
   contents line.
@@ -47,6 +53,12 @@ config, manifest and feature folder from 4.x reads as before.
 - **`/compare`** (this repo only, never shipped) re-runs the competitor comparison.
 
 **Fixed:**
+- **The fleet's progress bar covers the whole run.** It was the mean of the rows still in flight, so
+  a feature that merged left the total — five features with one merged read as the other four's
+  average, not 20% higher. Now every feature the run holds counts once and each one it merged counts
+  at 100%: five with one merged and four not started reads 20%, the heading says `1 merged this
+  run`, and a spec added while the fleet runs grows the total. The status line's `⚙ fleet n/total`
+  and its bar count the same way. A new fleet run starts its count fresh.
 - **A fleet run that starts without builder loaded is stopped.** Claude Code says `--bare` will
   become the default for `-p`, and bare mode skips plugin hooks — the PR lock — and OAuth sign-in.
   The fleet now checks each run's start and stops one that has no builder, saying why. Why the fleet
