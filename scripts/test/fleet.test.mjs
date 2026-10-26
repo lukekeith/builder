@@ -1632,3 +1632,41 @@ test('a new fleet run counts only what it merges: the last run\'s landings leave
   assert.deepEqual(fleet.landedThisRun, ['b'])
   assert.match(runFleet(root, ['--status'], {}).stdout, /# builder fleet — 1 feature\(s\): 1 merged this run · ▓▓▓▓▓▓▓▓▓▓ 100%/)
 })
+
+// ---- 5.2: the walk env and the gates ---------------------------------------------------------
+
+test('each run knows its lane: the walk lane gets the build-lane values of agent_walk.env for gate.mjs, both read the main config', () => {
+  const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'env: WALK_MARK=x-{feature} WT_MARK=walkdb'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  const walk = starts.filter((l) => l.startsWith('start a walk '))
+  const build = starts.filter((l) => l.startsWith('start a build '))
+  assert.ok(walk.length && build.length, starts.join('\n'))
+  // walk: WT_MARK is the walk db while the run goes, and gate.mjs is told its build-lane value
+  assert.ok(walk.every((l) => l.includes(' lane_env=walk ') && l.includes(' wt_mark=walkdb ') && l.includes('gate_env={"WALK_MARK":null,"WT_MARK":"db-a"}')), walk.join('\n'))
+  assert.ok(build.every((l) => l.includes(' lane_env=build ') && l.includes(' gate_env=- ')), build.join('\n'))
+  assert.ok(starts.every((l) => l.includes(' cfg_root=set ')), starts.join('\n'))
+})
+
+test('a restart mid-walk skips the reset — the walk database keeps its migrations', async () => {
+  const { root } = await walkEnvRepo('s')
+  // walkEnvRepo writes no reset; add one that counts its runs in the main checkout
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^agent_walk:\n/m, `agent_walk:\n  reset: echo x >> ${join(root, 'reset-count')}\n`))
+  git(root, 'commit', '-qam', 'reset hook')
+  const r = runFleet(root, ['s'], { s: ['READY-PENDING', 'BLOCK:walk env needs a restart — broken by the web — fast gates', 'built', 'signed-off', 'verified', 'SHIP'] }, FAST)
+  assertLanded(r, 's')
+  assert.equal(readFileSync(join(root, 'reset-count'), 'utf8').trim().split('\n').length, 1, 'reset ran once, before the walk — not again on the restart')
+})
+
+test('a branch that changes .claude/builder.md parks as a human step and never lands the change', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a'], { a: ['audited', 'planned', 'building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'CONFIG:SHIP'] })
+  const f = r.fleet.features.a
+  assert.equal(f.status, 'parked')
+  assert.match(f.reason, /^config change needed — builder\/a changes \.claude\/builder\.md, which is yours to change — next: read git diff main\.\.\.builder\/a -- \.claude\/builder\.md/)
+  assert.doesNotMatch(readFileSync(join(root, '.claude/builder.md'), 'utf8'), /loosened by an agent/, 'main never got it')
+  // A human step: the fleet's auto-unpark never retries it — no run beyond the eight that got it there.
+  assert.equal(r.calls.filter((l) => l.startsWith('start a ')).length, 8, r.calls.join('\n'))
+})

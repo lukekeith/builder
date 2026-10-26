@@ -1,7 +1,7 @@
 {
   "name": "builder",
   "description": "A build pipeline for any repo, with no dependencies. /builder:brainstorm talks your idea through against the code; small changes are built in the chat, bigger ones get a spec you approve, a one-time check against the code, a plan, and a build one app at a time. By default agents build, test and merge it locally, marked not human-tested; or build it in your session, test it yourself, and sign off before any PR. Reads every project fact from .claude/builder.md (/builder:init writes it). Resume any time with /builder:resume.",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "author": {
     "name": "Luke Keith",
     "url": "https://github.com/lukekeith"

@@ -988,6 +988,26 @@ minutes — at every build end and again at every verify after a walk fix.
 **Implementers do not run the suite.** Their prompt limits them to the tests of the code they change
 plus the type-check; the phase close runs the block once, on the committed tree.
 
+**Gates and the walk env (`@walk`).** Under the fleet, the walk lane — walk readiness, the agent
+walk, `## Fixes` rounds, verify — runs with the walk env up, serving from this same worktree, and
+with `agent_walk.env` (its ports, its database) in the environment. `gate.mjs` keeps the two apart:
+
+- **An untagged line runs with the test env** — `agent_walk.env`'s keys go back to their build-lane
+  values (`worktree_env`, or unset) — so a unit or integration suite never runs against the walk
+  env's database or URLs, in the walk lane exactly as in the build lane.
+- **A line marked `@walk` needs the running walk env** — an e2e suite against the app. It gets
+  `agent_walk.env`, runs in the walk lane (verify), and the build lane skips it (`~ … @walk`). Outside
+  the fleet the tag changes nothing: the line runs against whatever env is up, as before.
+- **After each set in the walk lane, `gate.mjs` re-polls `agent_walk.smoke`.** When a gate broke the
+  running env — a build rewriting the folder the dev server serves from (Next.js `.next`, Nuxt
+  `.nuxt`, SvelteKit `.svelte-kit`) — it exits **3** and says so: write
+  `blocked: "walk env needs a restart — <what broke it>"`, commit and end the run; the fleet restarts
+  the env **without a reset**. The lasting fix is the walk env's own output folder, set through
+  `agent_walk.env` (`/builder:init` offers it).
+- **Under the fleet the gate lines come from the main checkout's config** — the one the fleet reads —
+  never the branch's copy: a branch can't loosen its own gates, and `gate.mjs` warns when the two
+  differ.
+
 **Baseline drift.** A gate written as a count (`… | grep -c "error TS"   # @delta`) is judged against
 the count on the target branch, measured by `gate.mjs --baseline` — the fleet runs it at start in the
 main checkout, and a worktree reads it from there. No hard-coded number goes stale in the config.

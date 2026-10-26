@@ -102,6 +102,22 @@ the answer is a choice:
   (`npm ci && <migrate against the worktree's test DB>`), run after the fleet merges the target into a
   worktree with new commits, so a package or migration another feature landed is present before the
   next run;
+- **the walk env and the gates**, only when `start` runs a dev server from the worktree:
+  - **a shared output folder** — recon first: a Next.js (`next dev` / `next build`, `.next`), Nuxt
+    (`.nuxt`), SvelteKit (`.svelte-kit`) or Rails (`public/assets`) app whose fast or deep set builds
+    it. A build gate in the walk lane would rewrite what the running dev server serves and take the
+    walk env down. Recommend a separate output folder for the walk env, set through `agent_walk.env`
+    — Next.js: `distDir` read from an env var in `next.config.*` (e.g. `distDir:
+    process.env.NEXT_DIST_DIR || '.next'`) and `NEXT_DIST_DIR=.next-walk` in `env` — and add an
+    §Environment landmine saying so. Say plainly it needs that one config change in the app; a
+    Docker walk env that builds inside its image, a Vite dev server, or an app with no web build
+    doesn't need it — skip the question;
+  - **a smoke that proves sign-in can work**, not only `/health` — a preflight from the web origin
+    (`curl -sf -X OPTIONS -H "Origin: http://localhost:<web port>" <api>/…`) or a sign-in page load —
+    so a wrong CORS origin or env value fails at start, not in every e2e;
+  - **`@walk`** on any deep-set line that needs the running app (an e2e suite against a URL): it then
+    runs in verify against the walk env with `agent_walk.env`, and every untagged line runs with the
+    test env (REFERENCE §Quality gates — the mechanism, *Gates and the walk env*);
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.

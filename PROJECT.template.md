@@ -129,6 +129,10 @@ nothing has touched. Markers go at the end of a line's comment:
   keeps when nothing else runs: `gate.mjs <app> --typecheck` runs only these
   lines, and an app with none marked leaves it to each task's own type-check.
   Combines with the others (`… @delta @typecheck`).
+- `@walk` — the line needs the running app (an e2e suite against a URL). Under
+  the fleet it runs in verify against the walk env, with `agent_walk.env`, and
+  the build lane skips it; every untagged line runs with the test env, never
+  the walk env's database. Outside the fleet it changes nothing.
 
 🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
 `gate:all` that re-runs the typecheck, the unit suites and the e2e suite again
@@ -145,7 +149,7 @@ makes, one per line, each `@scoped` to what it proves.
 ### Deep set (verify only)
 
 ```
-npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts
+npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts @walk
 <command>          # what it proves, and why the fast sets don't @scoped <the paths it covers>
 ```
 

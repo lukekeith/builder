@@ -541,7 +541,7 @@ function agentWalk(f, a, ws) {
     '- For each item record `PASS`, `FAIL` or `UNVERIFIABLE`, what you did, what you saw, and its evidence files — screenshots `NN-<slug>.png`, console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.',
     '- Never edit code, never commit, never touch the manifest or the SPEC.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
-    '- Any gate you run: a line at or under its baseline (`→ 7 (baseline 7)`) is green — note the count and move on; never investigate failures that already fail on the base branch.',
+    '- Run no gates — no test suite, no build, no gate.mjs. You judge the running app; gates belong to the fix rounds and verify. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
     '',
     '## Output',
     '',

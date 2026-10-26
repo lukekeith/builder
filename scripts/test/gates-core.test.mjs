@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations } from '../gates-core.mjs'
+import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -488,4 +488,62 @@ test('gate.mjs --typecheck runs only the @typecheck lines, through the same runn
   assert.match(again.stdout, /PASS \(quoted\)/)
   const red = configured('### server — fast\n\n```\nfalse   # types @typecheck\n```\n')
   assert.equal(run(red, 'server', '--typecheck').status, 1)
+})
+
+// ---- 5.2: @walk and the walk lane ---------------------------------------------------------
+
+test('@walk parses like the other tags and leaves the note clean', () => {
+  const g = parseGates('## Quality gates\n\n### web — fast\n\n```\nnpm run test:e2e   # the browser suite @walk\nnpm test   # units\n```\n').fast.web
+  assert.deepEqual(g[0], { cmd: 'npm run test:e2e', note: 'the browser suite', delta: false, knownRed: false, walk: true })
+  assert.equal(g[1].walk, undefined)
+})
+
+test('gateEnv: the walk lane gives untagged lines the build-lane values back; @walk keeps the walk env; build lane skips @walk; no lane, no change', () => {
+  const walkEnv = { BUILDER_LANE: 'walk', DATABASE_URL: 'walkdb', API_URL: 'http://localhost:8001', BUILDER_GATE_ENV: JSON.stringify({ DATABASE_URL: 'testdb_a', API_URL: null }) }
+  const unit = gateEnv({ cmd: 'npm test' }, walkEnv)
+  assert.equal(unit.DATABASE_URL, 'testdb_a')
+  assert.equal('API_URL' in unit, false)
+  assert.equal(gateEnv({ cmd: 'e2e', walk: true }, walkEnv).API_URL, 'http://localhost:8001')
+  assert.equal(gateEnv({ cmd: 'e2e', walk: true }, { BUILDER_LANE: 'build' }), null)
+  const none = { DATABASE_URL: 'mine' }
+  assert.equal(gateEnv({ cmd: 'e2e', walk: true }, none), none)
+  assert.equal(gateEnv({ cmd: 'npm test' }, none), none)
+})
+
+test('gate.mjs: in the build lane a @walk line is skipped and says verify runs it; each lane quotes only its own run', () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'ran.txt')
+  const root = configured(`### server — fast\n\n\`\`\`\necho unit >> ${out}   # units\necho e2e >> ${out}   # browser @walk\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  const lane = (l, extra = {}) => spawnSync('node', [GATE, 'server'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, BUILDER_LANE: l, ...extra } })
+  const b = lane('build')
+  assert.equal(b.status, 0, b.stdout + b.stderr)
+  assert.match(b.stdout, /~ echo e2e .* — @walk: needs the running walk env; verify runs it in the walk lane/)
+  assert.equal(readFileSync(out, 'utf8'), 'unit\n')
+  // the walk lane does not quote the build lane's green: the @walk line has not run yet
+  const w = lane('walk')
+  assert.match(w.stdout, /▶ server — fast/)
+  assert.equal(readFileSync(out, 'utf8'), 'unit\nunit\ne2e\n')
+})
+
+test('gate.mjs under the fleet runs the main checkout\'s gate lines and says when the branch changed them', () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'ran.txt')
+  const main = configured(`### server — fast\n\n\`\`\`\necho main-line >> ${out}   # the human's gate\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  const wt = mkdtempSync(join(tmpdir(), 'gates-wt-'))
+  git(main, 'worktree', 'add', '-q', '-b', 'builder/f', join(wt, 'f'))
+  const cfg = join(wt, 'f', '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('main-line', 'loosened'))
+  git(join(wt, 'f'), 'commit', '-qam', 'agent loosens the gate')
+  const r = spawnSync('node', [GATE, 'server'], { cwd: join(wt, 'f'), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: join(wt, 'f'), BUILDER_CONFIG_ROOT: main } })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /⚠ this branch's \.claude\/builder\.md has gate lines that differ from the main checkout's/)
+  assert.equal(readFileSync(out, 'utf8'), 'main-line\n')
+})
+
+test('gate.mjs in the walk lane polls the walk env\'s smoke after a set, and exits 3 saying how when the gates broke it', () => {
+  const root = configured(`### server — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  const env = (smoke) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, BUILDER_LANE: 'walk', BUILDER_WALK_SMOKE: smoke })
+  const up = spawnSync('node', [GATE, 'server', '--force'], { cwd: root, encoding: 'utf8', env: env('true') })
+  assert.equal(up.status, 0, up.stdout + up.stderr)
+  const down = spawnSync('node', [GATE, 'server', '--force'], { cwd: root, encoding: 'utf8', env: env('false') })
+  assert.equal(down.status, 3)
+  assert.match(down.stdout, /⚠ the walk env stopped answering after server — fast \(smoke: false\)[\s\S]*walk env needs a restart — broken by the server — fast gates/)
 })

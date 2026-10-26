@@ -80,6 +80,8 @@ Every point that would ask resolves one of two ways:
 | The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
 | The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
 | The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
+| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a gate line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
+| A gate run exits 3 — the walk env stopped answering after it | `blocked: "walk env needs a restart — <what broke it>"`, commit, end the run: the fleet restarts it without a reset (REFERENCE §Quality gates — the mechanism, *Gates and the walk env*) |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
