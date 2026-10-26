@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadConfig, parseEnvPairs } from '../scripts/config.mjs'
+import { loadConfig, parseEnvPairs, hasAgentWalk } from '../scripts/config.mjs'
 
 const APPS = 'apps:\n  - name: app\n    path: app/\n    role: app\n    commit: auto'
 const cfgWith = (extra) => {
@@ -107,7 +107,25 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     smoke: null,
     keepLogs: 30,
     autoUnpark: 2,
+    batch: 8,
   })
+  assert.equal(cfgWith('agent_walk:\n  driver: x\n  batch: 1').agentWalk.batch, 1)
+  assert.equal(cfgWith('agent_walk:\n  driver: x\n  batch: 0').agentWalk.batch, 8)
+})
+
+test('merge_into: current is a flag resolved at start, never a branch named current', () => {
+  const cfg = cfgWith('base_branch: develop\nmerge_into: current')
+  assert.equal(cfg.mergeIntoCurrent, true)
+  assert.equal(cfg.mergeInto, 'develop')
+  assert.equal(cfg.mergeIntoConfigured, true)
+  assert.equal(cfgWith('merge_into: release').mergeIntoCurrent, false)
+})
+
+test('hasAgentWalk reads another branch\'s config text', () => {
+  assert.equal(hasAgentWalk(`---\n${APPS}\nagent_walk:\n  driver: Playwright\n---\n`), true)
+  assert.equal(hasAgentWalk(`---\n${APPS}\nagent_walk:\n  driver: <how a worker drives it>\n---\n`), false)
+  assert.equal(hasAgentWalk(`---\n${APPS}\n---\n`), false)
+  assert.equal(hasAgentWalk(null), false)
 })
 
 test('worktree_env is parsed like env, and a bad pair names itself', () => {

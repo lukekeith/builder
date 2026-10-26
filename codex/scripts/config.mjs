@@ -137,7 +137,11 @@ export function loadConfig(root = process.cwd()) {
       return { ok: false, path, reason: `${selectedPath}: ${key} must be a branch-name string.` }
   }
   const baseBranch = fm.base_branch?.trim() || null
-  const mergeInto = fm.merge_into?.trim() || null
+  const mergeIntoRaw = fm.merge_into?.trim() || null
+  // `merge_into: current` — land on the branch checked out where the feature starts (lifecycle.mjs
+  // start resolves it); a detached HEAD or a builder/* branch falls back to base_branch.
+  const mergeIntoCurrent = mergeIntoRaw === 'current'
+  const mergeInto = mergeIntoCurrent ? null : mergeIntoRaw
 
   // agentWalkOf can throw (a malformed `env:` pair) — that's a config-authoring mistake, not a
   // crash, so it surfaces through the same {ok: false, reason} path as every other bad config.
@@ -157,9 +161,12 @@ export function loadConfig(root = process.cwd()) {
     sourcePath: selectedPath,
     registry: fm.registry ?? 'docs/features',
     baseBranch: baseBranch ?? 'main',
-    // Where finished features merge: merge_into, else base_branch. Never the checked-out branch.
+    // Where finished features merge: merge_into, else base_branch. Never the checked-out branch —
+    // unless the repo opts in with `merge_into: current` (mergeIntoCurrent; resolved at start).
     mergeInto: mergeInto ?? baseBranch ?? 'main',
-    // A synthesized main is not an explicitly approved landing destination.
+    mergeIntoCurrent,
+    // A synthesized main is not an explicitly approved landing destination — nor is `current`'s
+    // fallback when no base_branch is configured (start then refuses a detached or builder/* checkout).
     mergeIntoConfigured: mergeInto !== null || baseBranch !== null,
     buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
     // Callers decide when to report invalid authoring; loading config never prints warnings.
@@ -249,6 +256,24 @@ const agentWalkOf = (block) => {
     smoke: block.smoke ?? null,
     keepLogs: Number.isInteger(block.keep_logs) && block.keep_logs >= 0 ? block.keep_logs : 30,
     autoUnpark: Number.isInteger(block.auto_unpark) && block.auto_unpark >= 0 ? block.auto_unpark : 2,
+    // Claude's fleet: how many features one walk takes at once. Parsed so a shared config reads the
+    // same in both ports; Codex walks one feature per coordinator.
+    batch: Number.isInteger(block.batch) && block.batch > 0 ? block.batch : 8,
+  }
+}
+
+/**
+ * Whether a config text — another branch's copy, read with `git show` — carries a usable
+ * `agent_walk:` block. A feature worktree is cut from its target, so its workers read the TARGET's
+ * config, not the starting checkout's.
+ */
+export function hasAgentWalk(text) {
+  const fm = text == null ? null : parseFrontmatter(text)
+  if (!fm) return false
+  try {
+    return Boolean(agentWalkOf(fm.agent_walk))
+  } catch {
+    return false
   }
 }
 

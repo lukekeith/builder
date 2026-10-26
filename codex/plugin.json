@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "builder",
-  "version": "4.11.0",
+  "version": "5.2.0",
   "description": "Persistent concept-to-delivery builds with model routing, isolated worktrees, and verified local integration.",
   "author": {
     "name": "Luke Keith"
