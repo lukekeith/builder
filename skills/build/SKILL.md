@@ -271,7 +271,7 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
    — all state is on disk, so continuing in this session loses nothing but room.
 
 **Under `--agent-walk`, nothing runs in the background** — implementers, reviewers and gates run in
-the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agent-walk`).
+the foreground, and a long gate goes through `scripts/job.mjs` (resume's AGENT-MODE.md).
 
 **Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (resume
 §`--agent-walk`: agent mode builds to done). Of the five stop classes:
@@ -331,7 +331,7 @@ Never ask.
    `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>` and commit —
    `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "dev env (fleet walk lane)"' --set "next=/builder:resume --path <folder>" --head --commit walk-lane`
    (the preset `walk-lane` = `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`) —
-   then §The hand-off file, and end the run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
+   then §The hand-off file, and end the run. **Under `--agent-walk`**, readiness never asks: resume's AGENT-MODE.md says what each question
    becomes. With `agent_walk.start` set, the fleet has already started the walk env for this worktree —
    never start or restart it here (REFERENCE §Walk readiness).
 4. **The walk script** — `node <builder>/scripts/walk-script.mjs <folder>` writes `<WS>/walk.md`

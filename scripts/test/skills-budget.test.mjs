@@ -31,3 +31,29 @@ test('all descriptions together stay within the always-on budget', () => {
 test('the maintainer-only benchmark never loads into a consumer session', () => {
   assert.match(frontmatter('benchmark'), /^disable-model-invocation: true$/m)
 })
+
+// Anthropic's skill guidance: SKILL.md under 500 lines; a reference file over 100 lines opens with a
+// table of contents, so a partial read still shows what the file holds.
+const VENDORED = ['test-driven-development', 'systematic-debugging'] // upstream's files, kept as written
+
+test('every SKILL.md is under 500 lines', () => {
+  for (const s of skills) {
+    const n = readFileSync(join(ROOT, 'skills', s, 'SKILL.md'), 'utf8').split('\n').length
+    assert.ok(n < 500, `skills/${s}/SKILL.md is ${n} lines — move a section into a reference file beside it`)
+  }
+})
+
+test('every reference file over 100 lines opens with a Contents line naming each section', () => {
+  for (const s of skills.filter((x) => !VENDORED.includes(x)))
+    for (const f of readdirSync(join(ROOT, 'skills', s)).filter((x) => x.endsWith('.md') && x !== 'SKILL.md')) {
+      const t = readFileSync(join(ROOT, 'skills', s, f), 'utf8')
+      if (t.split('\n').length <= 100) continue
+      const toc = t.split('\n').slice(0, 15).find((l) => l.startsWith('**Contents:**'))
+      assert.ok(toc, `skills/${s}/${f}: no **Contents:** line in its first 15 lines`)
+      let fenced = false
+      for (const l of t.split('\n')) {
+        if (l.startsWith('```')) fenced = !fenced
+        else if (!fenced && l.startsWith('## ')) assert.ok(toc.includes(`§${l.slice(3).trim()}`), `skills/${s}/${f}: Contents is missing §${l.slice(3).trim()}`)
+      }
+    }
+})

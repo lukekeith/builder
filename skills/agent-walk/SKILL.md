@@ -47,14 +47,14 @@ levers say. `end` sets how much is walked:
 | `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
 
 🔴 **The walk subagent runs in the foreground** and its report is read in this run — never
-`run_in_background` (resume §`--agent-walk`: a headless run exits when its turn ends).
+`run_in_background` (resume's AGENT-MODE.md: a headless run exits when its turn ends).
 
 ## 1. Which round
 
 `<WS>` is `"$(<builder>/scripts/workspace <feature>)"` — re-resolve it inline in every command
 (REFERENCE §The scripts). The round is one more than the highest existing `<WS>/agent-walk/round-*`.
 A failed round is work, not a stop: its items become fixes, `/builder:resume` works them and routes
-back here (resume §`--agent-walk`: agent mode builds to done). **From round 3 on**, the dispatch for
+back here (resume's AGENT-MODE.md: agent mode builds to done). **From round 3 on**, the dispatch for
 each item that failed in the round before also names
 [`systematic-debugging`](../systematic-debugging/SKILL.md) — the fix that was tried didn't hold, so the next one starts from the cause. Only
 when **five rounds in a row have failed since the last unpark** does the next one park instead. The

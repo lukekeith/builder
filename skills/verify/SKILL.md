@@ -30,7 +30,7 @@ lane may have run the deep block already, and `gate.mjs` quotes that run when th
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that
 may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code
-(resume §`--agent-walk`). A verify that ends its turn "waiting on the gates" is lost when the headless
+(resume's AGENT-MODE.md). A verify that ends its turn "waiting on the gates" is lost when the headless
 run exits.
 
 **The test plan.** Read the levers on every verify, in chat and under `--agent-walk` alike:
@@ -254,7 +254,7 @@ Pick up where you left off any time: /builder:resume --path <folder>
 Without a config `agent_walk:` block only Step by step is left: the single line
 `📍 <feature>: verify <…> — next: /builder:resume --path <folder> · or say go`.
 
-**Under `--agent-walk`, a READY goes straight on** into resume §Ship in agent mode in this turn — no
+**Under `--agent-walk`, a READY goes straight on** into resume's AGENT-MODE.md §Ship in agent mode in this turn — no
 footer, no return to the route table (REFERENCE §Under `--auto` and `--agent-walk`: adjacent steps
 run as one). The hand-off above is then the six-line closing report, not the evidence list.
 

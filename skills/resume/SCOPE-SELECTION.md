@@ -4,6 +4,8 @@
 `builder:check` and `builder:intake` both follow it verbatim, so the resolution is identical
 whichever one is typed. Every later step inherits the recorded selection rather than re-asking.
 
+**Contents:** §The rule · §The procedure · §Built and unbuilt items are both legitimate requirements · §Persisting the selection
+
 It applies only when `.claude/builder.md` carries a `design:` block. That block names the **flag**,
 the **resolver** command, where the **contracts** live and which commands **own** the design.
 

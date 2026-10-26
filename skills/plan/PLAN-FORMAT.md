@@ -4,6 +4,8 @@ Adapted from superpowers' `writing-plans` (MIT — see
 [LICENSE-THIRD-PARTY.md](../../LICENSE-THIRD-PARTY.md)). `builder:plan` derives the phases; this
 file is the shape it writes them in, and the rules that keep the result executable.
 
+**Contents:** §File structure, before tasks · §Task right-sizing · §Bite-sized steps · §The header · §Task structure · §No placeholders · §Self-review
+
 **Write the plan assuming the engineer has zero context for this codebase and questionable taste.**
 Document everything they need: which files to touch, the code, the tests, the command to run, how to
 tell it worked. Assume a skilled developer who knows almost nothing about this toolset or problem
