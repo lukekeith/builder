@@ -173,6 +173,11 @@ a visual diff, and a renamed element changes what the walk does.
     walk script, executed live. Can't bring the stack up → **BLOCKED-on-environment**, never READY.
     Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
     SCOPED, and quote the earlier run when the diff didn't earn a new one.
+    **One app in scope:** there is no cross-app walk to run — the feature's walk script *was* the
+    verification script (`walk-script.mjs`), so the agent walk's report covers this item exactly as
+    `E` rows would: its rows for the round the sign-off header names, every in-scope row `PASS` (a
+    carried row counts) and no code changed since its `sha:`. A human-walked single-app feature: the
+    walk the sign-off records covers it.
     **Under `--agent-walk`, the agent walk may already have covered it.** When `walk.md` has a
     `## Cross-app (verify E2E)` section, read `<WS>/agent-walk/round-<n>/report.md` for the round the `🤖 AGENT SIGNED OFF … round <n>` header names
     — never simply the latest round — and take `<walk sha>` from its `sha:` line, the code that

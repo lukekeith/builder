@@ -494,6 +494,40 @@ function finalReview(f, a, ws) {
   return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review') }
 }
 
+/**
+ * A round after the first walks only what the fix could have changed: the items the last round
+ * failed, plus any it passed whose code the fix touched. Every other pass is carried — its row copied
+ * with `PASS (carried from round <n-1> @ <sha>)` and its evidence — so a one-item fix is a one-item
+ * walk, not the whole scope again. No readable last report → the whole scope, as round 1.
+ */
+export function rewalkScope(f, dir, n) {
+  if (n < 2) return []
+  const prev = read(join(dir, `round-${n - 1}`, 'report.md'))
+  if (!prev) return []
+  const sha = /^sha:\s*(\S+)/m.exec(prev)?.[1] ?? null
+  const rows = tableRows(prev).filter((r) => r[0] && !/^#$/.test(r[0]))
+  const failed = rows.filter((r) => !/^PASS\b/i.test(r[3] ?? ''))
+  const passed = rows.filter((r) => /^PASS\b/i.test(r[3] ?? ''))
+  let diff = ''
+  if (sha) {
+    try {
+      diff = execFileSync('git', ['diff', '--stat', `${sha}..HEAD`], { cwd: f.root, encoding: 'utf8' }).trim()
+    } catch {}
+  }
+  const out = ['', `## Round ${n}: walk only what the fix could change`, '']
+  out.push(failed.length ? `Walk these — round ${n - 1} did not pass them:` : `Round ${n - 1} failed nothing by row — walk the scope above.`)
+  if (failed.length) out.push('', ...failed.map((r) => `- ${r[0]} · ${r[1]} · ${r[2]} — was ${r[3]}`))
+  if (passed.length) {
+    out.push(
+      '',
+      `Passed in round ${n - 1}${sha ? ` at ${sha}` : ''}: ${passed.map((r) => r[0]).join(', ')}. Re-walk one only when the fix since then changes code it exercises — read the diff below and say why in its row; otherwise copy its row from round ${n - 1}'s report with Result \`PASS (carried from round ${n - 1}${sha ? ` @ ${sha}` : ''})\` and the same evidence paths.`,
+    )
+    if (diff) out.push('', `\`git diff --stat ${sha}..HEAD\`:`, '', '```', diff, '```')
+  }
+  if (n >= 3 && failed.length) out.push('', `These items have now failed after a fix. For each, read ${skillPath(CRAFT.DEBUGGING_PATH)} and look for the cause, not only the symptom.`)
+  return out
+}
+
 function agentWalk(f, a, ws) {
   const end = parseTestPlan(f.manifest).levers.end
   if (end === 'none' || end === 'touched') throw new Error(`no walker under end=${end} — the sign-off is \`condense.mjs <folder> --signoff agent --no-walk\` (agent-walk §The test plan)`)
@@ -528,18 +562,14 @@ function agentWalk(f, a, ws) {
       ? 'Work every `[risk]` item and every step of the `## Cross-app (verify E2E)` section, in order, per app — and say in the report that the other items were out of scope (tests: end=risk).'
       : 'Work **every** item of walk.md, in order, per app — the `## Cross-app (verify E2E)` section too, when it is there.',
   ]
-  if (n >= 3) {
-    const prev = read(join(dir, `round-${n - 1}`, 'report.md')) ?? ''
-    const failed = tableRows(prev).filter((r) => /^FAIL\b/i.test(r[3] ?? ''))
-    if (failed.length)
-      lines.push('', `These items failed in round ${n - 1}, and the fix that was tried didn't hold. For each, read ${skillPath(CRAFT.DEBUGGING_PATH)} and look for the cause, not only the symptom:`, '', ...failed.map((r) => `- ${r[0]} · ${r[1]} · ${r[2]}`))
-  }
+  lines.push(...rewalkScope(f, dir, n))
   lines.push(
     '',
     '## Rules',
     '',
     '- For each item record `PASS`, `FAIL` or `UNVERIFIABLE`, what you did, what you saw, and its evidence files — screenshots `NN-<slug>.png`, console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.',
     '- Never edit code, never commit, never touch the manifest or the SPEC.',
+    '- **Walk by screen.** Group the items by the screen or component they exercise; reach each one once and check every item on it in order — one app session, one launch — recording a row per item. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving every item from a fresh launch is the slow way to walk a screen that holds them all.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
     '- Run no gates — no test suite, no build, no gate.mjs. You judge the running app; gates belong to the fix rounds and verify. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
     '',

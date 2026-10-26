@@ -45,20 +45,19 @@ test('[risk]: a §Contract row, auth/permission, load/save/delete — and not pl
   assert.equal(isRisk('after `rm` of a note its count drops', []), true)
 })
 
-test('walk-script: note-tags under --agent-walk — per-app items newest-first with [risk], the orchestrator block, E1–E7', () => {
+test('walk-script: note-tags (one app) under --agent-walk — the verification script is the walk, no E steps, no per-app test items', () => {
   const r = leanRepo('note-tags')
   const out = run('walk-script.mjs', [r.rel], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  assert.match(out.stdout, /^wrote .*walk\.md — 12 items in 1 app \(11 \[risk\]\) \+ cross-app E1–E7/m)
+  assert.match(out.stdout, /^wrote .*walk\.md — 7 items in 1 app \(7 \[risk\]\) \(one app: the verification script is its walk — no cross-app section, the per-app test items left to the gates\)/m)
   const w = readText(WALK(r))
   assert.match(w, /^# note-tags — walk script\n/)
   assert.match(w, /\n## notes\n\nWhere: `\.\/` — this checkout \(app\)\.\n/)
   assert.match(w, /<!-- orchestrator: notes[^>]*-->\n<!-- \/orchestrator -->/)
-  assert.match(w, /\nNewest first:\n\n1\. \[risk\] Stored shape: after an untagged add/)
-  assert.match(w, /\n11\. Mixed list: an untagged note prints/)
-  assert.match(w, /\n12\. \[risk\] `add buy milk --tag shop --tag home` prints `1`/)
-  assert.match(w, /\n## Cross-app \(verify E2E\)\n\nFrom SPEC §Testing — Human-verification script \(run with `NOTES_FILE=\$\(mktemp -d\)\/n\.json`\):\n\nE1\. `node src\/cli\.mjs add buy milk --tag shop --tag home` → `1`\n/)
-  assert.match(w, /\nE7\. `add x --tag Bad; echo \$\?` → `invalid tag: Bad` on stderr, `1`\.\n/)
+  assert.match(w, /The verification script \(SPEC §Testing — Human-verification script/)
+  assert.match(w, /\n1\. \[risk\] `node src\/cli\.mjs add buy milk --tag shop --tag home` → `1`\n/)
+  assert.match(w, /\n7\. \[risk\] `add x --tag Bad; echo \$\?` → `invalid tag: Bad` on stderr, `1`\.\n/)
+  assert.doesNotMatch(w, /Cross-app|\nE1\.|Stored shape/)
 })
 
 test('walk-script: without agent-walk there is no cross-app section; a re-run keeps what the orchestrator wrote', () => {
@@ -72,7 +71,7 @@ test('walk-script: without agent-walk there is no cross-app section; a re-run ke
   writeFileSync(WALK(r), w)
   assert.equal(run('walk-script.mjs', [r.rel], { cwd: r.root }).status, 0)
   assert.equal(readText(WALK(r)), w)
-  assert.match(run('walk-script.mjs', [r.rel, '--cross-app'], { cwd: r.root }).stdout, /\+ cross-app E1–E7/)
+  assert.match(run('walk-script.mjs', [r.rel, '--cross-app'], { cwd: r.root }).stdout, /one app: the verification script is its walk/)
 })
 
 test('walk-script: share — a section per in-scope app with its landmines, the E2E steps; --print prints it', () => {

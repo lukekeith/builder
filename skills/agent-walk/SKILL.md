@@ -54,7 +54,10 @@ levers say. `end` sets how much is walked:
 `<WS>` is `"$(<builder>/scripts/workspace <feature>)"` — re-resolve it inline in every command
 (REFERENCE §The scripts). The round is one more than the highest existing `<WS>/agent-walk/round-*`.
 A failed round is work, not a stop: its items become fixes, `/builder:resume` works them and routes
-back here (resume's AGENT-MODE.md: agent mode builds to done). **From round 3 on**, the dispatch for
+back here (resume's AGENT-MODE.md: agent mode builds to done). **A round after the first walks only
+what the fix could change** — the items the last round didn't pass, plus a passed one only when the
+fix's diff touches code it exercises; every other pass is carried with its evidence (`dispatch.mjs`
+writes the scope and the diff). **From round 3 on**, the dispatch for
 each item that failed in the round before also names
 [`systematic-debugging`](../systematic-debugging/SKILL.md) — the fix that was tried didn't hold, so the next one starts from the cause. Only
 when **five rounds in a row have failed since the last unpark** does the next one park instead. The
@@ -95,7 +98,10 @@ never the build's context: the agent that built it does not grade it.
 - the config's §Environment landmines, verbatim;
 - the output directory `<WS>/agent-walk/round-<n>/`;
 - the rules: work **every** item — under `end=risk`, every `[risk]` item and the cross-app
-  section, and say so — in order, per app; for each, record `PASS`, `FAIL` or
+  section, and say so — **walking by screen**: the items grouped by the screen or component they
+  exercise, each screen reached once with every item on it checked in order (one session, one
+  launch; a fresh start only when an item needs one); after round 1, only what the fix could change
+  (§1); for each, record `PASS`, `FAIL` or
   `UNVERIFIABLE`, what it did, what it saw, and its evidence files — screenshots `NN-<slug>.png`,
   console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.
   **Never edit code, never commit, never touch the manifest or the SPEC.**
@@ -113,8 +119,9 @@ never the build's context: the agent that built it does not grade it.
 
 Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
-- Every `walk.md` item in scope (under `end=risk`, the `[risk]` and `E` items) present and `PASS` — `UNVERIFIABLE` allowed only when there is no driver, and
-  each one listed — → **AGENT-PASS**.
+- Every `walk.md` item in scope (under `end=risk`, the `[risk]` and `E` items) present and `PASS` — a
+  `PASS (carried from round <n> @ <sha>)` row counts, its evidence the earlier round's —
+  `UNVERIFIABLE` allowed only when there is no driver, and each one listed — → **AGENT-PASS**.
 - Any `FAIL`, an item of `walk.md` missing from the report (count it `FAIL — not walked`), or any
   `UNVERIFIABLE` item while a driver is configured → **AGENT-PROBLEMS**.
 
