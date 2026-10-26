@@ -8,7 +8,10 @@ description: The builder help card — which command to run when, how work is si
 `/builder:brainstorm --help`, `/builder:intake --help`, `/builder:spec --help` and `/builder:resume --help` render this same card; `--help` on any
 other builder skill prints that skill's own invocation line and flags, then stops.
 
-Render the parts relevant to what was asked, in these words. The skills and
+**A question gets an answer, not the card.** When the user asks something specific ("how do I pick
+up yesterday's work?"), answer it in two to four lines — the command, what it does, at most one
+related command — and stop; end with `/builder:help shows the whole card.` Only a bare
+`/builder:help` (or `--help`) renders the card below, in these words. The skills and
 [`../resume/REFERENCE.md`](../resume/REFERENCE.md) are the source of truth; this card is the map.
 
 ## In one paragraph
