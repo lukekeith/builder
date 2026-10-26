@@ -211,7 +211,7 @@ test('statusline: the skill drives the installer, help names it, and vendored co
   assert.match(s, /^name: statusline$/m)
   assert.match(s, /scripts\/statusline-install\.mjs/)
   assert.match(read('skills/help/SKILL.md'), /\/builder:statusline/)
-  assert.match(read('README.md'), /^## Live progress in the status line$/m)
+  assert.match(read('docs/guide.md'), /^## Live progress in the status line$/m)
   for (const f of ['statusline.mjs', 'statusline-launcher.mjs', 'statusline-install.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
 
@@ -335,7 +335,7 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   const init = read('skills/init/SKILL.md')
   assert.match(init, /build_profile_default/)
   assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}own · touched · end/)
-  for (const f of ['skills/help/SKILL.md', 'README.md']) {
+  for (const f of ['skills/help/SKILL.md', 'docs/guide.md']) {
     const s = read(f)
     assert.match(s, /Testing per slice/, `${f} names the per-slice question`)
     assert.match(s, /Testing at the end/, `${f} names the end question`)

@@ -3,222 +3,136 @@ name: help
 description: The builder help card — which command to run when, how work is sized, where its files live and how resuming works. Use when the user asks how builder works or which builder command to use.
 ---
 
-# `/builder:help` — how the `/builder:*` pipeline works
+# `/builder:help` — how builder works
 
 `/builder:brainstorm --help`, `/builder:intake --help`, `/builder:spec --help` and `/builder:resume --help` render this same card; `--help` on any
-other family skill prints that skill's own invocation line and flags, then stops.
+other builder skill prints that skill's own invocation line and flags, then stops.
 
-Render the parts relevant to what was asked. The family's SKILL.md files and
+Render the parts relevant to what was asked, in these words. The skills and
 [`../resume/REFERENCE.md`](../resume/REFERENCE.md) are the source of truth; this card is the map.
 
-## The idea in one paragraph
+## In one paragraph
 
-**Start with a conversation, size it once it's understood.** `/builder:brainstorm` explores an idea
-with you — a vague idea framed, started from the project's design system, then looked further — installed plugins, a suggested one, the web — only when you allow it, and explored as concepts built from what the product already has, your intent played back, how the code works today, questions in rounds, approaches — and
-`/builder:intake` checks a worked-out spec, ticket or design against the code. Once the concept is
-confirmed it is sized (REFERENCE §Sizes): **xs and sm** are designed and built in chat and write
-nothing under `docs/`; **md and lg** go to `/builder:spec`, which writes one `SPEC.md` (opening with
-the idea, in prose) plus a ~12-line `MANIFEST.md` and runs the pipeline below; **xl** becomes a
-`PROGRAM.md` whose children each run it. A finished, specced design
-can be the requirements instead of an interview. A spec is audited against the codebase **once**
-before any code, then built **one app per phase, the producer before its consumers**, with that
-app's gates at every phase close, then 🔒 **walked by you**: your sign-off condenses the folder and
-only then come the one deep verify pass and **one PR for the whole feature**. Building the feature
-outranks recording it — git history is the full record.
+You say what you want with `/builder:brainstorm`. It looks up what your words refer to in the code,
+explains how that part works today, asks only what is still open, and — once you agree on what to
+build — sizes it. A small change is built right there in the chat. A bigger one gets a written spec
+you approve; it is checked against the code once, planned, built one app at a time, tested, and
+merged. By default agents build and test it and merge it on your machine, marked *not human-tested*;
+you can test it yourself instead, and then nothing becomes a PR until you sign off.
 
-## It reads ONE config file
+## Setup
 
-🔴 **The plugin knows nothing about your project.** Every project fact — the apps, the gate commands,
-the house rules, the environment landmines, the recipe skills, the design source — lives in
-**`.claude/builder.md`**. Writing it is the whole per-repo setup:
-
-```
-/builder:init             # reads the repo, asks what it can't tell, writes .claude/builder.md
-/builder:init --update    # fill the gaps in an existing one
-```
-
-Nothing else is needed. The plugin ships its own scripts and its own execution engine; there is no
-second plugin to install. If a step says it cannot find the config, that file is what's missing.
+Everything builder knows about your project lives in one file, **`.claude/builder.md`**: your apps,
+their test commands, your house rules. `/builder:init` writes it from what the repo contains and
+asks only what it can't tell; `/builder:init --update` fills gaps in an existing one. If a step says
+it can't find the config, that file is what's missing. Nothing else needs installing.
 
 ## Which command do I run?
 
-| You are… | Run |
+| You want to… | Run |
 |---|---|
-| **Setting up a repo for the first time** | `/builder:init` — writes `.claude/builder.md` from what the repo contains |
-| **Wanting a view of everything in progress** | `/builder:status` — one table: what each feature is, the step last done, the step next, and the command to paste to pick it up |
-| **Any time — "where are things / what's next?"** | `/builder:resume` (no argument: the picker — every in-flight feature and program) |
-| **An idea, a request, or something to think through** | `/builder:brainstorm <what you want>` — a vague idea is explored first (the problem framed, the project's design system first, then installed plugins, a suggested plugin or the web offered, concepts proposed from the product's own patterns, until you name one), then it plays back your intent, explains how the code works today, asks in rounds, confirms, then sizes it: xs/sm built in chat, md+ on to `/builder:spec`. A small change in existing code skips all that: the first turn proposes it and replying A builds it. Every pause ends in a lettered list of ways on — reply a letter, "go" is A. The normal way in |
-| **A spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code (confirmed · contradicted · unverifiable), finds the gaps, asks only about those |
-| Building from a design that is already specced | `/builder:intake --<design.flag> <ref>` — the contracts are the requirements. The flag's name comes from your config |
-| A confirmed concept to write up | `/builder:spec --path <folder>` — normally reached by brainstorm's or intake's hand-off |
-| Wondering whether a design is ready to build from | `/builder:check --<design.flag> <ref>` — the pre-flight; it writes nothing |
-| Holding a folder from an **earlier pipeline** | `/builder:resume --path <registry>/<name>` — it offers the conversion and leaves every existing doc in place |
-| Carrying an existing feature forward | `/builder:resume --path <registry>/<name>` |
-| Running one step by hand | `/builder:brainstorm` · `/builder:intake` · `/builder:spec` · `/builder:align` (prototype mode) · `/builder:audit` · `/builder:plan` · `/builder:build` · `/builder:verify` — each takes `--path <folder>` |
-| **Hand work in progress to agents** | `/builder:agent` — tick any unfinished features from a list; agents run each until it's **merged into the `merge_into` branch** (default `base_branch`), with nothing left behind; one parks only when its spec leaves a decision open. Every handoff where agents could take over offers it first, as **1. Agent** ("go" picks it), except the plan go-ahead, which launches agents itself |
-| **Build it yourself, without the ceremony** | Pick **In this session** on a handoff before the build, or `/builder:resume --path <folder> --here`. The audit and plan still run in full; then this session works `PLAN.md` task by task, test first, fast gates at each phase close. No fleet, no reviewer agents, no walk lock, no sign-off or verify. It stops at `state: built`, so `/builder:resume` can still walk, verify and ship it later |
-| **Clean up what's left** | `/builder:tidy` — one table of every branch and worktree (merged, ready, running, parked, unknown, dead) against the `merge_into` branch; one OK clears everything safe and merges what's ready, the rest asks one question each |
-| **Several specs, built while you're away** | `/builder:fleet <features…>` — a worktree each, an agent walk and sign-off instead of yours, each **merged into the `merge_into` branch** — conflicts and failed walks are worked by agents, not parked. Needs the config's `agent_walk:` block |
-| **Is builder fast enough, and where does its time go?** | `/builder:benchmark` — one small feature through builder with the recommended test plan and with everything, and through superpowers and GSD, unattended; a report of time per step, what each step did, tokens, cost and whether the feature works. `--status` while it runs |
-| **You just hands-on tested the finished feature** | `/builder:signoff --path <folder> <your words>` — only you can type it; PASS condenses the folder and unlocks verify + the PR, and `--hold "<reason>"` means "it works, don't push yet" |
-| **Which builder am I on?** | `/builder:version` — the version this session loaded, what's installed, the newest release known here, and the one step that brings it current. Never fetches |
-| **Watch it run** | `/builder:statusline` — adds a `builder` progress bar to your status line: fleet progress, a build in the chat, running gates. `idle` when nothing runs; `--off` removes it |
-| **Wanting the newest builder** | `/builder:update` — refreshes the plugin install, says what changed, and names any older install shadowing it in this repo. `--check` only reports. Not in a vendored copy |
-| **A repo that won't take an outside plugin** | `/builder:vendor` — a local copy in the repo naming nothing outside it; run it again to update. `--check` proves it clean |
-| Changing something after the spec exists | `/builder:revise --path <folder> <the change>` — post-build the default is a code fix plus at most one doc line |
-| Verify is READY and the PR is open | `/builder:ship --path <folder>` — flips the SPEC header to SHIPPED citing the PR, removes the manifest and the workspace |
+| **Start anything** — explore an idea, ask for a change, think something through | `/builder:brainstorm <what you want>` |
+| **Build from a spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code and asks only about what's contradicted or missing |
+| **See everything in progress** | `/builder:status` — one table, with the next step for each |
+| **Pick up where you left off** | `/builder:resume` — no argument lists everything in flight |
+| **Hand unfinished work to agents** | `/builder:agent` — tick features from a list; agents finish each and merge it. Every hand-off where agents could take over offers it as **1. Agent**, except the plan go-ahead, which launches agents itself |
+| **Build several specs while you're away** | `/builder:fleet <features…>` |
+| **Build it yourself in this session** | pick **In this session** on a hand-off before the build (or `/builder:resume --path <folder> --here`) — it is planned and built here, then stops for you to try it |
+| **Record that you tried it and it works** | `/builder:signoff --path <folder> <your words>` — only you can type it; `--hold "<reason>"` means "works, don't push yet" |
+| **Change a feature that's already planned or part-built** | `/builder:revise --path <folder> <the change>` |
+| **Clean up leftover branches and worktrees** | `/builder:tidy` |
+| **Build from a finished design** | `/builder:check --<design.flag> <ref>` to see if it's ready, then `/builder:intake --<design.flag> <ref>` — the flag's name comes from your config |
+| **Update builder, or see which one you're on** | `/builder:update` · `/builder:version` (a copy inside the repo updates with `/builder:vendor`) |
+| **Watch it run** | `/builder:statusline` — a live builder progress bar; `--off` removes it |
 
-Flags come first and the free text after them is the work; quote a ref containing spaces. The whole
-family parses the same set — REFERENCE §Flags — plus `--hold`, which only sign-off takes.
+The steps `/builder:resume` runs for you can also be run by hand, each with `--path <folder>`:
+`/builder:spec`, `/builder:audit`, `/builder:plan`, `/builder:build`, `/builder:verify`,
+`/builder:ship`. Flags come first and the free text after them is the request.
 
-## The four craft skills
+## What happens to a feature
 
-Four more skills ship inside the plugin. They are not pipeline steps — they bind the *way* work is
-done, and they apply whether or not you are running a feature through the pipeline at all:
+**Size.** Decided once you agree on what to build, with the reason; you can override it, and it only
+ever goes up.
+- **xs / sm** — stays inside existing code and one app. Designed and built in the chat; nothing is
+  written under `docs/`.
+- **md / lg** — adds a model, a schema field, an endpoint, a permission, a route or a screen, or
+  crosses from one app into another. Gets `SPEC.md` and a ~12-line `MANIFEST.md`.
+- **xl** — split into several features under one `PROGRAM.md`.
+- "Can we…?" is answered as a question, not turned into a feature.
 
-| Skill | Read it when |
-|---|---|
-| `/builder:test-driven-development` | implementing any feature or bugfix, before writing implementation code |
-| `/builder:systematic-debugging` | any bug, test failure or unexpected behaviour — **before proposing a fix** |
-| `/builder:receiving-code-review` | review feedback has come back, before you implement any of it |
-| `/builder:verification-before-completion` | about to claim anything is complete, fixed or passing |
-
-The pipeline hands all four to every implementer by path, and cites them where they bite: the plan's
-steps are written in the TDD cycle, a fix round that stops converging gets the debugging skill, a
-`## Fixes` row from a review is read through the review skill, and every gate claim is governed by
-the verification skill's iron law — *no completion claim without fresh verification evidence.*
-
-**No command here creates a branch, a worktree or a ticket**, and none writes to your ticket system
-— those are yours.
-
-## The sizes
-
-The verdict is announced with its evidence once the concept is confirmed, and you can override it there. It
-**ratchets up only**: complexity found mid-task stops the work and writes the spec then.
-
-**Two things draw the sm/md line, and neither is file count.** A change staying inside existing
-contracts *and inside one app* is sm however many files it brushes. It earns a spec the moment it
-adds a model, a schema row, an endpoint, a permission, a route or a screen — **or the moment it
-crosses an app boundary**, because the contract between the apps is the thing that breaks. Where your
-config marks an app `released_artifact: true`, it breaks somewhere nobody can hot-fix. A feasibility
-question ("can we…") is a **spike**: answered as a question, not wrapped in a feature folder.
-
-## The order (md and lg)
+**Order (md and lg):**
 
 ```
-design → (align) → audit (1 pass) → [decisions] → plan → [go-ahead] → build (one app per phase)
-              ↑ prototype mode only
-   → 🔒 your walk + /builder:signoff (condenses) → verify (the ONE deep pass) → ship
+spec → audit (once) → open questions → plan → go-ahead → build (one app at a time)
+     → tested → verify (the one deep check) → merged, or a PR after your sign-off
 ```
 
-**The walk is you, in the running app — or apps.** When the last phase lands, the pipeline runs the
-fast gates, makes the dev environment run this build — **asking before it applies a pending
-migration to your dev database**, restarting what went stale, and smoking every changed surface for
-errors (one it finds is fixed, not handed to you) — prints a script the build wrote **per app**, and stops. Nothing moves until you have
-tried it and typed `/builder:signoff`. The walk precedes verify because the deep pass needs every app
-up at once, so it runs once, on a build a human has already accepted.
+**Who tests it.** After you approve the spec the hand-off offers:
+1. **Agent** — "go" picks it. Agents plan, build, try it in the running app, verify, and merge it
+   into your main branch on your machine (`merge_into` picks another), recorded as
+   `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed; no PR.
+2. **Step by step** — the same, pausing for you at the open questions and the plan's go-ahead.
+3. **In this session** — built here, then 🔒 it stops for **your walk**: you try it in the running
+   app and type `/builder:signoff`. Only then come verify and **one PR for the whole feature**. A
+   plugin hook blocks `gh pr create` until you have signed off.
 
-## The multi-app rules (what this pipeline has that a single-app one doesn't)
+**Several apps in one repo.** Each app gets its own phase, the one that provides an API before the
+ones that use it, and each phase runs that app's own tests. The shared contract between apps freezes
+once the providing app's phase passes; only `/builder:revise` reopens it, and it names every app to
+re-check. An app marked `commit: manual` is never committed by an agent.
 
-1. **§Apps gives every app a row, including the ones it doesn't touch.** A ⬜ row states why not in
-   one line, and the audit checks that claim — a wrong "not affected" is the most expensive finding
-   there is, because it ships.
-2. **§Contract is one interface table every consumer codes against**, each row naming its consumers.
-   🔴 **It FREEZES when the producer's phase verifies.** A consumer needing a different shape goes
-   through `/builder:revise`, which re-opens the freeze deliberately and names every consumer to
-   re-check.
-3. **One app per phase, the producer before its consumers.** Each app's gates are different commands,
-   so a two-app phase cannot be gated — and consumers parallelize when they don't import each other.
-4. **An app your config marks `commit: manual` is never committed by an agent** — at any size, under
-   any flag.
+## The go-ahead and the test plan
 
-`node <builder>/scripts/check-obligations.mjs <feature>` turns rules 1 and 2 from habits into a gate.
+The plan is shown as numbered slices, grouped by app, each with the tests it adds, and a test plan
+with what it costs. "go" takes the recommended one; *Change the test plan* asks:
+- **Testing per slice** — its own tests (recommended) · plus the app's suite when its slices are
+  done · the app's suite after every slice · none while building.
+- **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
+  risky parts · everything · nothing — you test it.
+- **Review** — once at the end (recommended) · once per app · after every slice.
 
-**In a single-app repo** all of this costs one `§Apps` row and stays quiet — and still works the day
-the repo grows a second app.
-
-## The human gates (three, plus the PR lock)
-
-1. **Decisions gate** — the OPEN rows in SPEC §Decisions, asked in one message, recommendation first.
-2. **Build go-ahead** — one approval of the plan, shown as numbered slices (one per task, grouped by
-   app) with what each one tests, and the **test plan** with what it costs — test runs, and minutes
-   once the gates have been timed. "go" builds with the recommended plan; *Change the test plan*
-   sets three things, recorded as `tests:` on the manifest:
-   - **Testing per slice** — its own tests (recommended) · plus the app's suite when its slices are
-     done · the app's suite after every slice · none while building.
-   - **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
-     risky parts · everything: deep set, cross-app E2E, the full walk · nothing — you test it.
-   - **Review** — once at the end (recommended) · once per app · after every slice.
-   The recommended plan is the fast one; a breaking schema change, a migration or a released consumer raises only the end,
-   and says why. *Other* reaches models, persistence and parking. **The floors hold under every
-   plan:** a type-check of every touched app before the work lands, and the final whole-branch
-   review. The plan governs an in-chat build and an agent build alike; your walk before a PR is not
-   part of it. With an `agent_walk:` block, the go-ahead also launches agents on the answer. (An old
-   `profile:` line on a manifest is still read.)
-3. 🔒 **The PR lock** — nothing moves toward a PR until you have personally exercised the finished
-   feature and said, in your own words, that it works. A green gate run or a code review is evidence
-   for you, never your sign-off. Spend it with `/builder:signoff`.
-
-Otherwise the pipeline keeps working instead of stopping to ask. **`--auto`** takes the recommended
-answer at each decision gate and runs until the walk script is printed — **the walk is its terminal
-state**, and no flag passes the PR lock or commits in a manual-commit app.
-
-**`--agent-walk`** (what `/builder:fleet` runs) goes further: it never asks, works every conflict, red gate
-and failed walk through to done, parks only on a decision your spec left open, and replaces the walk and your sign-off with `/builder:agent-walk`, recorded as `🤖 AGENT
-SIGNED OFF — not human-tested`. It then verifies, ships, and **merges into the `merge_into` branch (default `base_branch`; `--into` for one run)** — locally, one merge commit per feature; it never pushes or opens a PR.
-Your `/builder:signoff` over it takes the feature back into the human flow.
+With the end set to the risky parts or everything, it also asks **Walk it yourself before it
+lands?** — yes parks the agent build for your walk and lands it after your sign-off. A breaking
+schema change, a migration or a released consumer raises the recommended end, and says why. **Two
+floors hold under every plan:** a type-check of every touched app before the work lands, and one
+final whole-branch review.
 
 ## Resuming
 
-**The manifest is the resume point.** `<registry>/<feature>/MANIFEST.md` is ~12 lines, commits at
-every transition, and its `next:` line names the one command that does the next work. Every step ends
-with that line:
+Each feature's `MANIFEST.md` says where it stands and what's next, and every step ends with:
 
 ```
-📍 <feature>: <state> — next: <command>
+📍 <feature>: <state> — next: <what happens next>
 ```
 
-**You don't have to paste it.** Reply **go** (or yes, proceed, continue) and the footer's command runs.
-Where there is more than one way on, the footer is numbered instead — **1. Agent** (agents finish it
-and merge it), **2. Step by step** (carry on here, pausing for you), **3. In this session** (build it
-here without the ceremony), only the ones that apply — and **go** picks 1. Above it,
-`Pick up where you left off any time:` is the one command to keep.
-The exceptions are the ones that are yours by design: `/builder:signoff` and the walk, a step only you
-can do, a hold, and opening the PR, which asks once. "go, but …" is a change, not a go.
+Reply **go** to continue, or pick a numbered option where there's more than one way on — "go" picks
+1. After a `/clear`, `/builder:resume` (or just ask to continue). A few things wait for you on
+purpose: your walk and sign-off, a step only you can do, a hold, and opening the PR, which asks
+once. "go, but …" is a change, not a go.
 
-After any `/clear`: `/builder:resume --path <registry>/<feature>`, or just ask to continue. Status of everything:
-`/builder:status`. Process scratch — briefs, the ledger, the walk script —
-lives in a git-ignored workspace; it is never something you have to read.
+## Words you'll see
+
+**spec** `SPEC.md`, what and why, kept after it ships · **manifest** `MANIFEST.md`, where it stands ·
+**plan** `PLAN.md`, the build step by step · **walk** trying it yourself in the running app ·
+**sign-off** your verdict after the walk · **verify** the final full check · **park** stopped for
+a decision only you can make, with what and why.
 
 ## FAQ
 
-- **Can it one-shot a feature?** xs and sm, yes — once you have approved the design in chat. md and
-  lg, no: one app at a time, that app's gates fresh at each phase close, your walk before the deep
-  pass.
-- **Where is the plan?** `<registry>/<feature>/PLAN.md`, committed beside the SPEC: a `## Phases`
-  table, then one block per task naming its app, its files and the recipe skill to read first, with
-  bite-sized steps carrying the actual code, its test, the command and the commit. SPEC §Plan is only
-  the index. Both go at sign-off; `git log` keeps them.
-- **Where did a shipped spec go?** `<registry>/_archive/<name>/SPEC.md` — `/builder:ship` moves it
-  there in the ship commit. `list-features.mjs --archived` lists them, newest first.
-- **Where's the cross-app E2E walk?** Once, in `/builder:verify`, after your sign-off. Never per
-  phase: it needs every app up at once, and the phases under it are already covered in seconds.
-- **Does it need other plugins?** No. The execution engine, the plan format and the four craft
-  skills are vendored (see `LICENSE-THIRD-PARTY.md`), the scripts ship with the plugin, and the only
-  thing you supply is `.claude/builder.md`.
-- **The audit found problems.** Normal — they become §Findings rows and in-place spec fixes. It is
-  capped at **one pass** (a scoped second only when pass 1 changed a contract); anything still
-  uncertain rides into the build as a named `build-time risk`. Re-reading prose was measured to find
-  nothing that running the software finds.
-- **A small change after the build?** Fix the code. A doc line only if a human ruled on it, or an
-  un-built task depends on it. `/builder:revise` exists for the contract change that un-built work
-  needs, not for every edit.
-- **My walk found problems — where do they go?** Into `## Fixes`, the SPEC's last section: `- [ ]`
-  tasks worked like build tasks in the main context, **each naming its app**, ticking each box as it
-  lands. Then you re-walk what changed and sign off again. A verify INCOMPLETE fills the same list.
-- **What stops a shipped feature being rebuilt?** The SPEC header. `✅ SHIPPED` means done and every
-  command refuses to run on it. `✅ SIGNED OFF` is *not* done — verify and the PR still run.
-- **Does it touch my design system?** It **reads** it and never writes it. A gap is routed to the
-  command your config's `design.owned_by` names.
-- **Does it update my tickets, or deploy?** Never. Both are explicit commands of yours.
-- **What are its hooks?** Two, silent outside a repo with `.claude/builder.md`: a short brief at session start (start with `/builder:brainstorm`, what's in flight, builder's skills over superpowers') and the PR lock — `gh pr create` on a feature's branch is denied until it is walked and signed off. README §Hooks says how to turn them off.
+- **Where are the files?** `<registry>/<feature>/` — `SPEC.md`, `MANIFEST.md`, `PLAN.md`. When it
+  ships, the folder shrinks to its `SPEC.md` and moves to `<registry>/_archive/`; git keeps the rest.
+- **The audit found problems.** Normal — they become fixes in the spec. It runs once; anything still
+  uncertain is carried into the build as a named risk.
+- **My walk found problems.** They go in the spec's `## Fixes` list, each naming its app; they're
+  fixed, you try again, and sign off.
+- **A small change after the build?** Just fix the code. `/builder:revise` is for a change that
+  unbuilt work depends on.
+- **Does it need other plugins, update my tickets, deploy, or write my design system?** No. It
+  never creates a ticket, pushes, or deploys.
+- **What are its hooks?** Two, silent outside a repo with `.claude/builder.md`: a short brief at
+  session start, and the PR lock. The guide (`docs/guide.md` in the plugin's repo) says how to turn
+  them off.
+- **How work is done.** Four skills set it, and every implementer gets them:
+  `/builder:test-driven-development`, `/builder:systematic-debugging`,
+  `/builder:receiving-code-review`, `/builder:verification-before-completion` — *no claim that
+  something works without fresh evidence.*
