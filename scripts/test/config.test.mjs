@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadConfig, parseEnvPairs } from '../config.mjs'
+import { loadConfig, parseEnvPairs, hasAgentWalk } from '../config.mjs'
+import { execFileSync } from 'node:child_process'
 
 const APPS = 'apps:\n  - name: app\n    path: app/\n    role: app\n    commit: auto'
 const cfgWith = (extra) => {
@@ -172,4 +173,51 @@ test('build_profile_default: an invalid value is reported, never warned from loa
   } finally {
     console.warn = origWarn
   }
+})
+
+const gitIn = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim()
+const repoWith = (extra) => {
+  const root = mkdtempSync(join(tmpdir(), 'cfg-git-'))
+  gitIn(root, 'init', '-q', '-b', 'main')
+  gitIn(root, 'config', 'user.email', 't@t')
+  gitIn(root, 'config', 'user.name', 't')
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude/builder.md'), `---\nproject: t\nbase_branch: main\n${APPS}\n${extra}\n---\nbody\n`)
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '-qm', 'init')
+  return root
+}
+
+test('merge_into: unset → base_branch; a branch name → that branch, never the checkout', () => {
+  const root = repoWith('')
+  gitIn(root, 'switch', '-q', '-c', 'feature/x')
+  assert.equal(loadConfig(root).mergeInto, 'main')
+  assert.equal(loadConfig(root).mergeIntoCurrent, false)
+  const dev = repoWith('merge_into: develop')
+  gitIn(dev, 'switch', '-q', '-c', 'feature/x')
+  assert.equal(loadConfig(dev).mergeInto, 'develop')
+})
+
+test('merge_into: current → the branch checked out in the main worktree, even read from a linked worktree', () => {
+  const root = repoWith('merge_into: current')
+  gitIn(root, 'switch', '-q', '-c', 'feature/x')
+  const cfg = loadConfig(root)
+  assert.equal(cfg.mergeIntoCurrent, true)
+  assert.equal(cfg.mergeInto, 'feature/x')
+  // A fleet worktree on builder/<feature> still answers with the human's branch.
+  const wt = `${root}-wt`
+  gitIn(root, 'worktree', 'add', '-q', '-b', 'builder/a', wt)
+  assert.equal(loadConfig(wt).mergeInto, 'feature/x')
+})
+
+test('merge_into: current on a detached HEAD falls back to base_branch', () => {
+  const root = repoWith('merge_into: current')
+  gitIn(root, 'checkout', '-q', '--detach')
+  assert.equal(loadConfig(root).mergeInto, 'main')
+})
+
+test('hasAgentWalk reads another branch\'s config text', () => {
+  assert.equal(hasAgentWalk(null), false)
+  assert.equal(hasAgentWalk(`---\nproject: t\n${APPS}\n---\n`), false)
+  assert.equal(hasAgentWalk(`---\nproject: t\n${APPS}\nagent_walk:\n  driver: none\n  claude_args: --x\n---\n`), true)
 })

@@ -15,7 +15,7 @@ say why in one line and stop; never fall back to the picker.
 The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it promises holds here: a
 worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
 sign-off** in place of yours, then verify, the ship commit and a **merge into
-the `merge_into` branch (default `base_branch`; `--into` for one run)** — one merge commit per feature, so the whole batch lands in one place for you to test, whatever you have checked out — then its worktree and branch are removed — and
+the `merge_into` branch (default `base_branch`; `current` for the branch you have checked out; `--into` for one run)** — one merge commit per feature, so the whole batch lands in one place for you to test — then its worktree and branch are removed — and
 nothing that waits on a question. "Done" means **merged**. A feature parks only when its spec leaves
 a product decision open (or the config reserves a step to you) — a merge conflict, a red gate or a
 failed walk is work the agents do, not a reason to stop. Nothing is

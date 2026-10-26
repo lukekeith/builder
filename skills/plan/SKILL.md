@@ -223,8 +223,8 @@ Reply A, B or C — "go" is A.
 ```
 
 A's description: no `agent_walk:` block → `build it now, in this session`; with one → `agents build it
-in its own worktree and land it on <target>`, the target being the config's `merge_into` (default
-`base_branch`). A reply naming another branch with A ("A, onto develop") lands it there.
+in its own worktree and land it on <target>`, the target being the one **Land on?** below would
+recommend. A reply naming another branch with A ("A, onto develop") lands it there.
 
 **3. B → one AskUserQuestion, three questions** (four with an `agent_walk:` block: **Land on?** last),
 briefed first in chat per REFERENCE §Before a picker — each option explained with its cost, and why
@@ -249,9 +249,13 @@ not `null`. Then what it runs, in the words below. The recommendation's option i
   a <signal>: nothing tests it before it lands.` It warns; it never refuses.
 - **Review:** **Once at the end** — one whole-branch review (`review=end`) · **Once per app** — after
   each app's slices (`app`) · **After every slice** (`slice`).
-- **Land on?** (`agent_walk:` set) — `<merge_into> (Recommended)`, then up to two likely branches:
-  `base_branch` when it differs, and the current branch when it differs from both. The tool's
-  *Other* takes any other branch name.
+- **Land on?** (`agent_walk:` set) — the recommendation is **the branch checked out here** when it
+  is not `base_branch` and not a `builder/*` branch: the human is working on it, and it is where the
+  spec — and often the config — was committed. Otherwise `<merge_into> (Recommended)` (the same
+  branch under `merge_into: current`). Then up to two other likely branches: `merge_into` and
+  `base_branch`, each where it differs. The tool's *Other* takes any other branch name. A target
+  whose `.claude/builder.md` has no `agent_walk:` block is refused by the fleet's dry run — relay its
+  fix, never launch around it.
 
 **The floors are not options** and are never offered off: the type-check of every touched app before
 the work lands, and the final whole-branch review. The human walk is not a lever either — an in-chat
