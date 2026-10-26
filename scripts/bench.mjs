@@ -228,6 +228,10 @@ export const DRIVERS = {
   superpowers: ({ request }) => [
     { name: 'superpowers', prompt: `/superpowers:brainstorming — Build this feature end to end: ${request}\n\nBrainstorm it, write the plan, execute the plan with subagent-driven development, then finish the branch by merging it into \`main\`.` },
   ],
+  // No plugin at all: what Claude Code does with the same request and no workflow on top.
+  baseline: ({ request }) => [
+    { name: 'claude', prompt: `Build this feature end to end: ${request}\n\nWrite tests for it, make them pass, commit the work on a branch, then merge it into \`main\` and leave \`main\` checked out.` },
+  ],
   gsd: () => [
     { name: 'new-project', prompt: '/gsd-new-project --auto @REQUEST.md', system: 'Plan the whole request as ONE phase.' },
     { name: 'plan-phase', prompt: '/gsd-plan-phase 1' },
@@ -247,6 +251,7 @@ export const MATRIX = [
   { config: 'builder-everything', pipeline: 'builder', tests: 'slice=own+app end=everything review=slice' },
   { config: 'superpowers', pipeline: 'superpowers', tests: null },
   { config: 'gsd', pipeline: 'gsd', tests: null },
+  { config: 'baseline', pipeline: 'baseline', tests: null },
 ]
 
 /** Write `tests: <value>` into the feature's MANIFEST.md in the copy (replacing one there) and commit it. */
@@ -397,6 +402,15 @@ export function installGsd(copy) {
 }
 
 /** The fixture a feature runs on: features/<f>/feature.json `{ "fixture": "<name>" }`, absent → `notes`. */
+/** `in-chat` when the feature is sized to be built in the chat (feature.json `expect`), else null. */
+export function expectOf(featureDir) {
+  try {
+    return JSON.parse(readFileSync(join(featureDir, 'feature.json'), 'utf8')).expect === 'in-chat' ? 'in-chat' : null
+  } catch {
+    return null
+  }
+}
+
 export function fixtureOf(featureDir) {
   const file = join(featureDir, 'feature.json')
   if (!existsSync(file)) return 'notes'
@@ -554,7 +568,8 @@ export async function runConfig(plan, m, rep, data, outRoot) {
         feature = rec.feature
         const handedOffInChat = rec.header?.status === 'handed-off' && !hasManifest(feature) && !existsSync(join(copy, 'docs', 'features', '_archive', feature)) && !hasFleetRecord(copy, feature)
         if (ok && ((rec.header?.status === 'sized' && (rec.header.size === 'xs' || rec.header.size === 'sm')) || handedOffInChat)) {
-          run.path = 'in-chat'
+          // a feature meant for the small path (feature.json `expect: in-chat`) is not flagged for it
+          run.path = plan.expect === 'in-chat' ? 'small-path' : 'in-chat'
           break
         }
         // a fleet the session launched is taken whatever way the session ended
@@ -652,7 +667,7 @@ function planRun() {
   }
   if (!existsSync(join(FIXTURES, fixture, '.claude', 'builder.md'))) die(`feature '${feature}' names fixture '${fixture}' — bench/fixtures/ has: ${readdirSync(FIXTURES).join(', ') || 'nothing'}`)
   const configs = MATRIX.filter((m) => !only || only.includes(m.config))
-  return { feature, fixture, request, configs, repeat, model, id: process.env.BENCH_RUN_ID ?? runId(feature) }
+  return { feature, fixture, request, configs, repeat, model, expect: expectOf(join(FEATURES, feature)), id: process.env.BENCH_RUN_ID ?? runId(feature) }
 }
 
 /** The sessions a config would run in a copy, with the flags and the owner prompt each gets. */

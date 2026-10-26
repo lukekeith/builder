@@ -2,7 +2,7 @@
 
 `/builder:benchmark` runs one small feature through builder — `builder` (the recommended test plan)
 and `builder-everything` (`tests: slice=own+app end=everything review=slice`, pre-set on the manifest
-before the fleet runs) — and through superpowers and GSD, unattended, and reports time per step, what happened in each step, tokens,
+before the fleet runs) — through superpowers and GSD, and through plain Claude Code with no plugin (`baseline`), unattended, and reports time per step, what happened in each step, tokens,
 cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-design.md`.
 
 - `fixtures/<name>/` — the projects a run starts from, each with its own tests and `.claude/builder.md`:
@@ -15,7 +15,8 @@ cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-de
 - `features/<name>/request.md` — the ask, given to every pipeline word for word.
 - `features/<name>/feature.json` — optional, `{ "fixture": "<name>" }`; without it the feature runs on `notes`.
   `tags` runs on `notes`; `share` (sharing notes through the server, ~10–12 slices over both apps)
-  on `notes-hub`.
+  on `notes-hub`; `edit` (one small command on `notes`) is the xs case — its `feature.json` says
+  `"expect": "in-chat"`, so builder building it in the chat is the path it measures, not a flag.
 - `features/<name>/accept.test.mjs` — acceptance tests the agent never sees, run after the feature lands.
 - `results/<run-id>/REPORT.md` + `runs.json` — committed; the raw streams beside them are not.
 - `budgets.json` — turn budgets per step, by feature and config. The report's *Turns per step* table

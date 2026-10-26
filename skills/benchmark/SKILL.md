@@ -14,7 +14,7 @@ The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it a
 
 **What it does:** for each configuration — `builder` (the recommended test plan: what a user who
 says "go" gets), `builder-everything` (`slice=own+app end=everything review=slice`: the full
-pipeline), `superpowers`, `gsd` — it copies the feature's fixture project (`bench/fixtures/<name>/`:
+pipeline), `superpowers`, `gsd`, `baseline` (plain Claude Code, no plugin) — it copies the feature's fixture project (`bench/fixtures/<name>/`:
 `notes`, a notes CLI, unless the feature's `feature.json` names another, such as `notes-hub`, a CLI
 and a server with slow suites), makes it a repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
 brainstorm → spec → the fleet engine (audit, plan, build, agent walk, verify, ship, merge);
