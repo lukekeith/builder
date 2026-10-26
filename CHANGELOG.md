@@ -29,6 +29,12 @@ config, manifest and feature folder from 4.x reads as before.
   feature by the overhead model): every step ends in at most six lines; an `--auto` ruling is one
   table row with its reason in one clause; audit runs straight into plan and a READY verify straight
   into ship, each still committing its own step.
+- **A new command or endpoint only its own app uses stays small.** The sizing rules made any new
+  endpoint or route md, and the benchmark's xs task — adding `notes edit` — went through the full
+  pipeline (spec, audit, plan, agents, walk, verify) in all three reps: 6 minutes and $3.41 where
+  plain Claude Code took 28 seconds. Now one app, on data it already stores, with no new screen and
+  nothing outside the app calling it, is sm — built in the chat. It is md once another app or a
+  released artifact depends on it, or it needs a model, a schema row, a permission or a screen.
 - **`resume` is under 500 lines** — its agent-mode sections moved to `resume/AGENT-MODE.md`, which
   agent runs read in the same one call they already made. Long reference files open with a
   contents line.
