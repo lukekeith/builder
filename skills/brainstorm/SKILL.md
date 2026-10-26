@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: The exploration conversation — start here with an idea, a request or a question about how something should work. First grounds every term you used in the code — schema, UI, routes, specs, history — and follows what it finds to the features and data that depend on it, so it plays back what you intend already knowing what your words refer to; explores a vague idea before deciding anything — frames the problem in open questions, finds the design system, UX patterns and prior art the product already has, starts from the project's own design system and how it should be used, then offers what the session has installed, a plugin worth adding or the web, and looks outside only on your yes, and proposes two to four concepts built from all of it until you name one; offers a small change in existing code a quick path — the change proposed in the first turn and built on one yes, no rounds; explains how the code works today in plain words, then asks only what is still open, one question at a time (each with why it matters, what it affects, and pickable options with the recommendation first; facts are looked up, never asked), lays out approaches when there is a real fork, and confirms a shared understanding before anything is written. Only then does it size the work — xs/sm are designed and built in chat, md/lg/xl hand on to /builder:spec — or park the idea, or stop at understanding. A worked-out spec, ticket or design ref goes to /builder:intake instead. Resumable from its workspace record. Use when the user wants to explore, think through, design, build, add or change anything.
+description: Start here for any idea, change or question about how something should work. Looks up what your words refer to in the code, explains how it works today, asks only what is still open, then sizes the work — small changes are built right in the chat, bigger ones go on to /builder:spec. Use when the user wants to explore, design, build, add or change anything.
 ---
 
 # `/builder:brainstorm` — understand it together, then decide what to build
@@ -129,8 +129,9 @@ all of these — REFERENCE §The classifier read against the grounding, not agai
 - a **directed request** or a **brief** — never an abstract idea, never a revision conversation
   (a live SPEC), never under `--auto`;
 - the flow it changes **exists and was read** (classifier rule 1);
-- **one app**, and no new model, schema row, endpoint, permission, contract, route, screen or
-  shared component (rules 2–4);
+- **one app**, and no new model, schema row, permission, contract, screen or shared component, and
+  no endpoint, command or route anything outside that app depends on (rules 2–4) — a new command
+  or endpoint only its own app uses qualifies;
 - **at most one** product choice left open with more than one defensible answer;
 - it fits one sitting.
 

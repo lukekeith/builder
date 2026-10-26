@@ -8,6 +8,8 @@ import { draftRows } from '../brainstorm-file.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
+// resume's SKILL.md plus AGENT-MODE.md, which holds its --agent-walk sections since 5.0.
+const resumeAll = () => read('skills/resume/SKILL.md') + '\n' + read('skills/resume/AGENT-MODE.md')
 
 test('CONVERSATION.md carries every section the two conversation skills cite', () => {
   const c = read('skills/brainstorm/CONVERSATION.md')
@@ -83,7 +85,7 @@ test('no skill routes a design ref to brainstorm; resume knows the record; help 
     if (!existsSync(join(ROOT, p))) continue
     assert.doesNotMatch(read(p), /\/builder:brainstorm --<(design\.)?flag>/, p)
   }
-  const r = read('skills/resume/SKILL.md')
+  const r = resumeAll()
   assert.match(r, /brainstorm\.md/)
   assert.match(r, /\/builder:spec/)
   assert.match(r, /\/builder:intake/)
@@ -118,7 +120,7 @@ test('every status value is handled somewhere, and every section cited in CONVER
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
-  const r = read('skills/resume/SKILL.md')
+  const r = resumeAll()
   const rule = r.slice(r.indexOf('**No registry folder, but a `.builder/<feature>/brainstorm.md`**'), r.indexOf('**No `MANIFEST.md`**'))
   assert.match(rule, /`sized md\|lg\|xl` → `\/builder:spec --path <folder>`/, 'resume: sized md+')
   assert.match(rule, /`handed-off`\s+→ nothing to resume/, 'resume: handed-off')
@@ -211,7 +213,7 @@ test('statusline: the skill drives the installer, help names it, and vendored co
   assert.match(s, /^name: statusline$/m)
   assert.match(s, /scripts\/statusline-install\.mjs/)
   assert.match(read('skills/help/SKILL.md'), /\/builder:statusline/)
-  assert.match(read('README.md'), /^## Live progress in the status line$/m)
+  assert.match(read('docs/guide.md'), /^## Live progress in the status line$/m)
   for (const f of ['statusline.mjs', 'statusline-launcher.mjs', 'statusline-install.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
 
@@ -269,7 +271,7 @@ test('the go-ahead takes a test plan and launches the fleet; resume routes an ag
   assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<test plan>\)/)
   // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
   assert.doesNotMatch(plan, /2\. agent/)
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   assert.match(resume, /^\| `state: planned` with a go-ahead, or `state: building`, \*\*and\*\* the manifest carries `target:` or an old `profile:`[^\n]*`tests:` alone is an in-chat go-ahead[^\n]*\*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:agent --path <folder>/m)
   assert.match(read('skills/agent/SKILL.md'), /manifest carries `target:`[\s\S]{0,80}`--into <target>`/)
 })
@@ -284,7 +286,7 @@ test('agents get the right target, no hand build in agent_walk projects, and the
   assert.match(plan, /`<merge_into> \(Recommended\)`/)
   assert.match(plan, /The tool.s \*Other\* on any of the three testing questions is the rest of the levers/)
   // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   assert.match(resume, /^\| `state: planned` \*\*and\*\* `go-ahead: none` \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:plan --path <folder>/m)
   assert.match(read('skills/build/SKILL.md'), /`go-ahead: none`[^\n]*`agent_walk:` block[^\n]*\/builder:plan --path <folder>/)
   // M-5: the agent_walk row comes before the ready: pending row.
@@ -330,12 +332,12 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   assert.match(revise, /every 30 s[^\n]*20 min/)
   assert.match(revise, /fleet\.mjs <feature> --detach --into <target>/)
   assert.match(revise, /no worktree[^\n]*in place/i)
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   const init = read('skills/init/SKILL.md')
   assert.match(init, /build_profile_default/)
   assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}own · touched · end/)
-  for (const f of ['skills/help/SKILL.md', 'README.md']) {
+  for (const f of ['skills/help/SKILL.md', 'docs/guide.md']) {
     const s = read(f)
     assert.match(s, /Testing per slice/, `${f} names the per-slice question`)
     assert.match(s, /Testing at the end/, `${f} names the end question`)
@@ -363,7 +365,7 @@ test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise nev
   for (const f of ['skills/plan/SKILL.md', 'skills/verify/SKILL.md', 'skills/help/SKILL.md', 'README.md'])
     assert.doesNotMatch(read(f), /pr-ci/, f)
   // Important 2: your walk hands back to the fleet whatever the sign-off's verdict.
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*whatever its verdict[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   // Important 3: pause only a live row; a worktree that isn't running is revised there with no pause.
   const revise = read('skills/revise/SKILL.md')
@@ -376,7 +378,7 @@ test('thorough is today\'s pipeline, pr-ci is deferred, your walk and revise nev
 })
 
 test('4.9.0 final review: your walk runs in the fleet\'s worktree, pause requests are found, old and in-chat go-aheads build by hand', () => {
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   const signoff = read('skills/signoff/SKILL.md')
   const agent = read('skills/agent/SKILL.md')
   const build = read('skills/build/SKILL.md')
@@ -454,7 +456,7 @@ test('4.9.1: splits are cut by value and "one spec" is always offered', () => {
 })
 
 test('4.9.1: resume writes to the fleet worktree copy when it routes on it', () => {
-  assert.match(read('skills/resume/SKILL.md'), /Every write that follows goes there too/)
+  assert.match(resumeAll(), /Every write that follows goes there too/)
 })
 
 test('4.10.1: spec asks no section approvals — only open product choices, as real decisions; details are assumed and listed', () => {
@@ -471,7 +473,7 @@ test('4.10.1: spec asks no section approvals — only open product choices, as r
 })
 
 test('4.10.0: build here — offered before the build, audit and plan still run, the build stops at built', () => {
-  const ref = read('skills/resume/REFERENCE.md'), resume = read('skills/resume/SKILL.md'), plan = read('skills/plan/SKILL.md'), build = read('skills/build/SKILL.md')
+  const ref = read('skills/resume/REFERENCE.md'), resume = resumeAll(), plan = read('skills/plan/SKILL.md'), build = read('skills/build/SKILL.md')
   assert.match(ref, /\| `--here` \|/)
   assert.match(ref, /build: here \| none/)
   assert.match(ref, /\*\*In this session\*\* — only before the build starts[\s\S]{0,120}`\/builder:resume --path <folder> --here`/)
@@ -638,7 +640,7 @@ test('4.13.0: every approval shows the review — REFERENCE defines it, the appr
   // audit and revise show a delta; the PR body is printed before the question; the walk shows an --auto run's review
   assert.match(read('skills/audit/SKILL.md'), /What the audit changed in the design/)
   assert.match(read('skills/revise/SKILL.md'), /The change, as a review delta/)
-  const resume = read('skills/resume/SKILL.md')
+  const resume = resumeAll()
   assert.match(resume, /Print the body in full in the chat first/)
   assert.match(resume, /After an `--auto` run, the review first/)
   assert.match(read('skills/fleet/SKILL.md'), /Then the review of what landed/)
@@ -649,7 +651,7 @@ test('4.13.0: every approval shows the review — REFERENCE defines it, the appr
 
 test('lean orchestrator: the skills call the scripts instead of typing what they write — dispatch, advance, condense, docs, handoff, walk-script, the §Plan index', async () => {
   const { STEPS } = await import('../docs.mjs')
-  const build = read('skills/build/SKILL.md'), exec = read('skills/build/EXECUTION.md'), walk = read('skills/agent-walk/SKILL.md'), resume = read('skills/resume/SKILL.md')
+  const build = read('skills/build/SKILL.md'), exec = read('skills/build/EXECUTION.md'), walk = read('skills/agent-walk/SKILL.md'), resume = resumeAll()
   // P1 — every subagent dispatch is rendered; the Agent call is one line
   for (const k of ['implementer <folder> --task N', 'task-review <folder> --task N', 're-review <folder> --task N --round R', 'task-review <folder> --phase N', 'final-review <folder>', 'implementer <folder> --final'])
     assert.ok(build.includes(`dispatch.mjs ${k}`), `build names dispatch.mjs ${k}`)
@@ -712,7 +714,7 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
 })
 
 test('lean orchestrator: under --auto brainstorm writes the spec itself behind a stub record that resume, brainstorm and spec all route', () => {
-  const b = read('skills/brainstorm/SKILL.md'), c = read('skills/brainstorm/CONVERSATION.md'), s = read('skills/spec/SKILL.md'), r = read('skills/resume/SKILL.md')
+  const b = read('skills/brainstorm/SKILL.md'), c = read('skills/brainstorm/CONVERSATION.md'), s = read('skills/spec/SKILL.md'), r = resumeAll()
   assert.match(b, /^## Spec under `--auto`$/m)
   assert.match(b, /docs\.mjs spec-auto/)
   assert.match(c, /^### The `--auto` stub record \(brainstorm only\)$/m)
@@ -735,7 +737,7 @@ test('4.14.2: before a picker, the options are explained — never a second menu
 })
 
 test('4.14.3: the program go-ahead is the program review — never a raw file or a bare Yes / No', () => {
-  const spec = read('skills/spec/SKILL.md'), ref = read('skills/resume/REFERENCE.md'), resume = read('skills/resume/SKILL.md')
+  const spec = read('skills/spec/SKILL.md'), ref = read('skills/resume/REFERENCE.md'), resume = resumeAll()
   assert.match(spec, /the one\s+program go-ahead as the program's review/)
   assert.match(spec, /never the file\s+shown raw, never a bare Yes \/ No/)
   assert.match(spec, /A\. Approve the program \(recommended\)/)

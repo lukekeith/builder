@@ -1,6 +1,6 @@
 ---
 name: init
-description: Sets up a repo for the /builder:* pipeline by writing its one project config, .claude/builder.md — copies PROJECT.template.md out of the installed plugin, fills the frontmatter and body from what the repo actually contains (project name, base branch, apps and their paths, the real gate commands, house-rule sources), asks only what the repo cannot answer (app roles, commit mode, optional ticket and design blocks), then proves the result parses. Refuses to overwrite an existing config unless asked; with --update it fills gaps and placeholders in one instead. Use when the user asks to set up, configure, initialise or install builder in a project, when any /builder:* step reports that .claude/builder.md is missing, or when the config still holds template placeholders.
+description: Sets up builder in a repo by writing .claude/builder.md from what the repo contains, asking only what it can't tell; --update fills gaps in an existing one. Use when asked to set up builder, or when a builder step says the config is missing or unfilled.
 ---
 
 # `/builder:init` — configure this repo for `/builder:*`
@@ -78,8 +78,12 @@ the answer is a choice:
   that file alone. The gate runner then re-runs it once instead of a model deciding each time;
 - the **`agent_walk` block** — 🔴 **always written.** Agent mode (`/builder:agent`, `/builder:fleet`,
   the *Agent* option on every build footer) is part of every install, and a config without this block
-  silently has none. Ask its questions; leave it out only when the user says in so many words that
-  they don't want agent runs in this repo, and then say what that turns off. The questions: `driver` — recon first: a Playwright/browser MCP server in
+  silently has none. **Before its questions, say in plain words what it means:** with this block,
+  "go" at a build hands the feature to agents — they build it, an agent tries it in the running app,
+  and it is merged into `merge_into` on this machine marked *not human-tested*, with nothing pushed
+  and no PR; to test a feature yourself, pick *In this session* on its hand-off. Ask its questions;
+  leave it out only when the user says in so many words that they don't want agent runs in this
+  repo, and then say what that turns off. The questions: `driver` — recon first: a Playwright/browser MCP server in
   `.mcp.json`, or `playwright`/`cypress` in a manifest; else ask; `claude_args` — recommend
   `--permission-mode bypassPermissions` and **say plainly** it lets every headless run execute any
   command inside its fleet worktree without asking; `reset` and `stop` from the §Walk readiness recon;

@@ -1,6 +1,6 @@
 ---
 name: tidy
-description: Take the repo back to clean — one table of every local branch and worktree measured against the branch finished features merge into (merge_into, default base_branch, or --into) — merged, ready to merge, running, parked, in progress, unknown, dead — then one confirmation deletes what's merged, removes dead worktrees and stopped features' worktrees, and merges what's verified; every unknown, unfinished or parked branch gets its own question (finish with agents, merge as is, keep, delete). Never pushes, never touches a remote, never loses uncommitted work (it's stashed by name). Use when the user asks to clean up, tidy, prune or merge leftover builder branches and worktrees, asks what's finished or left, or /builder:status or a fleet report ends in a `repo:` line naming /builder:tidy.
+description: Cleans up builder branches and worktrees — one table of what's merged, ready, running or stuck, then one confirmation to delete and merge; never pushes. Use when asked to clean up, tidy or prune builder branches and worktrees.
 ---
 
 # `/builder:tidy` — nothing left behind

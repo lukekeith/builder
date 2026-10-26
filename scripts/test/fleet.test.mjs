@@ -564,8 +564,8 @@ test('--status renders the table live, with progress read from each feature', ()
   const root = makeRepo(['a', 'b'])
   runFleet(root, ['a'], { a: HAPPY })
   const r = runFleet(root, ['--status'], {})
-  // a landed, so it is archived, not a row; b never joined the fleet.
-  assert.match(r.stdout, /# builder fleet — 0 feature\(s\): none/)
+  // a landed, so it is archived, not a row — but it is this run's, so the run reads 1 merged, 100%; b never joined.
+  assert.match(r.stdout, /# builder fleet — 1 feature\(s\): 1 merged this run · ▓▓▓▓▓▓▓▓▓▓ 100%/)
   assert.match(r.stdout, /^1 archived \(last: a, just now\) · --status --archived for the latest 20$/m)
   assert.doesNotMatch(r.stdout, /\| a \|/)
   // Progress is read at --status time, not from the saved file: edit the manifest, the table follows.
@@ -1584,4 +1584,13 @@ test('a built feature on a branch other unfinished features share is refused, na
   git(root, 'commit', '-qam', 'shared')
   const r = runFleet(root, ['a', '--dry-run'], {})
   assert.match(r.stdout + r.stderr, /docs\/features\/a is on feat\/x with b — .* merge feat\/x into main first/)
+})
+
+test('a new fleet run counts only what it merges: the last run\'s landings leave its total', () => {
+  const root = makeRepo(['a', 'b'])
+  runFleet(root, ['a'], { a: HAPPY })
+  runFleet(root, ['b'], { b: HAPPY })
+  const fleet = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  assert.deepEqual(fleet.landedThisRun, ['b'])
+  assert.match(runFleet(root, ['--status'], {}).stdout, /# builder fleet — 1 feature\(s\): 1 merged this run · ▓▓▓▓▓▓▓▓▓▓ 100%/)
 })

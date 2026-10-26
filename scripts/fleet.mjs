@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -613,7 +613,10 @@ if (tookOverStaleLock) {
 // A row a fleet before 3.8 left at `done`, or one killed between its landing and the save that
 // would have archived it, is archived now — appendArchive skips a line already written. It runs
 // before `fleet.target` moves to this checkout, so the row records the target it landed on.
-for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature)
+// The run's progress counts what it merges (renderStatus, the status line): a new run starts the
+// count empty; one that took over a dead fleet's lock carries on that fleet's count, leftovers too.
+if (!tookOverStaleLock) fleet.landedThisRun = []
+for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature, null, tookOverStaleLock)
 pruneArchivedLogs(ROOT, AW.keepLogs)
 
 fleet.target = TARGET
@@ -718,6 +721,12 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       const lines = buf.split('\n')
       buf = lines.pop()
       for (const line of lines) {
+        if (line.includes('"subtype":"init"')) {
+          try {
+            const why = initWithoutBuilder(JSON.parse(line))
+            if (why) kill(why)
+          } catch {}
+        }
         if (line.includes('"type":"result"')) {
           try {
             const ev = JSON.parse(line)
@@ -808,7 +817,7 @@ function landingFacts(f, feature) {
 }
 
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
-function archiveRow(feature, facts) {
+function archiveRow(feature, facts, thisRun = true) {
   clearPause(feature)
   const f = fleet.features[feature]
   const { size, tests, profile } = facts ?? landingFacts(f, feature)
@@ -832,6 +841,7 @@ function archiveRow(feature, facts) {
   })
   delete fleet.features[feature]
   fleet.archived = (fleet.archived ?? 0) + 1
+  if (thisRun) fleet.landedThisRun = [...new Set([...(fleet.landedThisRun ?? []), feature])]
   landed.add(feature)
   const why = archiveLogs(ROOT, feature)
   if (why) addNote(why)

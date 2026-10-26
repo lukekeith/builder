@@ -1,6 +1,6 @@
 ---
 name: build
-description: The code-changing step of the /builder:* pipeline — executes the feature's committed PLAN.md through the plugin's own task loop: a fresh implementer per task reading the task block with its code, the SPEC section it implements, the frozen contract, the recipe skill and the project's global constraints; testing and review where the go-ahead's test plan puts them (by default each task's own tests, the touched apps' suites once at the end, one whole-branch review); ONE APP PER PHASE; the contract frozen on the manifest when the producer's phase closes; commits left to the human in any app the config marks commit:manual. Works on the current branch, never creates a worktree, never opens a PR. Resumes from the ledger after any /clear. Use when the user asks to build, implement or continue building a specced feature.
+description: Builds a planned feature from its PLAN.md — a fresh agent and a review per task, one app per phase, on the current branch — and resumes after /clear. Use when asked to build, implement or continue building a specced feature.
 ---
 
 # `/builder:build` — PLAN.md, executed by subagents
@@ -271,7 +271,7 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
    — all state is on disk, so continuing in this session loses nothing but room.
 
 **Under `--agent-walk`, nothing runs in the background** — implementers, reviewers and gates run in
-the foreground, and a long gate goes through `scripts/job.mjs` (resume §`--agent-walk`).
+the foreground, and a long gate goes through `scripts/job.mjs` (resume's AGENT-MODE.md).
 
 **Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (resume
 §`--agent-walk`: agent mode builds to done). Of the five stop classes:
@@ -331,7 +331,7 @@ Never ask.
    `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>` and commit —
    `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "dev env (fleet walk lane)"' --set "next=/builder:resume --path <folder>" --head --commit walk-lane`
    (the preset `walk-lane` = `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`) —
-   then §The hand-off file, and end the run. **Under `--agent-walk`**, readiness never asks: resume §`--agent-walk` says what each question
+   then §The hand-off file, and end the run. **Under `--agent-walk`**, readiness never asks: resume's AGENT-MODE.md says what each question
    becomes. With `agent_walk.start` set, the fleet has already started the walk env for this worktree —
    never start or restart it here (REFERENCE §Walk readiness).
 4. **The walk script** — `node <builder>/scripts/walk-script.mjs <folder>` writes `<WS>/walk.md`

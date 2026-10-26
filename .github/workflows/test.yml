@@ -1,0 +1,27 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: git identity for the tests' scratch repos
+        run: |
+          git config --global user.name "builder ci"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - name: unit tests
+        run: node --test 'scripts/test/*.test.mjs'
+      - name: workspace self-test
+        run: scripts/workspace --self-test
+      - name: response preview matches the skills
+        run: node preview/preview.mjs --check

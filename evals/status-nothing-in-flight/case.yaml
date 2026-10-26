@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: status-nothing-in-flight
+tags: [first-turn]
+context:
+  scaffold_script: scaffold.sh

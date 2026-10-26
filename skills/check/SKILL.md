@@ -1,6 +1,6 @@
 ---
 name: check
-description: The stateless pre-flight for a design ref — run it repeatedly while a design settles, before it enters /builder:intake. Resolves the ref, reads every in-scope contract, checks it against the project config's design conventions, disposes the open questions, diffs a built item against its frozen design snapshot, lists coverage owed and dead-end affordances, and runs the surface check (which live surfaces the ref replaces and what each side can do that the other can't), returned as one punch list ending READY or NOT READY. Never touches app code, never writes the design; writes nothing but the punch list. Use when the user asks whether a design is ready to build from, what the app does that the design doesn't, or "am I missing anything" before starting a build.
+description: Read-only pre-flight for a design ref — checks it against the project's design conventions and returns a punch list ending READY or NOT READY. Use when asked whether a design is ready to build from or what it is missing.
 ---
 
 # `/builder:check` — the pre-flight, run as often as you like

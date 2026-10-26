@@ -3,6 +3,8 @@
 Every `builder:*` step reads this file for the shapes it writes and the rules it enforces. Load it
 before writing anything into a feature folder; steps cite sections by name (`REFERENCE §Sizes`).
 
+**Contents:** §The first principle · §The scripts · §Sizes · §The classifier · §Flags · §Continuing on "go" · §The two-way footer · §Before a picker · §The review — what an approval shows · §Branch and ticket · §Where things live · §MANIFEST.md · §SPEC.md · §PLAN.md · §PROGRAM.md · §Prototype mode · §The craft skills · §The project's own rules · §Quality gates — the mechanism · §Walk readiness · §Condense · §Agent model tiering
+
 🔴 **This plugin knows nothing about your project.** Every project fact — the apps, the gates, the
 house rules, the landmines, the recipe skills, the design source — lives in ONE host file,
 **`.claude/builder.md`** (`PROJECT.template.md` is the blank). This reference says what the pipeline
@@ -54,7 +56,7 @@ paste the absolute path thereafter — 🔴 a shell variable does not survive be
 `job.mjs` is the one for unattended runs: `start <name> -- <command>` launches a long command
 detached under `.builder/jobs/`, and `wait <name>` blocks up to 9 minutes (Bash timeout 600000) and
 exits with the command's own code — or 75 with `still running`, to be called again. It is how a
-headless run waits on a gate suite without backgrounding anything (resume §`--agent-walk`).
+headless run waits on a gate suite without backgrounding anything (resume's AGENT-MODE.md).
 
 🔴 **Prefer `$CLAUDE_PLUGIN_ROOT`.** It is the documented, portable way for a plugin to reference its
 own files, and it is correct for every install shape — marketplace, vendored, or a local skills
@@ -112,7 +114,7 @@ cannot.
 | Size | Looks like | Typical files | Design artifact | Audit | Plan | Execution | Human gates |
 |---|---|---|---|---|---|---|---|
 | **xs** | a copy change, a colour, a prop default, a one-line guard | 1–2 | one sentence in chat | — | — | main context | approve the sentence |
-| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view | 2–10 | short design in chat, once the concept is confirmed in the conversation | — | — | main context | approve the design · a look at the running app before the PR |
+| **sm** | move a button, rework a form's layout, upgrade a component's props, restyle a view, add a command or an endpoint only its own app uses | 2–10 | short design in chat, once the concept is confirmed in the conversation | — | — | main context | approve the design · a look at the running app before the PR |
 | **md** | add an endpoint + its screen, add a capability to an existing feature, port one screen to a new pattern | 10–40 | `SPEC.md`, short: idea · apps · decisions · contract · testing; per-app sections only where touched (~120 lines) | 1 pass, single agent | `PLAN.md`, 2–4 phases | the task loop | decisions · go-ahead · the walk |
 | **lg** | a new feature: a model + endpoints + screens in each consumer | 40–150 | full `SPEC.md` | 1 pass, parallel agents | `PLAN.md`, 4–7 phases | the task loop | the same three |
 | **xl** | a new area across several subsystems | 150+ | `PROGRAM.md`: the children, their order, the decisions they share; each child runs as its own md/lg | per child | per child | per child | one program go-ahead, then per child |
@@ -123,8 +125,16 @@ Run on the confirmed concept, from recon and the settled tree; the size is annou
 evidence.
 
 1. Does the flow being changed already exist to read? **No → at least md.**
-2. A new model, schema change, endpoint, permission or contract change? **Any → at least md.**
-3. A new route, screen, or shared component? **Any → at least md.**
+2. A new model, schema change, permission or contract change? **Any → at least md.** A new
+   endpoint counts here when another app or a released artifact (`released_artifact: true`) will call
+   it.
+3. A new screen or shared component? **Any → at least md.**
+
+   🔴 **A new command, endpoint or route that only its own app uses is not md on its own.** One app,
+   on data that app already stores, no new screen, nothing outside the app calling it — `notes edit`,
+   a `GET /export` the app's own UI links to — is sm: it is code inside existing contracts. It becomes
+   md the moment another app or a released artifact depends on it, or it needs a model, a schema row,
+   a permission or a screen.
 4. **Apps touched (from the config's `apps:`)? Two+ → lg.** Three+ with independently shippable
    slices → xl. 🔴 **A slice is shippable only when it gives the user something they can use on its
    own** — say, in one sentence, what they can do once it alone lands. A layer is not a slice: a
@@ -142,7 +152,7 @@ never sm, because the contract between the apps is the thing that breaks — and
 released artifact (the config's `released_artifact: true`), it breaks somewhere that cannot be
 hot-fixed. **The sm/md line is drawn by contracts, not file count**: a change inside one app and
 inside existing contracts is sm however many files it brushes; the moment it adds a model, a schema
-row, an endpoint, a permission, a route or a screen, it earns a spec.
+row, a permission, a screen, or an endpoint or route another app depends on, it earns a spec.
 
 **Classification is announced with evidence, overridable, and ratchets up only.** The size is announced with its evidence after the conversation confirms the concept; the user confirms or overrides it.
 Hidden complexity found mid-task upgrades: stop, say so, write the spec then. Nothing downgrades
@@ -157,8 +167,8 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
-| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
-| `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume's AGENT-MODE.md). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume's AGENT-MODE.md §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume's AGENT-MODE.md §Ship in agent mode needs it |
 | `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (**In this session**, §The two-way footer). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
@@ -202,7 +212,7 @@ migration). Those still ask, as they would have.
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
 is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
-runs — except under `--agent-walk`, where no PR opens at all: resume §Ship in agent mode merges into
+runs — except under `--agent-walk`, where no PR opens at all: resume's AGENT-MODE.md §Ship in agent mode merges into
 the fleet's target branch locally.
 
 **Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
@@ -478,6 +488,23 @@ Each of those steps says in one line what it did and how many rulings it took as
 The review is shown **where the human next looks**, so nothing lands unseen: the 🔒 walk hand-off of
 an `--auto` run (resume §🔒 The walk) and the fleet's report (fleet §5) open with the full review of
 what was built, written from `SPEC.md` — sections 1–8, in parts, every `(auto)` ruling marked.
+
+**Closing reports under `--agent-walk` are short.** Nobody reads a headless run's prose; the fleet
+reads the manifest, the ledger and the walk report, and its park diagnosis reads the log's last 25
+lines. So every step ends with **at most six lines, then its footer**: the state it reached, each
+ruling it took in one line (`ruled: <decision> → <choice>`), and one `worth checking:` line when
+there is something a human should look at. Never restate what the feature does or what it touches.
+
+**Decision rows under `--auto` are one line each.** §Decisions gets one table row per ruling —
+`| D<n> | <decision> | <choice> — <why, in one clause>; not <the alternative> | auto (recommended)
+YYYY-MM-DD |`. The reason is never dropped, only kept to one clause; a ruling a human questions later
+goes through `/builder:revise`.
+
+**Adjacent steps run as one under `--agent-walk`.** Audit continues straight into `/builder:plan`
+when it leaves no OPEN §Decisions row and no `blocked:` row, and a verify READY continues straight
+into resume's AGENT-MODE.md §Ship in agent mode — in the same turn, with no return to the route table (each step
+still makes its own commit, so the history shows every step). Never across the go-ahead or the walk
+in a human run.
 
 ## Branch and ticket
 

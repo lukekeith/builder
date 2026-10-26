@@ -1,0 +1,3154 @@
+{
+  "runId": "2026-10-26-0053-edit",
+  "feature": "edit",
+  "fixture": "notes",
+  "model": null,
+  "startedAt": 1792994003201,
+  "endedAt": 1792995985775,
+  "versions": {
+    "builder": "5.0.0",
+    "superpowers": "7.0.0",
+    "gsd": null
+  },
+  "runs": [
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792994003260,
+      "endedAt": 1792994412777,
+      "ms": 409517,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-1/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "a93acb85-d633-4fac-8366-e362113393da",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 68401,
+            "turns": 9,
+            "tokens": {
+              "input": 16,
+              "output": 7290,
+              "cacheRead": 377472
+            },
+            "costUsd": 0.6520064000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792994006911,
+              "end": 1792994073278,
+              "ms": 66367,
+              "turns": 16,
+              "toolCalls": {
+                "Bash": 8
+              },
+              "files": [],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ===; git ls-",
+                "git ls-files; cat package.json; cat src/*.mjs; ls test; cat test/*; cat .claude/",
+                "cd /Users/lukekeith/www/builder && sed -n '/## Steering and --auto/,/### The `--",
+                "/Users/lukekeith/www/builder/scripts/workspace notes-edit; cat .gitignore; node ",
+                "cat /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2g",
+                "cat README.md; ls /Users/lukekeith/www/builder/scripts/; git check-ignore .build",
+                "mkdir -p .builder/notes-edit docs/features/notes-edit && cat > .builder/notes-ed",
+                "git add docs/features/notes-edit && git commit -qm \"docs(notes-edit): design not"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 37838,
+                  "after": "Bash cat README.md; ls /Users/lukekeith/www/builder/scripts/; git check-ignore .build"
+                },
+                {
+                  "ms": 6457,
+                  "after": "Bash git add docs/features/notes-edit && git commit -qm \"docs(notes-edit): design not"
+                },
+                {
+                  "ms": 4003,
+                  "after": "Bash cat /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2g"
+                },
+                {
+                  "ms": 2631,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ===; git ls-"
+                },
+                {
+                  "ms": 2124,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace notes-edit; cat .gitignore; node "
+                }
+              ],
+              "split": {
+                "ms": 66367,
+                "orchestrator": 65031,
+                "agents": 0,
+                "tools": 1336
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 66367,
+            "orchestrator": 65031,
+            "agents": 0,
+            "tools": 1336
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-1/session-fleet-notes-edit-01.jsonl",
+          "lane": "build",
+          "sessionId": "a79cd175-8d6f-40ea-a512-9d6b908d750c",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-edit --agent-walk",
+          "totals": {
+            "ms": 246975,
+            "turns": 33,
+            "tokens": {
+              "input": 56,
+              "output": 10764,
+              "cacheRead": 2417808
+            },
+            "costUsd": 1.8394369149999998,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792994080798,
+              "end": 1792994106624,
+              "ms": 25826,
+              "turns": 10,
+              "toolCalls": {
+                "Bash": 5,
+                "Read": 1
+              },
+              "files": [
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-1-fleet-notes-edit/a79cd175-8d6f-40ea-a512-9d6b908d750c/tool-results/b10ide7n6.txt"
+              ],
+              "commands": [
+                "cat .claude/builder.md | head -100; echo ----; cat docs/features/notes-edit/MANI",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent",
+                "cat /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2g",
+                "ls -la .builder 2>/dev/null; ls .builder/* 2>/dev/null; cat docs/features/notes-",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/notes-"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4784,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-1-fleet-notes-edit/a79cd175-8d6f-40ea-a512-9d6b908d750c/tool-results/b10ide7n6.txt"
+                },
+                {
+                  "ms": 4126,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent"
+                },
+                {
+                  "ms": 3937,
+                  "after": "Bash cat /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2g"
+                },
+                {
+                  "ms": 3398,
+                  "after": "Bash ls -la .builder 2>/dev/null; ls .builder/* 2>/dev/null; cat docs/features/notes-"
+                },
+                {
+                  "ms": 3022,
+                  "after": "Bash cat .claude/builder.md | head -100; echo ----; cat docs/features/notes-edit/MANI"
+                }
+              ],
+              "split": {
+                "ms": 25826,
+                "orchestrator": 24568,
+                "agents": 0,
+                "tools": 1258
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792994106624,
+              "end": 1792994138937,
+              "ms": 32313,
+              "turns": 11,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cat src/cli.mjs src/store.mjs; cat test/*.mjs; cat README.md package.json; ls -a",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu",
+                "cd docs/features/notes-edit && python3 - <<'EOF'",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/notes-",
+                "R=/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053"
+              ],
+              "tests": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7274,
+                  "after": "Bash cat src/cli.mjs src/store.mjs; cat test/*.mjs; cat README.md package.json; ls -a"
+                },
+                {
+                  "ms": 7077,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu"
+                },
+                {
+                  "ms": 4103,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/notes-"
+                },
+                {
+                  "ms": 3308,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu"
+                },
+                {
+                  "ms": 2989,
+                  "after": "Skill builder:audit"
+                }
+              ],
+              "split": {
+                "ms": 32313,
+                "orchestrator": 30641,
+                "agents": 0,
+                "tools": 1672
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792994138937,
+              "end": 1792994175662,
+              "ms": 36725,
+              "turns": 7,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/docs/features/notes-edit/PLAN.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -i \"c",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 19159,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -i \"c"
+                },
+                {
+                  "ms": 4468,
+                  "after": "Skill builder:plan"
+                },
+                {
+                  "ms": 3695,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -i \"c"
+                },
+                {
+                  "ms": 3681,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan"
+                },
+                {
+                  "ms": 2718,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan"
+                }
+              ],
+              "split": {
+                "ms": 36725,
+                "orchestrator": 35721,
+                "agents": 0,
+                "tools": 1004
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792994175662,
+              "end": 1792994322580,
+              "ms": 146918,
+              "turns": 22,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 16,
+                "Agent": 2,
+                "Read": 3,
+                "Write": 2
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/dispatch-implementer-task-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/task-1-brief.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/task-1-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/dispatch-final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/final-review.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs build | sed -n '1,/^---",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/prof",
+                "git status --short && git log --oneline -3 && ls -la && cat src/cli.mjs && cat R",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "grep -c \"^test(\" test/cli.test.mjs && node --test --test-reporter=tap test/cli.t",
+                "node -e '",
+                "export NOTES_FILE=$(mktemp -d)/n.json && node src/cli.mjs add buy milk && node s",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; git log --oneline -2",
+                "node /Users/lukekeith/www/builder/scripts/job.mjs wait gates-notes-edit",
+                "node /Users/lukekeith/www/builder/scripts/dispatch.mjs final-review docs/feature",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva",
+                "W=\"$(/Users/lukekeith/www/builder/scripts/workspace notes-edit)/walk.md\"; python",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva"
+              ],
+              "tests": [
+                "grep -c \"^test(\" test/cli.test.mjs && node --test --test-reporter=tap test/cli.t"
+              ],
+              "subagents": [
+                {
+                  "type": "agent",
+                  "first": "Implement Task 1: the `edit` command"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final review: notes-edit"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 18319,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 8615,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva"
+                },
+                {
+                  "ms": 7359,
+                  "after": "Skill builder:build"
+                },
+                {
+                  "ms": 6866,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1.fleet/notes-edit/.builder/notes-edit/final-review.md"
+                },
+                {
+                  "ms": 5536,
+                  "after": "Bash git status --short && git log --oneline -3 && ls -la && cat src/cli.mjs && cat R"
+                }
+              ],
+              "split": {
+                "ms": 146918,
+                "orchestrator": 64936,
+                "agents": 74463,
+                "tools": 7519
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 241782,
+            "orchestrator": 155866,
+            "agents": 74463,
+            "tools": 11453
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-1/session-fleet-notes-edit-02.jsonl",
+          "lane": "walk",
+          "sessionId": "25216b99-b151-4fd5-9371-73025965baec",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-edit --agent-walk",
+          "totals": {
+            "ms": 83321,
+            "turns": 18,
+            "tokens": {
+              "input": 30,
+              "output": 3533,
+              "cacheRead": 904681
+            },
+            "costUsd": 0.8165882000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792994333300,
+              "end": 1792994358573,
+              "ms": 25273,
+              "turns": 11,
+              "toolCalls": {
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/notes-edit/MANIF",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '",
+                "B=/Users/lukekeith/www/builder; cat $B/skills/resume/AGENT-MODE.md; echo; echo =",
+                "node /Users/lukekeith/www/builder/scripts/handoff.mjs read docs/features/notes-e",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4427,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '"
+                },
+                {
+                  "ms": 3941,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/handoff.mjs read docs/features/notes-e"
+                },
+                {
+                  "ms": 3186,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/resume/AGENT-MODE.md; echo; echo ="
+                },
+                {
+                  "ms": 2847,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+                },
+                {
+                  "ms": 2846,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                }
+              ],
+              "split": {
+                "ms": 25273,
+                "orchestrator": 23692,
+                "agents": 0,
+                "tools": 1581
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792994358573,
+              "end": 1792994367240,
+              "ms": 8667,
+              "turns": 5,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 3336,
+                  "after": "Skill builder:agent-walk"
+                },
+                {
+                  "ms": 3200,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                },
+                {
+                  "ms": 1222,
+                  "after": "Skill builder:agent-walk"
+                },
+                {
+                  "ms": 529,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                },
+                {
+                  "ms": 369,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                }
+              ],
+              "split": {
+                "ms": 8667,
+                "orchestrator": 8286,
+                "agents": 0,
+                "tools": 381
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792994367240,
+              "end": 1792994392740,
+              "ms": 25500,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; WS=\"$($B/scripts/wor",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace notes-edit)\"; grep -n \"Phas",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7913,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; WS=\"$($B/scripts/wor"
+                },
+                {
+                  "ms": 6362,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 2623,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 2613,
+                  "after": "Bash WS=\"$(/Users/lukekeith/www/builder/scripts/workspace notes-edit)\"; grep -n \"Phas"
+                },
+                {
+                  "ms": 2423,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+                }
+              ],
+              "split": {
+                "ms": 25500,
+                "orchestrator": 24240,
+                "agents": 0,
+                "tools": 1260
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792994392740,
+              "end": 1792994409594,
+              "ms": 16854,
+              "turns": 5,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/notes-edit "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 10176,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/notes-edit "
+                },
+                {
+                  "ms": 5745,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 526,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 399,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/notes-edit "
+                },
+                {
+                  "ms": 7,
+                  "after": "Skill builder:ship"
+                }
+              ],
+              "split": {
+                "ms": 16854,
+                "orchestrator": 16448,
+                "agents": 0,
+                "tools": 406
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 76294,
+            "orchestrator": 72666,
+            "agents": 0,
+            "tools": 3628
+          }
+        }
+      ],
+      "totals": {
+        "ms": 398697,
+        "turns": 60,
+        "tokens": {
+          "input": 102,
+          "output": 21587,
+          "cacheRead": 3699961
+        },
+        "costUsd": 3.3080315149999997,
+        "split": {
+          "ms": 384443,
+          "orchestrator": 293563,
+          "agents": 74463,
+          "tools": 16417
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-1",
+      "gitLog": [
+        "b560850 merge(notes-edit): agent-verified, not human-tested",
+        "b2ffec4 docs(notes-edit): notes-edit shipped into main",
+        "b559909 docs(notes-edit): notes-edit — verify READY",
+        "bc28d7c docs(notes-edit): notes-edit agent signed off (not human-tested)",
+        "ed830aa chore(notes-edit): notes-edit — built, awaiting the walk",
+        "7cda7ce chore(notes-edit): notes-edit — phases closed, awaiting the walk lane",
+        "29c7c56 feat(notes-edit): notes edit <id> <text> replaces a note's text in place",
+        "5689b0e chore(notes-edit): notes-edit — go-ahead (own · touched · end)",
+        "d95dd09 docs(notes-edit): plan notes-edit",
+        "f20b1c5 docs(notes-edit): notes-edit audited",
+        "f4358d3 chore(notes-edit): agent mode on",
+        "bfc8b77 docs(notes-edit): design notes-edit",
+        "2c12e89 fixture"
+      ]
+    },
+    {
+      "config": "superpowers",
+      "pipeline": "superpowers",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792994412881,
+      "endedAt": 1792994579602,
+      "ms": 166721,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "superpowers",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/superpowers-1/session-01-superpowers.jsonl",
+          "lane": null,
+          "sessionId": "59f3853f-d9d0-4fb5-93b3-f1009d67402d",
+          "model": "claude-opus-5-5",
+          "prompt": "/superpowers:brainstorming — Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nBrainstorm it, write the plan, execute the plan with subagent-driven development, then finish the branch by merging it into `main`.",
+          "totals": {
+            "ms": 162678,
+            "turns": 17,
+            "tokens": {
+              "input": 28,
+              "output": 7859,
+              "cacheRead": 660092
+            },
+            "costUsd": 0.8142420499999998,
+            "ended": "result"
+          },
+          "plugins": [
+            "superpowers 7.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/superpowers:brainstorming",
+              "start": 1792994418911,
+              "end": 1792994447033,
+              "ms": 28122,
+              "turns": 7,
+              "toolCalls": {
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json && cat src/*.mjs && cat test/*",
+                "cat .claude/builder.md README.md",
+                "git checkout -b feature/edit-notes && mkdir -p docs/superpowers/specs docs/super"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 9798,
+                  "after": "Bash cat .claude/builder.md README.md"
+                },
+                {
+                  "ms": 9213,
+                  "after": "Bash cat .claude/builder.md README.md"
+                },
+                {
+                  "ms": 3122,
+                  "after": "Bash git ls-files && cat package.json && cat src/*.mjs && cat test/*"
+                },
+                {
+                  "ms": 2032,
+                  "after": "Bash git checkout -b feature/edit-notes && mkdir -p docs/superpowers/specs docs/super"
+                },
+                {
+                  "ms": 1514,
+                  "after": "Bash git ls-files && cat package.json && cat src/*.mjs && cat test/*"
+                }
+              ],
+              "split": {
+                "ms": 28122,
+                "orchestrator": 26284,
+                "agents": 0,
+                "tools": 1838
+              }
+            },
+            {
+              "name": "superpowers:subagent-driven-development",
+              "start": 1792994447033,
+              "end": 1792994558573,
+              "ms": 111540,
+              "turns": 14,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 11,
+                "Agent": 2,
+                "Write": 1,
+                "Read": 4
+              },
+              "files": [
+                ".superpowers/sdd/2026-10-26-edit-notes/task-1-report.md",
+                ".superpowers/sdd/2026-10-26-edit-notes/task-1-review-prompt.md",
+                ".superpowers/sdd/2026-10-26-edit-notes/task-1-brief.md",
+                ".superpowers/sdd/2026-10-26-edit-notes/review-03f9d8b..185f546.diff"
+              ],
+              "commands": [
+                "S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower",
+                "git status --short; sed -n 1,80p /Users/lukekeith/.claude-home/plugins/cache/cla",
+                "cat .superpowers/sdd/2026-10-26-edit-notes/task-1-brief.md && echo ---- && cat s",
+                "cat README.md && echo ---- && cat package.json && echo ---- && git status --shor",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "git diff src/cli.mjs README.md && git add src/cli.mjs test/cli.test.mjs README.m",
+                "S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower",
+                "W=.superpowers/sdd/2026-10-26-edit-notes && S=/Users/lukekeith/.claude-home/plug",
+                "npm test 2>&1 | tail -12 && cat >> .superpowers/sdd/2026-10-26-edit-notes/progre",
+                "rm -rf .superpowers/sdd/2026-10-26-edit-notes && git status --short"
+              ],
+              "tests": [
+                "npm test 2>&1 | tail -12 && cat >> .superpowers/sdd/2026-10-26-edit-notes/progre"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: notes edit"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Review Task 1 and branch"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 9441,
+                  "after": "Bash S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower"
+                },
+                {
+                  "ms": 8963,
+                  "after": "Bash npm test 2>&1 | tail -12 && cat >> .superpowers/sdd/2026-10-26-edit-notes/progre"
+                },
+                {
+                  "ms": 8358,
+                  "after": "Read /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/superpowers-1/.superpowers/sdd/2026-10-26-edit-notes/review-03f9d8b..185f546.diff"
+                },
+                {
+                  "ms": 7847,
+                  "after": "Bash git status --short; sed -n 1,80p /Users/lukekeith/.claude-home/plugins/cache/cla"
+                },
+                {
+                  "ms": 5666,
+                  "after": "Skill superpowers:subagent-driven-development"
+                }
+              ],
+              "split": {
+                "ms": 111540,
+                "orchestrator": 64499,
+                "agents": 44614,
+                "tools": 2427
+              }
+            },
+            {
+              "name": "superpowers:finishing-a-development-branch",
+              "start": 1792994558573,
+              "end": 1792994578206,
+              "ms": 19633,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "npm test 2>&1 | grep -E \"^# (pass|fail)\" && [ \"$(git rev-parse --git-dir)\" = \".g"
+              ],
+              "tests": [
+                "npm test 2>&1 | grep -E \"^# (pass|fail)\" && [ \"$(git rev-parse --git-dir)\" = \".g"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 8126,
+                  "after": "Bash npm test 2>&1 | grep -E \"^# (pass|fail)\" && [ \"$(git rev-parse --git-dir)\" = \".g"
+                },
+                {
+                  "ms": 5883,
+                  "after": "Bash npm test 2>&1 | grep -E \"^# (pass|fail)\" && [ \"$(git rev-parse --git-dir)\" = \".g"
+                },
+                {
+                  "ms": 2916,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                },
+                {
+                  "ms": 2688,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                },
+                {
+                  "ms": 18,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                }
+              ],
+              "split": {
+                "ms": 19633,
+                "orchestrator": 13732,
+                "agents": 0,
+                "tools": 5901
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 159295,
+            "orchestrator": 104515,
+            "agents": 44614,
+            "tools": 10166
+          }
+        }
+      ],
+      "totals": {
+        "ms": 162678,
+        "turns": 17,
+        "tokens": {
+          "input": 28,
+          "output": 7859,
+          "cacheRead": 660092
+        },
+        "costUsd": 0.8142420499999998,
+        "split": {
+          "ms": 159295,
+          "orchestrator": 104515,
+          "agents": 44614,
+          "tools": 10166
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/superpowers-1",
+      "gitLog": [
+        "0941c66 Merge feature/edit-notes: notes can be edited",
+        "185f546 Add notes edit command",
+        "13ce4c0 Add design and plan for editing notes",
+        "03f9d8b fixture"
+      ]
+    },
+    {
+      "config": "baseline",
+      "pipeline": "baseline",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792994579662,
+      "endedAt": 1792994607799,
+      "ms": 28137,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "claude",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/baseline-1/session-01-claude.jsonl",
+          "lane": null,
+          "sessionId": "e1811abc-e231-4ee6-8542-fd944cfdf40a",
+          "model": "claude-opus-5-5",
+          "prompt": "Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nWrite tests for it, make them pass, commit the work on a branch, then merge it into `main` and leave `main` checked out.",
+          "totals": {
+            "ms": 24091,
+            "turns": 5,
+            "tokens": {
+              "input": 10,
+              "output": 1962,
+              "cacheRead": 132176
+            },
+            "costUsd": 0.23370720000000003,
+            "ended": "result"
+          },
+          "plugins": [],
+          "steps": [
+            {
+              "name": "Build this feature end to end: Notes can be edited.",
+              "start": 1792994583687,
+              "end": 1792994605936,
+              "ms": 22249,
+              "turns": 6,
+              "toolCalls": {
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json src/*.mjs && cat test/*; ls -a",
+                "cat .claude/builder.md README.md",
+                "git checkout -qb feature/edit-notes && python3 - <<'EOF'",
+                "git add -A && git commit -qm \"Add notes edit command"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 6256,
+                  "after": "Bash cat .claude/builder.md README.md"
+                },
+                {
+                  "ms": 4351,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                },
+                {
+                  "ms": 3364,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                },
+                {
+                  "ms": 2713,
+                  "after": "Bash git checkout -qb feature/edit-notes && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2326,
+                  "after": "Bash git checkout -qb feature/edit-notes && python3 - <<'EOF'"
+                }
+              ],
+              "split": {
+                "ms": 22249,
+                "orchestrator": 15517,
+                "agents": 0,
+                "tools": 6732
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 22249,
+            "orchestrator": 15517,
+            "agents": 0,
+            "tools": 6732
+          }
+        }
+      ],
+      "totals": {
+        "ms": 24091,
+        "turns": 5,
+        "tokens": {
+          "input": 10,
+          "output": 1962,
+          "cacheRead": 132176
+        },
+        "costUsd": 0.23370720000000003,
+        "split": {
+          "ms": 22249,
+          "orchestrator": 15517,
+          "agents": 0,
+          "tools": 6732
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/baseline-1",
+      "gitLog": [
+        "02f577f Merge feature/edit-notes",
+        "da23f13 Add notes edit command",
+        "9b58267 fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792994607931,
+      "endedAt": 1792995055135,
+      "ms": 447204,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-2/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "f4fdc12c-42fe-4a04-b80b-39ef822d5b73",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 108494,
+            "turns": 13,
+            "tokens": {
+              "input": 24,
+              "output": 9186,
+              "cacheRead": 630194
+            },
+            "costUsd": 0.8106868,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792994617030,
+              "end": 1792994718870,
+              "ms": 101840,
+              "turns": 21,
+              "toolCalls": {
+                "Bash": 10,
+                "Read": 1,
+                "Write": 1
+              },
+              "files": [
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-2/f4fdc12c-42fe-4a04-b80b-39ef822d5b73/tool-results/by1nbh5k3.txt",
+                "docs/features/notes-edit/SPEC.md"
+              ],
+              "commands": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "grep -n \"Steering and --auto\\|## Size and the small\\|## \\|config\" /tmp/bs-docs.t",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "sed -n 1,432p /tmp/spec-docs.txt; sed -n 464,536p /tmp/spec-docs.txt",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 38969,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 7913,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 7430,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 5456,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-2/f4fdc12c-42fe-4a04-b80b-39ef822d5b73/tool-results/by1nbh5k3.txt"
+                },
+                {
+                  "ms": 4624,
+                  "after": "Bash sed -n 1,432p /tmp/spec-docs.txt; sed -n 464,536p /tmp/spec-docs.txt"
+                }
+              ],
+              "split": {
+                "ms": 101840,
+                "orchestrator": 100144,
+                "agents": 0,
+                "tools": 1696
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 101840,
+            "orchestrator": 100144,
+            "agents": 0,
+            "tools": 1696
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-2/session-fleet-notes-edit-01.jsonl",
+          "lane": "build",
+          "sessionId": "48ac56e4-046b-4ca3-9f7f-2e76fafee52d",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-edit --agent-walk",
+          "totals": {
+            "ms": 203072,
+            "turns": 30,
+            "tokens": {
+              "input": 52,
+              "output": 11407,
+              "cacheRead": 2176776
+            },
+            "costUsd": 1.8368060199999998,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792994722655,
+              "end": 1792994738924,
+              "ms": 16269,
+              "turns": 9,
+              "toolCalls": {
+                "Bash": 4,
+                "Read": 1
+              },
+              "files": [
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-2-fleet-notes-edit/48ac56e4-046b-4ca3-9f7f-2e76fafee52d/tool-results/bgtpit9dy.txt"
+              ],
+              "commands": [
+                "cat .claude/builder.md 2>&1 | head -150; echo ---; cat docs/features/notes-edit/",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent 2>&1 | sed",
+                "sed -n 401,600p /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-8",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/notes-"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 2493,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-2-fleet-notes-edit/48ac56e4-046b-4ca3-9f7f-2e76fafee52d/tool-results/bgtpit9dy.txt"
+                },
+                {
+                  "ms": 2179,
+                  "after": "Bash sed -n 401,600p /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-8"
+                },
+                {
+                  "ms": 2176,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-2-fleet-notes-edit/48ac56e4-046b-4ca3-9f7f-2e76fafee52d/tool-results/bgtpit9dy.txt"
+                },
+                {
+                  "ms": 2168,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent 2>&1 | sed"
+                },
+                {
+                  "ms": 2096,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/advance.mjs docs/features/notes-"
+                }
+              ],
+              "split": {
+                "ms": 16269,
+                "orchestrator": 15133,
+                "agents": 0,
+                "tools": 1136
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792994738924,
+              "end": 1792994765164,
+              "ms": 26240,
+              "turns": 11,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cat -n src/cli.mjs src/store.mjs; cat -n test/*.mjs; cat README.md; node /Users/",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs audit 2>/dev/null | gre",
+                "cd docs/features/notes-edit && python3 - <<'EOF'",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7262,
+                  "after": "Bash cat -n src/cli.mjs src/store.mjs; cat -n test/*.mjs; cat README.md; node /Users/"
+                },
+                {
+                  "ms": 6605,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs audit 2>/dev/null | gre"
+                },
+                {
+                  "ms": 1937,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/check-obligations.mjs docs/featu"
+                },
+                {
+                  "ms": 1812,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs audit 2>/dev/null | gre"
+                },
+                {
+                  "ms": 1753,
+                  "after": "Skill builder:audit"
+                }
+              ],
+              "split": {
+                "ms": 26240,
+                "orchestrator": 25524,
+                "agents": 0,
+                "tools": 716
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792994765164,
+              "end": 1792994795322,
+              "ms": 30158,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 3,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/docs/features/notes-edit/PLAN.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -A15 ",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 18468,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -A15 "
+                },
+                {
+                  "ms": 1702,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/docs/features/notes-edit/PLAN.md"
+                },
+                {
+                  "ms": 1693,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/plan/PLAN-FORMAT.md; grep -n -A15 "
+                },
+                {
+                  "ms": 1513,
+                  "after": "Skill builder:plan"
+                },
+                {
+                  "ms": 1510,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/plan"
+                }
+              ],
+              "split": {
+                "ms": 30158,
+                "orchestrator": 29061,
+                "agents": 0,
+                "tools": 1097
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792994795322,
+              "end": 1792994924376,
+              "ms": 129054,
+              "turns": 18,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 19,
+                "Agent": 2,
+                "Read": 4,
+                "Edit": 4,
+                "Write": 2
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/dispatch-implementer-task-1.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/task-1-brief.md",
+                "/Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/test/cli.test.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/src/cli.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/README.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/task-1-report.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/dispatch-final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/final-review.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs build 2>/dev/null | sed",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/prof",
+                "git status --short && git log --oneline -3 && ls -la && find . -path ./node_modu",
+                "cat src/cli.mjs && echo ---- && cat src/store.mjs && echo ---- && cat test/cli.t",
+                "timeout 120 node --test --test-reporter=tap test/cli.test.mjs 2>&1 | grep -E '^(",
+                "timeout 120 node --test test/cli.test.mjs 2>&1 | tail -n 60",
+                "node --test test/cli.test.mjs 2>&1 | grep -E '^# |^not ok|^ok|✖|✔|Error|usage|no",
+                "node --test test/cli.test.mjs 2>&1 | grep -E '^# (tests|pass|fail)|^not ok|^ok';",
+                "export NOTES_FILE=$(mktemp -d)/n.json && C=\"node src/cli.mjs\" && $C add buy milk",
+                "export NOTES_FILE=$(mktemp -d)/n.json && c() { node src/cli.mjs \"$@\"; } && c add",
+                "git add README.md src/cli.mjs test/cli.test.mjs && git commit -q -m \"$(printf 'f",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; git log --oneline -2",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/dispatch.mjs final-review docs/f",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva",
+                "W=\"$(/Users/lukekeith/www/builder/scripts/workspace notes-edit)/walk.md\"; python",
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva"
+              ],
+              "tests": [
+                "timeout 120 node --test --test-reporter=tap test/cli.test.mjs 2>&1 | grep -E '^(",
+                "timeout 120 node --test test/cli.test.mjs 2>&1 | tail -n 60",
+                "node --test test/cli.test.mjs 2>&1 | grep -E '^# |^not ok|^ok|✖|✔|Error|usage|no",
+                "node --test test/cli.test.mjs 2>&1 | grep -E '^# (tests|pass|fail)|^not ok|^ok';"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: the `edit` command"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final review: notes-edit"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 18238,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 8114,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/final-review.md"
+                },
+                {
+                  "ms": 7144,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; node $B/scripts/adva"
+                },
+                {
+                  "ms": 6431,
+                  "after": "Bash export NOTES_FILE=$(mktemp -d)/n.json && c() { node src/cli.mjs \"$@\"; } && c add"
+                },
+                {
+                  "ms": 5813,
+                  "after": "Read /Users/lukekeith/www/builder/skills/test-driven-development/SKILL.md"
+                }
+              ],
+              "split": {
+                "ms": 129054,
+                "orchestrator": 42469,
+                "agents": 80468,
+                "tools": 6117
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 201721,
+            "orchestrator": 112187,
+            "agents": 80468,
+            "tools": 9066
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-2/session-fleet-notes-edit-02.jsonl",
+          "lane": "walk",
+          "sessionId": "8ae882be-bccc-4c6e-9429-0df4558e9c8f",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/notes-edit --agent-walk",
+          "totals": {
+            "ms": 126472,
+            "turns": 24,
+            "tokens": {
+              "input": 40,
+              "output": 5083,
+              "cacheRead": 1333553
+            },
+            "costUsd": 1.2026988,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792994930187,
+              "end": 1792994952267,
+              "ms": 22080,
+              "turns": 11,
+              "toolCalls": {
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/notes-edit/MANIF",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/handoff.mjs read docs/features/n",
+                "cat /Users/lukekeith/www/builder/skills/resume/AGENT-MODE.md",
+                "T=$(mktemp -d); export NOTES_FILE=$T/n.json; node src/cli.mjs add \"first\" ; node",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4272,
+                  "after": "Bash cat /Users/lukekeith/www/builder/skills/resume/AGENT-MODE.md"
+                },
+                {
+                  "ms": 3365,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -"
+                },
+                {
+                  "ms": 3315,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '"
+                },
+                {
+                  "ms": 2590,
+                  "after": "Bash T=$(mktemp -d); export NOTES_FILE=$T/n.json; node src/cli.mjs add \"first\" ; node"
+                },
+                {
+                  "ms": 2536,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/notes-edit/MANIF"
+                }
+              ],
+              "split": {
+                "ms": 22080,
+                "orchestrator": 20744,
+                "agents": 0,
+                "tools": 1336
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792994952267,
+              "end": 1792995007323,
+              "ms": 55056,
+              "turns": 8,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6,
+                "Agent": 1,
+                "Read": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2.fleet/notes-edit/.builder/notes-edit/dispatch-agent-walk-round-1.md"
+              ],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur",
+                "git rev-parse --short HEAD && cat .builder/notes-edit/walk.md && ls; ls src; cat",
+                "E=.builder/notes-edit/agent-walk/round-1 && mkdir -p $E",
+                "cat > .builder/notes-edit/agent-walk/round-1/report.md <<'EOF'",
+                "WS=\"$(/Users/lukekeith/www/builder/scripts/workspace notes-edit)\"; cat \"$WS/agen",
+                "node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/notes-edit "
+              ],
+              "tests": [],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Agent walk round 1"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 10329,
+                  "after": "Bash E=.builder/notes-edit/agent-walk/round-1 && mkdir -p $E"
+                },
+                {
+                  "ms": 8408,
+                  "after": "Bash git rev-parse --short HEAD && cat .builder/notes-edit/walk.md && ls; ls src; cat"
+                },
+                {
+                  "ms": 7650,
+                  "after": "Bash cat > .builder/notes-edit/agent-walk/round-1/report.md <<'EOF'"
+                },
+                {
+                  "ms": 4494,
+                  "after": "Agent general-purpose Agent walk round 1"
+                },
+                {
+                  "ms": 4001,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                }
+              ],
+              "split": {
+                "ms": 55056,
+                "orchestrator": 18509,
+                "agents": 35987,
+                "tools": 560
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792995007323,
+              "end": 1792995037968,
+              "ms": 30645,
+              "turns": 15,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 6
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; head -5 $F/SPEC.md; ",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start notes-edit-fast --",
+                "F=docs/features/notes-edit; cat $F/SPEC.md; echo; echo LEDGER; cat \"$(/Users/luk",
+                "sed -n 1,15p src/cli.mjs; git diff main...HEAD -- README.md package.json; git di",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/notes-edit -",
+                "git merge --no-edit main; git log --oneline -1"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 4542,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 3885,
+                  "after": "Bash F=docs/features/notes-edit; cat $F/SPEC.md; echo; echo LEDGER; cat \"$(/Users/luk"
+                },
+                {
+                  "ms": 3805,
+                  "after": "Bash sed -n 1,15p src/cli.mjs; git diff main...HEAD -- README.md package.json; git di"
+                },
+                {
+                  "ms": 3601,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start notes-edit-fast --"
+                },
+                {
+                  "ms": 3211,
+                  "after": "Bash B=/Users/lukekeith/www/builder; F=docs/features/notes-edit; head -5 $F/SPEC.md; "
+                }
+              ],
+              "split": {
+                "ms": 30645,
+                "orchestrator": 28446,
+                "agents": 0,
+                "tools": 2199
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792995037968,
+              "end": 1792995053029,
+              "ms": 15061,
+              "turns": 5,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "ls docs/features/_archive 2>/dev/null; node /Users/lukekeith/www/builder/scripts"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 9909,
+                  "after": "Bash ls docs/features/_archive 2>/dev/null; node /Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 3626,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 1155,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 362,
+                  "after": "Bash ls docs/features/_archive 2>/dev/null; node /Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 7,
+                  "after": "Skill builder:ship"
+                }
+              ],
+              "split": {
+                "ms": 15061,
+                "orchestrator": 14692,
+                "agents": 0,
+                "tools": 369
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 122842,
+            "orchestrator": 82391,
+            "agents": 35987,
+            "tools": 4464
+          }
+        }
+      ],
+      "totals": {
+        "ms": 438038,
+        "turns": 67,
+        "tokens": {
+          "input": 116,
+          "output": 25676,
+          "cacheRead": 4140523
+        },
+        "costUsd": 3.8501916200000004,
+        "split": {
+          "ms": 426403,
+          "orchestrator": 294722,
+          "agents": 116455,
+          "tools": 15226
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-2",
+      "gitLog": [
+        "5868f4f merge(notes-edit): agent-verified, not human-tested",
+        "ee61593 docs(notes-edit): notes-edit shipped into main",
+        "1884812 docs(notes-edit): notes-edit — verify READY",
+        "95260cf docs(notes-edit): notes-edit agent signed off (not human-tested)",
+        "ecbe297 chore(notes-edit): notes-edit — built, awaiting the walk",
+        "99fde3f chore(notes-edit): notes-edit — phases closed, awaiting the walk lane",
+        "704d59d feat(notes-edit): notes edit <id> <text> replaces a note's text in place",
+        "27498b8 chore(notes-edit): notes-edit — go-ahead (own · risk · end)",
+        "a0ae2ad docs(notes-edit): plan notes-edit",
+        "d2bca20 docs(notes-edit): notes-edit audited",
+        "a2bfc07 chore(notes-edit): agent mode on",
+        "037ef4b docs(notes-edit): design notes-edit",
+        "bfd99f4 fixture"
+      ]
+    },
+    {
+      "config": "superpowers",
+      "pipeline": "superpowers",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792995055189,
+      "endedAt": 1792995319244,
+      "ms": 264055,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "superpowers",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/superpowers-2/session-01-superpowers.jsonl",
+          "lane": null,
+          "sessionId": "224b9122-ee03-4b3d-b638-1f767f334a06",
+          "model": "claude-opus-5-5",
+          "prompt": "/superpowers:brainstorming — Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nBrainstorm it, write the plan, execute the plan with subagent-driven development, then finish the branch by merging it into `main`.",
+          "totals": {
+            "ms": 258135,
+            "turns": 10,
+            "tokens": {
+              "input": 18,
+              "output": 3792,
+              "cacheRead": 571982
+            },
+            "costUsd": 1.3296760100000002,
+            "ended": "result"
+          },
+          "plugins": [
+            "superpowers 7.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/superpowers:brainstorming",
+              "start": 1792995059758,
+              "end": 1792995077805,
+              "ms": 18047,
+              "turns": 8,
+              "toolCalls": {
+                "Bash": 3
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json src/*.mjs && ls test && cat test/*",
+                "cat .claude/builder.md README.md .gitignore; npm test 2>&1 | tail -5",
+                "git checkout -b feature/edit-notes && mkdir -p docs/superpowers/specs && cat > d"
+              ],
+              "tests": [
+                "cat .claude/builder.md README.md .gitignore; npm test 2>&1 | tail -5"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 6176,
+                  "after": "Bash cat .claude/builder.md README.md .gitignore; npm test 2>&1 | tail -5"
+                },
+                {
+                  "ms": 4267,
+                  "after": "Bash cat .claude/builder.md README.md .gitignore; npm test 2>&1 | tail -5"
+                },
+                {
+                  "ms": 2295,
+                  "after": "Bash git ls-files && cat package.json src/*.mjs && ls test && cat test/*"
+                },
+                {
+                  "ms": 1477,
+                  "after": "Bash git checkout -b feature/edit-notes && mkdir -p docs/superpowers/specs && cat > d"
+                },
+                {
+                  "ms": 1137,
+                  "after": "Bash cat .claude/builder.md README.md .gitignore; npm test 2>&1 | tail -5"
+                }
+              ],
+              "split": {
+                "ms": 18047,
+                "orchestrator": 16248,
+                "agents": 0,
+                "tools": 1799
+              }
+            },
+            {
+              "name": "superpowers:writing-plans",
+              "start": 1792995077805,
+              "end": 1792995097108,
+              "ms": 19303,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "mkdir -p docs/superpowers/plans && cat > docs/superpowers/plans/2026-10-26-edit-"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 13951,
+                  "after": "Skill superpowers:writing-plans"
+                },
+                {
+                  "ms": 2589,
+                  "after": "Skill superpowers:writing-plans"
+                },
+                {
+                  "ms": 2377,
+                  "after": "Bash mkdir -p docs/superpowers/plans && cat > docs/superpowers/plans/2026-10-26-edit-"
+                },
+                {
+                  "ms": 241,
+                  "after": "Bash mkdir -p docs/superpowers/plans && cat > docs/superpowers/plans/2026-10-26-edit-"
+                },
+                {
+                  "ms": 136,
+                  "after": "Bash mkdir -p docs/superpowers/plans && cat > docs/superpowers/plans/2026-10-26-edit-"
+                }
+              ],
+              "split": {
+                "ms": 19303,
+                "orchestrator": 19159,
+                "agents": 0,
+                "tools": 144
+              }
+            },
+            {
+              "name": "superpowers:subagent-driven-development",
+              "start": 1792995097108,
+              "end": 1792995296654,
+              "ms": 199546,
+              "turns": 25,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 21,
+                "Agent": 4,
+                "Read": 3,
+                "ToolSearch": 1,
+                "SendMessage": 1,
+                "Edit": 1
+              },
+              "files": [
+                ".superpowers/sdd/2026-10-26-edit-notes/review-13e2f1b..26660ea.diff",
+                ".superpowers/sdd/2026-10-26-edit-notes/task-1-brief.md",
+                ".superpowers/sdd/2026-10-26-edit-notes/task-1-report.md"
+              ],
+              "commands": [
+                "S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower",
+                "cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-00",
+                "cat test/cli.test.mjs; echo ---README; cat README.md; echo ---store; cat src/sto",
+                "sed -n 1,30p docs/superpowers/plans/2026-10-26-edit-notes.md; cat .superpowers/s",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "git diff -- src README.md && git add src/cli.mjs test/cli.test.mjs README.md && ",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower",
+                "git log -1 --format=%B 26660ea",
+                "git commit --amend -q -m \"feat: add notes edit command",
+                "R=.superpowers/sdd/2026-10-26-edit-notes/task-1-report.md && sed -i 's/^26660ea ",
+                "cat >> .superpowers/sdd/2026-10-26-edit-notes/task-1-report.md <<'EOF'",
+                "git diff --stat 26660ea 447caa2; echo \"tree-diff-done\"; git log -1 --format=%B 4",
+                "echo \"--- 447caa2 body (last lines, raw) ---\" && git log -1 --format=%B 447caa2 ",
+                "echo \"--- 447caa2 full message ---\" && git log -1 --format=%B 447caa2 && echo \"-",
+                "W=.superpowers/sdd/2026-10-26-edit-notes && cat >> $W/progress.md <<'EOF'",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "grep Ruling: .superpowers/sdd/2026-10-26-edit-notes/progress.md && rm -rf .super"
+              ],
+              "tests": [
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+              ],
+              "subagents": [
+                {
+                  "type": "agent",
+                  "first": "Implement Task 1: edit command"
+                },
+                {
+                  "type": "agent",
+                  "first": "Review Task 1 (spec + quality)"
+                },
+                {
+                  "type": "agent",
+                  "first": "Scoped re-review of fix round 1"
+                },
+                {
+                  "type": "agent",
+                  "first": "Final whole-branch review"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 19172,
+                  "after": "Skill superpowers:subagent-driven-development"
+                },
+                {
+                  "ms": 16700,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 9508,
+                  "after": "Bash cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow"
+                },
+                {
+                  "ms": 9186,
+                  "after": "Bash S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower"
+                },
+                {
+                  "ms": 8261,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                }
+              ],
+              "split": {
+                "ms": 199546,
+                "orchestrator": 102488,
+                "agents": 93841,
+                "tools": 3217
+              }
+            },
+            {
+              "name": "superpowers:finishing-a-development-branch",
+              "start": 1792995296654,
+              "end": 1792995317893,
+              "ms": 21239,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 2
+              },
+              "files": [],
+              "commands": [
+                "npm test 2>&1 | grep -E '^# (pass|fail)' && [ \"$(git rev-parse --git-dir)\" = .gi",
+                "cd /tmp && F=$(mktemp -d)/n.json; C=/private/var/folders/m9/828j21md44g2gxs0bdct"
+              ],
+              "tests": [
+                "npm test 2>&1 | grep -E '^# (pass|fail)' && [ \"$(git rev-parse --git-dir)\" = .gi"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7496,
+                  "after": "Bash cd /tmp && F=$(mktemp -d)/n.json; C=/private/var/folders/m9/828j21md44g2gxs0bdct"
+                },
+                {
+                  "ms": 5162,
+                  "after": "Bash npm test 2>&1 | grep -E '^# (pass|fail)' && [ \"$(git rev-parse --git-dir)\" = .gi"
+                },
+                {
+                  "ms": 3475,
+                  "after": "Bash npm test 2>&1 | grep -E '^# (pass|fail)' && [ \"$(git rev-parse --git-dir)\" = .gi"
+                },
+                {
+                  "ms": 2689,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                },
+                {
+                  "ms": 2184,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                }
+              ],
+              "split": {
+                "ms": 21239,
+                "orchestrator": 15844,
+                "agents": 0,
+                "tools": 5395
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 258135,
+            "orchestrator": 153739,
+            "agents": 93841,
+            "tools": 10555
+          }
+        }
+      ],
+      "totals": {
+        "ms": 258135,
+        "turns": 10,
+        "tokens": {
+          "input": 18,
+          "output": 3792,
+          "cacheRead": 571982
+        },
+        "costUsd": 1.3296760100000002,
+        "split": {
+          "ms": 258135,
+          "orchestrator": 153739,
+          "agents": 93841,
+          "tools": 10555
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/superpowers-2",
+      "gitLog": [
+        "84c7a91 Merge feature/edit-notes: notes edit command",
+        "447caa2 feat: add notes edit command",
+        "13e2f1b Add plan for editing notes",
+        "8f6a278 Add design for editing notes",
+        "c09d3e6 fixture"
+      ]
+    },
+    {
+      "config": "baseline",
+      "pipeline": "baseline",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792995319300,
+      "endedAt": 1792995351809,
+      "ms": 32509,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "claude",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/baseline-2/session-01-claude.jsonl",
+          "lane": null,
+          "sessionId": "815033a9-a35f-4bd5-a3f2-9b596ce0b0b7",
+          "model": "claude-opus-5-5",
+          "prompt": "Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nWrite tests for it, make them pass, commit the work on a branch, then merge it into `main` and leave `main` checked out.",
+          "totals": {
+            "ms": 29168,
+            "turns": 5,
+            "tokens": {
+              "input": 10,
+              "output": 1983,
+              "cacheRead": 132429
+            },
+            "costUsd": 0.23476180000000002,
+            "ended": "result"
+          },
+          "plugins": [],
+          "steps": [
+            {
+              "name": "Build this feature end to end: Notes can be edited.",
+              "start": 1792995324420,
+              "end": 1792995350413,
+              "ms": 25993,
+              "turns": 7,
+              "toolCalls": {
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json src/*.mjs && cat test/* && ls -a",
+                "cat .claude/builder.md README.md .gitignore",
+                "git checkout -q -b feature/edit-notes && python3 - <<'EOF'",
+                "git add -A && git commit -qm \"Add notes edit command"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 6419,
+                  "after": "Bash cat .claude/builder.md README.md .gitignore"
+                },
+                {
+                  "ms": 5571,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                },
+                {
+                  "ms": 3347,
+                  "after": "Bash git checkout -q -b feature/edit-notes && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2659,
+                  "after": "Bash git checkout -q -b feature/edit-notes && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2492,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                }
+              ],
+              "split": {
+                "ms": 25993,
+                "orchestrator": 20192,
+                "agents": 0,
+                "tools": 5801
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 25993,
+            "orchestrator": 20192,
+            "agents": 0,
+            "tools": 5801
+          }
+        }
+      ],
+      "totals": {
+        "ms": 29168,
+        "turns": 5,
+        "tokens": {
+          "input": 10,
+          "output": 1983,
+          "cacheRead": 132429
+        },
+        "costUsd": 0.23476180000000002,
+        "split": {
+          "ms": 25993,
+          "orchestrator": 20192,
+          "agents": 0,
+          "tools": 5801
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/baseline-2",
+      "gitLog": [
+        "f10a4f9 Merge feature/edit-notes",
+        "f43b191 Add notes edit command",
+        "16d91de fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 3,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792995351871,
+      "endedAt": 1792995714185,
+      "ms": 362314,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-3/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "0746dcce-a230-4776-bbc8-e4a072ace6ea",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 96689,
+            "turns": 12,
+            "tokens": {
+              "input": 22,
+              "output": 8024,
+              "cacheRead": 592399
+            },
+            "costUsd": 0.7911598,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1792995356399,
+              "end": 1792995450163,
+              "ms": 93764,
+              "turns": 19,
+              "toolCalls": {
+                "Bash": 8,
+                "Read": 1,
+                "Write": 2
+              },
+              "files": [
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-3/0746dcce-a230-4776-bbc8-e4a072ace6ea/tool-results/b22ikha6y.txt",
+                "docs/features/note-edit/SPEC.md",
+                "docs/features/note-edit/MANIFEST.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ----; git ls",
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | tail -c 900",
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | sed -n '/^#",
+                "/Users/lukekeith/www/builder/scripts/workspace note-edit; ls docs 2>/dev/null; n",
+                "mkdir -p .builder/note-edit && cat > .builder/note-edit/brainstorm.md <<'EOF'",
+                "sed -i '' 's/^status: exploring/status: sized md/' .builder/note-edit/brainstorm",
+                "node /Users/lukekeith/www/builder/scripts/check-obligations.mjs docs/features/no",
+                "git add docs/features/note-edit && git commit -q -m \"docs(note-edit): design not"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 36526,
+                  "after": "Bash sed -i '' 's/^status: exploring/status: sized md/' .builder/note-edit/brainstorm"
+                },
+                {
+                  "ms": 7332,
+                  "after": "Bash git add docs/features/note-edit && git commit -q -m \"docs(note-edit): design not"
+                },
+                {
+                  "ms": 7020,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-3/0746dcce-a230-4776-bbc8-e4a072ace6ea/tool-results/b22ikha6y.txt"
+                },
+                {
+                  "ms": 6919,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm 2>&1 | tail -c 900"
+                },
+                {
+                  "ms": 5599,
+                  "after": "Bash /Users/lukekeith/www/builder/scripts/workspace note-edit; ls docs 2>/dev/null; n"
+                }
+              ],
+              "split": {
+                "ms": 93764,
+                "orchestrator": 91464,
+                "agents": 0,
+                "tools": 2300
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 93764,
+            "orchestrator": 91464,
+            "agents": 0,
+            "tools": 2300
+          }
+        },
+        {
+          "name": "fleet 01",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-3/session-fleet-note-edit-01.jsonl",
+          "lane": "build",
+          "sessionId": "f957a244-1603-42e4-abc5-86ba376b5eed",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-edit --agent-walk",
+          "totals": {
+            "ms": 212717,
+            "turns": 28,
+            "tokens": {
+              "input": 48,
+              "output": 11518,
+              "cacheRead": 2021144
+            },
+            "costUsd": 1.8101082749999997,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792995453529,
+              "end": 1792995463598,
+              "ms": 10069,
+              "turns": 8,
+              "toolCalls": {
+                "Bash": 3,
+                "Read": 1
+              },
+              "files": [
+                "/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-3-fleet-note-edit/f957a244-1603-42e4-abc5-86ba376b5eed/tool-results/bgt6pgwli.txt"
+              ],
+              "commands": [
+                "cat .claude/builder.md; echo ----; cat docs/features/note-edit/MANIFEST.md; ls d",
+                "ls /Users/lukekeith/www/builder/scripts; node /Users/lukekeith/www/builder/scrip",
+                "ls -la .builder 2>&1; ls .builder/note-edit 2>&1; grep -n \"design\" docs/features"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 2145,
+                  "after": "Bash ls -la .builder 2>&1; ls .builder/note-edit 2>&1; grep -n \"design\" docs/features"
+                },
+                {
+                  "ms": 2103,
+                  "after": "Bash ls /Users/lukekeith/www/builder/scripts; node /Users/lukekeith/www/builder/scrip"
+                },
+                {
+                  "ms": 1910,
+                  "after": "Read /Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs0bdctg5hw0000gp-T-bench-2026-10-26-0053-edit-builder-3-fleet-note-edit/f957a244-1603-42e4-abc5-86ba376b5eed/tool-results/bgt6pgwli.txt"
+                },
+                {
+                  "ms": 1390,
+                  "after": "Bash cat .claude/builder.md; echo ----; cat docs/features/note-edit/MANIFEST.md; ls d"
+                },
+                {
+                  "ms": 660,
+                  "after": "(start)"
+                }
+              ],
+              "split": {
+                "ms": 10069,
+                "orchestrator": 9208,
+                "agents": 0,
+                "tools": 861
+              }
+            },
+            {
+              "name": "builder:audit",
+              "start": 1792995463598,
+              "end": 1792995494790,
+              "ms": 31192,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "cat docs/features/note-edit/SPEC.md; echo ----; ls -R src test; cat package.json",
+                "cat -n test/cli.test.mjs; cat README.md; node /Users/lukekeith/www/builder/scrip",
+                "cd /Users/lukekeith/www/builder/skills/resume && grep -n \"^## \\|Findings & risks",
+                "cat >> docs/features/note-edit/SPEC.md <<'EOF'"
+              ],
+              "tests": [
+                "cat -n test/cli.test.mjs; cat README.md; node /Users/lukekeith/www/builder/scrip"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 6899,
+                  "after": "Bash cd /Users/lukekeith/www/builder/skills/resume && grep -n \"^## \\|Findings & risks"
+                },
+                {
+                  "ms": 6346,
+                  "after": "Bash cd /Users/lukekeith/www/builder/skills/resume && grep -n \"^## \\|Findings & risks"
+                },
+                {
+                  "ms": 5178,
+                  "after": "Bash cat docs/features/note-edit/SPEC.md; echo ----; ls -R src test; cat package.json"
+                },
+                {
+                  "ms": 4900,
+                  "after": "Bash cat -n test/cli.test.mjs; cat README.md; node /Users/lukekeith/www/builder/scrip"
+                },
+                {
+                  "ms": 2393,
+                  "after": "Bash cat -n test/cli.test.mjs; cat README.md; node /Users/lukekeith/www/builder/scrip"
+                }
+              ],
+              "split": {
+                "ms": 31192,
+                "orchestrator": 28410,
+                "agents": 0,
+                "tools": 2782
+              }
+            },
+            {
+              "name": "builder:plan",
+              "start": 1792995494790,
+              "end": 1792995525542,
+              "ms": 30752,
+              "turns": 9,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/docs/features/note-edit/PLAN.md"
+              ],
+              "commands": [
+                "cat /Users/lukekeith/www/builder/skills/plan/PLAN-FORMAT.md",
+                "node /Users/lukekeith/www/builder/scripts/profile.mjs --recommend docs/features/",
+                "F=docs/features/note-edit; S=/Users/lukekeith/www/builder/scripts",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/note-edit --"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 17806,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/profile.mjs --recommend docs/features/"
+                },
+                {
+                  "ms": 2246,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/profile.mjs --recommend docs/features/"
+                },
+                {
+                  "ms": 1862,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/docs/features/note-edit/PLAN.md"
+                },
+                {
+                  "ms": 1850,
+                  "after": "Bash F=docs/features/note-edit; S=/Users/lukekeith/www/builder/scripts"
+                },
+                {
+                  "ms": 1709,
+                  "after": "Bash F=docs/features/note-edit; S=/Users/lukekeith/www/builder/scripts"
+                }
+              ],
+              "split": {
+                "ms": 30752,
+                "orchestrator": 28545,
+                "agents": 0,
+                "tools": 2207
+              }
+            },
+            {
+              "name": "builder:build",
+              "start": 1792995525542,
+              "end": 1792995664993,
+              "ms": 139451,
+              "turns": 18,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 18,
+                "Agent": 2,
+                "Edit": 3,
+                "Read": 1,
+                "Write": 1
+              },
+              "files": [
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/src/cli.mjs",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/README.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/.builder/note-edit/dispatch-final-review.md",
+                "/private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/.builder/note-edit/final-review.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs build | sed -n '/EXECUTION.md",
+                "S=/Users/lukekeith/www/builder/scripts; F=docs/features/note-edit",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-00",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-00",
+                "cat src/cli.mjs && echo ---- && cat src/store.mjs && echo ---- && cat test/cli.t",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "grep -c \"^test(\" test/cli.test.mjs && npm test 2>&1 | tail -n 60",
+                "npm test 2>&1 | grep -E \"^(not )?ok\"",
+                "grep -inE \"type|check|tsc|lint\" .claude/builder.md | head -20; ls tsconfig.json ",
+                "git add src/cli.mjs test/cli.test.mjs README.md && git status --short && git com",
+                "npm test 2>/tmp/note-edit-stderr.txt >/dev/null; wc -c < /tmp/note-edit-stderr.t",
+                "S=/Users/lukekeith/www/builder/scripts; F=docs/features/note-edit; git log --one",
+                "node /Users/lukekeith/www/builder/scripts/dispatch.mjs final-review docs/feature",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "S=/Users/lukekeith/www/builder/scripts; F=docs/features/note-edit",
+                "W=\"$(/Users/lukekeith/www/builder/scripts/workspace note-edit)/walk.md\"; python3"
+              ],
+              "tests": [
+                "grep -c \"^test(\" test/cli.test.mjs && npm test 2>&1 | tail -n 60",
+                "npm test 2>&1 | grep -E \"^(not )?ok\"",
+                "grep -inE \"type|check|tsc|lint\" .claude/builder.md | head -20; ls tsconfig.json ",
+                "npm test 2>/tmp/note-edit-stderr.txt >/dev/null; wc -c < /tmp/note-edit-stderr.t"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: edit command"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final review: note-edit"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 15742,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 8924,
+                  "after": "Bash S=/Users/lukekeith/www/builder/scripts; F=docs/features/note-edit"
+                },
+                {
+                  "ms": 7181,
+                  "after": "Bash W=\"$(/Users/lukekeith/www/builder/scripts/workspace note-edit)/walk.md\"; python3"
+                },
+                {
+                  "ms": 7126,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3.fleet/note-edit/.builder/note-edit/final-review.md"
+                },
+                {
+                  "ms": 6541,
+                  "after": "Bash git add src/cli.mjs test/cli.test.mjs README.md && git status --short && git com"
+                }
+              ],
+              "split": {
+                "ms": 139451,
+                "orchestrator": 40782,
+                "agents": 90927,
+                "tools": 7742
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 211464,
+            "orchestrator": 106945,
+            "agents": 90927,
+            "tools": 13592
+          }
+        },
+        {
+          "name": "fleet 02",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/builder-3/session-fleet-note-edit-02.jsonl",
+          "lane": "walk",
+          "sessionId": "7a1a0ac3-0eae-4ea4-bf07-39c5d5003751",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:resume --path docs/features/note-edit --agent-walk",
+          "totals": {
+            "ms": 43006,
+            "turns": 18,
+            "tokens": {
+              "input": 28,
+              "output": 4026,
+              "cacheRead": 849990
+            },
+            "costUsd": 0.8127660000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:resume",
+              "start": 1792995669578,
+              "end": 1792995681938,
+              "ms": 12360,
+              "turns": 10,
+              "toolCalls": {
+                "Bash": 5
+              },
+              "files": [],
+              "commands": [
+                "cat .claude/builder.md | head -80; echo ----; cat docs/features/note-edit/MANIFE",
+                "B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '",
+                "B=/Users/lukekeith/www/builder; cat $B/skills/resume/AGENT-MODE.md; echo; echo '",
+                "export NOTES_FILE=$(mktemp -d)/n.json; node src/cli.mjs add \"first note\"; node s",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/note-edit --"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 1985,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/resume/AGENT-MODE.md; echo; echo '"
+                },
+                {
+                  "ms": 1560,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/docs.mjs resume-agent | sed -n '"
+                },
+                {
+                  "ms": 1415,
+                  "after": "Bash B=/Users/lukekeith/www/builder; cat $B/skills/resume/AGENT-MODE.md; echo; echo '"
+                },
+                {
+                  "ms": 1246,
+                  "after": "Bash cat .claude/builder.md | head -80; echo ----; cat docs/features/note-edit/MANIFE"
+                },
+                {
+                  "ms": 1150,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/note-edit --"
+                }
+              ],
+              "split": {
+                "ms": 12360,
+                "orchestrator": 10989,
+                "agents": 0,
+                "tools": 1371
+              }
+            },
+            {
+              "name": "builder:agent-walk",
+              "start": 1792995681938,
+              "end": 1792995686779,
+              "ms": 4841,
+              "turns": 5,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 1611,
+                  "after": "Skill builder:agent-walk"
+                },
+                {
+                  "ms": 1443,
+                  "after": "Skill builder:agent-walk"
+                },
+                {
+                  "ms": 802,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                },
+                {
+                  "ms": 494,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                },
+                {
+                  "ms": 472,
+                  "after": "Bash B=/Users/lukekeith/www/builder; node $B/scripts/profile.mjs --levers docs/featur"
+                }
+              ],
+              "split": {
+                "ms": 4841,
+                "orchestrator": 4349,
+                "agents": 0,
+                "tools": 492
+              }
+            },
+            {
+              "name": "builder:verify",
+              "start": 1792995686779,
+              "end": 1792995699564,
+              "ms": 12785,
+              "turns": 10,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "B=/Users/lukekeith/www/builder; node $B/scripts/job.mjs start ne-gate -- node $B",
+                "head -5 docs/features/note-edit/SPEC.md; grep -nE '^## ' docs/features/note-edit",
+                "B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace note-edit)\"; grep -nE",
+                "node /Users/lukekeith/www/builder/scripts/advance.mjs docs/features/note-edit --"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 2261,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 1705,
+                  "after": "Skill builder:verify"
+                },
+                {
+                  "ms": 1650,
+                  "after": "Bash head -5 docs/features/note-edit/SPEC.md; grep -nE '^## ' docs/features/note-edit"
+                },
+                {
+                  "ms": 1625,
+                  "after": "Bash head -5 docs/features/note-edit/SPEC.md; grep -nE '^## ' docs/features/note-edit"
+                },
+                {
+                  "ms": 1239,
+                  "after": "Bash B=/Users/lukekeith/www/builder; WS=\"$($B/scripts/workspace note-edit)\"; grep -nE"
+                }
+              ],
+              "split": {
+                "ms": 12785,
+                "orchestrator": 11532,
+                "agents": 0,
+                "tools": 1253
+              }
+            },
+            {
+              "name": "builder:ship",
+              "start": 1792995699564,
+              "end": 1792995710867,
+              "ms": 11303,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/note-edit -"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7866,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/note-edit -"
+                },
+                {
+                  "ms": 1253,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 984,
+                  "after": "Skill builder:ship"
+                },
+                {
+                  "ms": 789,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/note-edit -"
+                },
+                {
+                  "ms": 398,
+                  "after": "Bash node /Users/lukekeith/www/builder/scripts/condense.mjs docs/features/note-edit -"
+                }
+              ],
+              "split": {
+                "ms": 11303,
+                "orchestrator": 10891,
+                "agents": 0,
+                "tools": 412
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 41289,
+            "orchestrator": 37761,
+            "agents": 0,
+            "tools": 3528
+          }
+        }
+      ],
+      "totals": {
+        "ms": 352412,
+        "turns": 58,
+        "tokens": {
+          "input": 98,
+          "output": 23568,
+          "cacheRead": 3463533
+        },
+        "costUsd": 3.414034075,
+        "split": {
+          "ms": 346517,
+          "orchestrator": 236170,
+          "agents": 90927,
+          "tools": 19420
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/builder-3",
+      "gitLog": [
+        "bc99fd8 merge(note-edit): agent-verified, not human-tested",
+        "ee31d96 docs(note-edit): note-edit shipped into main",
+        "e0f2719 docs(note-edit): note-edit — verify READY",
+        "95981f0 docs(note-edit): note-edit agent signed off (not human-tested)",
+        "88dc973 chore(note-edit): note-edit — built, awaiting the walk",
+        "14a1ec5 chore(note-edit): note-edit — phases closed, awaiting the walk lane",
+        "347f31c feat(note-edit): notes edit <id> <text> replaces a note's text in place",
+        "551ec32 chore(note-edit): note-edit — go-ahead (own · touched · end)",
+        "1e3a7e9 docs(note-edit): plan note-edit",
+        "5c9de55 docs(note-edit): note-edit audited",
+        "0742e58 docs(note-edit): design note-edit",
+        "ecf6b1c fixture"
+      ]
+    },
+    {
+      "config": "superpowers",
+      "pipeline": "superpowers",
+      "tests": null,
+      "rep": 3,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792995714254,
+      "endedAt": 1792995960994,
+      "ms": 246740,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "superpowers",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/superpowers-3/session-01-superpowers.jsonl",
+          "lane": null,
+          "sessionId": "aac06e5a-925c-4ac7-9922-cd25f11de71e",
+          "model": "claude-opus-5-5",
+          "prompt": "/superpowers:brainstorming — Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nBrainstorm it, write the plan, execute the plan with subagent-driven development, then finish the branch by merging it into `main`.",
+          "totals": {
+            "ms": 243557,
+            "turns": 20,
+            "tokens": {
+              "input": 34,
+              "output": 9226,
+              "cacheRead": 895852
+            },
+            "costUsd": 1.21079346,
+            "ended": "result"
+          },
+          "plugins": [
+            "superpowers 7.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/superpowers:brainstorming",
+              "start": 1792995718629,
+              "end": 1792995734703,
+              "ms": 16074,
+              "turns": 6,
+              "toolCalls": {
+                "Bash": 2
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json && cat src/cli.mjs && cat test/*.mjs 2>/dev/nul",
+                "cat .claude/builder.md README.md src/store.mjs .gitignore; npm test 2>&1 | tail "
+              ],
+              "tests": [
+                "cat .claude/builder.md README.md src/store.mjs .gitignore; npm test 2>&1 | tail "
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 9182,
+                  "after": "Bash cat .claude/builder.md README.md src/store.mjs .gitignore; npm test 2>&1 | tail "
+                },
+                {
+                  "ms": 3327,
+                  "after": "Bash git ls-files && cat package.json && cat src/cli.mjs && cat test/*.mjs 2>/dev/nul"
+                },
+                {
+                  "ms": 1339,
+                  "after": "Bash cat .claude/builder.md README.md src/store.mjs .gitignore; npm test 2>&1 | tail "
+                },
+                {
+                  "ms": 1290,
+                  "after": "(start)"
+                },
+                {
+                  "ms": 531,
+                  "after": "Bash git ls-files && cat package.json && cat src/cli.mjs && cat test/*.mjs 2>/dev/nul"
+                }
+              ],
+              "split": {
+                "ms": 16074,
+                "orchestrator": 14204,
+                "agents": 0,
+                "tools": 1870
+              }
+            },
+            {
+              "name": "superpowers:writing-plans",
+              "start": 1792995734703,
+              "end": 1792995756561,
+              "ms": 21858,
+              "turns": 6,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "git checkout -b feat/edit-note && mkdir -p docs/superpowers/plans && cat > docs/"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 15188,
+                  "after": "Skill superpowers:writing-plans"
+                },
+                {
+                  "ms": 3310,
+                  "after": "Skill superpowers:writing-plans"
+                },
+                {
+                  "ms": 2888,
+                  "after": "Bash git checkout -b feat/edit-note && mkdir -p docs/superpowers/plans && cat > docs/"
+                },
+                {
+                  "ms": 239,
+                  "after": "Bash git checkout -b feat/edit-note && mkdir -p docs/superpowers/plans && cat > docs/"
+                },
+                {
+                  "ms": 222,
+                  "after": "Bash git checkout -b feat/edit-note && mkdir -p docs/superpowers/plans && cat > docs/"
+                }
+              ],
+              "split": {
+                "ms": 21858,
+                "orchestrator": 21626,
+                "agents": 0,
+                "tools": 232
+              }
+            },
+            {
+              "name": "superpowers:subagent-driven-development",
+              "start": 1792995756561,
+              "end": 1792995939582,
+              "ms": 183021,
+              "turns": 22,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 15,
+                "Agent": 3,
+                "Read": 5,
+                "Edit": 3
+              },
+              "files": [
+                "src/cli.mjs",
+                "README.md",
+                "/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpowers/7.0.0/skills/subagent-driven-development/task-reviewer-prompt.md",
+                ".superpowers/sdd/2026-10-26-edit-note/task-1-brief.md",
+                ".superpowers/sdd/2026-10-26-edit-note/review-b7cc00c..1fbb50e.diff"
+              ],
+              "commands": [
+                "S=/Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpower",
+                "cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow",
+                "cat /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-00",
+                "cat README.md && echo --- && cat src/store.mjs && echo --- && ls -R .superpowers",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "npm test 2>&1 | grep -E '^(ok|not ok|# (pass|fail|tests))'",
+                "git add src/cli.mjs test/cli.test.mjs README.md && git commit -q -F - <<'EOF'",
+                "mkdir -p /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-",
+                "git log -1 --format=%B && S=/Users/lukekeith/.claude-home/plugins/cache/claude-p",
+                "echo \"Ruling: kept implementer's 'Co-Authored-By: Claude Haiku 5.5' trailer on 1",
+                "npm test 2>&1 | grep -E '^(ok|not ok|# (pass|fail))'; L=.superpowers/sdd/2026-10",
+                "cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005",
+                "grep 'Ruling:' .superpowers/sdd/2026-10-26-edit-note/progress.md && rm -rf .supe"
+              ],
+              "tests": [
+                "cat README.md && echo --- && cat src/store.mjs && echo --- && ls -R .superpowers",
+                "npm test 2>&1 | grep -E '^(ok|not ok|# (pass|fail|tests))'",
+                "npm test 2>&1 | grep -E '^(ok|not ok|# (pass|fail))'; L=.superpowers/sdd/2026-10",
+                "cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+              ],
+              "subagents": [
+                {
+                  "type": "general-purpose",
+                  "first": "Implement Task 1: edit command"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Review Task 1 (spec + quality)"
+                },
+                {
+                  "type": "general-purpose",
+                  "first": "Final whole-branch review"
+                }
+              ],
+              "gaps": [
+                {
+                  "ms": 14586,
+                  "after": "Bash cd /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-005"
+                },
+                {
+                  "ms": 12707,
+                  "after": "Bash cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow"
+                },
+                {
+                  "ms": 10445,
+                  "after": "Bash echo \"Ruling: kept implementer's 'Co-Authored-By: Claude Haiku 5.5' trailer on 1"
+                },
+                {
+                  "ms": 9215,
+                  "after": "Bash cat /Users/lukekeith/.claude-home/plugins/cache/claude-plugins-official/superpow"
+                },
+                {
+                  "ms": 8692,
+                  "after": "Read /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/superpowers-3/.superpowers/sdd/2026-10-26-edit-note/review-b7cc00c..1fbb50e.diff"
+                }
+              ],
+              "split": {
+                "ms": 183021,
+                "orchestrator": 82706,
+                "agents": 97019,
+                "tools": 3296
+              }
+            },
+            {
+              "name": "superpowers:finishing-a-development-branch",
+              "start": 1792995939582,
+              "end": 1792995959535,
+              "ms": 19953,
+              "turns": 5,
+              "toolCalls": {
+                "Skill": 1,
+                "Bash": 1
+              },
+              "files": [],
+              "commands": [
+                "echo \"$(git rev-parse --git-dir) $(git rev-parse --git-common-dir)\"; git remote;"
+              ],
+              "tests": [
+                "echo \"$(git rev-parse --git-dir) $(git rev-parse --git-common-dir)\"; git remote;"
+              ],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7546,
+                  "after": "Bash echo \"$(git rev-parse --git-dir) $(git rev-parse --git-common-dir)\"; git remote;"
+                },
+                {
+                  "ms": 5227,
+                  "after": "Bash echo \"$(git rev-parse --git-dir) $(git rev-parse --git-common-dir)\"; git remote;"
+                },
+                {
+                  "ms": 4197,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                },
+                {
+                  "ms": 2965,
+                  "after": "Skill superpowers:finishing-a-development-branch"
+                },
+                {
+                  "ms": 12,
+                  "after": "Bash echo \"$(git rev-parse --git-dir) $(git rev-parse --git-common-dir)\"; git remote;"
+                }
+              ],
+              "split": {
+                "ms": 19953,
+                "orchestrator": 14718,
+                "agents": 0,
+                "tools": 5235
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 240906,
+            "orchestrator": 133254,
+            "agents": 97019,
+            "tools": 10633
+          }
+        }
+      ],
+      "totals": {
+        "ms": 243557,
+        "turns": 20,
+        "tokens": {
+          "input": 34,
+          "output": 9226,
+          "cacheRead": 895852
+        },
+        "costUsd": 1.21079346,
+        "split": {
+          "ms": 240906,
+          "orchestrator": 133254,
+          "agents": 97019,
+          "tools": 10633
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/superpowers-3",
+      "gitLog": [
+        "b2fad18 Merge branch 'feat/edit-note': notes edit <id> <text>",
+        "1fbb50e feat: add notes edit <id> <text>",
+        "b7cc00c docs: plan for notes edit",
+        "7ec581a fixture"
+      ]
+    },
+    {
+      "config": "baseline",
+      "pipeline": "baseline",
+      "tests": null,
+      "rep": 3,
+      "status": "done",
+      "path": "pipeline",
+      "startedAt": 1792995961058,
+      "endedAt": 1792995985775,
+      "ms": 24717,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "claude",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0053-edit/baseline-3/session-01-claude.jsonl",
+          "lane": null,
+          "sessionId": "1051c4fd-e88f-4f44-84ed-2960a9a52abd",
+          "model": "claude-opus-5-5",
+          "prompt": "Build this feature end to end: Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.\n\nWrite tests for it, make them pass, commit the work on a branch, then merge it into `main` and leave `main` checked out.",
+          "totals": {
+            "ms": 21148,
+            "turns": 5,
+            "tokens": {
+              "input": 10,
+              "output": 1815,
+              "cacheRead": 132074
+            },
+            "costUsd": 0.22977080000000003,
+            "ended": "result"
+          },
+          "plugins": [],
+          "steps": [
+            {
+              "name": "Build this feature end to end: Notes can be edited.",
+              "start": 1792995964996,
+              "end": 1792995984468,
+              "ms": 19472,
+              "turns": 6,
+              "toolCalls": {
+                "Bash": 4
+              },
+              "files": [],
+              "commands": [
+                "git ls-files && cat package.json src/*.mjs && cat test/* && ls -a",
+                "cat .claude/builder.md README.md .gitignore",
+                "git checkout -q -b feature/edit-notes && python3 - <<'EOF'",
+                "git add -A && git commit -qm \"Add notes edit command"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5430,
+                  "after": "Bash cat .claude/builder.md README.md .gitignore"
+                },
+                {
+                  "ms": 4152,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                },
+                {
+                  "ms": 2227,
+                  "after": "Bash git checkout -q -b feature/edit-notes && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2204,
+                  "after": "Bash git checkout -q -b feature/edit-notes && python3 - <<'EOF'"
+                },
+                {
+                  "ms": 2126,
+                  "after": "Bash git add -A && git commit -qm \"Add notes edit command"
+                }
+              ],
+              "split": {
+                "ms": 19472,
+                "orchestrator": 14479,
+                "agents": 0,
+                "tools": 4993
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 19472,
+            "orchestrator": 14479,
+            "agents": 0,
+            "tools": 4993
+          }
+        }
+      ],
+      "totals": {
+        "ms": 21148,
+        "turns": 5,
+        "tokens": {
+          "input": 10,
+          "output": 1815,
+          "cacheRead": 132074
+        },
+        "costUsd": 0.22977080000000003,
+        "split": {
+          "ms": 19472,
+          "orchestrator": 14479,
+          "agents": 0,
+          "tools": 4993
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0053-edit/baseline-3",
+      "gitLog": [
+        "24977db Merge feature/edit-notes",
+        "51a7134 Add notes edit command",
+        "5446303 fixture"
+      ]
+    }
+  ]
+}

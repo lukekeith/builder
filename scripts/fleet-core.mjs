@@ -327,6 +327,29 @@ export function readProgress(base, registry, feature, status) {
   })
 }
 
+/**
+ * The features this fleet run has merged: `fleet.landedThisRun` (archiveRow adds each as it lands;
+ * a new run starts it empty) plus any row still marked `done` that has not been archived yet.
+ */
+export function mergedThisRun(fleet) {
+  const done = Object.entries(fleet.features ?? {}).filter(([, f]) => f.status === 'done').map(([n]) => n)
+  return [...new Set([...(fleet.landedThisRun ?? []), ...done])]
+}
+
+/**
+ * The run's overall progress: every feature it holds — in flight, queued, parked, or merged this run
+ * — counted once, a merged one at 100%. Five features with one merged and four not started reads 20%,
+ * and a feature added while the run goes on makes the total grow. `pctOf(name, f)` → the in-flight
+ * row's percent. → `{ pct, merged, total }`; pct is null when the run holds nothing.
+ */
+export function fleetOverall(fleet, pctOf) {
+  const merged = mergedThisRun(fleet)
+  const rows = Object.entries(fleet.features ?? {}).filter(([n, f]) => f.status !== 'done' && !merged.includes(n))
+  const total = rows.length + merged.length
+  const sum = rows.reduce((s, [n, f]) => s + (pctOf(n, f) ?? 0), 0) + 100 * merged.length
+  return { pct: total ? sum / total : null, merged: merged.length, total }
+}
+
 /** Ten cells and the number: `▓▓▓▓░░░░░░ 43%`. */
 export function progressBar(pct) {
   const n = Math.round(Math.max(0, Math.min(100, pct)) / 10)
@@ -353,8 +376,12 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   const summary = Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(' · ')
   const roots = new Set(rows.map(([, f]) => f.worktree && f.worktree.replace(/\/[^/]+\/?$/, '')).filter(Boolean))
   const prog = progress ? Object.fromEntries(rows.map(([name, f]) => [name, progress(name, f) ?? { pct: 0, label: '—' }])) : null
-  const overall = prog && rows.length ? progressBar(rows.reduce((s, [name]) => s + prog[name].pct, 0) / rows.length) : ''
-  const lines = [`# builder fleet — ${rows.length} feature(s): ${summary || 'none'}${overall ? ` · ${overall}` : ''}`]
+  // The bar covers the whole run: what is in flight here, and what it already merged (at 100%).
+  const run = prog ? fleetOverall(fleet, (name) => prog[name]?.pct ?? 0) : null
+  const overall = run?.pct != null ? progressBar(run.pct) : ''
+  const mergedNote = run?.merged ? `${run.merged} merged this run${summary ? ' · ' : ''}` : ''
+  const count = run ? run.total : rows.length
+  const lines = [`# builder fleet — ${count} feature(s): ${mergedNote}${summary || (mergedNote ? '' : 'none')}${overall ? ` · ${overall}` : ''}`]
   if (fleet.target) lines.push('', `merges into **${fleet.target}**${roots.size ? ` · worktrees under ${[...roots].join(', ')}` : ''}`)
   if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · --status --archived for the latest 20`)
   // The mean time per lane of the recently landed features that recorded it (builder 4.6+).
@@ -502,4 +529,16 @@ export async function waitForCommand(cmd, { env = process.env, timeoutMs = 18000
     if (waited >= timeoutMs) return false
     await sleep(everyMs)
   }
+}
+
+/**
+ * A run's stream-json `system/init` event without the builder plugin loaded → why, else null.
+ * Claude Code documents that `--bare` "will become the default for -p", and bare mode skips plugin
+ * hooks (the PR lock) and OAuth sign-in — a fleet run without builder would build with none of its
+ * rules. Anything that isn't an init event, or an init event that names no plugins, is not judged.
+ */
+export function initWithoutBuilder(ev) {
+  if (ev?.type !== 'system' || ev.subtype !== 'init' || !Array.isArray(ev.plugins)) return null
+  if (ev.plugins.some((p) => p?.name === 'builder')) return null
+  return 'the session started without the builder plugin loaded (bare mode, or the plugin is disabled for this repo) — its skills and the PR lock are missing, so the run was stopped. Check `claude plugin list`, and that agent_walk.claude_args has no --bare'
 }

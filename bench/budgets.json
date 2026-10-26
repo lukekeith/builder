@@ -1,0 +1,9 @@
+{
+  "_about": "Turn budgets per step: the median turns of the 4.14.0 baseline runs (tags 2026-10-24-1901, share 2026-10-24-1927). The report marks a step that goes over with ⚠ — the overhead fit is ~2.4 s per call, so a turn saved is time saved. Lower a budget when a release beats it.",
+  "tags": {
+    "builder": { "/builder:brainstorm": 19, "/builder:resume": 16, "builder:audit": 10, "builder:plan": 7, "builder:build": 23, "builder:agent-walk": 6, "builder:verify": 13, "builder:ship": 4 }
+  },
+  "share": {
+    "builder": { "/builder:brainstorm": 25, "/builder:resume": 24, "builder:audit": 16, "builder:plan": 17, "builder:build": 45, "builder:agent-walk": 10, "builder:verify": 22, "builder:ship": 4 }
+  }
+}

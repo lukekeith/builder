@@ -1,6 +1,6 @@
 ---
 name: agent-walk
-description: The unattended stand-in for the human walk and sign-off, run only under --agent-walk (agent mode — /builder:agent and /builder:fleet) — a fresh subagent works the feature's walk.md item by item with the driver the project config's agent_walk block names, records PASS/FAIL per item with evidence, and this step writes an AGENT-PASS or AGENT-PROBLEMS verdict. On AGENT-PASS it writes the AGENT sign-off and condenses the folder, so verify, the PR, CI, ship and merge follow unattended. Never a human sign-off — every record says the feature is not human-tested. Use when /builder:resume routes here under --agent-walk.
+description: Agent mode's stand-in for the human test — a fresh agent works the feature's walk.md item by item, records pass or fail with evidence, and on a pass writes an agent sign-off that says the feature is not human-tested. Run by /builder:resume under --agent-walk.
 ---
 
 # `/builder:agent-walk` — an agent walks it, and says so
@@ -47,14 +47,14 @@ levers say. `end` sets how much is walked:
 | `state: built`, `walk: none`, `ready: yes <sha>` and no code commit since that sha (manifest/doc-only commits don't count) | run |
 
 🔴 **The walk subagent runs in the foreground** and its report is read in this run — never
-`run_in_background` (resume §`--agent-walk`: a headless run exits when its turn ends).
+`run_in_background` (resume's AGENT-MODE.md: a headless run exits when its turn ends).
 
 ## 1. Which round
 
 `<WS>` is `"$(<builder>/scripts/workspace <feature>)"` — re-resolve it inline in every command
 (REFERENCE §The scripts). The round is one more than the highest existing `<WS>/agent-walk/round-*`.
 A failed round is work, not a stop: its items become fixes, `/builder:resume` works them and routes
-back here (resume §`--agent-walk`: agent mode builds to done). **From round 3 on**, the dispatch for
+back here (resume's AGENT-MODE.md: agent mode builds to done). **From round 3 on**, the dispatch for
 each item that failed in the round before also names
 [`systematic-debugging`](../systematic-debugging/SKILL.md) — the fix that was tried didn't hold, so the next one starts from the cause. Only
 when **five rounds in a row have failed since the last unpark** does the next one park instead. The

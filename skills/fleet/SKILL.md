@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Take a batch of written specs through the whole /builder:* pipeline unattended — one worktree and branch per spec, a parallel build lane, a one-at-a-time walk lane through the dev environment (an isolated one per walk when agent_walk.start is set), an agent walk and agent sign-off in place of the human's, verify, and a MERGE of every finished feature into the project's merge_into branch (default base_branch; --into for one run), its worktree and branch then removed; anything that would ask a question takes its recommendation; merge conflicts, red gates, failed walks and a dev env that won't start are worked by agents, and a feature parks only on a decision its spec leaves open. Launches scripts/fleet.mjs in the background and reports its table. Use when the user wants several specs built unattended, overnight, or "sent to an orchestrator"; --status shows the last run.
+description: Runs several written specs through the whole pipeline unattended, each in its own worktree, and merges each finished feature; agents work conflicts and failures. Use when the user wants several specs built unattended or overnight; --status shows the last run.
 ---
 
 # `/builder:fleet` — many specs, no one watching
@@ -12,7 +12,7 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 
 **What it will do, per spec:** a worktree at `<agent_walk.worktrees>/<feature>` on a new branch
 `builder/<feature>` (or the branch it is already underway on); `claude -p "/builder:resume --path <spec> --agent-walk"` runs until the feature
-is **shipped** (resume §`--agent-walk`, §Ship in agent mode) — or, only when its spec leaves a
+is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the fleet **merges
 it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
 agent-verified, not human-tested` — and removes its worktree and `builder/` branch. **Migrations
@@ -71,7 +71,9 @@ it shows as raw pipes), then the `## Parked` list if there is one — each parke
 and its `next:` step — then any notes as bullets. Change no cell. Then stop.
 
 The table is rendered live: its `Progress` column reads each feature's manifest, plan and ledger from
-its worktree at that moment, and the heading's bar is the mean across the rows. It measures **steps,
+its worktree at that moment, and the heading's bar covers **the whole run**: every feature in it,
+each one this run merged counted at 100% (`N merged this run` in the heading) — so a feature that
+lands never pulls the bar down, and a spec added while the fleet runs grows the total. It measures **steps,
 not time** — the manifest state sets a floor (planned 15, built 75, verified 90, merged 100) and inside
 the build the bar climbs with `Task N: complete` ledger lines against the plan's tasks (`build 5/9`).
 Half the bar is not half the wall-clock: the walk lane is one at a time and a task takes as long as it
@@ -199,6 +201,12 @@ feature after another, each part but the last ending `A. Looks right — next pa
 wrong — say what`. B on a merged feature → a fix is new work (`/builder:brainstorm`), or
 `git revert -m 1 <merge>` takes it back out; say which fits. A parked feature gets no review — it
 did not land.
+
+**Then the lessons the agents proposed** — each merged SPEC's `lesson for §Standing traps` rows (ship
+§At ship). None → nothing. Otherwise list them, one line each with its feature, and one
+AskUserQuestion, multi-select, every lesson an option: the ones picked are appended to the config's
+`## Standing traps` as `- <the line> (<feature>, <date>)` and committed on the current branch,
+`chore(builder): standing traps from the fleet`; the rest stay in their SPECs.
 
 ~~~
 📍 fleet: <n> merged into <branch> · <m> parked · <k> failed — next: test <branch>; settle the parked ones, then /builder:fleet again

@@ -1,6 +1,6 @@
 ---
 name: signoff
-description: Record the human's own hands-on verdict on a built feature — the durable spend of the /builder:* PR lock. Typed by the human ONLY; an agent can never grant, infer, or simulate it. On "it works" it writes a dated, sha-bound sign-off into the feature's MANIFEST.md and SPEC header, condenses the folder, and unlocks the verify+PR steps; on "found problems" it records each finding as a §Fixes task and the lock stays closed; on "works, but not yet" it records the sign-off AND a hold, so nothing pushes until the human says go. In a multi-app feature it captures WHICH apps were exercised, so a half-walked feature is recorded as PARTIAL rather than passing.
+description: Records the human's own verdict after testing a built feature — it works, found problems, or works but hold. Typed by the human only, never by an agent.
 disable-model-invocation: true
 ---
 

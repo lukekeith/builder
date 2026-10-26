@@ -1,6 +1,6 @@
 ---
 name: verify
-description: The gate of the /builder:* pipeline — verifies a built feature against its spec across every in-scope app and issues a READY / INCOMPLETE verdict with evidence. Runs AFTER the human's walk. The pipeline's ONE deep pass: every affected app's gate suite fresh, consumer parity against the frozen contract, whatever the project config's deep set names, the cross-app E2E walk, a pattern-regression sweep against the config's house rules, and a spec-parity spot-check. Never opens a PR. Use when the user asks to verify a built feature or check whether a feature is done.
+description: The final check on a built feature after it was tested — every affected app's full gates, contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
 ---
 
 # `/builder:verify` — is it actually done?
@@ -30,7 +30,7 @@ lane may have run the deep block already, and `gate.mjs` quotes that run when th
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that
 may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code
-(resume §`--agent-walk`). A verify that ends its turn "waiting on the gates" is lost when the headless
+(resume's AGENT-MODE.md). A verify that ends its turn "waiting on the gates" is lost when the headless
 run exits.
 
 **The test plan.** Read the levers on every verify, in chat and under `--agent-walk` alike:
@@ -253,6 +253,10 @@ Pick up where you left off any time: /builder:resume --path <folder>
 
 Without a config `agent_walk:` block only Step by step is left: the single line
 `📍 <feature>: verify <…> — next: /builder:resume --path <folder> · or say go`.
+
+**Under `--agent-walk`, a READY goes straight on** into resume's AGENT-MODE.md §Ship in agent mode in this turn — no
+footer, no return to the route table (REFERENCE §Under `--auto` and `--agent-walk`: adjacent steps
+run as one). The hand-off above is then the six-line closing report, not the evidence list.
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
 numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
