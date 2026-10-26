@@ -119,7 +119,9 @@ test('--dry-run prepares one copy, prints the sessions per config with their pro
   assert.match(r.stdout, /gsd: 4 sessions/)
   assert.match(r.stdout, /\/gsd-new-project --auto @REQUEST\.md/)
   assert.match(r.stdout, /--plugin-dir/)
-  assert.equal(r.calls.length, 3, 'one probe per pipeline')
+  assert.match(r.stdout, /^baseline: 1 session/m)
+  assert.match(r.stdout, /plugins a baseline session loads:/)
+  assert.equal(r.calls.length, 4, 'one probe per pipeline')
   assert.ok(r.calls.every((c) => c.startsWith('reply with the single word ok')), 'only the probes')
   assert.match(r.stdout, /plugins a builder session loads:\n\s+stub-plugin 0\.0\.0/)
   assert.match(r.stdout, /plugins a gsd session loads:/)
@@ -626,4 +628,12 @@ test('--dry-run of a feature on another fixture copies that fixture', () => {
   const dry = join(root, 'tmp', 'dry-share', '_dry')
   assert.ok(existsSync(join(dry, 'apps', 'server', 'src', 'server.mjs')))
   assert.doesNotMatch(readFileSync(join(dry, '.claude', 'builder.md'), 'utf8'), /\{claude_args\}/)
+})
+
+test('expectOf: a feature meant for the small path says so in feature.json', async () => {
+  const { expectOf } = await import('../bench.mjs')
+  const dir = mkdtempSync(join(tmpdir(), 'feat-'))
+  assert.equal(expectOf(dir), null)
+  writeFileSync(join(dir, 'feature.json'), '{ "expect": "in-chat" }')
+  assert.equal(expectOf(dir), 'in-chat')
 })
