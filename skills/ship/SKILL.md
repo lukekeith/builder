@@ -133,6 +133,27 @@ header flip would leave a half-shipped tree.
 
 Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
 
+**Before the ship call, one lesson for next time.** The config's §Standing traps is what this repo
+has already paid to learn, and every step reads it — so a cost this feature paid goes there, or the
+next feature pays it again. Read what it cost: `## Fixes` rows, `PARKED.md` when there is one, the
+ledger's fix rounds (`<WS>/progress.md` — the ship call removes the workspace, so read it first) and
+§Findings rows marked `build-time risk`. **A lesson qualifies only when all three hold:**
+
+- it cost this feature a fix round, a red gate, a failed walk or a park;
+- it is about the repo, not this feature — a test that needs a service started, a convention the code
+  enforces, a command that must run first — so the next feature here would hit it too;
+- neither §Standing traps nor §House rules already says it.
+
+At most one, as one line a newcomer could act on. None qualifies → nothing, and say nothing.
+
+- **A human ship** → show the line, then one AskUserQuestion: **Add it to §Standing traps
+  (Recommended)** · **Skip**. Add → append `- <the line> (<feature>, <date>)` under the config's
+  `## Standing traps` (replacing a `- none recorded yet` line) and commit it on its own,
+  `chore(builder): standing trap from <feature>`, before the ship call — it rides the same PR.
+- **Agent form** → never edit the config: the human hasn't seen it. Add a §Findings & risks row to
+  the SPEC — `| L1 | lesson for §Standing traps: <the line> | proposed |` — before the ship call,
+  which commits it with the folder. The fleet's report offers it to the human (fleet §5).
+
 The collision check, steps 1–5 and the commit are one call, after you have confirmed the precondition:
 `node <builder>/scripts/condense.mjs <folder> --ship --pr <N>` — agent form
 `node <builder>/scripts/condense.mjs <folder> --ship --into <branch>`. It refuses unless `verify:
