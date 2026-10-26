@@ -34,6 +34,14 @@ mechanism, *Gates and the walk env*). An e2e suite with no `@walk` runs against 
 config points at, which under the fleet is not this feature's env: say so in the verdict rather than
 reading its failures as the feature's, and name `@walk` as the fix. **`gate.mjs` exit 3** — the walk
 env stopped answering after a set — is not a red gate: write the restart line and end the run.
+**Under `--no-dev-env`** (a batched fleet's parallel lanes) there is no env here and verify never
+drives the app. The `@walk` lines ran once for the walk batch: `<WS>/walk-gates.md` holds that run —
+the walk branch's sha, the batch's features, the exit and the output. Exit 0 on code no fix has
+changed since → quote it as item 3's `@walk` evidence. A red run: judge from the output whether a
+failing test is this feature's (it exercises what this diff changed) — this feature's → a `## Fixes`
+row; another feature's → say so, and it is not this feature's to hold. Anything that needs the app
+driven on code changed since the walk — item 10, a re-run `@walk` line — is a re-walk, never a run
+here: AGENT-MODE.md §Batched walks.
 
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that

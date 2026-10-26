@@ -7,6 +7,7 @@ description: Agent mode's stand-in for the human test — a fresh agent works th
 
 Invocation: **`/builder:agent-walk --path <folder> [--ticket <id>]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — ignore any flag this step does not use.
+**`--batch <folder>…`** — the fleet's batched walk: several features in one walk. §Batched walks.
 
 **Read the docs in one call:** `node <builder>/scripts/docs.mjs agent-walk` — builder:ship §At
 sign-off, REFERENCE §Condense · §How a park reads · §The park record · §Agent model tiering, and
@@ -154,6 +155,45 @@ the run. The fleet treats it as a human step; your `/builder:signoff` lands it.
 - Commit: `docs(<ticket-or-feature>): <feature> — agent walk round <n>: <k> fixes` — after the
   `## Fixes` edit, `node <builder>/scripts/advance.mjs <folder> --set "next=/builder:resume --path <folder>" --add <folder>/SPEC.md --head --commit "docs({key}): {feature} — agent walk round <n>: <k> fixes"`.
 - `/builder:resume` works them (§Working `## Fixes`), re-runs walk readiness, and routes back here.
+
+## Batched walks (`--batch`)
+
+The fleet, with a walk env of its own (`agent_walk.start`), walks every feature waiting for it — up
+to `agent_walk.batch` (default 8) — **together**: it merges their branches onto the target in its
+walk worktree, brings the env up once, and runs this step once, there, as
+`/builder:agent-walk --batch --into <target> <folder>…` — each `<folder>` the absolute path of one
+feature's folder in **its own** worktree. The env serves the walk worktree, so every feature in the
+batch is in the running app. Do, in order:
+
+1. **Walk readiness, once, for the batch** — REFERENCE §Walk readiness under the fleet, run **here**
+   (the walk worktree): the migrations every feature adds
+   (`git diff --name-only --diff-filter=A <target>...HEAD -- <migrations path>`) applied to the walk
+   env's database, regeneration, then `agent_walk.smoke`. Never start or restart the env; a
+   restart-class change → write `blocked: "walk env needs a restart — <what>"` into **every** batched
+   feature's manifest still waiting to walk (`advance.mjs <folder> --set 'blocked="…"' --head --commit
+   "chore({key}): {feature} — walk env needs a restart"`) and end the run — the fleet restarts it
+   without a reset and runs this again.
+2. **Each feature still at `state: building` with `ready: pending`** — its walk script is in its
+   workspace (the build lane wrote it; missing → `node <builder>/scripts/walk-script.mjs <folder>`);
+   move it on: `node <builder>/scripts/advance.mjs <folder> --set state=built --set "ready=yes
+   <YYYY-MM-DD> <its HEAD>" --set "next=/builder:agent-walk --path <folder>" --head --commit built`.
+3. **Per feature, the precondition table and §The test plan** — a feature whose `end` is `none` or
+   `touched` signs off `--no-walk` now (§The test plan); a paused one (§1, *Between rounds*) parks as
+   revising; a feature whose rounds are spent parks (§1). The rest are walked.
+4. **One walker for all of them** — `node <builder>/scripts/dispatch.mjs walk-batch <folder>…` (run
+   here; the folders being walked) writes one brief: every walk script, each feature's scope and
+   round (a round after its first walks only what its fix could change), walked **by screen across
+   every feature**, each feature's report in its own `<WS>/agent-walk/round-<n>/`. One Agent call,
+   foreground.
+5. **Per feature, §3 and §4** — judge its own report and write it in its own folder: the sign-off
+   (`condense.mjs <folder> --signoff agent`, run with that folder's path — every script resolves the
+   worktree from it) or its `## Fixes` rows. A failure the walker attributes to another feature in
+   the batch is still fixed in the feature it failed in, and the fix's rule says what was seen.
+6. **End the run** with one line per feature — its verdict and its next step. Nothing else here: the
+   fleet routes each by its manifest — signed off to verify and ship, fixes to the parallel lanes,
+   then back into a later batch.
+
+The walk worktree and its branch are the fleet's scratch: never commit there, never merge it.
 
 ## Hand off
 

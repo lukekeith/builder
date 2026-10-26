@@ -35,6 +35,8 @@
  *   final-review           review-package <merge-base with the target> HEAD → review-final.diff;
  *                          the ledger's deferred-minor and parked lines; the SPEC path; the
  *                          description from SPEC §Idea's Why and the manifest's apps.
+ *   walk-batch <folder>…   one walker for a fleet walk batch (agent-walk §Batched walks): every
+ *                          feature's walk.md, scope and report, walked together by screen.
  *   agent-walk             the walker's brief exactly as agent-walk §2 lists it: walk.md, the driver
  *                          verbatim (or the no-driver rule), §Environment landmines, the round's output
  *                          directory and report contract, the scope `end` sets; from round 3, the items
@@ -582,11 +584,94 @@ function agentWalk(f, a, ws) {
   return { file: join(ws, `dispatch-agent-walk-round-${n}.md`), body: lines.join('\n') + '\n', description: `Agent walk round ${n}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
 }
 
+/**
+ * One walker for a batch of features the fleet merged into one walk branch (fleet §Batched walks):
+ * every feature's walk.md and scope, its round, its own report — walked together, by screen, in one
+ * session against the one env serving all of them. Written to the walk worktree's workspace.
+ */
+function walkBatch(features, a, root) {
+  const walks = []
+  for (const f of features) {
+    const end = parseTestPlan(f.manifest).levers.end
+    if (end === 'none' || end === 'touched') continue // no walker: agent-walk signs it off --no-walk
+    const ws = f.ws()
+    const walk = join(ws, 'walk.md')
+    if (!existsSync(walk)) throw new Error(`no ${walk} — the build writes it (scripts/walk-script.mjs)`)
+    const dir = join(ws, 'agent-walk')
+    const rounds = existsSync(dir) ? readdirSync(dir).map((d) => +(/^round-(\d+)$/.exec(d)?.[1] ?? NaN)).filter(Number.isInteger) : []
+    const n = (rounds.length ? Math.max(...rounds) : 0) + 1
+    walks.push({ f, end, walk, n, out: join(dir, `round-${n}`), scope: rewalkScope(f, dir, n) })
+  }
+  if (!walks.length) throw new Error('no feature in this batch needs a walker (every test plan ends at none or touched)')
+  const cfg = walks[0].f.cfg
+  const driver = cfg?.agentWalk?.driver
+  const landmines = configSection(cfg, 'Environment landmines').trim()
+  const lines = [
+    `You are the agent walker for ${walks.length} features at once — an independent check of builds you did not write. The app you drive serves the fleet's walk branch, which holds every one of them merged onto the target: one running env, every feature in it. Work in ${root}: run every command from there.`,
+    '',
+    '## How you drive it',
+    '',
+    driver || 'there is no UI driver: exercise each item through its endpoints, the server log and the database, and mark any item that can only be checked by looking at the screen `UNVERIFIABLE`.',
+    '',
+    "## Environment landmines (the project config's, verbatim)",
+    '',
+    landmines || 'The project config has no §Environment landmines section.',
+    '',
+    '## Walk by screen, across every feature',
+    '',
+    "Read every walk script below first. Then group ALL their items — whichever feature each belongs to — by the screen or component it exercises, and walk each screen once: reach it, check every item on it from every feature in order, one app session, one launch. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving each feature's items from a fresh start is exactly the cost this batch exists to remove.",
+  ]
+  for (const w of walks) {
+    lines.push(
+      '',
+      `## ${w.f.feature} — round ${w.n}`,
+      '',
+      `Walk script: ${w.walk}`,
+      w.end === 'risk'
+        ? 'Scope: every `[risk]` item and every step of the `## Cross-app (verify E2E)` section — say in the report that the other items were out of scope (tests: end=risk).'
+        : 'Scope: **every** item — the `## Cross-app (verify E2E)` section too, when it is there.',
+      ...w.scope,
+      '',
+      `Evidence: ${w.out}/ (create it). Report: ${join(w.out, 'report.md')} — first line \`sha: <${w.f.feature}'s HEAD>\` (\`git -C ${w.f.root} rev-parse --short HEAD\` — the feature's own code, which this walk branch holds), then \`walked-in: <the walk branch's HEAD>\`, then a table \`# · App · Item · Result · Evidence\` with ${w.f.feature}'s items only, then one line: \`verdict: PASS\` or \`verdict: PROBLEMS (<k>)\`.`,
+    )
+  }
+  lines.push(
+    '',
+    '## Rules',
+    '',
+    '- For each item record `PASS`, `FAIL` or `UNVERIFIABLE`, what you did, what you saw, and its evidence files — screenshots `NN-<slug>.png`, console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.',
+    '- An item fails in the feature whose walk script lists it. When a failure looks caused by ANOTHER feature in the batch (it touches what that one changed), say so in its row — the fix is judged in the feature it fails in.',
+    '- Never edit code, never commit, never touch any manifest or SPEC.',
+    "- The `## Cross-app (verify E2E)` sections are walked like every other item: one row per step, `#` = `E<k>`, App = `cross-app`, with its evidence.",
+    "- Run no gates — no test suite, no build, no gate.mjs. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
+  )
+  if (a.context) lines.push('', a.context.trim())
+  const ws = join(root, '.builder', '_walk')
+  return { file: join(ws, 'dispatch-walk-batch.md'), body: lines.join('\n') + '\n', description: `Agent walk — batch of ${walks.length}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
+}
+
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
 
 async function main(argv) {
   const a = parseArgs(argv, { bool: ['final'] })
   const [kind, folder] = a._
+  if (kind === 'walk-batch') {
+    const folders = a._.slice(1)
+    if (!folders.length) {
+      console.error('usage: dispatch.mjs walk-batch <folder>… [--context "<one paragraph>"]   (run in the fleet\'s walk worktree)')
+      return 2
+    }
+    const fs = folders.map((d) => openFeature(d))
+    for (const f of fs) if (!f.cfg) throw new Error(f.cfgError)
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
+    const r = walkBatch(fs, a, root)
+    writeAtomic(r.file, r.body)
+    console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
+    console.log(`Agent call — description: ${r.description}`)
+    console.log(`  model: ${r.model}`)
+    console.log(`  prompt: Read ${r.file} and do what it says.`)
+    return 0
+  }
   if (!kind || !folder || !KINDS.includes(kind)) {
     console.error(`usage: dispatch.mjs <${KINDS.join('|')}> <folder> [--task N | --final] [--round N] [--context "<one paragraph>"] [--findings "<text>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]`)
     return 2

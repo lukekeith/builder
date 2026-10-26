@@ -37,7 +37,7 @@ test('handoff write: the build lane\'s end state — state, head, gates per app,
   assert.match(h, /^tests: slice=own end=risk review=end$/m)
   assert.match(h, new RegExp(`- notes — fast: PASS at ${r.head} \\(2026-10-23T13:47:00.000Z\\) — no code change since`))
   assert.match(h, /- deep set: none configured/)
-  assert.match(h, /walk\.md — 12 per-app items \(11 \[risk\]\) \+ cross-app E1–E7/)
+  assert.match(h, /walk\.md — 7 per-app items \(7 \[risk\]\) · /)
   assert.match(h, /Ruling: list --tag a --tag Bad reports invalid tag/)
   assert.match(h, /Task 2: minor \(deferred\): show calls tagsOf twice/)
   assert.match(h, /Deep set: none configured — nothing ran\./)

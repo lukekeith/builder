@@ -29,7 +29,10 @@ function makeRepo(features, { reset, stop, lines = [], manifest = [] } = {}) {
   )
   for (const f of features) {
     mkdirSync(join(root, 'docs/features', f), { recursive: true })
-    writeFileSync(join(root, 'docs/features', f, 'MANIFEST.md'), `size: md\nstate: spec\nnext: /builder:resume --path docs/features/${f}\n${manifest.map((l) => `${l}\n`).join('')}`)
+    // A test's own manifest line replaces the default with its key, never sits beside it.
+    const keys = new Set(manifest.map((l) => l.split(':')[0]))
+    const base = ['size: md', 'state: spec', `next: /builder:resume --path docs/features/${f}`].filter((l) => !keys.has(l.split(':')[0]))
+    writeFileSync(join(root, 'docs/features', f, 'MANIFEST.md'), [...base, ...manifest].map((l) => `${l}\n`).join(''))
   }
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'init')
@@ -829,7 +832,7 @@ const alive = (pid) => {
     return false
   }
 }
-async function walkEnvRepo(feature, { smoke } = {}) {
+async function walkEnvRepo(feature, { smoke, extra = [], manifest = [] } = {}) {
   const port = await freePort()
   const scratch = mkdtempSync(join(tmpdir(), 'fleet-env-'))
   const server = join(scratch, 'server.mjs')
@@ -846,10 +849,11 @@ async function walkEnvRepo(feature, { smoke } = {}) {
     `import { connect } from 'node:net'\n` +
       `connect(Number(process.env.WALK_PORT), '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))\n`
   )
-  const root = makeRepo([feature], {
-    lines: [`env: WALK_PORT=${port} WALK_PID=${pidFile}`, `start: node ${server}`, `smoke: ${smoke ?? `node ${probe}`}`],
+  const root = makeRepo([feature].flat(), {
+    lines: [`env: WALK_PORT=${port} WALK_PID=${pidFile}`, `start: echo up >> ${join(scratch, 'starts')}; exec node ${server}`, `smoke: ${smoke ?? `node ${probe}`}`, ...extra],
+    manifest,
   })
-  return { root, pidFile }
+  return { root, pidFile, starts: () => (existsSync(join(scratch, 'starts')) ? readFileSync(join(scratch, 'starts'), 'utf8').trim().split('\n').length : 0) }
 }
 const FAST = { FLEET_SMOKE_INTERVAL_MS: '100' }
 
@@ -1669,4 +1673,48 @@ test('a branch that changes .claude/builder.md parks as a human step and never l
   assert.doesNotMatch(readFileSync(join(root, '.claude/builder.md'), 'utf8'), /loosened by an agent/, 'main never got it')
   // A human step: the fleet's auto-unpark never retries it — no run beyond the eight that got it there.
   assert.equal(r.calls.filter((l) => l.startsWith('start a ')).length, 8, r.calls.join('\n'))
+})
+
+
+// ---- 5.2: batched walks ------------------------------------------------------------------------
+
+test('batched walks: two features walk together — one walk branch, one env, one session per step — then verify and ship in the pool', async () => {
+  // both already built, so both wait for the walk lane when it starts: one batch
+  const { root, starts } = await walkEnvRepo(['a', 'b'], { manifest: ['state: built', 'tests: slice=own end=risk review=end'] })
+  const r = runFleet(root, ['a', 'b'], { a: ['signed-off', 'verified', 'SHIP'], b: ['signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const batches = r.calls.filter((l) => l.startsWith('batch '))
+  assert.ok(batches.length >= 1, r.calls.join('\n'))
+  assert.ok(batches.every((l) => / cwd=_walk lane_env=walk$/.test(l)), batches.join('\n'))
+  assert.ok(batches.some((l) => /^batch (a,b|b,a) /.test(l)), 'both walked in one batch: ' + batches.join('\n'))
+  // verify (signed-off) and ship (verified) ran in the pool — build lane, no env — not in the walk lane
+  assert.ok(r.calls.some((l) => /^start a build .* verified /.test(l)), r.calls.join('\n'))
+  assert.ok(r.calls.some((l) => /^start b build .* verified /.test(l)), r.calls.join('\n'))
+  // the env came up once for the batch (plus none per feature)
+  assert.equal(starts(), 1, `env starts: ${starts()}`)
+  // the walk worktree and its branch are gone when the fleet is
+  assert.equal(git(root, 'branch', '--list', 'builder/_walk'), '')
+})
+
+test('batched walks: agent_walk.batch 1 walks one feature at a time, as before', async () => {
+  const { root, starts } = await walkEnvRepo(['a', 'b'], { extra: ['batch: 1'], manifest: ['state: built', 'tests: slice=own end=risk review=end'] })
+  const r = runFleet(root, ['a', 'b'], { a: ['signed-off', 'verified', 'SHIP'], b: ['signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.equal(r.calls.filter((l) => l.startsWith('batch ')).length, 0)
+  assert.equal(starts(), 2, 'one env per feature')
+})
+
+test('batched walks: a walk that finds problems sends the fixes to the pool, and the feature rejoins a later walk', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'], { manifest: ['state: built', 'tests: slice=own end=risk review=end'] })
+  // a: the batch's walk finds problems — an open ## Fixes row, the state untouched; the pool works it
+  // and sets ready pending again; a later walk signs it off.
+  const r = runFleet(root, ['a', 'b'], { a: ['FIXES', 'FIXED', 'signed-off', 'verified', 'SHIP'], b: ['signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.status, 0, r.stderr + r.calls.join('\n'))
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.ok(r.calls.some((l) => /^start a build .* FIXED /.test(l)), 'the fix ran in the pool: ' + r.calls.join('\n'))
 })

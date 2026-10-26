@@ -13,7 +13,24 @@ environment, and an agent's config fix went into a copy the fleet never reads. *
 in `.claude/builder.md`** — `@walk` is opt-in. Investigation: every code path, `file:line`, in this
 release's commit history.
 
+**Walks, much leaner** (`docs/specs/2026-10-26-lean-walks-design.md`). makeready's one-screen chart
+feature was walked as 18 checks a round — its 9 items and the same script again as cross-app steps —
+re-walked in full each round from a fresh launch per item, ~27 min a round. d2m's 20-feature fleet
+spent 623 min in the one-at-a-time walk lane, 339 of them in verify.
+- **One app in scope → the verification script is the walk.** No cross-app section repeating it;
+  the per-app test items are the gates' to prove. A one-app feature's `end=risk` now walks its
+  `[risk]` items only.
+- **A re-walk covers only what the fix changed** — the items that didn't pass, plus a passed one the
+  fix's diff touches; every other pass is carried with its evidence.
+- **The walker walks by screen** — every item on a screen in one visit, one launch.
+- **Batched walks** — with `agent_walk.start`, the walk lane takes every feature waiting (up to
+  `agent_walk.batch`, default 8; 1 = one at a time) into one walk branch, brings the env up once,
+  and runs one walker across all of them by screen; each verdict lands in its own feature.
+- **Verify and a walk's fixes leave the walk lane** — they run in the parallel lanes with no env;
+  `@walk` gates run once per batch against the batch's env, into each feature's `walk-gates.md`.
+
 **Added:**
+- **`agent_walk.batch`** — how many features one walk takes (default 8).
 - **`@walk` on a gate line** — the line needs the running app (an e2e suite). Under the fleet it runs
   in verify against the walk env, with `agent_walk.env`; the build lane skips it. Outside the fleet
   it changes nothing.

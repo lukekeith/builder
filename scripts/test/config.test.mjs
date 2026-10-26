@@ -36,6 +36,7 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     smoke: null,
     keepLogs: 30,
     autoUnpark: 2,
+    batch: 8,
   })
 })
 

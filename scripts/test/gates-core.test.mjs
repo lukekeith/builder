@@ -547,3 +547,16 @@ test('gate.mjs in the walk lane polls the walk env\'s smoke after a set, and exi
   assert.equal(down.status, 3)
   assert.match(down.stdout, /⚠ the walk env stopped answering after server — fast \(smoke: false\)[\s\S]*walk env needs a restart — broken by the server — fast gates/)
 })
+
+test('gate.mjs --walk-only runs only the deep set\'s @walk lines; none → says so, green', () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'ran.txt')
+  const root = configured(`### server — fast\n\n\`\`\`\necho fast >> ${out}   # x\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n\n### Deep set\n\n\`\`\`\necho deep-unit >> ${out}   # integration\necho deep-e2e >> ${out}   # the browser suite @walk\n\`\`\`\n`)
+  const r = spawnSync('node', [GATE, '--walk-only'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, BUILDER_LANE: 'walk' } })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /▶ @walk gates/)
+  assert.equal(readFileSync(out, 'utf8'), 'deep-e2e\n')
+  const none = configured(`### server — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  const n = spawnSync('node', [GATE, '--walk-only'], { cwd: none, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: none } })
+  assert.equal(n.status, 0)
+  assert.match(n.stdout, /no @walk line in the deep set/)
+})
