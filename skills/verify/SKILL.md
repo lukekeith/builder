@@ -27,6 +27,22 @@ between Bash calls. **The deep set's verdict is written here and nowhere else** 
 lane may have run the deep block already, and `gate.mjs` quotes that run when the tree is unchanged
 (REFERENCE §Quality gates).
 
+**`@walk` lines and the walk env.** Under the fleet, verify runs in the walk lane with the walk env
+up: a deep line marked `@walk` (an e2e suite) runs against it with `agent_walk.env`; every other
+line runs with the test env — never the walk env's database (REFERENCE §Quality gates — the
+mechanism, *Gates and the walk env*). An e2e suite with no `@walk` runs against whatever its own
+config points at, which under the fleet is not this feature's env: say so in the verdict rather than
+reading its failures as the feature's, and name `@walk` as the fix. **`gate.mjs` exit 3** — the walk
+env stopped answering after a set — is not a red gate: write the restart line and end the run.
+**Under `--no-dev-env`** (a batched fleet's parallel lanes) there is no env here and verify never
+drives the app. The `@walk` lines ran once for the walk batch: `<WS>/walk-gates.md` holds that run —
+the walk branch's sha, the batch's features, the exit and the output. Exit 0 on code no fix has
+changed since → quote it as item 3's `@walk` evidence. A red run: judge from the output whether a
+failing test is this feature's (it exercises what this diff changed) — this feature's → a `## Fixes`
+row; another feature's → say so, and it is not this feature's to hold. Anything that needs the app
+driven on code changed since the walk — item 10, a re-run `@walk` line — is a re-walk, never a run
+here: AGENT-MODE.md §Batched walks.
+
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that
 may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code
@@ -165,6 +181,11 @@ a visual diff, and a renamed element changes what the walk does.
     walk script, executed live. Can't bring the stack up → **BLOCKED-on-environment**, never READY.
     Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
     SCOPED, and quote the earlier run when the diff didn't earn a new one.
+    **One app in scope:** there is no cross-app walk to run — the feature's walk script *was* the
+    verification script (`walk-script.mjs`), so the agent walk's report covers this item exactly as
+    `E` rows would: its rows for the round the sign-off header names, every in-scope row `PASS` (a
+    carried row counts) and no code changed since its `sha:`. A human-walked single-app feature: the
+    walk the sign-off records covers it.
     **Under `--agent-walk`, the agent walk may already have covered it.** When `walk.md` has a
     `## Cross-app (verify E2E)` section, read `<WS>/agent-walk/round-<n>/report.md` for the round the `🤖 AGENT SIGNED OFF … round <n>` header names
     — never simply the latest round — and take `<walk sha>` from its `sha:` line, the code that

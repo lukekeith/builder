@@ -137,6 +137,13 @@ if (!AW.claudeArgs) {
 }
 const PARALLEL = Number(opt('--parallel')) || AW.parallel
 const WORKTREES = AW.worktrees ? resolve(ROOT, AW.worktrees) : join(dirname(ROOT), `${basename(ROOT)}.fleet`)
+// Batched walks: with a walk env of its own (agent_walk.start), the walk lane takes every feature
+// waiting to walk — up to agent_walk.batch — into one combined walk branch, one env, one walker.
+const BATCH = Number(process.env.FLEET_WALK_BATCH) || AW.batch
+const BATCHED = Boolean(AW.start) && BATCH > 1
+/** The batch's own worktree and branch: the target with every batched feature merged in. Never merged. */
+const WALK_WT = join(WORKTREES, '_walk')
+const WALK_BRANCH = 'builder/_walk'
 
 const git = (args, cwd = ROOT) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const tryGit = (args, cwd) => {
@@ -238,7 +245,18 @@ function envFor(feature, lane) {
   // worktree_env first, every lane: it is how each worktree's tests get their own database, which
   // is what lets `parallel` builds share a machine without sharing a test DB.
   for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = v.replaceAll('{feature}', feature)
-  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  // For gate.mjs (gates-core gateEnv): which lane this is, and — in the walk lane — what each
+  // agent_walk.env key holds in the build lane, so a gate line that isn't @walk gets the test env
+  // back instead of the walk env's database. BUILDER_WALK_SMOKE lets it notice a gate that broke
+  // the running env; BUILDER_CONFIG_ROOT makes it read the gate lines from this checkout's config.
+  env.BUILDER_LANE = lane === 'walk' ? 'walk' : 'build'
+  env.BUILDER_CONFIG_ROOT = ROOT
+  if (lane === 'walk') {
+    const back = Object.fromEntries(Object.keys(AW.env).map((k) => [k, env[k] ?? null]))
+    for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+    env.BUILDER_GATE_ENV = JSON.stringify(back)
+    if (AW.start && AW.smoke) env.BUILDER_WALK_SMOKE = String(AW.smoke).replaceAll('{feature}', feature)
+  }
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
@@ -488,7 +506,7 @@ if (flag('--dry-run')) {
   console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
-  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: one at a time`)
+  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}`)
   if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
   for (const f of fresh) {
     const mf = parseManifest(readManifest(ROOT, f))
@@ -588,6 +606,10 @@ const stopAll = (code) => {
   // A walk cut short still gets its dev env stopped: its `start` group first, then `stop`.
   for (const f of Object.values(fleet.features)) killStartSync(f)
   for (const [name, f] of Object.entries(fleet.features)) if (f.status === 'walking' && f.worktree) hook(AW.stop, f.worktree, name)
+  if (fleet.walkBatch?.startPgid) {
+    killStartSync(fleet.walkBatch)
+    if (existsSync(WALK_WT)) hook(AW.stop, WALK_WT, '_walk')
+  }
   save()
   unlock()
   process.exit(code)
@@ -607,7 +629,7 @@ process.on('uncaughtException', (e) => {
 // The fleet that left the stale lock may have left its headless runs behind — end them before
 // their features are queued again, or two runs would work one worktree.
 if (tookOverStaleLock) {
-  for (const f of Object.values(fleet.features)) {
+  for (const f of [...Object.values(fleet.features), ...(fleet.walkBatch ? [fleet.walkBatch] : [])]) {
     for (const pgid of [f.pgid, f.startPgid]) {
       if (!pgid) continue
       try {
@@ -653,11 +675,11 @@ const priorPark = (f) =>
       'Park again only if it still stands, with the line and the record rewritten per REFERENCE §How a park reads and §The park record.'
     : ''
 
-async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}${priorPark(fleet.features[feature])}`) {
+async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? '' : ' --no-dev-env'}${priorPark(fleet.features[feature])}`, rec = fleet.features[feature]) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
-  noteFacts(fleet.features[feature], feature) // the ship run removes the manifest and plan: read them first
+  if (rec === fleet.features[feature]) noteFacts(rec, feature) // the ship run removes the manifest and plan: read them first
   // A Claude Code auto-update swaps the binary out for a few seconds; wait it out rather than fail
   // the feature (the run would otherwise end `spawn claude ENOENT`, exit 127).
   if (!(await waitForCommand(CLAUDE))) console.error(`[fleet] ${CLAUDE} not found on PATH after 3 min — starting anyway`)
@@ -689,9 +711,9 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       clearTimeout(idle)
       raw.end()
       active.delete(child)
-      delete fleet.features[feature].pgid
+      delete rec.pgid
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
-      const timing = fleet.features[feature].timing ?? (fleet.features[feature].timing = [])
+      const timing = rec.timing ?? (rec.timing = [])
       timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null, tokens: tokensOf(result) })
       save()
       try {
@@ -715,7 +737,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     active.add(child)
     // Recorded so a fleet that takes over this one's stale lock can end the group.
     if (child.pid) {
-      fleet.features[feature].pgid = child.pid
+      rec.pgid = child.pid
       save()
     }
     // The raw stream goes to <log>.jsonl; the .log gets what a human reads — the run's own words
@@ -879,6 +901,9 @@ async function landNow(feature) {
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
+    // The config is the human's: a branch that changes it never lands it unseen.
+    const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
+    if (cfgDiff) return park(f, configParkReason(f.branch))
     if (f.worktree && existsSync(f.worktree)) {
       const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
       if (why) return park(f, why)
@@ -1014,6 +1039,7 @@ async function drive(feature, lane) {
       cap: RUN_CAP,
       progressed: snapshot(f.worktree, feature) !== before,
       folder: specOf(feature),
+      batched: BATCHED,
     })
     if (d.action === 'retry') {
       failures++
@@ -1066,8 +1092,7 @@ const groupAlive = (pgid) => {
  * True when the env is up. False when smoke never passed in time or `start` exited first — a dev
  * server that dies at once won't come back by waiting, so the exit ends the poll early.
  */
-async function startWalkEnv(feature) {
-  const f = fleet.features[feature]
+async function startWalkEnv(feature, f = fleet.features[feature]) {
   const log = join(DIR, 'logs', `${feature}-start.log`)
   mkdirSync(dirname(log), { recursive: true })
   f.startLog = log
@@ -1141,12 +1166,13 @@ function clearBlocked(wt, feature) {
   tryGit(['commit', '-qm', `chore(${feature}): walk env restarted by the fleet`, '--', join(specOf(feature), 'MANIFEST.md')], wt)
 }
 
-/** Reset, then start and smoke the walk env. Null when it is up; else what failed. */
-async function bringUpWalkEnv(feature) {
-  const f = fleet.features[feature]
-  if (!hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
+/** Reset, then start and smoke the walk env. Null when it is up; else what failed. A RESTART
+ *  mid-walk skips the reset: the walk's database already carries its migrations and its data, and a
+ *  reset can take minutes (a copy of the dev database). */
+async function bringUpWalkEnv(feature, { reset = true } = {}, f = fleet.features[feature]) {
+  if (reset && !hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
   // `smoke` without `start` has nothing to probe — ignored, as the spec says.
-  if (AW.start && !(await startWalkEnv(feature))) return `walk env didn't come up — see ${f.startLog}`
+  if (AW.start && !(await startWalkEnv(feature, f))) return `walk env didn't come up — see ${f.startLog}`
   return null
 }
 
@@ -1187,7 +1213,7 @@ async function walkOne(feature) {
     for (let restarts = 0; ; restarts++) {
       // A walk env that won't come up gets one agent run to find and fix the cause, then one more try.
       for (let attempt = 0; ; attempt++) {
-        const why = await bringUpWalkEnv(feature)
+        const why = await bringUpWalkEnv(feature, { reset: restarts === 0 })
         if (!why) break
         await killStart(f)
         if (attempt === 1) return park(f, `the walk env would not start (${why}) and an agent run could not fix it — next: run agent_walk.start in ${f.worktree} and fix what it prints, then /builder:agent`)
@@ -1243,7 +1269,7 @@ function enqueue(feature) {
   if (f.unpark) unpark(feature)
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
-  const lane = text == null ? 'unknown' : laneOf(mf)
+  const lane = text == null ? 'unknown' : laneOf(mf, { batched: BATCHED, specText: readSpec(f.worktree, feature) })
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
   else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' }) // shipped, the merge still owed
   else if (lane === 'done') {
@@ -1258,7 +1284,11 @@ function enqueue(feature) {
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising/
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising|^config change needed/
+
+/** Why a branch that changes the config parks, and the human's next step. */
+const configParkReason = (branch) =>
+  `config change needed — ${branch} changes ${CONFIG_PATH}, which is yours to change — next: read git diff ${TARGET}...${branch} -- ${CONFIG_PATH}, apply what you want on ${TARGET}, drop it from the branch (git checkout ${TARGET} -- ${CONFIG_PATH} in its worktree, commit), then /builder:agent`
 const YOUR_WALK = /^waiting for your walk/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
@@ -1632,9 +1662,211 @@ async function poolWorker() {
   }
 }
 
+// ---- batched walks (agent-walk §Batched walks) -------------------------------------------------
+/** The batch's own record — its worktree, start process, runs and timing — kept in fleet.json, so a
+ *  fleet taking over a stale lock can end its env. */
+const walkRec = () => (fleet.walkBatch ??= { worktree: WALK_WT, runs: 0, timing: [] })
+
+/**
+ * The walk worktree: the target with each batched feature's branch merged in, in order. A feature
+ * that conflicts with the ones merged before it waits for the next batch (first in line). Untracked
+ * files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
+ */
+function prepareWalkTree(features) {
+  if (!existsSync(WALK_WT)) {
+    mkdirSync(WORKTREES, { recursive: true })
+    tryGit(['worktree', 'prune'])
+    git(['worktree', 'add', '-f', '-B', WALK_BRANCH, WALK_WT, `refs/heads/${TARGET}`])
+    copyInto(WALK_WT)
+    if (AW.setup) runSetup('_walk', WALK_WT)
+  } else git(['reset', '--hard', '--quiet', `refs/heads/${TARGET}`], WALK_WT)
+  const merged = []
+  const deferred = []
+  for (const feature of features) {
+    if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${feature}`, `refs/heads/${fleet.features[feature].branch}`], WALK_WT) === null) {
+      tryGit(['merge', '--abort'], WALK_WT)
+      deferred.push(feature)
+    } else merged.push(feature)
+  }
+  if (AW.sync && merged.length) {
+    const log = join(DIR, 'logs', '_walk-sync.log')
+    mkdirSync(dirname(log), { recursive: true })
+    const fd = openSync(log, 'w')
+    try {
+      execSync(AW.sync.replaceAll('{feature}', '_walk'), { cwd: WALK_WT, env: envFor('_walk', 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    } catch {
+      throw new Error(`agent_walk.sync failed in the walk worktree — see ${log}`)
+    } finally {
+      closeSync(fd)
+    }
+  }
+  return { merged, deferred }
+}
+
+/**
+ * The deep set's @walk lines, once for the batch, against the env serving every feature in it —
+ * written to each feature's workspace as walk-gates.md, which its verify reads (verify §@walk lines).
+ */
+function runWalkGates(features) {
+  if (!parseGates(CFG.body).deep.some((g) => g.walk)) return
+  const r = spawnSyncSafe(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--walk-only', '--force'], { cwd: WALK_WT, env: envFor('_walk', 'walk') })
+  const head = tryGit(['rev-parse', '--short', 'HEAD'], WALK_WT)
+  const text = `# @walk gates — walk batch at ${head}\n\nfeatures in the batch: ${features.join(', ')}\nexit: ${r.status}${r.status === 3 ? ' (the walk env stopped answering)' : ''}\n\n\`\`\`\n${r.output.trim().split('\n').slice(-120).join('\n')}\n\`\`\`\n`
+  for (const x of features) {
+    const ws = join(fleet.features[x].worktree, '.builder', x)
+    mkdirSync(ws, { recursive: true })
+    writeFileSync(join(ws, 'walk-gates.md'), text)
+  }
+}
+const spawnSyncSafe = (cmd, args, opts) => {
+  try {
+    const out = execFileSync(cmd, args, { ...opts, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60 * 60 * 1000 })
+    return { status: 0, output: out }
+  } catch (e) {
+    return { status: e.status ?? 1, output: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+  }
+}
+
+/**
+ * One walk for several features: merge them into the walk worktree, bring the env up once (reset
+ * once), and run one session — readiness for the batch, one walker by screen across every feature,
+ * each verdict written in its own worktree. A restart line restarts the env without a reset and
+ * runs the session again for what is left. Each feature leaves the batch by its own manifest: signed
+ * off → the pool (verify, ship), fixes → the pool (build lane), a park → parked. Anything the batch
+ * can't do — a walk tree that won't prepare, an env that won't come up — falls back to one walk
+ * per feature (walkOne), which has the env-repair run.
+ */
+async function walkBatch(batch) {
+  const live = []
+  for (const feature of batch) {
+    const f = fleet.features[feature]
+    if (parkIfPaused(f, feature)) {
+      route(feature, 'parked')
+      continue
+    }
+    f.status = 'walking'
+    save()
+    const text = readManifest(f.worktree, feature)
+    if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
+      const why = await syncTarget(f.worktree, 'what other features merged', feature)
+      if (why) {
+        route(feature, park(f, why))
+        continue
+      }
+    }
+    live.push(feature)
+  }
+  if (!live.length) return
+  const one = async (features, why) => {
+    if (why) addNote(`walk batch: ${why} — walked ${features.join(', ')} one at a time`)
+    for (const feature of features) route(feature, await walkOne(feature))
+  }
+  if (live.length === 1) return one(live)
+  let tree
+  try {
+    tree = prepareWalkTree(live)
+  } catch (e) {
+    return one(live, `the walk worktree could not be prepared (${e.message})`)
+  }
+  for (const feature of tree.deferred.reverse()) {
+    Object.assign(fleet.features[feature], { status: 'awaiting-walk', reason: null })
+    walkQueue.unshift(feature)
+  }
+  if (tree.merged.length < 2) return one(tree.merged)
+  const rec = walkRec()
+  let active = [...tree.merged]
+  const failures = {}
+  const stalls = {}
+  try {
+    // Up once for the batch — `reset` once — and kept up across its sessions; a restart line
+    // restarts it without a reset.
+    const down = await bringUpWalkEnv('_walk', { reset: true }, rec)
+    if (down) {
+      await killStart(rec)
+      return one(active, `the env would not come up for the batch (${down})`)
+    }
+    for (let session = 0; active.length && session < 4; session++) {
+      const before = Object.fromEntries(active.map((x) => [x, snapshot(fleet.features[x].worktree, x)]))
+      for (const x of active) {
+        const fx = fleet.features[x]
+        fx.runs = (fx.runs ?? 0) + 1
+        fx.runsThisTime = (fx.runsThisTime ?? 0) + 1
+      }
+      rec.runs = (rec.runs ?? 0) + 1
+      save()
+      const folders = active.map((x) => join(fleet.features[x].worktree, specOf(x)))
+      const { exit, log } = await runClaude(WALK_WT, '_walk', 'walk', rec.runs, `/builder:agent-walk --batch --into ${TARGET} ${folders.join(' ')}`, rec)
+      const next = []
+      const leaving = []
+      let restart = false
+      for (const x of active) {
+        const fx = fleet.features[x]
+        fx.log = log
+        const d = decide({ lane: 'walk', manifestText: readManifest(fx.worktree, x), specText: readSpec(fx.worktree, x), exit, failures: failures[x] ?? 0, stalls: stalls[x] ?? 0, runs: fx.runsThisTime, cap: RUN_CAP, progressed: snapshot(fx.worktree, x) !== before[x], folder: specOf(x), batched: BATCHED })
+        if (d.action === 'park' && RESTART.test(d.reason)) {
+          clearBlocked(fx.worktree, x)
+          restart = true
+          next.push(x)
+          continue
+        }
+        if (d.action === 'retry') failures[x] = (failures[x] ?? 0) + 1
+        if (d.action === 'stalled') stalls[x] = (stalls[x] ?? 0) + 1
+        if (['retry', 'stalled', 'again'].includes(d.action)) {
+          next.push(x)
+          continue
+        }
+        leaving.push([x, d])
+      }
+      // The @walk gates, while the env is still up, for every feature signed off this session —
+      // before verify, in the pool, can look for them.
+      const signed = leaving.filter(([, d]) => d.action === 'handoff' && d.to === 'ship').map(([x]) => x)
+      if (signed.length) runWalkGates(signed)
+      for (const [x, d] of leaving) {
+        const fx = fleet.features[x]
+        failures[x] = 0
+        stalls[x] = 0
+        if (d.action === 'handoff') {
+          Object.assign(fx, { status: QUEUED[d.to] ?? 'queued', reason: null })
+          save()
+          route(x, d.to)
+        } else if (d.action === 'done') route(x, await land(x))
+        else {
+          Object.assign(fx, d.action === 'fail' ? { status: 'failed', reason: `${d.reason} — see ${log} — next: /builder:agent to retry` } : { status: 'parked', reason: d.reason })
+          delete fx.lastPark
+          save()
+          route(x, fx.status)
+        }
+      }
+      active = next
+      if (restart && active.length) {
+        await killStart(rec)
+        const again = await bringUpWalkEnv('_walk', { reset: false }, rec)
+        if (again) {
+          await killStart(rec)
+          return one(active, `the env would not come back up after a restart (${again})`)
+        }
+      }
+    }
+    for (const x of active) route(x, park(fleet.features[x], `the walk batch made no headway in four sessions — next: /builder:agent to retry; the last log says where it stopped`))
+  } finally {
+    await killStart(rec)
+    if (!hook(AW.stop, WALK_WT, '_walk')) addNote(`agent_walk.stop failed after a walk batch: ${AW.stop}`)
+    save()
+  }
+}
+
 async function walkLane() {
   for (;;) {
     if (closing) return
+    if (walkQueue.length && BATCHED) {
+      // Everything waiting to walk, up to agent_walk.batch: one walk branch, one env, one walker.
+      const batch = walkQueue.splice(0, BATCH)
+      inFlight++
+      await walkBatch(batch)
+      inFlight--
+      wakeAll()
+      continue
+    }
     if (walkQueue.length) {
       const feature = walkQueue.shift()
       inFlight++
@@ -1686,6 +1918,12 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   if (r.removed || !existsSync(f.worktree)) f.worktree = null
   else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
 }
+// The walk worktree and its branch are the batches' scratch, never merged: gone when the fleet is.
+if (existsSync(WALK_WT)) {
+  tryGit(['worktree', 'remove', '--force', WALK_WT])
+  tryGit(['branch', '-D', WALK_BRANCH])
+}
+delete fleet.walkBatch
 // The whole repo, not just this fleet's rows: anything else left lying around is named here too.
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))
 addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))

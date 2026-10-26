@@ -62,10 +62,18 @@ const stateOf = (n) => {
   return alive(pid) ? 'running' : read(f(n, 'exit')) != null ? 'done' : 'died'
 }
 
+/** One word, safe for `sh -c`: left bare when it has nothing the shell would read, else single-quoted. */
+function shQuote(w) {
+  return /^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`
+}
+
 if (cmd === 'start') {
   checkName(name)
   const sep = rest.indexOf('--')
-  const command = sep >= 0 ? rest.slice(sep + 1).join(' ') : ''
+  // One argument is a shell command as written (`-- "npm test -- -k 'a b'"`); several are argv words
+  // the caller's shell already split — quoted back, so `-- pytest -k "a and b"` keeps its filter.
+  const words = sep >= 0 ? rest.slice(sep + 1) : []
+  const command = words.length === 1 ? words[0] : words.map(shQuote).join(' ')
   if (!command.trim()) die(USAGE)
   mkdirSync(DIR, { recursive: true })
   const ignore = join(root, '.builder', '.gitignore')

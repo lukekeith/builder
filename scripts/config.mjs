@@ -258,6 +258,8 @@ const agentWalkOf = (block) => {
     smoke: block.smoke ?? null,
     keepLogs: Number.isInteger(block.keep_logs) && block.keep_logs >= 0 ? block.keep_logs : 30,
     autoUnpark: Number.isInteger(block.auto_unpark) && block.auto_unpark >= 0 ? block.auto_unpark : 2,
+    // How many features one walk takes at once (one env, one walker); 1 is one walk per feature.
+    batch: Number.isInteger(block.batch) && block.batch > 0 ? block.batch : 8,
   }
 }
 

@@ -51,7 +51,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
-const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole] [--typecheck]'
+const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --walk-only | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
 const argv = process.argv.slice(2)
 const flag = (f) => argv.includes(f)
 const names = argv.filter((a) => !a.startsWith('--'))
@@ -59,7 +59,7 @@ if (flag('--help') || flag('-h')) {
   console.log(USAGE)
   process.exit(0)
 }
-for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole', '--typecheck'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
+for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole', '--typecheck', '--walk-only'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
 const TYPECHECK = flag('--typecheck')
 if (TYPECHECK && (flag('--deep') || flag('--baseline'))) die(`--typecheck runs app fast sets only. ${USAGE}`)
 
@@ -70,7 +70,13 @@ function die(msg, code = 2) {
 
 const CFG = requireConfig()
 const ROOT = CFG.root
-const GATES = parseGates(CFG.body)
+// Under the fleet the gate lines come from the MAIN checkout's config (BUILDER_CONFIG_ROOT), the
+// one the fleet itself reads: the config is the human's, and a branch must not loosen its own gates.
+// The worktree's copy still gives the root and the apps.
+const GATE_CFG = process.env.BUILDER_CONFIG_ROOT && process.env.BUILDER_CONFIG_ROOT !== ROOT ? requireConfig(process.env.BUILDER_CONFIG_ROOT) : CFG
+const GATES = parseGates(GATE_CFG.body)
+if (GATE_CFG !== CFG && JSON.stringify(parseGates(CFG.body)) !== JSON.stringify(GATES))
+  console.log(`⚠ this branch's .claude/builder.md has gate lines that differ from the main checkout's — running the main checkout's. A config change is the human's: park as a human step with the diff (resume's AGENT-MODE.md).`)
 const head = () => execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim()
 const appPath = (name) => CFG.apps.find((a) => a.name === name)?.path
 const MAIN = mainRoot(ROOT)
@@ -93,8 +99,15 @@ if (flag('--baseline')) {
   process.exit(Object.values(values).some((v) => v == null) ? 1 : 0)
 }
 
-const wanted = flag('--all') ? Object.keys(GATES.fast) : names
-if (!wanted.length && !flag('--deep')) die(USAGE)
+// --walk-only: the deep set's @walk lines alone — what the fleet runs once per walk batch, in the walk
+// worktree with the walk env up, so every feature in the batch is verified against the env once.
+const WALK_ONLY = flag('--walk-only')
+if (WALK_ONLY && !GATES.deep.some((g) => g.walk)) {
+  console.log('no @walk line in the deep set — nothing needs the walk env')
+  process.exit(0)
+}
+const wanted = WALK_ONLY ? [] : flag('--all') ? Object.keys(GATES.fast) : names
+if (!wanted.length && !flag('--deep') && !WALK_ONLY) die(USAGE)
 for (const n of wanted) {
   if (!appPath(n)) die(`no app named ${n} in .claude/builder.md (apps: ${CFG.appNames.join(', ')})`)
   if (!GATES.fast[n]) die(`no "### ${n} — fast" block under ## Quality gates in .claude/builder.md`)
@@ -136,10 +149,15 @@ const fastSets = TYPECHECK
   : wanted
 const sets = [
   ...fastSets.map((n) => ({ app: n, key: `fast-${n}${TYPECHECK ? '-typecheck' : ''}`, label: `${n} — ${TYPECHECK ? 'typecheck' : 'fast'}`, gates: TYPECHECK ? GATES.fast[n].filter((g) => g.typecheck) : GATES.fast[n], exclude: [registry, ...CFG.apps.filter((a) => a.name !== n).map((a) => a.path)], expand: { root: ROOT, appPath: appPath(n), baseBranch: CFG.baseBranch } })),
-  ...(flag('--deep') ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
+  ...(flag('--deep') && !WALK_ONLY ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
+  ...(WALK_ONLY ? [{ key: 'deep-walk', label: '@walk gates', gates: GATES.deep.filter((g) => g.walk), exclude: [registry], expand: null }] : []),
 ]
 // A --whole run and a scoped one prove different things on the same tree: each quotes only its own.
 if (flag('--whole')) for (const set of sets) if (set.gates.some((g) => g.scope)) set.key += '-whole'
+// A set with @walk lines proves different things per lane — the build lane skips them — so each lane
+// quotes only its own run: a build-lane green must never stand in for verify's.
+const LANE = process.env.BUILDER_LANE
+if (LANE) for (const set of sets) if (set.gates.some((g) => g.walk)) set.key += `-${LANE}`
 
 // While a set runs, .builder/gates/running.json says so — the status line's "gate … ⏱" reads it.
 const RUNNING = join(ROOT, '.builder', 'gates', 'running.json')
@@ -162,7 +180,7 @@ for (const set of sets) {
   markRunning(set.label)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()
-  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: CFG.flaky, baseline, expand: set.expand, scope, log: (l) => console.log(`   ${l}`) })
+  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: GATE_CFG.flaky, baseline, expand: set.expand, scope, log: (l) => console.log(`   ${l}`) })
   if (Object.keys(r.newBaselines).length) {
     baseline = { ...baseline, ...r.newBaselines }
     writeBaseline(MAIN, baseline, sha)
@@ -173,6 +191,24 @@ for (const set of sets) {
   // What the whole app set costs, for the test plan: only a green run of every line, whole.
   if (set.app && !TYPECHECK && r.exit === 0 && !r.partial) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
   if (r.exit !== 0) anyRed = true
+  if (walkEnvBroken(set.label)) process.exit(3)
 }
 
 process.exit(anyRed ? 1 : 0)
+
+/**
+ * In the fleet's walk lane the walk env serves from this very worktree, and a gate can break it —
+ * a build rewriting the folder the dev server serves from (Next.js `.next`, Nuxt `.nuxt`, …). After
+ * each set that ran, poll agent_walk.smoke (BUILDER_WALK_SMOKE) a few times; when it no longer
+ * passes, say what to do and stop with exit 3 — every later check would be against a dead env.
+ */
+function walkEnvBroken(label) {
+  const smoke = process.env.BUILDER_LANE === 'walk' ? process.env.BUILDER_WALK_SMOKE : ''
+  if (!smoke) return false
+  for (let i = 0; i < 5; i++) {
+    if (runCommand(smoke, { cwd: ROOT, env: process.env, timeoutMs: 20000 }).exit === 0) return false
+    execFileSync('sleep', ['3'])
+  }
+  console.log(`⚠ the walk env stopped answering after ${label} (smoke: ${smoke}) — a gate likely rewrote what the dev server serves (a build writing its output folder). Write blocked: "walk env needs a restart — broken by the ${label} gates" to the manifest, commit, and end the run: the fleet restarts the env without a reset and the run goes on. Give the walk env its own output folder through agent_walk.env to stop it happening (/builder:init --update).`)
+  return true
+}

@@ -35,6 +35,8 @@
  *   final-review           review-package <merge-base with the target> HEAD → review-final.diff;
  *                          the ledger's deferred-minor and parked lines; the SPEC path; the
  *                          description from SPEC §Idea's Why and the manifest's apps.
+ *   walk-batch <folder>…   one walker for a fleet walk batch (agent-walk §Batched walks): every
+ *                          feature's walk.md, scope and report, walked together by screen.
  *   agent-walk             the walker's brief exactly as agent-walk §2 lists it: walk.md, the driver
  *                          verbatim (or the no-driver rule), §Environment landmines, the round's output
  *                          directory and report contract, the scope `end` sets; from round 3, the items
@@ -494,6 +496,40 @@ function finalReview(f, a, ws) {
   return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review') }
 }
 
+/**
+ * A round after the first walks only what the fix could have changed: the items the last round
+ * failed, plus any it passed whose code the fix touched. Every other pass is carried — its row copied
+ * with `PASS (carried from round <n-1> @ <sha>)` and its evidence — so a one-item fix is a one-item
+ * walk, not the whole scope again. No readable last report → the whole scope, as round 1.
+ */
+export function rewalkScope(f, dir, n) {
+  if (n < 2) return []
+  const prev = read(join(dir, `round-${n - 1}`, 'report.md'))
+  if (!prev) return []
+  const sha = /^sha:\s*(\S+)/m.exec(prev)?.[1] ?? null
+  const rows = tableRows(prev).filter((r) => r[0] && !/^#$/.test(r[0]))
+  const failed = rows.filter((r) => !/^PASS\b/i.test(r[3] ?? ''))
+  const passed = rows.filter((r) => /^PASS\b/i.test(r[3] ?? ''))
+  let diff = ''
+  if (sha) {
+    try {
+      diff = execFileSync('git', ['diff', '--stat', `${sha}..HEAD`], { cwd: f.root, encoding: 'utf8' }).trim()
+    } catch {}
+  }
+  const out = ['', `## Round ${n}: walk only what the fix could change`, '']
+  out.push(failed.length ? `Walk these — round ${n - 1} did not pass them:` : `Round ${n - 1} failed nothing by row — walk the scope above.`)
+  if (failed.length) out.push('', ...failed.map((r) => `- ${r[0]} · ${r[1]} · ${r[2]} — was ${r[3]}`))
+  if (passed.length) {
+    out.push(
+      '',
+      `Passed in round ${n - 1}${sha ? ` at ${sha}` : ''}: ${passed.map((r) => r[0]).join(', ')}. Re-walk one only when the fix since then changes code it exercises — read the diff below and say why in its row; otherwise copy its row from round ${n - 1}'s report with Result \`PASS (carried from round ${n - 1}${sha ? ` @ ${sha}` : ''})\` and the same evidence paths.`,
+    )
+    if (diff) out.push('', `\`git diff --stat ${sha}..HEAD\`:`, '', '```', diff, '```')
+  }
+  if (n >= 3 && failed.length) out.push('', `These items have now failed after a fix. For each, read ${skillPath(CRAFT.DEBUGGING_PATH)} and look for the cause, not only the symptom.`)
+  return out
+}
+
 function agentWalk(f, a, ws) {
   const end = parseTestPlan(f.manifest).levers.end
   if (end === 'none' || end === 'touched') throw new Error(`no walker under end=${end} — the sign-off is \`condense.mjs <folder> --signoff agent --no-walk\` (agent-walk §The test plan)`)
@@ -528,20 +564,16 @@ function agentWalk(f, a, ws) {
       ? 'Work every `[risk]` item and every step of the `## Cross-app (verify E2E)` section, in order, per app — and say in the report that the other items were out of scope (tests: end=risk).'
       : 'Work **every** item of walk.md, in order, per app — the `## Cross-app (verify E2E)` section too, when it is there.',
   ]
-  if (n >= 3) {
-    const prev = read(join(dir, `round-${n - 1}`, 'report.md')) ?? ''
-    const failed = tableRows(prev).filter((r) => /^FAIL\b/i.test(r[3] ?? ''))
-    if (failed.length)
-      lines.push('', `These items failed in round ${n - 1}, and the fix that was tried didn't hold. For each, read ${skillPath(CRAFT.DEBUGGING_PATH)} and look for the cause, not only the symptom:`, '', ...failed.map((r) => `- ${r[0]} · ${r[1]} · ${r[2]}`))
-  }
+  lines.push(...rewalkScope(f, dir, n))
   lines.push(
     '',
     '## Rules',
     '',
     '- For each item record `PASS`, `FAIL` or `UNVERIFIABLE`, what you did, what you saw, and its evidence files — screenshots `NN-<slug>.png`, console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.',
     '- Never edit code, never commit, never touch the manifest or the SPEC.',
+    '- **Walk by screen.** Group the items by the screen or component they exercise; reach each one once and check every item on it in order — one app session, one launch — recording a row per item. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving every item from a fresh launch is the slow way to walk a screen that holds them all.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
-    '- Any gate you run: a line at or under its baseline (`→ 7 (baseline 7)`) is green — note the count and move on; never investigate failures that already fail on the base branch.',
+    '- Run no gates — no test suite, no build, no gate.mjs. You judge the running app; gates belong to the fix rounds and verify. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
     '',
     '## Output',
     '',
@@ -552,11 +584,94 @@ function agentWalk(f, a, ws) {
   return { file: join(ws, `dispatch-agent-walk-round-${n}.md`), body: lines.join('\n') + '\n', description: `Agent walk round ${n}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
 }
 
+/**
+ * One walker for a batch of features the fleet merged into one walk branch (fleet §Batched walks):
+ * every feature's walk.md and scope, its round, its own report — walked together, by screen, in one
+ * session against the one env serving all of them. Written to the walk worktree's workspace.
+ */
+function walkBatch(features, a, root) {
+  const walks = []
+  for (const f of features) {
+    const end = parseTestPlan(f.manifest).levers.end
+    if (end === 'none' || end === 'touched') continue // no walker: agent-walk signs it off --no-walk
+    const ws = f.ws()
+    const walk = join(ws, 'walk.md')
+    if (!existsSync(walk)) throw new Error(`no ${walk} — the build writes it (scripts/walk-script.mjs)`)
+    const dir = join(ws, 'agent-walk')
+    const rounds = existsSync(dir) ? readdirSync(dir).map((d) => +(/^round-(\d+)$/.exec(d)?.[1] ?? NaN)).filter(Number.isInteger) : []
+    const n = (rounds.length ? Math.max(...rounds) : 0) + 1
+    walks.push({ f, end, walk, n, out: join(dir, `round-${n}`), scope: rewalkScope(f, dir, n) })
+  }
+  if (!walks.length) throw new Error('no feature in this batch needs a walker (every test plan ends at none or touched)')
+  const cfg = walks[0].f.cfg
+  const driver = cfg?.agentWalk?.driver
+  const landmines = configSection(cfg, 'Environment landmines').trim()
+  const lines = [
+    `You are the agent walker for ${walks.length} features at once — an independent check of builds you did not write. The app you drive serves the fleet's walk branch, which holds every one of them merged onto the target: one running env, every feature in it. Work in ${root}: run every command from there.`,
+    '',
+    '## How you drive it',
+    '',
+    driver || 'there is no UI driver: exercise each item through its endpoints, the server log and the database, and mark any item that can only be checked by looking at the screen `UNVERIFIABLE`.',
+    '',
+    "## Environment landmines (the project config's, verbatim)",
+    '',
+    landmines || 'The project config has no §Environment landmines section.',
+    '',
+    '## Walk by screen, across every feature',
+    '',
+    "Read every walk script below first. Then group ALL their items — whichever feature each belongs to — by the screen or component it exercises, and walk each screen once: reach it, check every item on it from every feature in order, one app session, one launch. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving each feature's items from a fresh start is exactly the cost this batch exists to remove.",
+  ]
+  for (const w of walks) {
+    lines.push(
+      '',
+      `## ${w.f.feature} — round ${w.n}`,
+      '',
+      `Walk script: ${w.walk}`,
+      w.end === 'risk'
+        ? 'Scope: every `[risk]` item and every step of the `## Cross-app (verify E2E)` section — say in the report that the other items were out of scope (tests: end=risk).'
+        : 'Scope: **every** item — the `## Cross-app (verify E2E)` section too, when it is there.',
+      ...w.scope,
+      '',
+      `Evidence: ${w.out}/ (create it). Report: ${join(w.out, 'report.md')} — first line \`sha: <${w.f.feature}'s HEAD>\` (\`git -C ${w.f.root} rev-parse --short HEAD\` — the feature's own code, which this walk branch holds), then \`walked-in: <the walk branch's HEAD>\`, then a table \`# · App · Item · Result · Evidence\` with ${w.f.feature}'s items only, then one line: \`verdict: PASS\` or \`verdict: PROBLEMS (<k>)\`.`,
+    )
+  }
+  lines.push(
+    '',
+    '## Rules',
+    '',
+    '- For each item record `PASS`, `FAIL` or `UNVERIFIABLE`, what you did, what you saw, and its evidence files — screenshots `NN-<slug>.png`, console output, the relevant server-log lines. A `FAIL` states *expected* and *saw*, one line each.',
+    '- An item fails in the feature whose walk script lists it. When a failure looks caused by ANOTHER feature in the batch (it touches what that one changed), say so in its row — the fix is judged in the feature it fails in.',
+    '- Never edit code, never commit, never touch any manifest or SPEC.',
+    "- The `## Cross-app (verify E2E)` sections are walked like every other item: one row per step, `#` = `E<k>`, App = `cross-app`, with its evidence.",
+    "- Run no gates — no test suite, no build, no gate.mjs. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
+  )
+  if (a.context) lines.push('', a.context.trim())
+  const ws = join(root, '.builder', '_walk')
+  return { file: join(ws, 'dispatch-walk-batch.md'), body: lines.join('\n') + '\n', description: `Agent walk — batch of ${walks.length}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
+}
+
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
 
 async function main(argv) {
   const a = parseArgs(argv, { bool: ['final'] })
   const [kind, folder] = a._
+  if (kind === 'walk-batch') {
+    const folders = a._.slice(1)
+    if (!folders.length) {
+      console.error('usage: dispatch.mjs walk-batch <folder>… [--context "<one paragraph>"]   (run in the fleet\'s walk worktree)')
+      return 2
+    }
+    const fs = folders.map((d) => openFeature(d))
+    for (const f of fs) if (!f.cfg) throw new Error(f.cfgError)
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
+    const r = walkBatch(fs, a, root)
+    writeAtomic(r.file, r.body)
+    console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
+    console.log(`Agent call — description: ${r.description}`)
+    console.log(`  model: ${r.model}`)
+    console.log(`  prompt: Read ${r.file} and do what it says.`)
+    return 0
+  }
   if (!kind || !folder || !KINDS.includes(kind)) {
     console.error(`usage: dispatch.mjs <${KINDS.join('|')}> <folder> [--task N | --final] [--round N] [--context "<one paragraph>"] [--findings "<text>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]`)
     return 2
