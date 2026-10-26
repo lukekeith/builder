@@ -17,7 +17,7 @@ import { join, dirname, resolve } from 'node:path'
 import { uptime } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from './config.mjs'
-import { readProgress, featureProgress, progressBar } from './fleet-core.mjs'
+import { readProgress, featureProgress, progressBar, mergedThisRun } from './fleet-core.mjs'
 import { parseManifest } from './manifest.mjs'
 
 export const FRESH_MS = 5 * 60 * 1000
@@ -80,11 +80,14 @@ function fleetItems(main, registry, bootTime) {
   const fleet = readJson(join(main, '.builder', 'fleet', 'fleet.json'))
   if (!fleet) return null
   const rows = Object.entries(fleet.features ?? {})
-  const items = [`⚙ fleet ${rows.filter(([, f]) => f.status === 'done').length}/${rows.length}`]
-  const pcts = []
+  // The whole run: what it holds plus what it already merged, each merged feature at 100%.
+  const merged = mergedThisRun(fleet)
+  const total = new Set([...rows.map(([n]) => n), ...merged]).size
+  const items = [`⚙ fleet ${merged.length}/${total}`]
+  const pcts = merged.map(() => 100)
   for (const [name, f] of rows) {
     const p = readProgress(f.worktree ?? main, registry, name, f.status)
-    pcts.push(p.pct)
+    if (!merged.includes(name)) pcts.push(p.pct)
     if (['done', 'queued', 'waiting'].includes(f.status)) continue
     if (f.status === 'parked' || f.status === 'failed') { items.push(`⛔ ${name}`); continue }
     items.push(`${name} ${p.label}`)
