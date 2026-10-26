@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: trigger-plain-request
+tags: [first-turn]
+context:
+  scaffold_script: scaffold.sh
