@@ -41,7 +41,7 @@ branch, and no project that builds today stops being able to build.
 - **D6 — Estimates** come from this repo's fleet history, scaled by plan size. They are shown as
   relative cost, never invented minutes, until there is enough history.
 - **D7 — No `agent_walk` block → build by hand, as today.** The go-ahead says why in one line and
-  offers to set it up. (finpro, makeready and fai-erp have no block today.)
+  offers to set it up. (Several consumer projects have no block today.)
 - **D8 — Floors.** Every preset keeps each app's fast gates at its phase close, the final
   whole-branch review, and consumer parity when a `released_artifact` consumer is affected.
 - **D9 — Presets are fixed.** An optional `build_profile_default:` key sets which one is
@@ -222,7 +222,7 @@ with `git checkout HEAD -- <folder>` and commits it on the new branch
 - The fleet test harness: a feature whose folder is committed only on a non-target branch gets its
   spec in the worktree (§8); a pause request parks at a task boundary and re-queues (§6); a Thorough
   + you feature parks as a human step after the agent walk (§5).
-- Skill text is checked with `claude plugin validate .`. One end-to-end run in d2m on a small spec
+- Skill text is checked with `claude plugin validate .`. One end-to-end run in a consumer repo on a small spec
   covers Rush and Standard, and the archive rows are checked for the new fields.
 
 ## Release

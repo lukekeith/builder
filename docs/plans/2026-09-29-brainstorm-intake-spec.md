@@ -1273,4 +1273,4 @@ git commit -m "test(skills): cross-skill consistency for the conversation family
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-**After the plan (the human's):** dry runs on real input — an abstract idea through `/builder:brainstorm`; one of fai-cd's superpowers-era specs through `/builder:intake`; the result through `/builder:spec`. A good spec has §Idea with a Why, at least one *In your words* quote, and approaches with reasons.
+**After the plan (the human's):** dry runs on real input — an abstract idea through `/builder:brainstorm`; one of a consumer repo's superpowers-era specs through `/builder:intake`; the result through `/builder:spec`. A good spec has §Idea with a Why, at least one *In your words* quote, and approaches with reasons.

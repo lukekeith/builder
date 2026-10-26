@@ -4,7 +4,7 @@
 
 ## Why
 
-**Within a feature** — makeready's `dashboard-chart-intros` (one app, one screen, 9 checks):
+**Within a feature** — one consumer project's chart feature (one app, one screen, 9 checks):
 - `walk.md` held the 9 items **and** the same script again as `## Cross-app (verify E2E)` E1–E9:
   `walk-script.mjs` adds the cross-app section to every agent-mode walk, however many apps are in
   scope. 18 checks per round.
@@ -14,10 +14,10 @@
   was for item 1; everything was walked again. Three rounds at ~27 min each.
 - The project's driver ran "one test per walk item" — a fresh app launch per item, on one screen.
 
-**Across features** — the walk lane is one at a time. d2m's archive (20 features): 623 min of walk
+**Across features** — the walk lane is one at a time. One project's archive (20 features): 623 min of walk
 lane Claude time, of which **verify 339 min** (median 15 min/feature) — verify ran in the walk lane
 though it needs the env only for `@walk` gates — agent walk 194 min, readiness 75 min; plus a full
-`reset` + `start` + `smoke` per feature outside that time. makeready: 41 min median per feature.
+`reset` + `start` + `smoke` per feature outside that time. Another project: 41 min median per feature.
 
 ## Decisions
 
@@ -53,7 +53,7 @@ though it needs the env only for `@walk` gates — agent walk 194 min, readiness
 
 - No gather window: a batch takes what is waiting when the lane frees. The first walk of a run often
   goes alone; batches fill as the queue builds behind a walk.
-- Project drivers that launch per item (makeready's) still say so in their own config; the walker's
+- Project drivers that launch per item still say so in their own config; the walker's
   brief now overrides that habit by grouping, and `/builder:init` can be asked to rewrite a driver.
 
 ## Tests

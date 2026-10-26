@@ -241,7 +241,7 @@ walk env starts, so features integrate as they land rather than all at ship; `sy
 the test-DB migration) runs after a merge that brought new commits. Gate blocks run through
 `scripts/gate.mjs`, which re-runs the config's known flakes once, judges `@delta` counts against the
 base branch, and quotes a green run whose inputs have not changed instead of re-running it — the
-measured reason a d2m-sized feature spent 60% of its wall-clock in tests was the same suite running
+measured reason a typical feature spent 60% of its wall-clock in tests was the same suite running
 about fourteen times.
 
 ## Nothing left behind

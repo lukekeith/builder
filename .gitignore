@@ -1,10 +1,9 @@
 # Local-only tooling for this machine — never part of the plugin
-/.claude/skills/update-local/
+/.claude/skills/update-*/
 
 /.builder/codex-sync/
 
 /dist/
-/.claude/skills/update-finpro/
 
 # benchmark: the raw streams beside each committed REPORT.md + runs.json
 /bench/results/*/*/

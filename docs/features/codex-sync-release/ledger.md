@@ -13,7 +13,7 @@ Verification after final package edits:
 - Claude suite: 370 tests passed, 0 failed. Claude plugin validation passed with its existing root CLAUDE.md context warning.
 - Ruby YAML safe_load validates all three Codex skills' names/descriptions and length. The Python validator was unavailable due missing PyYAML/environment pip issues; no dependency changes made to the project.
 - Real Codex CLI under temporary CODEX_HOME registered the marketplace, installed builder@builder-codex 4.9.1 and populated its cache. Actual updater changed from old local-port source to the selected new source, installed and verified exact runtime identity, vendored into a temporary Git host, and passed --check (exit 0). Host/config/source-switch and vendor writes were real; temporary artifacts cleaned.
-- Real five-project --dry-run found d2m, fai-cd, finpro, makeready and fai-erp without host writes.
+- Real five-project --dry-run found all five consumer projects without host writes.
 - Upstream source coverage and package digest check passed; git diff --check clean.
 
 Acceptance is agent-tested, not human-tested. No personal human walk was requested for these script workflows. Final candidate checks and external release/install evidence follow in runtime logs and the final report. Any changed package requires finish again before release.

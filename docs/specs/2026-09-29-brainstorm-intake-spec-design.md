@@ -6,7 +6,7 @@
 
 Feedback on builder: it is not helpful in in-depth brainstorming — exploring the codebase and
 understanding high-level ideas. Superpowers' brainstorming and grill-me do this well. Research into
-the three skills and into the specs each produced in the same repos (d2m, fai-cd) found why:
+the three skills and into the specs each produced in the same consumer repos found why:
 
 - `/builder:brainstorm` is a **router to a build**, not an understanding tool: it sizes first ("recon
   before any question", size announced "before anything is asked"), never discovers or plays back
@@ -246,7 +246,7 @@ A new first section, written from `brainstorm.md`:
 - **Skills (instruction consistency):** a read-through of brainstorm, intake, spec, resume, help and
   REFERENCE for contradictions (who loads REFERENCE, who owns prototype mode, every status value
   handled somewhere).
-- **Dry runs on real input:** an abstract idea through brainstorm; one of fai-cd's superpowers-era
+- **Dry runs on real input:** an abstract idea through brainstorm; one of a consumer repo's superpowers-era
   specs through intake; the result through spec.
 - **Against the original problem:** a new SPEC has §Idea with a Why, at least one *In your words*
   quote, and approaches with reasons — the three things 0/23, 1/23 and ~44% of builder specs had.

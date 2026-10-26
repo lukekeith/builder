@@ -470,7 +470,7 @@ Note the before/after brainstorm numbers in the CHANGELOG entry's last sentence 
 
 - [ ] **Step 1: A vague idea in a repo with a design system**
 
-In a consumer repo on this machine that has a real UI and `.claude/builder.md` (d2m or makeready; the memory says personal projects use the global builder, so load this checkout for the session with `--plugin-dir /Users/lukekeith/www/builder` and disable the user-scope builder via a settings file with `enabledPlugins: { "builder@claude-builder": false }`, the way the benchmark does), start `/builder:brainstorm` with a one-line vague idea, for example "I want people to find things faster".
+In a consumer repo on this machine that has a real UI and `.claude/builder.md` (the memory says personal projects use the global builder, so load this checkout for the session with `--plugin-dir /Users/lukekeith/www/builder` and disable the user-scope builder via a settings file with `enabledPlugins: { "builder@claude-builder": false }`, the way the benchmark does), start `/builder:brainstorm` with a one-line vague idea, for example "I want people to find things faster".
 
 Check, turn by turn:
 

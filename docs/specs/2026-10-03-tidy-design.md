@@ -5,20 +5,20 @@
 ## Why
 
 Builder's promise is that work started with `/builder:brainstorm` or `/builder:intake` ends merged
-into the branch you want, with nothing left lying around and no doubt about what is done. d2m on
+into the branch you want, with nothing left lying around and no doubt about what is done. One consumer repo on
 2026-10-03 shows the promise broken:
 
 | Left behind | What it was |
 |---|---|
-| `builder/owner-corrections` + worktree `d2m.fleet/owner-corrections` | a fleet feature that parked, never finished or cleared (34 commits not in `main`) |
-| `feat/owner-corrections` + worktree `~/www/d2m-owner-corrections` | an earlier attempt at the same feature (1 commit) |
-| `feat/component-pane-tabs` + worktree `d2m.fleet/cpt-merge` | a feature mid-merge (22 commits) |
-| worktrees `d2m.fleet/_base`, a session scratchpad's `mainwt` | detached scratch nobody removed |
+| `builder/owner-corrections` + worktree `<repo>.fleet/owner-corrections` | a fleet feature that parked, never finished or cleared (34 commits not in `main`) |
+| `feat/owner-corrections` + worktree `<repo>-owner-corrections` | an earlier attempt at the same feature (1 commit) |
+| `feat/component-pane-tabs` + worktree `<repo>.fleet/cpt-merge` | a feature mid-merge (22 commits) |
+| worktrees `<repo>.fleet/_base`, a session scratchpad's `mainwt` | detached scratch nobody removed |
 | `feat/contract-bar-icons`, `feat/run-stop-resolution`, `feat/screen-build`, `feat/screen-previews`, `feat/stop-weighs-intent` | fully merged into `main`, never deleted |
 
 Three causes:
 
-1. **The fleet lands on whatever branch was checked out** when it was launched. d2m's fleets ran
+1. **The fleet lands on whatever branch was checked out** when it was launched. That repo's fleets ran
    from `feat/stop-weighs-intent`, so every feature landed there and needed a second, manual merge
    into `main`.
 2. **The fleet only cleans up a perfectly clean worktree.** A merged feature whose worktree held a

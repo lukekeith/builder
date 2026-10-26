@@ -4,7 +4,7 @@
 
 ## Why
 
-In fai-erp, Luke specced `release-notes` on `feature/proposal-editor-wysiwyg` and handed it to agents.
+In one consumer repo, a feature was specced on a feature branch and handed to agents.
 Land on? recommended `main` (the config has no `merge_into`, so `base_branch`), it was taken, and the
 fleet parked the feature 41 seconds in: the worktree is cut from `main`, and `main`'s
 `.claude/builder.md` predated the `agent_walk:` block that lived only on the feature branch. Luke:

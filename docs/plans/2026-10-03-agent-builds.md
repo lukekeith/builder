@@ -51,7 +51,7 @@ The archive records size, profile and tokens. Everything else is skill text.
    and the floors stay on (Task 1).
 4. **A pause request for a feature that isn't in the fleet, or has already landed.** It's a no-op
    with a note, not a park of something else (Task 6).
-5. **`--estimate` with history in the old archive shape** (d2m's rows have no `timing`, `size` or
+5. **`--estimate` with history in the old archive shape** (older archives' rows have no `timing`, `size` or
    `profile`). Those rows are ignored, and with fewer than 3 usable rows it returns `null`, never `NaN`
    minutes (Task 1).
 
@@ -129,7 +129,7 @@ A table's data rows are the `|` lines after the `|---` separator, up to the next
       `{ profile: 'standard', size: { tasks: 10 }, lanes: { build: 600000, walk: 300000 }, tokens: { input: 1000000, output: 100000 } }`
       with tasks 10, 10 and 20. Minutes are the median of per-task minutes times the task count:
       with `tasks = 10` that's 15.
-    - Rows without `size` or `profile` (d2m's shape) → ignored.
+    - Rows without `size` or `profile` (the old shape) → ignored.
 - [ ] **Step 2: Run them.** `node --test scripts/test/profile.test.mjs` should FAIL with "Cannot find
   module".
 - [ ] **Step 3: Implement `scripts/profile.mjs`** to the rules above. The section reader is

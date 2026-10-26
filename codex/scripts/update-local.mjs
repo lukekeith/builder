@@ -8,9 +8,8 @@ import { vendor, pluginEnabled } from './vendor.mjs';
 import { packageHash } from './sync.mjs';
 import { compareVersions } from './version.mjs';
 const ownRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-export function defaultRepos(home = os.homedir()) {
-  return [['d2m', 'd2m', 'plugin'], ['truesheet', 'fai-cd', 'plugin'], ['finpro', 'finpro', 'vendor'], ['makeready', 'makeready', 'plugin'], ['FAI ERP', 'fai-erp', 'plugin']].map(([name, dir, mode]) => ({ name, path: path.join(home, 'www', dir), mode }));
-}
+// The repos to roll out to are the user's own: ~/.codex/builder-local.json or --repos. None ship here.
+export function defaultRepos() { return []; }
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
 export function updateLocal({ repos = defaultRepos(), source = 'lukekeith/builder', dryRun = false, check = false, force = false, execute = run, packageRoot = ownRoot } = {}) {
   for (const repo of repos) if (!repo || typeof repo.name !== 'string' || typeof repo.path !== 'string' || !path.isAbsolute(repo.path) || !['plugin', 'vendor'].includes(repo.mode)) throw new Error('Repos require name, absolute path and plugin/vendor mode');
@@ -95,6 +94,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         if (key === '--source') options.source = val; else options.repos = JSON.parse(fs.readFileSync(val, 'utf8')).repos;
       } else throw new Error('Usage: update-local.mjs [--dry-run|--check] [--source MARKETPLACE] [--repos JSON] [--force]');
     }
+    if (!options.repos?.length) throw new Error(`No repos to update: list them in ${config} or pass --repos <json-file>`);
     const result = updateLocal(options);
     console.log(`Builder Codex: ${result.installed || 'not installed'}; requested >= ${result.expected}; ${result.source}`);
     console.table(result.rows.map(({ name, mode, version, status }) => ({ repo: name, mode, version, status })));

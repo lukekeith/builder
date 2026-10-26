@@ -42,7 +42,7 @@ Lifecycle: exploring → spec → aligned (when relevant) → audited → planne
 
 Read configuration in order: `.codex/builder.md`, `.builder/config.md`, then existing `.claude/builder.md`. The **first existing file** is authoritative; malformed configuration is an error, never permission to fall through. Reuse the existing config without migrating it merely for naming. New config uses [../../assets/PROJECT.template.md](../../assets/PROJECT.template.md), inferred from repository layout, scripts, CI, and conventions, and is written only in the feature worktree. Verify with the bundled config loader. Read the project facts, app roles, gates, commit policy, companion skills, and environment constraints before planning.
 
-Load the relevant project skills by path or invocation when their work applies. In Truesheet, the user requires component, state, flow, auth, and styling skills for their respective tasks; retain story-first development and mandatory Storybook checks. Other projects use their own rules. No dependency on GSD or Superpowers installation is required.
+Load the relevant project skills by path or invocation when their work applies. Each project's own rules apply — required skills, story-first development, mandatory checks — as its instructions say. No dependency on GSD or Superpowers installation is required.
 
 ## Orchestration and delivery authority
 

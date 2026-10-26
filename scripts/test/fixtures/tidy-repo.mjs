@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process'
 
 export const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
-/** A repo on main with one commit holding a tracked test artefact, the way d2m tracks one. */
+/** A repo on main with one commit holding a tracked test artefact — some consumer repos track one. */
 export function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'tidy-')))
   git(root, 'init', '-q', '-b', 'main')

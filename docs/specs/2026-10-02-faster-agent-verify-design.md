@@ -5,13 +5,13 @@
 ## Why
 
 A fleet feature spends most of its time checking work that is already written, not writing it. On
-d2m's icon-draw — the cleanest recent run, audited → merged in 2h18m — the phase-close gates, the
+one project's icon feature — the cleanest recent run, audited → merged in 2h18m — the phase-close gates, the
 agent walk and verify took about 1h25m of it, and verify alone 34m. Its log shows where verify's time
 went, and none of it was new evidence:
 
 - **The deep set re-ran when it should have been quoted.** It had passed during the build at
   `d8dddbe`; the only commits since touched the feature's own docs (MANIFEST, SPEC, PLAN), which the
-  gate's inputs hash already excludes. It re-ran because d2m tracks `test-results/.last-run.json`,
+  gate's inputs hash already excludes. It re-ran because the project tracks `test-results/.last-run.json`,
   Playwright rewrites it on every run, and `gate.mjs` never quotes on a dirty tree (`gate.mjs:137`)
   — silently, so nobody saw why.
 - **Verify wrote and debugged its own live E2E script** (checklist item 10) against the same running
@@ -40,8 +40,8 @@ folders and configs read as before.
   paths matching known test-artifact patterns — `test-results/`, `playwright-report/`, `coverage/`,
   `.nyc_output/`, `junit*.xml` — and reports them with the fix (`git rm -r --cached <path>` and a
   `.gitignore` line). It never untracks anything itself.
-- **d2m, separately:** untrack `test-results/` and ignore it — one commit in d2m, made only with the
-  owner's go-ahead, outside this release.
+- **The consumer project, separately:** untrack `test-results/` and ignore it — one commit there,
+  made only with the owner's go-ahead, outside this release.
 
 ### 2. The agent walk covers verify's cross-app E2E walk (agent mode only)
 
@@ -101,5 +101,5 @@ goes into the agent-walk dispatch for any gate it runs.
 
 ## Release
 
-**4.6.0** (minor): time tracking is a new capability. No consumer action; d2m's untracking is a
-separate commit in d2m.
+**4.6.0** (minor): time tracking is a new capability. No consumer action; the consumer's untracking is a
+separate commit in that project.

@@ -50,7 +50,7 @@ The legacy `sync-version.mjs` helper only aligns version metadata. It does not m
 $update-local
 ```
 
-This mirrors Claude's maintainer rollout: d2m, fai-cd (truesheet), makeready and fai-erp use one global Codex install; finpro gets a runtime-only vendored copy. No consumer commits are made. Preview/check by hand:
+This mirrors Claude's maintainer rollout: plugin-mode consumers use one global Codex install; vendored consumers get a runtime-only vendored copy. No consumer commits are made. Preview/check by hand:
 
 ```sh
 node codex/scripts/update-local.mjs --dry-run
@@ -60,7 +60,7 @@ node codex/scripts/update-local.mjs
 node codex/scripts/update-local.mjs --source /absolute/path/to/builder
 ```
 
-Customize `~/.codex/builder-local.json` or `--repos <json-file>`:
+List your repos in `~/.codex/builder-local.json` or `--repos <json-file>`:
 
 ```json
 {"repos":[{"name":"my-project","path":"/absolute/path/to/project","mode":"plugin"}]}

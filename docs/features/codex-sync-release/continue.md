@@ -2,7 +2,7 @@
 User wants Claude-first Builder development, one sync workflow that migrates latest Claude features into Codex and releases it, plus Codex update-local equivalent covering Claude's five local consumers.
 Starting checkout main b34854b. Target main. Isolated branch builder/codex-sync-release.
 Existing port /Users/lukekeith/www/builder-codex-port is branch codex/builder-port with substantial uncommitted 4.9 work. Preserve it; user clarification pending on extending that snapshot. No source files copied yet.
-Claude local-only updater: /Users/lukekeith/www/builder/.claude/skills/update-local/{SKILL.md,update-local.mjs}. It uses global plugin mode for d2m, fai-cd, makeready, fai-erp; finpro is vendored.
+Claude local-only updater: /Users/lukekeith/www/builder/.claude/skills/update-local/{SKILL.md,update-local.mjs}. It uses global plugin mode for most consumers; one is vendored.
 Next: settle dependency on existing port; bring the port into this integration worktree without changing its source; implement semantic sync skill plus durable upstream delta tracking, verified release helper, marketplace packaging, and local rollout with safe vendor replacement. Version-only sync cannot imply feature parity.
 
 Dependency resolved: snapshot existing Codex package including current uncommitted 4.9 adaptations into this feature worktree; original port untouched. This is an explicit integration snapshot, not staging or committing the source worktree.

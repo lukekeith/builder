@@ -13,9 +13,9 @@ environment, and an agent's config fix went into a copy the fleet never reads. *
 in `.claude/builder.md`** — `@walk` is opt-in. Investigation: every code path, `file:line`, in this
 release's commit history.
 
-**Walks, much leaner** (`docs/specs/2026-10-26-lean-walks-design.md`). makeready's one-screen chart
+**Walks, much leaner** (`docs/specs/2026-10-26-lean-walks-design.md`). A one-screen chart
 feature was walked as 18 checks a round — its 9 items and the same script again as cross-app steps —
-re-walked in full each round from a fresh launch per item, ~27 min a round. d2m's 20-feature fleet
+re-walked in full each round from a fresh launch per item, ~27 min a round. A 20-feature fleet
 spent 623 min in the one-at-a-time walk lane, 339 of them in verify.
 - **One app in scope → the verification script is the walk.** No cross-app section repeating it;
   the per-app test items are the gates' to prove. A one-app feature's `end=risk` now walks its
@@ -433,7 +433,7 @@ not this release's. The turn budgets (`bench/budgets.json`) still flag most step
   `--path` refuses it, and the fleet's pre-flight refuses it however it's named. A feature you only
   just specced in a session is still offered.
 - **Work on a branch several features share isn't handed to agents.** Agents would treat that branch
-  as one feature's branch (d2m's `feat/design-versions` carried two). The feature says which others
+  as one feature's branch (one real branch carried two). The feature says which others
   share the branch: merge it into the target first, or finish them in a session.
 - **The picker says what agents would actually do.** For example, "built in a session, not tested
   yet · agents only walk it, verify and merge it". Features not built yet are listed first.
@@ -485,7 +485,7 @@ not this release's. The turn budgets (`bench/budgets.json`) still flag most step
 - **Migrations a feature brings reach your dev DB when it lands.** Under the fleet, the walk applied
   a feature's migrations to its throwaway walk DB. The merge then put the code on your branch, but
   nothing ran in your checkout, so a hot-reloading dev server hit a schema it didn't have. That
-  happened in d2m on 2026-09-27 and again now. After merging into the branch checked out in this
+  happened on 2026-09-27 and again now. After merging into the branch checked out in this
   folder, the fleet now looks for new files under §Walk readiness `migrations:`:
   - `apply_mode: agent` and additive migrations: it runs `apply:` and then `regenerate:` there.
   - `ask`, `human`, or a migration that drops or rewrites data: it leaves a note naming the exact
@@ -505,7 +505,7 @@ not this release's. The turn budgets (`bench/budgets.json`) still flag most step
 - **Splits are cut by value, not by layer, and "one spec" is always offered.** A slice now counts
   toward a split only when it gives you something you can use once it alone ships. A shell, a data
   model or a button that does nothing yet is not a slice. The split question always offers **One
-  spec** next to value-sized specs, and recommends the fewest. (A d2m design had become five layered
+  spec** next to value-sized specs, and recommends the fewest. (A design had become five layered
   children where one or two specs fit.)
 - **`/builder:tidy` keeps a worktree parked for your walk.** It used to put it in the safe batch
   to remove.
@@ -577,7 +577,7 @@ not this release's. The turn budgets (`bench/budgets.json`) still flag most step
 - **Work lands where you say, not where you happen to be.** New optional `merge_into:` in
   `.claude/builder.md` (default `base_branch`). Fleets — `/builder:fleet`, `/builder:agent` — merge
   there whatever is checked out, even from a detached HEAD; `--into <branch>` picks another for one
-  run. (Before, features landed on the branch checked out at launch, which is how d2m's work ended up
+  run. (Before, features landed on the branch checked out at launch, which is how one project's work ended up
   on a feature branch needing a second merge.)
 - **A fleet cleans up after itself.** A merged feature's worktree and branch are removed — whatever
   the branch is called — even when a test run rewrote a tracked file in it (`test-results/` and the
@@ -884,7 +884,7 @@ sets a floor (spec 0 → planned 15 → built 75 → signed-off 80 → verified 
 **`agent_walk.sync`** — an optional command the fleet runs in a worktree right after merging the target
 in with new commits, with `worktree_env` and `{feature}` filled in: the install and the test-DB
 migration a merged-in package or migration needs. Without it, a walk env failed on `Cannot find
-package '@d2m/colors'` — the package another feature had just landed on main, merged in after the
+package '@app/colors'` — the package another feature had just landed on main, merged in after the
 worktree's `npm ci`. A failing `sync` parks the feature naming its log. No existing config changes.
 
 ## 3.3.5
@@ -917,7 +917,7 @@ worktree's `npm ci`. A failing `sync` parks the feature naming its log. No exist
 ## 3.3.0
 
 **The gates run once, and builds run side by side.** Measured on one fleet day (two repos, seven
-features): test execution was ~60% of a d2m-sized feature's wall-clock, the same server suite ran
+features): test execution was ~60% of a typical feature's wall-clock, the same server suite ran
 about fourteen times per feature, and `parallel: 1` — set because the suites shared one test database
 — serialised four builds of three hours each. No config key is required; every new key is optional.
 
