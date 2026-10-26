@@ -51,7 +51,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
-const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
+const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --walk-only | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
 const argv = process.argv.slice(2)
 const flag = (f) => argv.includes(f)
 const names = argv.filter((a) => !a.startsWith('--'))
@@ -59,7 +59,7 @@ if (flag('--help') || flag('-h')) {
   console.log(USAGE)
   process.exit(0)
 }
-for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole', '--typecheck'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
+for (const a of argv) if (a.startsWith('--') && !['--all', '--deep', '--force', '--baseline', '--whole', '--typecheck', '--walk-only'].includes(a)) die(`unknown flag ${a}. ${USAGE}`)
 const TYPECHECK = flag('--typecheck')
 if (TYPECHECK && (flag('--deep') || flag('--baseline'))) die(`--typecheck runs app fast sets only. ${USAGE}`)
 
@@ -99,8 +99,15 @@ if (flag('--baseline')) {
   process.exit(Object.values(values).some((v) => v == null) ? 1 : 0)
 }
 
-const wanted = flag('--all') ? Object.keys(GATES.fast) : names
-if (!wanted.length && !flag('--deep')) die(USAGE)
+// --walk-only: the deep set's @walk lines alone — what the fleet runs once per walk batch, in the walk
+// worktree with the walk env up, so every feature in the batch is verified against the env once.
+const WALK_ONLY = flag('--walk-only')
+if (WALK_ONLY && !GATES.deep.some((g) => g.walk)) {
+  console.log('no @walk line in the deep set — nothing needs the walk env')
+  process.exit(0)
+}
+const wanted = WALK_ONLY ? [] : flag('--all') ? Object.keys(GATES.fast) : names
+if (!wanted.length && !flag('--deep') && !WALK_ONLY) die(USAGE)
 for (const n of wanted) {
   if (!appPath(n)) die(`no app named ${n} in .claude/builder.md (apps: ${CFG.appNames.join(', ')})`)
   if (!GATES.fast[n]) die(`no "### ${n} — fast" block under ## Quality gates in .claude/builder.md`)
@@ -142,7 +149,8 @@ const fastSets = TYPECHECK
   : wanted
 const sets = [
   ...fastSets.map((n) => ({ app: n, key: `fast-${n}${TYPECHECK ? '-typecheck' : ''}`, label: `${n} — ${TYPECHECK ? 'typecheck' : 'fast'}`, gates: TYPECHECK ? GATES.fast[n].filter((g) => g.typecheck) : GATES.fast[n], exclude: [registry, ...CFG.apps.filter((a) => a.name !== n).map((a) => a.path)], expand: { root: ROOT, appPath: appPath(n), baseBranch: CFG.baseBranch } })),
-  ...(flag('--deep') ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
+  ...(flag('--deep') && !WALK_ONLY ? [{ key: 'deep', label: 'deep set', gates: GATES.deep, exclude: [registry], expand: null }] : []),
+  ...(WALK_ONLY ? [{ key: 'deep-walk', label: '@walk gates', gates: GATES.deep.filter((g) => g.walk), exclude: [registry], expand: null }] : []),
 ]
 // A --whole run and a scoped one prove different things on the same tree: each quotes only its own.
 if (flag('--whole')) for (const set of sets) if (set.gates.some((g) => g.scope)) set.key += '-whole'

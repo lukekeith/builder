@@ -653,7 +653,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
         },
         {
           "role": "claude",
@@ -693,9 +693,9 @@
         }
       ],
       "stamp": {
-        "hash": "1f2938755cf3",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "hash": "f50a9ca4dd7f",
+        "version": "5.2.0",
+        "date": "2026-10-26"
       }
     },
     {
@@ -720,7 +720,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: one at a time\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again. **Add to the running fleet** drops both in its inbox, each picked up the moment a lane frees; **Not now** queues nothing."
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again. **Add to the running fleet** drops both in its inbox, each picked up the moment a lane frees; **Not now** queues nothing."
         },
         {
           "role": "picker",
@@ -756,9 +756,9 @@
         }
       ],
       "stamp": {
-        "hash": "3b1f07ffce1d",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "hash": "5e49e1b79adf",
+        "version": "5.2.0",
+        "date": "2026-10-26"
       }
     },
     {

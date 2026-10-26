@@ -19,14 +19,25 @@ const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
  * lane: the PR, CI, the ship commit and the merge need no dev env, so they run in the parallel pool
  * and never hold the one-at-a-time walk lane while CI runs. An open PR is not done — merged is.
  */
-export function laneOf(mf) {
+export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (isSet(mf.blocked)) return 'blocked'
   if (mf.state === 'shipped') return 'done'
   if (mf.state === 'building' && /^pending/.test(mf.ready ?? '')) return 'walk'
   if (BUILD_STATES.has(mf.state)) return 'build'
+  // Batched walks (agent_walk.start with batch > 1): the walk lane holds only what needs the running
+  // env — readiness and the agent walk. A walk's fixes are worked in the parallel pool (no env), and
+  // verify + ship run there too; the @walk gates verify needs ran once in the batch.
+  if (batched && mf.state === 'built' && hasOpenFixes(specText)) return 'build'
+  if (batched && mf.state === 'signed-off') return 'ship'
   if (WALK_STATES.has(mf.state)) return 'walk'
   if (SHIP_STATES.has(mf.state)) return 'ship'
   return 'unknown'
+}
+
+/** An open `- [ ]` under the SPEC's `## Fixes` (always its last section). */
+export function hasOpenFixes(specText) {
+  const i = (specText ?? '').search(/^## Fixes\s*$/m)
+  return i >= 0 && /^\s*[-*] \[ \]/m.test(specText.slice(i))
 }
 
 /**
@@ -51,19 +62,19 @@ export function shippedPr(specText) {
 }
 
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
-export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>' }) {
+export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>', batched = false }) {
   // Shipped is done however the run ended — one that timed out after the ship commit must not be
   // retried into a second one.
   const shipped = manifestText == null ? shippedPr(specText) : null
   if (shipped) return { action: 'done', pr: shipped }
   const mf = manifestText == null ? null : parseManifest(manifestText)
-  if (mf && laneOf(mf) === 'done') return { action: 'done', pr: mf.pr ?? null }
+  if (mf && laneOf(mf, { batched, specText }) === 'done') return { action: 'done', pr: mf.pr ?? null }
   if (exit !== 0) {
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
     return failures >= 1 ? { action: 'fail', reason: `run ${what} twice` } : { action: 'retry' }
   }
   if (mf == null) return { action: 'park', reason: 'MANIFEST.md was gone after the run — next: /builder:status to see where the feature stands' }
-  const next = laneOf(mf)
+  const next = laneOf(mf, { batched, specText })
   if (next === 'blocked') return { action: 'park', reason: unquote(mf.blocked) }
   if (next === 'unknown') return { action: 'park', reason: `manifest state '${mf.state ?? ''}' is not one the fleet knows — next: /builder:resume --path ${folder} to set it right` }
   if (next !== lane) return { action: 'handoff', to: next }

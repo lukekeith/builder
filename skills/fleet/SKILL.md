@@ -163,6 +163,18 @@ walk ends — for any reason, including a park — before running `stop`. An env
 one agent run to find and fix the cause in the branch, then one more try; readiness that needs the
 env restarted gets it restarted by the fleet.
 
+**Walks run in batches.** With `agent_walk.start` set, the walk lane takes every feature waiting to
+walk — up to `agent_walk.batch` (default 8; 1 walks one feature at a time, as before) — merges their
+branches onto the target in a walk worktree of its own (`<worktrees>/_walk`, branch `builder/_walk`,
+never merged, removed when the fleet ends), brings the env up **once** (`reset` once), and runs one
+session there: readiness for the batch, one walker going screen by screen across every feature
+(agent-walk §Batched walks), each verdict written in that feature's own worktree. The deep set's
+`@walk` lines then run once against that env, into each feature's `walk-gates.md`. A feature that
+conflicts with the others waits for the next batch. The walk lane does nothing else: a walk's fixes,
+verify and ship run in the parallel lanes with no env, and a fixed feature rejoins a later batch,
+which re-walks only what its fix changed. A batch whose env won't come up falls back to one walk
+per feature, with the env-repair run.
+
 A run is killed only when it goes **quiet** — 30 minutes with no output
 (`FLEET_IDLE_TIMEOUT_MS`), with a 6-hour backstop (`FLEET_RUN_TIMEOUT_MS`) — so a long build that is
 still working is never cut off. Each run's words go to `.builder/fleet/logs/<feature>-NN.log` as it

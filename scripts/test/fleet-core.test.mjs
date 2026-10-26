@@ -550,3 +550,19 @@ test('renderStatus: the heading counts what this run merged, and its bar covers 
   const out = renderStatus(fleet, (name) => ({ pct: name === 'b' ? 50 : 0, label: 'x' }))
   assert.match(out, /^# builder fleet — 5 feature\(s\): 1 merged this run · 1 building · 3 queued · ▓▓▓░░░░░░░ 30%$/m)
 })
+
+test('laneOf, batched: the walk lane keeps readiness and the walk; fixes and verify go to the pool', async () => {
+  const { laneOf, hasOpenFixes } = await import('../fleet-core.mjs')
+  const fixes = '# s\n\n## Testing\n\n- [ ] not a fix\n\n## Fixes\n\n- [x] done\n- [ ] notes: list --tag — expected one line (agent walk round 1)\n'
+  const ticked = fixes.replace('- [ ] notes', '- [x] notes')
+  const batched = (mf, specText = null) => laneOf(mf, { batched: true, specText })
+  assert.equal(batched({ state: 'building', ready: 'pending "dev env (fleet walk lane)"' }), 'walk')
+  assert.equal(batched({ state: 'built' }), 'walk')
+  assert.equal(batched({ state: 'built' }, fixes), 'build', 'a walk\'s open fixes are worked with no env')
+  assert.equal(batched({ state: 'built' }, ticked), 'walk', 'ticked: back to a walk batch')
+  assert.equal(batched({ state: 'signed-off' }), 'ship', 'verify runs in the pool')
+  // not batched: as before
+  assert.equal(laneOf({ state: 'built' }, { specText: fixes }), 'walk')
+  assert.equal(laneOf({ state: 'signed-off' }), 'walk')
+  assert.equal(hasOpenFixes('## Testing\n\n- [ ] x\n'), false, 'a box outside ## Fixes is not a fix')
+})

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { leanRepo, run, git, readText, SCRIPTS } from './fixtures/lean-repo.mjs'
 import { promptOf, fill, taskBlock } from '../dispatch.mjs'
@@ -319,4 +321,26 @@ test('dispatch agent-walk: round 2 walks only what failed, carries the passes wi
   assert.match(p, /fix\.txt/)
   assert.match(p, /\*\*Walk by screen\.\*\*/)
   assert.doesNotMatch(p, /systematic-debugging/, 'round 2 is a first re-walk, not yet a debugging round')
+})
+
+test('dispatch walk-batch: one brief for several features — every walk script, each report in its own round, walked by screen', () => {
+  const a = leanRepo('note-tags')
+  const b = leanRepo('note-tags')
+  for (const r of [a, b]) {
+    mkdirSync(WS(r), { recursive: true })
+    writeFileSync(join(WS(r), 'walk.md'), '# w\n')
+  }
+  const walkRoot = mkdtempSync(join(tmpdir(), 'walk-'))
+  execFileSync('git', ['init', '-q'], { cwd: walkRoot })
+  const out = run('dispatch.mjs', ['walk-batch', a.folder, b.folder], { cwd: walkRoot })
+  assert.equal(out.status, 0, out.stderr)
+  assert.match(out.stdout, /description: Agent walk — batch of 2/)
+  const p = readText(pathFrom(out.stdout))
+  assert.match(p, /You are the agent walker for 2 features at once/)
+  assert.match(p, /## Walk by screen, across every feature/)
+  for (const r of [a, b]) {
+    assert.ok(p.includes(join(WS(r), 'walk.md')))
+    assert.ok(p.includes(join(WS(r), 'agent-walk', 'round-1', 'report.md')))
+  }
+  assert.match(p, /An item fails in the feature whose walk script lists it/)
 })

@@ -166,6 +166,12 @@ with the test env, never the walk env's database. When a gate takes the walk env
 give the walk env its own output folder to stop it happening (`/builder:init --update` offers it).
 Agents never change `.claude/builder.md`: a fix that needs it parks for you with the diff.
 
+**Walks are batched.** With `agent_walk.start` set, the walk lane takes every feature waiting to
+walk — up to `agent_walk.batch` (default 8) — into one walk branch, brings the env up once, and has
+one agent walk them all, screen by screen. Verify and ship run in the parallel lanes. A one-app
+feature's walk is its verification script, once; a re-walk after a fix covers only what the fix
+changed.
+
 Several specs at once, or work in flight, can be handed over directly:
 
 ```

@@ -13,12 +13,30 @@
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
 //   TOUCH:<path>:<step>  rewrite <path> (relative to the worktree) without committing it, then <step>
 //   CONFIG:<step>   edit .claude/builder.md in the worktree and commit it, then <step>
+//   FIXES / FIXED   a walk's open ## Fixes row (state untouched) / every row ticked + ready: pending
 // The fleet's conflict and walk-env prompts are handled first — see below.
-import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
+import { join, dirname, relative } from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 
 const prompt = process.argv[process.argv.indexOf('-p') + 1]
+// A batched walk (`/builder:agent-walk --batch --into <t> <folder>…`, run in the walk worktree): each
+// folder is replayed as that feature's own walk-lane run, in its own worktree — the next scenario
+// step applied and committed there — and the batch is logged once, with the cwd it ran in.
+if (/--batch/.test(prompt)) {
+  const words = prompt.split(/\s+/)
+  const folders = words.slice(words.indexOf('--into') + 2).filter((w) => w.startsWith('/'))
+  appendFileSync(join(process.env.STUB_STATE, 'calls.log'), `batch ${folders.map((d) => d.split('/').pop()).join(',')} cwd=${process.cwd().split('/').pop()} lane_env=${process.env.BUILDER_LANE ?? '-'}\n`)
+  for (const d of folders) {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: d, encoding: 'utf8' }).trim()
+    const rel = relative(realpathSync(root), realpathSync(d)) // /var vs /private/var on macOS
+    try {
+      execFileSync(process.execPath, [process.argv[1], '-p', `/builder:resume --path ${rel} --agent-walk`], { cwd: root, env: process.env, stdio: ['ignore', 'ignore', 'inherit'] })
+    } catch {}
+  }
+  process.stdout.write(JSON.stringify({ type: 'result', result: 'batch walked', duration_ms: 1000, num_turns: 3, total_cost_usd: 0.05 }) + '\n')
+  process.exit(0)
+}
 const spec = /--path (\S+)/.exec(prompt)[1]
 const feature = spec.split('/').pop()
 const S = process.env.STUB_STATE
@@ -111,6 +129,18 @@ if (step.startsWith('CONFIG:')) {
   const cfg = join(process.cwd(), '.claude', 'builder.md')
   writeFileSync(cfg, readFileSync(cfg, 'utf8') + '\n<!-- loosened by an agent -->\n')
   execFileSync('git', ['commit', '-qam', `stub: ${feature} edits the config`], { stdio: 'ignore' })
+}
+// FIXES — a walk that found problems: an open ## Fixes row at the end of SPEC.md, the state untouched.
+// FIXED — the fixes worked with no env: every row ticked, ready: pending for a later walk batch.
+if (step === 'FIXES' || step === 'FIXED') {
+  const sp = join(process.cwd(), spec, 'SPEC.md')
+  const text = existsSync(sp) ? readFileSync(sp, 'utf8') : `# ${feature}\n`
+  if (step === 'FIXES') writeFileSync(sp, `${text.trimEnd()}\n\n## Fixes\n\n- [ ] app: an item — expected x, saw y (agent walk round 1)\n`)
+  else {
+    writeFileSync(sp, text.replace(/^- \[ \]/gm, '- [x]'))
+    set('ready', 'pending "dev env (fleet walk lane)"')
+  }
+  finish(0)
 }
 if (step === 'HANG') await new Promise(() => setInterval(() => {}, 1e6))
 if (step === 'FAIL') finish(3)
