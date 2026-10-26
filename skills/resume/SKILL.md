@@ -297,10 +297,10 @@ already have, edits the design, or widens scope. Nothing about it touches the PR
 
 ## `--agent-walk`
 
-Agent mode — what `/builder:agent` and `/builder:fleet` run — has its own file:
-[`AGENT-MODE.md`](AGENT-MODE.md), which `docs.mjs resume-agent` prints. **Under `--agent-walk`, read
-it before Step 1**: how every pause is settled without asking, the flags that carry through, and
-§Ship in agent mode.
+Agent mode — what `/builder:agent` and `/builder:fleet` run — has its own file,
+[`AGENT-MODE.md`](AGENT-MODE.md): how every pause is settled without asking, the flags that carry
+through, and §Ship in agent mode. **`docs.mjs resume-agent` (the first call, above) already printed
+it — never read it again.**
 
 ## The picker (no `--path`, no text)
 
@@ -371,7 +371,7 @@ first (`git switch <branch>`) if the tree is clean; otherwise stop and name the 
 
 ### Ship in agent mode (`--agent-walk`)
 
-[`AGENT-MODE.md`](AGENT-MODE.md) §Ship in agent mode — the merge into the target, never a PR.
+`AGENT-MODE.md` §Ship in agent mode — the merge into the target, never a PR. `docs.mjs resume-agent` printed it with the rest of that file; don't read it again.
 
 ### 🔒 The PR lock (binding on every skill in this family)
 
