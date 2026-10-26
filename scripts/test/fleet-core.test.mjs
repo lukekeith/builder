@@ -207,7 +207,8 @@ test('renderStatus adds a Progress column and an overall bar when given a progre
     },
     progress
   )
-  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building · ▓▓▓▓░░░░░░ 43%\n/)
+  // b merged: it counts at 100% in the bar, so the run reads (43 + 100) / 2
+  assert.match(out, /^# builder fleet — 2 feature\(s\): 1 merged this run · 1 building · ▓▓▓▓▓▓▓░░░ 72%\n/)
   assert.match(out, /\| Feature \| Status \| Tests \| Progress \| Runs \| Time \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| — \| ▓▓▓▓░░░░░░ 43% · build 2\/4 \| 2 \| — \| — \| yes \|/)
   assert.doesNotMatch(out, /\| b \|/)
@@ -519,4 +520,33 @@ test('waitForCommand: found at once, found after the binary comes back, gives up
   assert.equal(await waitForCommand('fakeclaude', { env, timeoutMs: 60000, everyMs: 5000, sleep }), true)
   assert.equal(ticks, 2, 'it waited for the update to finish')
   assert.equal(await waitForCommand('nope', { env, timeoutMs: 10000, everyMs: 5000, sleep: async () => {} }), false)
+})
+
+test('initWithoutBuilder: a run that starts without builder is named; with it, or no init, is not', async () => {
+  const { initWithoutBuilder } = await import('../fleet-core.mjs')
+  const init = (plugins) => ({ type: 'system', subtype: 'init', plugins })
+  assert.equal(initWithoutBuilder(init([{ name: 'builder', source: 'builder@claude-builder' }])), null)
+  assert.match(initWithoutBuilder(init([{ name: 'cc-plugin-telemetry' }])), /without the builder plugin loaded[\s\S]*--bare/)
+  assert.equal(initWithoutBuilder({ type: 'assistant' }), null)
+  assert.equal(initWithoutBuilder({ type: 'system', subtype: 'init' }), null) // no plugin list: not judged
+})
+
+test('fleetOverall: a merged feature counts at 100% — five with one merged and four not started is 20%', async () => {
+  const { fleetOverall } = await import('../fleet-core.mjs')
+  const fleet = { landedThisRun: ['a'], features: { b: { status: 'queued' }, c: { status: 'queued' }, d: { status: 'queued' }, e: { status: 'queued' } } }
+  assert.deepEqual(fleetOverall(fleet, () => 0), { pct: 20, merged: 1, total: 5 })
+  // a done row not yet archived counts once, as merged
+  const mid = { landedThisRun: ['a'], features: { a: { status: 'done' }, b: { status: 'building' } } }
+  assert.deepEqual(fleetOverall(mid, () => 50), { pct: 75, merged: 1, total: 2 })
+  // a feature added while the run goes on grows the total
+  fleet.features.f = { status: 'queued' }
+  assert.equal(fleetOverall(fleet, () => 0).total, 6)
+  assert.equal(fleetOverall({ features: {} }, () => 0).pct, null)
+})
+
+test('renderStatus: the heading counts what this run merged, and its bar covers the whole run', async () => {
+  const { renderStatus } = await import('../fleet-core.mjs')
+  const fleet = { landedThisRun: ['a'], features: { b: { status: 'building', runs: 1 }, c: { status: 'queued', runs: 0 }, d: { status: 'queued', runs: 0 }, e: { status: 'queued', runs: 0 } } }
+  const out = renderStatus(fleet, (name) => ({ pct: name === 'b' ? 50 : 0, label: 'x' }))
+  assert.match(out, /^# builder fleet — 5 feature\(s\): 1 merged this run · 1 building · 3 queued · ▓▓▓░░░░░░░ 30%$/m)
 })

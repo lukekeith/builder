@@ -1,6 +1,6 @@
 ---
 name: statusline
-description: Turn builder's live status line on or off — a `builder` progress bar and what builder is running right now (fleet features, a build in the chat, running gates and jobs) at the end of your existing Claude Code status line, an empty bar marked idle when nothing runs. Writes the statusLine key of your user settings, keeps your previous status line showing in front of it, and puts it back exactly on off. Use when the user asks for live progress, a progress bar or a status line for builder, or to turn it off.
+description: Turns builder's live progress bar in the Claude Code status line on or off. Use when the user asks for a builder progress bar or status line, or to turn it off.
 ---
 
 # `/builder:statusline` — live progress in your status line

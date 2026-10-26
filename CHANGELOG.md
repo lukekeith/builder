@@ -4,6 +4,80 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.0.0
+
+Easier to start, lighter on every session, faster in agent mode, and checked by what it does. Built
+from a comparison against superpowers, Anthropic's official plugins, compound-engineering, Spec Kit,
+Kiro, OpenSpec, BMAD, GSD, Taskmaster and Claude Code's own features
+(`docs/research/2026-10-25-comparison.md`). **Nothing to change in `.claude/builder.md`** — every
+config, manifest and feature folder from 4.x reads as before.
+
+**Measured** (`bench/results/`, 2026-10-26, Opus 5.5, Claude Code 2.1.310, every run passing its
+hidden acceptance tests):
+
+| Feature | builder 5.0 | builder 4.14.8 (same day) | superpowers 7.0.0 | no plugin | GSD |
+|---|---|---|---|---|---|
+| `tags` (md, 3 reps) | 11m · 76 turns · $4.57 | 11m · 70 turns · $4.58 | 9m · $2.66 | 1m · $0.30 | 1h20m · $32.36 (1 rep) |
+| `edit` (xs, 3 reps) | 58s · $0.52 (was 6m · $3.41 before the sizing fix) | — | 4m · $1.21 | 28s · $0.23 | — |
+
+On `tags` 5.0 matches 4.14.8; the 8m of 2026-10-24 is not reached by either today, so that drift is
+not this release's. The turn budgets (`bench/budgets.json`) still flag most steps as over.
+
+**Changed:**
+- **Builder costs every session a third of what it did.** Its skill descriptions sat in every
+  session's context — about 6,700 tokens, against superpowers' ~840 — and three were over
+  Anthropic's 1,024-character limit, so Claude Code was dropping seven of them (including `help`)
+  from its skill list. Each is now one plain "what it does, when to use it" sentence: about 2,200
+  tokens in all, held there by a test. The maintainer-only benchmark no longer loads at all.
+- **A README and help card a new user can read.** The README is now install, three commands, what
+  happens to a request, seven words you'll see, and every command in one table; the detail moved to
+  `docs/guide.md`. The help card is rewritten in plain words, and a specific question
+  ("how do I pick up yesterday's work?") gets a few-line answer instead of the whole card.
+- **The docs say what "go" does.** With agent mode — every install since 4.14.8 — "go" hands a
+  build to agents, who merge it on your machine marked *not human-tested*. The README, help,
+  plugin description and `/builder:init` now say so plainly, and how to test it yourself instead.
+- **Agent runs are leaner** (Part 2 of the lean orchestrator, about −50 s on the benchmark's small
+  feature by the overhead model): every step ends in at most six lines; an `--auto` ruling is one
+  table row with its reason in one clause; audit runs straight into plan and a READY verify straight
+  into ship, each still committing its own step.
+- **A new command or endpoint only its own app uses stays small.** The sizing rules made any new
+  endpoint or route md, and the benchmark's xs task — adding `notes edit` — went through the full
+  pipeline (spec, audit, plan, agents, walk, verify) in all three reps: 6 minutes and $3.41 where
+  plain Claude Code took 28 seconds. Now one app, on data it already stores, with no new screen and
+  nothing outside the app calling it, is sm — built in the chat. It is md once another app or a
+  released artifact depends on it, or it needs a model, a schema row, a permission or a screen.
+- **`resume` is under 500 lines** — its agent-mode sections moved to `resume/AGENT-MODE.md`, which
+  agent runs read in the same one call they already made. Long reference files open with a
+  contents line.
+
+**Added:**
+- **A lesson for next time.** Every step reads the config's §Standing traps; nothing wrote it. At
+  ship, a cost this feature paid — a fix round, a red gate, a failed walk — that the next feature
+  would pay too becomes one proposed line: a human ship asks once, an agent ship leaves it in the
+  SPEC and the fleet's report offers it.
+- **Behaviour evals** (`evals/`, run with `claude plugin eval`): a plain request reaches brainstorm,
+  a small change gets the quick path, a bigger one is grounded in the code first, help answers in a
+  line, status says when nothing is in flight — each against a no-plugin baseline.
+- **CI** runs the unit tests, the workspace self-test and the preview check on every push and PR.
+- **Benchmark:** a no-plugin `baseline` config, an xs feature (`edit`), and turn budgets per step
+  (`bench/budgets.json`) the report marks a step against.
+- **`/compare`** (this repo only, never shipped) re-runs the competitor comparison.
+
+**Fixed:**
+- **The fleet's progress bar covers the whole run.** It was the mean of the rows still in flight, so
+  a feature that merged left the total — five features with one merged read as the other four's
+  average, not 20% higher. Now every feature the run holds counts once and each one it merged counts
+  at 100%: five with one merged and four not started reads 20%, the heading says `1 merged this
+  run`, and a spec added while the fleet runs grows the total. The status line's `⚙ fleet n/total`
+  and its bar count the same way. A new fleet run starts its count fresh.
+- **A fleet run that starts without builder loaded is stopped.** Claude Code says `--bare` will
+  become the default for `-p`, and bare mode skips plugin hooks — the PR lock — and OAuth sign-in.
+  The fleet now checks each run's start and stops one that has no builder, saying why. Why the fleet
+  stays on `claude -p` rather than background sessions: `docs/specs/2026-10-26-native-background-sessions-design.md`.
+- **Stale docs:** the README's skill counts, a second contradictory way to vendor, and the
+  template's old profile wording. A test now checks the README names every skill and no doc names a
+  command that doesn't exist.
+
 ## 4.14.8
 
 **Changed:**

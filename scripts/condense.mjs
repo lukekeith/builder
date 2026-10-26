@@ -206,7 +206,7 @@ function ship(a) {
     if (existsSync(arch)) throw new Error(`${posix(relative(f.root, arch))} already exists — a second folder of that name would make "has it shipped?" answer for the wrong feature. Nothing was touched.`)
     if (!resumed && !/^READY\b/.test(f.manifest.verify ?? '')) throw new Error(`verify is not READY (verify: ${f.manifest.verify ?? 'absent'}) — ship §At ship runs only on a READY feature`)
     if (!resumed && a.into && git(f.root, ['merge-base', '--is-ancestor', a.into, 'HEAD'], { allowFail: true }) === null)
-      throw new Error(`${a.into} is not merged into this branch — merge ${a.into} into this branch first (resume §Ship in agent mode)`)
+      throw new Error(`${a.into} is not merged into this branch — merge ${a.into} into this branch first (resume AGENT-MODE.md §Ship in agent mode)`)
 
     // 1. the header
     const spec = read(f.specPath)

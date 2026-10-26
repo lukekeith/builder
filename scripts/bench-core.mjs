@@ -247,6 +247,13 @@ export function stepTimes(run) {
   return out
 }
 
+/** Every step of a run, by name, with its turns — summed like stepTimes. */
+export function stepTurns(run) {
+  const out = {}
+  for (const s of run.sessions ?? []) for (const st of s.steps ?? []) out[st.name] = (out[st.name] ?? 0) + (st.turns ?? 0)
+  return out
+}
+
 /** [min, max] of the finite values, or null when there are fewer than two. */
 export function range(nums) {
   const a = nums.filter(Number.isFinite)
@@ -267,6 +274,8 @@ export function summarize(runs) {
       stepNames.map((n) => [n, median(reps.filter((r) => n in timesOf.get(r)).map((r) => timesOf.get(r)[n]))]),
     )
     const stepRange = Object.fromEntries(stepNames.map((n) => [n, range(reps.filter((r) => n in timesOf.get(r)).map((r) => timesOf.get(r)[n]))]))
+    const turnsOf = new Map(reps.map((r) => [r, stepTurns(r)]))
+    const stepTurnsMed = Object.fromEntries(stepNames.map((n) => [n, median(reps.filter((r) => n in turnsOf.get(r)).map((r) => turnsOf.get(r)[n]))]))
     const longest = Object.entries(steps).sort((a, b) => b[1] - a[1])[0]
     const splits = reps.map((r) => r.totals?.split).filter(Boolean)
     const scored = (k) => {
@@ -286,6 +295,7 @@ export function summarize(runs) {
       longest: longest ? { name: longest[0], ms: longest[1] } : null,
       steps,
       stepRange,
+      stepTurns: stepTurnsMed,
       range: {
         ms: range(reps.map((r) => r.ms)),
         turns: range(reps.map((r) => r.totals?.turns)),
@@ -341,6 +351,27 @@ export function renderSummary(data) {
   return { rows, text: lines.join('\n') }
 }
 
+/**
+ * The turns-per-step table, each cell against its budget (bench/budgets.json, by feature then
+ * config): `12`, or `15 ⚠ 12` when the median went over. A config without budgets shows bare turns.
+ */
+export function turnsPerStep(rows, stepNames, budgets = {}) {
+  const lines = ['', '## Turns per step', '', `| Config | ${stepNames.map(cell).join(' | ')} |`, `|---|${stepNames.map(() => '---').join('|')}|`]
+  const over = []
+  for (const r of rows) {
+    const b = budgets?.[r.config] ?? {}
+    lines.push(`| ${r.config} | ${stepNames.map((n) => {
+      const v = r.stepTurns?.[n]
+      if (!Number.isFinite(v)) return '—'
+      if (Number.isFinite(b[n]) && v > b[n]) { over.push(`${r.config} ${n} ${int(v)} (budget ${b[n]})`); return `${int(v)} ⚠ ${b[n]}` }
+      return int(v)
+    }).join(' | ')} |`)
+  }
+  if (over.length) lines.push('', `⚠ over the turn budget: ${over.join(' · ')}`)
+  else if (rows.some((r) => budgets?.[r.config])) lines.push('', 'Every step is within its turn budget.')
+  return lines
+}
+
 export function renderReport(data) {
   const { rows, text: summary } = renderSummary(data)
   const v = data.versions ?? {}
@@ -348,6 +379,7 @@ export function renderReport(data) {
   const stepNames = [...new Set(rows.flatMap((r) => Object.keys(r.steps)))]
   out.push('', '## Time per step', '', `| Config | ${stepNames.map(cell).join(' | ')} |`, `|---|${stepNames.map(() => '---').join('|')}|`)
   for (const r of rows) out.push(`| ${r.config} | ${stepNames.map((n) => (n in r.steps ? spread(r.steps[n], r.stepRange?.[n], dur) : '—')).join(' | ')} |`)
+  out.push(...turnsPerStep(rows, stepNames, data.budgets))
   for (const run of data.runs ?? []) {
     const reps = (data.runs ?? []).filter((x) => x.config === run.config).length
     out.push('', `## ${run.config}${reps > 1 ? ` — rep ${run.rep}` : ''}${run.status === 'done' ? '' : ` — ${run.status}`}`, '')

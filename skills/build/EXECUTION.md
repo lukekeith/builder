@@ -4,6 +4,8 @@ Adapted from superpowers' `subagent-driven-development` (MIT — see
 [LICENSE-THIRD-PARTY.md](../../LICENSE-THIRD-PARTY.md), which lists what the adaptation changed).
 `builder:build` is the wrapper; this file is the loop.
 
+**Contents:** §Setup · §Model selection · §The task loop · §The final whole-branch review · §Finish · §Common rationalizations
+
 **Core principle:** a fresh implementer per task + the review the test plan sets (spec + quality —
 after each task, once per app, or none until the end; build §The test plan) + one broad review at the
 end, always = high quality, fast iteration.

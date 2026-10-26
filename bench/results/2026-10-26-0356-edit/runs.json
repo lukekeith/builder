@@ -1,0 +1,411 @@
+{
+  "runId": "2026-10-26-0356-edit",
+  "feature": "edit",
+  "fixture": "notes",
+  "model": null,
+  "startedAt": 1793004991244,
+  "endedAt": 1793005179321,
+  "versions": {
+    "builder": "5.0.0",
+    "superpowers": "7.0.0",
+    "gsd": null
+  },
+  "runs": [
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 1,
+      "status": "done",
+      "path": "small-path",
+      "startedAt": 1793004991307,
+      "endedAt": 1793005068020,
+      "ms": 76713,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0356-edit/builder-1/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "7fa62a82-2789-4895-9c86-04a3ec70c3aa",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 73285,
+            "turns": 10,
+            "tokens": {
+              "input": 20,
+              "output": 4723,
+              "cacheRead": 436349
+            },
+            "costUsd": 0.5206978000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1793004996606,
+              "end": 1793005066631,
+              "ms": 70025,
+              "turns": 19,
+              "toolCalls": {
+                "Bash": 9
+              },
+              "files": [],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; ls -la; cat packa",
+                "grep -n \"Steering and --auto\" -A60 /Users/lukekeith/.claude-home/projects/-priva",
+                "F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs",
+                "F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs",
+                "cat .gitignore README.md; ls /Users/lukekeith/www/builder/scripts/ | head -50; /",
+                "mkdir -p .builder/notes-edit && cat > .builder/notes-edit/brainstorm.md <<'EOF'",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "git add README.md src/cli.mjs test/cli.test.mjs && git commit -qm \"feat(notes): "
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7562,
+                  "after": "Bash F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs"
+                },
+                {
+                  "ms": 7056,
+                  "after": "Bash git add README.md src/cli.mjs test/cli.test.mjs && git commit -qm \"feat(notes): "
+                },
+                {
+                  "ms": 6321,
+                  "after": "Bash grep -n \"Steering and --auto\" -A60 /Users/lukekeith/.claude-home/projects/-priva"
+                },
+                {
+                  "ms": 5054,
+                  "after": "Bash mkdir -p .builder/notes-edit && cat > .builder/notes-edit/brainstorm.md <<'EOF'"
+                },
+                {
+                  "ms": 4866,
+                  "after": "Bash cat >> test/cli.test.mjs <<'EOF'"
+                }
+              ],
+              "split": {
+                "ms": 70025,
+                "orchestrator": 60735,
+                "agents": 0,
+                "tools": 9290
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 70025,
+            "orchestrator": 60735,
+            "agents": 0,
+            "tools": 9290
+          }
+        }
+      ],
+      "totals": {
+        "ms": 73285,
+        "turns": 10,
+        "tokens": {
+          "input": 20,
+          "output": 4723,
+          "cacheRead": 436349
+        },
+        "costUsd": 0.5206978000000001,
+        "split": {
+          "ms": 70025,
+          "orchestrator": 60735,
+          "agents": 0,
+          "tools": 9290
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0356-edit/builder-1",
+      "gitLog": [
+        "6cc23a9 Merge branch 'feat/notes-edit'",
+        "ce72524 feat(notes): add notes edit <id> <text>",
+        "3d924ae fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 2,
+      "status": "done",
+      "path": "small-path",
+      "startedAt": 1793005068073,
+      "endedAt": 1793005126180,
+      "ms": 58107,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0356-edit/builder-2/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "1824ea3f-f657-4e17-9170-5da742e4e965",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 54893,
+            "turns": 12,
+            "tokens": {
+              "input": 24,
+              "output": 4737,
+              "cacheRead": 546383
+            },
+            "costUsd": 0.5476806,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1793005072299,
+              "end": 1793005125013,
+              "ms": 52714,
+              "turns": 19,
+              "toolCalls": {
+                "Bash": 10,
+                "Write": 1
+              },
+              "files": [
+                ".builder/notes-edit/brainstorm.md"
+              ],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ----; ls -la",
+                "F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs",
+                "F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs",
+                "sed -n '/^# notes — builder config/,$p' .claude/builder.md; cat .gitignore; /Use",
+                "mkdir -p .builder/notes-edit && git check-ignore -v .builder/notes-edit/brainsto",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "cat README.md",
+                "sed -i '' 's/`notes show <id>`, `notes rm <id>`/`notes show <id>`, `notes edit <",
+                "sed -i '' 's/^status: sized sm/status: handed-off/' .builder/notes-edit/brainsto"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 7089,
+                  "after": "Bash sed -i '' 's/^status: sized sm/status: handed-off/' .builder/notes-edit/brainsto"
+                },
+                {
+                  "ms": 4397,
+                  "after": "Write /private/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0356-edit/builder-2/.builder/notes-edit/brainstorm.md"
+                },
+                {
+                  "ms": 4299,
+                  "after": "Bash cat README.md"
+                },
+                {
+                  "ms": 3530,
+                  "after": "Bash cat >> test/cli.test.mjs <<'EOF'"
+                },
+                {
+                  "ms": 3046,
+                  "after": "Bash mkdir -p .builder/notes-edit && git check-ignore -v .builder/notes-edit/brainsto"
+                }
+              ],
+              "split": {
+                "ms": 52714,
+                "orchestrator": 44697,
+                "agents": 0,
+                "tools": 8017
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 52714,
+            "orchestrator": 44697,
+            "agents": 0,
+            "tools": 8017
+          }
+        }
+      ],
+      "totals": {
+        "ms": 54893,
+        "turns": 12,
+        "tokens": {
+          "input": 24,
+          "output": 4737,
+          "cacheRead": 546383
+        },
+        "costUsd": 0.5476806,
+        "split": {
+          "ms": 52714,
+          "orchestrator": 44697,
+          "agents": 0,
+          "tools": 8017
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0356-edit/builder-2",
+      "gitLog": [
+        "394e435 Merge branch 'feat/notes-edit'",
+        "afa3bc7 feat(notes): add notes edit <id> <text>",
+        "6ac9ca1 fixture"
+      ]
+    },
+    {
+      "config": "builder",
+      "pipeline": "builder",
+      "tests": null,
+      "rep": 3,
+      "status": "done",
+      "path": "small-path",
+      "startedAt": 1793005126230,
+      "endedAt": 1793005179321,
+      "ms": 53091,
+      "installMs": 0,
+      "sessions": [
+        {
+          "name": "brainstorm",
+          "file": "/Users/lukekeith/www/builder/bench/results/2026-10-26-0356-edit/builder-3/session-01-brainstorm.jsonl",
+          "lane": null,
+          "sessionId": "56e4eee1-0306-4ee0-8ff4-9d729933e229",
+          "model": "claude-opus-5-5",
+          "prompt": "/builder:brainstorm --auto Notes can be edited.\n\n- `notes edit <id> <text>` replaces that note's text, keeps its id, and prints `edited <id>`.\n- An unknown id makes it fail with exit 1 and `no note <id>` on stderr, as `show` and `rm` do.\n- No text (`notes edit 3` or only spaces) makes it fail with exit 1 and the usage line on stderr.\n- The usage line names the new command.\n\nThe CLI entry stays `src/cli.mjs`, the tests stay under `test/` and run with `npm test`, and\nthere are still no dependencies. The feature is done when it is merged into `main` and\n`npm test` is green.",
+          "totals": {
+            "ms": 49788,
+            "turns": 9,
+            "tokens": {
+              "input": 18,
+              "output": 4623,
+              "cacheRead": 388069
+            },
+            "costUsd": 0.5018258000000001,
+            "ended": "result"
+          },
+          "plugins": [
+            "builder 5.0.0"
+          ],
+          "steps": [
+            {
+              "name": "/builder:brainstorm",
+              "start": 1793005130312,
+              "end": 1793005177930,
+              "ms": 47618,
+              "turns": 19,
+              "toolCalls": {
+                "Bash": 8
+              },
+              "files": [],
+              "commands": [
+                "node /Users/lukekeith/www/builder/scripts/docs.mjs brainstorm; echo ----; ls -la",
+                "grep -n \"Steering and --auto\" -A80 /Users/lukekeith/.claude-home/projects/-priva",
+                "F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs",
+                "W=$(/Users/lukekeith/www/builder/scripts/workspace notes-edit) && echo $W && cat",
+                "cat > .builder/notes-edit/brainstorm.md <<'EOF'",
+                "cat >> test/cli.test.mjs <<'EOF'",
+                "python3 - <<'EOF'",
+                "git add README.md src/cli.mjs test/cli.test.mjs && git commit -qm \"feat(notes-ed"
+              ],
+              "tests": [],
+              "subagents": [],
+              "gaps": [
+                {
+                  "ms": 5951,
+                  "after": "Bash git add README.md src/cli.mjs test/cli.test.mjs && git commit -qm \"feat(notes-ed"
+                },
+                {
+                  "ms": 4697,
+                  "after": "Bash cat > .builder/notes-edit/brainstorm.md <<'EOF'"
+                },
+                {
+                  "ms": 4337,
+                  "after": "Bash W=$(/Users/lukekeith/www/builder/scripts/workspace notes-edit) && echo $W && cat"
+                },
+                {
+                  "ms": 3803,
+                  "after": "Bash F=/Users/lukekeith/.claude-home/projects/-private-var-folders-m9-828j21md44g2gxs"
+                },
+                {
+                  "ms": 3493,
+                  "after": "Bash python3 - <<'EOF'"
+                }
+              ],
+              "split": {
+                "ms": 47618,
+                "orchestrator": 40635,
+                "agents": 0,
+                "tools": 6983
+              }
+            }
+          ],
+          "tail": [],
+          "split": {
+            "ms": 47618,
+            "orchestrator": 40635,
+            "agents": 0,
+            "tools": 6983
+          }
+        }
+      ],
+      "totals": {
+        "ms": 49788,
+        "turns": 9,
+        "tokens": {
+          "input": 18,
+          "output": 4623,
+          "cacheRead": 388069
+        },
+        "costUsd": 0.5018258000000001,
+        "split": {
+          "ms": 47618,
+          "orchestrator": 40635,
+          "agents": 0,
+          "tools": 6983
+        }
+      },
+      "score": {
+        "accept": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3
+        },
+        "fixture": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4
+        }
+      },
+      "copy": "/var/folders/m9/828j21md44g2gxs0bdctg5hw0000gp/T/bench/2026-10-26-0356-edit/builder-3",
+      "gitLog": [
+        "a68a203 Merge branch 'feat/notes-edit'",
+        "e1af774 feat(notes-edit): add notes edit <id> <text>",
+        "b8310d1 fixture"
+      ]
+    }
+  ]
+}

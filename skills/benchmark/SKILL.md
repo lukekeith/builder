@@ -1,6 +1,7 @@
 ---
 name: benchmark
-description: Run one small feature through builder with the recommended test plan and with everything, and through superpowers and GSD, unattended, and report time per step, what happened in each step, turns, tokens, cost and whether the feature works (acceptance tests the agent never sees). Launches scripts/bench.mjs detached and reports its table; --status shows the run in progress or the last report; --report <run-id> rebuilds one. Use when the user asks to benchmark builder, compare it with superpowers or GSD, measure a pipeline, or find where agent builds spend their time.
+disable-model-invocation: true
+description: Maintainer tool — runs a fixture feature through builder, superpowers and GSD unattended and reports time, turns, cost and acceptance for each step.
 ---
 
 # `/builder:benchmark` — where the time goes
@@ -13,7 +14,7 @@ The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it a
 
 **What it does:** for each configuration — `builder` (the recommended test plan: what a user who
 says "go" gets), `builder-everything` (`slice=own+app end=everything review=slice`: the full
-pipeline), `superpowers`, `gsd` — it copies the feature's fixture project (`bench/fixtures/<name>/`:
+pipeline), `superpowers`, `gsd`, `baseline` (plain Claude Code, no plugin) — it copies the feature's fixture project (`bench/fixtures/<name>/`:
 `notes`, a notes CLI, unless the feature's `feature.json` names another, such as `notes-hub`, a CLI
 and a server with slow suites), makes it a repo on `main`, and drives the pipeline unattended through `claude -p` sessions: builder as
 brainstorm → spec → the fleet engine (audit, plan, build, agent walk, verify, ship, merge);

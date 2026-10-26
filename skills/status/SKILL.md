@@ -1,6 +1,6 @@
 ---
 name: status
-description: The dashboard of in-progress /builder:* work in this repo — one table of every open feature and program, most recently touched first, each with what it is, the step last completed, the step to do next, when it last moved, and the exact command to copy and paste to pick it up; plus which branch to switch to and any feature that can't be resumed as it stands. Read-only and fast — it reads manifests, never specs, and writes nothing. Use when the user asks where their work stands, what's in progress, what they were working on, what to pick up next, or for a status/overview of builder features.
+description: Read-only table of every builder feature in progress — what it is, where it stands, its next step and how to pick it up. Use when the user asks what's in progress or what to pick up next.
 ---
 
 # `/builder:status` — where every piece of in-progress work stands
