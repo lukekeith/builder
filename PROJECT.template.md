@@ -14,7 +14,8 @@ registry: docs/features
 
 # The branch a PR targets. No skill ever commits or dispatches on it.
 base_branch: main
-# merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch
+# merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch.
+#                       # `current` = the branch checked out when the fleet launches (feature-branch workflows)
 # build_profile_default: standard   # the test plan the go-ahead recommends: rush (least testing) · standard · thorough (most)
 
 # ─── apps ──────────────────────────────────────────────────────────────────

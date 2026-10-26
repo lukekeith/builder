@@ -1052,6 +1052,44 @@ test('--into names the target for one run; merge_into in the config sets the def
   assert.match(git(root, 'log', '--oneline', '-1', 'develop'), /merge\(b\)/)
 })
 
+test('merge_into: current lands on the branch checked out when the fleet launched', () => {
+  const root = makeRepo(['a'])
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace(/^---\n/, '---\nmerge_into: current\n'))
+  git(root, 'commit', '-qam', 'merge into the current branch')
+  git(root, 'switch', '-q', '-c', 'feature/x')
+  const dry = runFleet(root, ['a', '--dry-run'], { a: HAPPY })
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /merges into: feature\/x \(merge_into: current\)/)
+  git(root, 'switch', '-q', '-c', 'elsewhere') // the checkout under the fleet, not the one it lands on
+  git(root, 'switch', '-q', 'feature/x')
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.match(git(root, 'log', '--oneline', '-1', 'feature/x'), /merge\(a\): agent-verified/)
+  assert.doesNotMatch(git(root, 'log', '--oneline', '-1', 'main'), /merge\(a\)/)
+})
+
+test('a target without the agent_walk block refuses before anything starts, naming this branch', () => {
+  const root = makeRepo([])
+  // main predates the agent config: only feature/x has it, as in a repo that set builder up on a branch.
+  const cfg = join(root, '.claude/builder.md')
+  const withAw = readFileSync(cfg, 'utf8')
+  writeFileSync(cfg, withAw.replace(/agent_walk:\n(  .*\n)+/, ''))
+  git(root, 'commit', '-qam', 'no agent_walk on main')
+  git(root, 'switch', '-q', '-c', 'feature/x')
+  writeFileSync(cfg, withAw)
+  mkdirSync(join(root, 'docs/features/a'), { recursive: true })
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: spec\nnext: /builder:resume --path docs/features/a\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'agent_walk + spec on feature/x')
+  const r = runFleet(root, ['a', '--dry-run'], { a: HAPPY })
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /main has no agent_walk: block in \.claude\/builder\.md — each worktree is cut from main, so its agents would park at once\. Commit the config to main, or land on this branch instead: --into feature\/x\./)
+  const ok = runFleet(root, ['a', '--dry-run', '--into', 'feature/x'], { a: HAPPY })
+  assert.equal(ok.status, 0, ok.stderr)
+})
+
 test('a detached HEAD can launch a fleet; a missing target refuses with the fix', () => {
   const root = makeRepo(['a', 'b'])
   git(root, 'checkout', '-q', '--detach')
