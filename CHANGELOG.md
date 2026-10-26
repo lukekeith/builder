@@ -47,6 +47,12 @@ config, manifest and feature folder from 4.x reads as before.
 - **`/compare`** (this repo only, never shipped) re-runs the competitor comparison.
 
 **Fixed:**
+- **The fleet's progress bar covers the whole run.** It was the mean of the rows still in flight, so
+  a feature that merged left the total — five features with one merged read as the other four's
+  average, not 20% higher. Now every feature the run holds counts once and each one it merged counts
+  at 100%: five with one merged and four not started reads 20%, the heading says `1 merged this
+  run`, and a spec added while the fleet runs grows the total. The status line's `⚙ fleet n/total`
+  and its bar count the same way. A new fleet run starts its count fresh.
 - **A fleet run that starts without builder loaded is stopped.** Claude Code says `--bare` will
   become the default for `-p`, and bare mode skips plugin hooks — the PR lock — and OAuth sign-in.
   The fleet now checks each run's start and stops one that has no builder, saying why. Why the fleet
