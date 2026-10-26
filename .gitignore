@@ -11,3 +11,6 @@
 /bench/results/*/progress.json
 /bench/results/lock
 /bench/results/bench.out
+
+# plugin eval results
+/evals/results/
