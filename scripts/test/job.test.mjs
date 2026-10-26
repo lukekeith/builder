@@ -68,3 +68,15 @@ test('an unknown job or a bad name is a usage error', () => {
   assert.equal(job(root, 'start', 'a/b', '--', 'true').status, 2)
   assert.equal(job(root, 'start', 'x').status, 2)
 })
+
+test('arguments keep their quoting: a filter with spaces reaches the command as one word; one argument is a shell command', () => {
+  const root = repo()
+  // argv words the caller's shell already split — `-- sh -c 'printf "[%s]" "$@"' x -k "a and b"`
+  assert.equal(job(root, 'start', 'argv', '--', 'sh', '-c', 'printf "[%s]" "$@"', 'x', '-k', 'a and b', "it's").status, 0)
+  const w = job(root, 'wait', 'argv')
+  assert.equal(w.status, 0, w.stdout + w.stderr)
+  assert.match(w.stdout, /\[-k\]\[a and b\]\[it's\]/)
+  // one word: a shell command as written, operators and all
+  assert.equal(job(root, 'start', 'shell', '--', 'echo one && echo two').status, 0)
+  assert.match(job(root, 'wait', 'shell').stdout, /one\s+two/)
+})

@@ -72,6 +72,7 @@ agent_walk:
   # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
   # keep_logs: 30                  # days a merged feature's run logs stay under .builder/fleet/logs/_archive/; 0 keeps them forever
   # auto_unpark: 2                 # times one fleet run unparks a feature on its own and has an agent dig into the park record; a human-step park always waits for you; 0 turns it off
+  # batch: 8                      # with start set: how many features one walk takes at once — one walk branch, one env, one walker by screen; 1 walks them one at a time
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
   # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
@@ -129,6 +130,10 @@ nothing has touched. Markers go at the end of a line's comment:
   keeps when nothing else runs: `gate.mjs <app> --typecheck` runs only these
   lines, and an app with none marked leaves it to each task's own type-check.
   Combines with the others (`… @delta @typecheck`).
+- `@walk` — the line needs the running app (an e2e suite against a URL). Under
+  the fleet it runs in verify against the walk env, with `agent_walk.env`, and
+  the build lane skips it; every untagged line runs with the test env, never
+  the walk env's database. Outside the fleet it changes nothing.
 
 🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
 `gate:all` that re-runs the typecheck, the unit suites and the e2e suite again
@@ -145,7 +150,7 @@ makes, one per line, each `@scoped` to what it proves.
 ### Deep set (verify only)
 
 ```
-npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts
+npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts @walk
 <command>          # what it proves, and why the fast sets don't @scoped <the paths it covers>
 ```
 

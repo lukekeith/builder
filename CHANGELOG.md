@@ -4,6 +4,62 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.2.0
+
+The walk env and the gates stop tripping over each other. From a fleet run on a Next.js + FastAPI
+monorepo that parked twice and lost about an hour: a build gate run during the walk rewrote the
+`.next` folder the walk env's `next dev` served from, verify's e2e suite ran against the wrong
+environment, and an agent's config fix went into a copy the fleet never reads. **Nothing to change
+in `.claude/builder.md`** — `@walk` is opt-in. Investigation: every code path, `file:line`, in this
+release's commit history.
+
+**Walks, much leaner** (`docs/specs/2026-10-26-lean-walks-design.md`). makeready's one-screen chart
+feature was walked as 18 checks a round — its 9 items and the same script again as cross-app steps —
+re-walked in full each round from a fresh launch per item, ~27 min a round. d2m's 20-feature fleet
+spent 623 min in the one-at-a-time walk lane, 339 of them in verify.
+- **One app in scope → the verification script is the walk.** No cross-app section repeating it;
+  the per-app test items are the gates' to prove. A one-app feature's `end=risk` now walks its
+  `[risk]` items only.
+- **A re-walk covers only what the fix changed** — the items that didn't pass, plus a passed one the
+  fix's diff touches; every other pass is carried with its evidence.
+- **The walker walks by screen** — every item on a screen in one visit, one launch.
+- **Batched walks** — with `agent_walk.start`, the walk lane takes every feature waiting (up to
+  `agent_walk.batch`, default 8; 1 = one at a time) into one walk branch, brings the env up once,
+  and runs one walker across all of them by screen; each verdict lands in its own feature.
+- **Verify and a walk's fixes leave the walk lane** — they run in the parallel lanes with no env;
+  `@walk` gates run once per batch against the batch's env, into each feature's `walk-gates.md`.
+
+**Added:**
+- **`agent_walk.batch`** — how many features one walk takes (default 8).
+- **`@walk` on a gate line** — the line needs the running app (an e2e suite). Under the fleet it runs
+  in verify against the walk env, with `agent_walk.env`; the build lane skips it. Outside the fleet
+  it changes nothing.
+
+**Changed:**
+- **In the walk lane, every untagged gate runs with the test env.** Gates there used to inherit
+  `agent_walk.env`, so a config that sets the same key in `worktree_env` and `env` (a test database
+  and the walk database) ran verify's integration suites against the walk database. They now get
+  the build lane's values back — exactly what the build lane already did.
+- **The walker runs no gates.** It judges the running app; a build it ran took the walk env down.
+- **A restart mid-walk skips `agent_walk.reset`.** The walk database keeps its migrations, and a
+  reset that copies a dev database no longer runs on every restart.
+- **Under the fleet, gate lines come from the main checkout's config** — the one the fleet reads —
+  so a branch can't loosen its own gates; `gate.mjs` says when the branch's copy differs.
+- **Agents never edit `.claude/builder.md`.** A fix that needs a config change parks as a human
+  step with the exact diff (resume's AGENT-MODE.md), and the fleet parks any branch that changed the
+  config before it merges, so a config change never lands unseen.
+- **`/builder:init`** offers the walk env its own output folder when a Next.js, Nuxt, SvelteKit or
+  Rails app would share one with its build, suggests a smoke that proves sign-in can work (a CORS
+  preflight, not only `/health`), and tags e2e lines `@walk`.
+
+**Fixed:**
+- **A gate that breaks the walk env is caught at once.** In the walk lane `gate.mjs` re-polls
+  `agent_walk.smoke` after each set and exits 3 with what to do — write the restart line — instead of
+  every later check failing against a dead env and the feature parking.
+- **`job.mjs` keeps quoting.** It joined a command's words with spaces and re-split them, so
+  `-- pytest -k "a and b"` lost its filter. Several words are now shell-quoted; one is a shell
+  command as written.
+
 ## 5.1.0
 
 Agent work can land back on the feature branch you are on. **Nothing to change in

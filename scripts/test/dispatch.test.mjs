@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { leanRepo, run, git, readText, SCRIPTS } from './fixtures/lean-repo.mjs'
 import { promptOf, fill, taskBlock } from '../dispatch.mjs'
@@ -299,4 +301,46 @@ test('dispatch: usage and unknown kinds', () => {
   assert.equal(run('dispatch.mjs', [], { cwd: r.root }).status, 2)
   assert.equal(run('dispatch.mjs', ['reviewer', r.rel], { cwd: r.root }).status, 2)
   assert.equal(run('dispatch.mjs', ['implementer', r.rel], { cwd: r.root }).status, 1)
+})
+
+test('dispatch agent-walk: round 2 walks only what failed, carries the passes with the diff since, and says walk by screen', () => {
+  const r = leanRepo('note-tags')
+  const ws = WS(r)
+  const sha = git(r.root, 'rev-parse', '--short', 'HEAD')
+  mkdirSync(join(ws, 'agent-walk', 'round-1'), { recursive: true })
+  writeFileSync(join(ws, 'agent-walk', 'round-1', 'report.md'), `sha: ${sha}\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | notes | add | PASS | 01.txt |\n| 3 | notes | list --tag home | FAIL — expected line 1, saw both | 03.txt |\n| 4 | notes | show | PASS | 04.txt |\n\nverdict: PROBLEMS (1)\n`)
+  writeFileSync(join(ws, 'walk.md'), '# w\n')
+  writeFileSync(join(r.root, 'fix.txt'), 'the fix\n')
+  git(r.root, 'add', 'fix.txt')
+  git(r.root, 'commit', '-qm', 'fix list --tag')
+  const p = readText(pathFrom(run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root }).stdout))
+  assert.match(p, /## Round 2: walk only what the fix could change/)
+  assert.match(p, /- 3 · notes · list --tag home — was FAIL — expected line 1, saw both/)
+  assert.match(p, new RegExp(`Passed in round 1 at ${sha}: 1, 4\\. Re-walk one only when the fix since then changes code it exercises`))
+  assert.match(p, /PASS \(carried from round 1 @ [0-9a-f]+\)/)
+  assert.match(p, /fix\.txt/)
+  assert.match(p, /\*\*Walk by screen\.\*\*/)
+  assert.doesNotMatch(p, /systematic-debugging/, 'round 2 is a first re-walk, not yet a debugging round')
+})
+
+test('dispatch walk-batch: one brief for several features — every walk script, each report in its own round, walked by screen', () => {
+  const a = leanRepo('note-tags')
+  const b = leanRepo('note-tags')
+  for (const r of [a, b]) {
+    mkdirSync(WS(r), { recursive: true })
+    writeFileSync(join(WS(r), 'walk.md'), '# w\n')
+  }
+  const walkRoot = mkdtempSync(join(tmpdir(), 'walk-'))
+  execFileSync('git', ['init', '-q'], { cwd: walkRoot })
+  const out = run('dispatch.mjs', ['walk-batch', a.folder, b.folder], { cwd: walkRoot })
+  assert.equal(out.status, 0, out.stderr)
+  assert.match(out.stdout, /description: Agent walk — batch of 2/)
+  const p = readText(pathFrom(out.stdout))
+  assert.match(p, /You are the agent walker for 2 features at once/)
+  assert.match(p, /## Walk by screen, across every feature/)
+  for (const r of [a, b]) {
+    assert.ok(p.includes(join(WS(r), 'walk.md')))
+    assert.ok(p.includes(join(WS(r), 'agent-walk', 'round-1', 'report.md')))
+  }
+  assert.match(p, /An item fails in the feature whose walk script lists it/)
 })

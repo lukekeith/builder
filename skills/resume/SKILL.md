@@ -247,6 +247,11 @@ Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --pa
 
 Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>)`) end with REFERENCE
 §Walk readiness again, then `/builder:agent-walk --path <folder>` — never a human re-walk request.
+**Under `--no-dev-env`** — a batched fleet works a walk's fixes in its parallel lanes, with no env —
+they end with the touched apps' fast gates green and each row ticked, then `ready: pending "dev env
+(fleet walk lane)"` and the run ends (`advance.mjs <folder> --set 'ready=pending "dev env (fleet walk
+lane)"' --head --commit walk-lane`): the next walk batch does readiness and the re-walk, which covers
+only what the fix changed.
 Under `--agent-walk`, the re-walk after a verify INCOMPLETE is the scoped re-verify's cross-app walk
 leg for the surface the fix changed — no human is asked, and no new agent-walk round is started.
 

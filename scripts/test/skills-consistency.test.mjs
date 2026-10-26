@@ -234,8 +234,9 @@ test('agent mode: build writes the E steps, agent-walk reports them, verify quot
   assert.match(verify, /the round the `🤖 AGENT SIGNED OFF … round <n>` header names/)
   assert.match(verify, /its `sha:` line/)
   assert.match(verify, /only those steps/)
-  // A gate at or under its baseline is green, in verify and in the walker's brief.
-  for (const s of [verify, walk]) assert.match(s, /at or under its baseline/)
+  // A gate at or under its baseline is green in verify; the walker runs no gates at all (5.2).
+  assert.match(verify, /at or under its baseline/)
+  assert.match(walk, /the walker runs no gates/)
   // init recon names tracked test output.
   assert.match(read('skills/init/SKILL.md'), /test-results\//)
 })

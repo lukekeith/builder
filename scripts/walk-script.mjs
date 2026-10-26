@@ -14,7 +14,9 @@
  *     items the agent walk under `end=risk` walks; then the config's §Environment landmines that
  *     concern that app (a landmine naming no app goes under every app);
  *   - under --agent-walk (the manifest's `agent-walk: on`, or --cross-app): `## Cross-app (verify E2E)`,
- *     SPEC §Testing's human-verification / E2E script as numbered steps E1…En, in its order.
+ *     SPEC §Testing's human-verification / E2E script as numbered steps E1…En, in its order — only
+ *     when two or more apps are in scope. With one, there is no cross-app walk: the script's steps ARE
+ *     that app's items (the per-app test items are the gates' to prove), so nothing is walked twice.
  *
  * What stays with the orchestrator: the `<!-- orchestrator: … -->` block of each app — how to reach
  * it (a URL, the command prefix, scratch files), surfaces that cannot work locally, and a readiness
@@ -205,6 +207,7 @@ export function render(f, { cross, previous }) {
   const specText = read(f.specPath) ?? ''
   const apps = inScope(f, specText)
   const t = parseTesting(specText, apps)
+  const single = apps.length === 1
   const tokens = contractTokens(specText)
   const kept = keptBlocks(previous)
   const landmines = configSection(f.cfg, 'Environment landmines')
@@ -220,12 +223,17 @@ export function render(f, { cross, previous }) {
   let risky = 0
   for (const app of apps) {
     const cfgApp = f.cfg?.apps.find((a) => a.name === app)
-    const items = [...(t.apps[app] ?? [])].reverse()
+    // One app in scope and a verification script: the script IS the walk — what a person does in the
+    // running app, in its order. §Testing's per-app items are what the app's tests prove, and the
+    // gates run those; walking them by hand as well, and the script again as E1…En, is what made a
+    // one-screen feature an 18-step walk.
+    const scripted = single && t.cross.steps.length > 0
+    const items = scripted ? [...t.cross.steps] : [...(t.apps[app] ?? [])].reverse()
     lines.push('', `## ${app}`, '', `Where: \`${cfgApp?.path ?? app}\` — this checkout${cfgApp?.role ? ` (${cfgApp.role})` : ''}.`, '', OPEN(app))
     const body = kept[app] ?? (items.length ? '' : `SPEC §Testing names nothing to walk in ${app} — say what a person checks here, or that there is nothing.\n`)
     lines.push(body.replace(/\n$/, '') || null, CLOSE)
     if (items.length) {
-      lines.push('', 'Newest first:', '')
+      lines.push('', scripted ? `The verification script (SPEC §Testing — ${t.cross.intro || 'the human-verification script'}); §Testing's per-app items are the gates' to prove:` : 'Newest first:', '')
       items.forEach((item, i) => {
         const r = isRisk(item, tokens)
         risky += r ? 1 : 0
@@ -239,12 +247,12 @@ export function render(f, { cross, previous }) {
     })
     if (mine.length) lines.push('', "Local facts (the config's §Environment landmines):", ...mine)
   }
-  if (cross && t.cross.steps.length) {
+  if (cross && !single && t.cross.steps.length) {
     lines.push('', '## Cross-app (verify E2E)', '', `From SPEC §Testing — ${t.cross.intro || 'the human-verification script'}:`, '')
     t.cross.steps.forEach((s, i) => lines.push(`E${i + 1}. ${s}`))
   }
   const text = lines.filter((l) => l !== null).join('\n') + '\n'
-  return { text, apps, total, risky, steps: cross ? t.cross.steps.length : 0 }
+  return { text, apps, total, risky, steps: cross && !single ? t.cross.steps.length : 0, single }
 }
 
 async function main(argv) {
@@ -260,7 +268,7 @@ async function main(argv) {
   const path = join(f.ws(), 'walk.md')
   const r = render(f, { cross, previous: read(path) })
   if (read(path) !== r.text) writeAtomic(path, r.text)
-  const crossNote = r.steps ? ` + cross-app E1–E${r.steps}` : cross ? ' (SPEC §Testing has no verification script: no cross-app section)' : ''
+  const crossNote = r.steps ? ` + cross-app E1–E${r.steps}` : cross && r.single ? ' (one app: the verification script is its walk — no cross-app section, the per-app test items left to the gates)' : cross ? ' (SPEC §Testing has no verification script: no cross-app section)' : ''
   console.log(`wrote ${path} — ${r.total} items in ${r.apps.length} app${r.apps.length === 1 ? '' : 's'} (${r.risky} [risk])${crossNote} at ${shortHead(f.root)}`)
   if (a.print) process.stdout.write('\n' + r.text)
   return 0

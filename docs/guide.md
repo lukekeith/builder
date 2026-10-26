@@ -158,6 +158,20 @@ builds in your session and stops for your walk and `/builder:signoff`), or at th
 *Change the test plan*, set the end to the risky parts or everything, and answer **Yes** to *Walk it
 yourself before it lands?*.
 
+**The walk env and your gates.** While agents walk a feature, its walk env (`agent_walk.start`)
+serves from the feature's worktree. Mark a deep-set line `@walk` when it needs that running app (an
+e2e suite): it runs in verify against the walk env with `agent_walk.env`, and every other gate runs
+with the test env, never the walk env's database. When a gate takes the walk env down — a
+`next build` rewriting the `.next` folder `next dev` serves — the fleet restarts it without a reset;
+give the walk env its own output folder to stop it happening (`/builder:init --update` offers it).
+Agents never change `.claude/builder.md`: a fix that needs it parks for you with the diff.
+
+**Walks are batched.** With `agent_walk.start` set, the walk lane takes every feature waiting to
+walk — up to `agent_walk.batch` (default 8) — into one walk branch, brings the env up once, and has
+one agent walk them all, screen by screen. Verify and ship run in the parallel lanes. A one-app
+feature's walk is its verification script, once; a re-walk after a fix covers only what the fix
+changed.
+
 Several specs at once, or work in flight, can be handed over directly:
 
 ```

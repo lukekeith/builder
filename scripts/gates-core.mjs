@@ -19,7 +19,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 
 const COMMENT = /\s{2,}#(.*)$|\s+#\s(.*)$/
 
-/** One gate line: `<command>   # <what it proves> [@delta] [@known-red] [@scoped <glob>] [@typecheck]`. */
+/** One gate line: `<command>   # <what it proves> [@delta] [@known-red] [@scoped <glob>] [@typecheck] [@walk]`. */
 const parseLine = (raw) => {
   const line = raw.trimEnd()
   if (!line.trim() || /^\s*#/.test(line)) return null
@@ -30,14 +30,42 @@ const parseLine = (raw) => {
   const scope = /@scoped\s+(\S+)/.exec(note)?.[1]
   // @typecheck: the line type-checks the app — the floor the test plan keeps when nothing else runs.
   const typecheck = /@typecheck\b/.test(note)
+  // @walk: the line needs the running walk env (an e2e suite) — it gets agent_walk.env and runs only
+  // while the fleet's walk env is up (gateEnv below). Every other line runs with the test env.
+  const walk = /@walk\b/.test(note)
   return {
     cmd,
-    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
     ...(scope && { scope }),
     ...(typecheck && { typecheck }),
+    ...(walk && { walk }),
   }
+}
+
+/**
+ * The environment one gate line runs with, from the lane the fleet says it is in (BUILDER_LANE):
+ * - the WALK lane hands its run agent_walk.env — the walk env's ports and database. Only a `@walk`
+ *   line keeps it; every other line gets back what the build lane would have (BUILDER_GATE_ENV: a
+ *   JSON map of each walk-env key to its build-lane value, null = unset), so a unit or integration
+ *   suite never runs against the walk env's database.
+ * - the BUILD lane has no walk env: a `@walk` line is skipped there (→ null), verify runs it.
+ * - outside the fleet nothing changes: every line, `@walk` or not, gets the env as it is.
+ */
+export function gateEnv(g, env = process.env) {
+  if (env.BUILDER_LANE === 'build') return g.walk ? null : env
+  if (env.BUILDER_LANE !== 'walk' || g.walk) return env
+  let back = {}
+  try {
+    back = JSON.parse(env.BUILDER_GATE_ENV || '{}')
+  } catch {}
+  const out = { ...env }
+  for (const [k, v] of Object.entries(back)) {
+    if (v == null) delete out[k]
+    else out[k] = v
+  }
+  return out
 }
 
 /**
@@ -262,7 +290,13 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       if (scoped.say) say(scoped.say)
       g = { ...g0, cmd: scoped.cmd }
     }
-    let r = runCommand(g.cmd, { cwd, env, logFile })
+    const lineEnv = gateEnv(g0, env)
+    if (lineEnv === null) {
+      partial = true
+      say(`~ ${g0.cmd} — @walk: needs the running walk env; verify runs it in the walk lane`)
+      return
+    }
+    let r = runCommand(g.cmd, { cwd, env: lineEnv, logFile })
     durations[g0.cmd] = r.ms
     const tail = (n) => r.output.trim().split('\n').slice(-n).join('\n    ')
     if (g.delta) {
@@ -272,7 +306,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       // clean; any failure in it is judged on the whole suite.
       if (scoped?.subset && value !== null && value > 0) {
         say(`  ${value} in the subset — re-running the whole suite to judge it against the baseline`)
-        r = runCommand(scoped.whole, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-whole.log') : null })
+        r = runCommand(scoped.whole, { cwd, env: lineEnv, logFile: logFile ? logFile.replace(/\.log$/, '-whole.log') : null })
         durations[g0.cmd] += r.ms
         g = { ...g0, cmd: scoped.whole }
         scoped = { ...scoped, subset: false } // a whole-suite count now: it can stand as a baseline
@@ -306,7 +340,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     }
     const hit = flaky.find((f) => matcher(f.match).test(r.output))
     if (hit) {
-      const again = runCommand(hit.rerun || g.cmd, { cwd, env, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
+      const again = runCommand(hit.rerun || g.cmd, { cwd, env: lineEnv, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
       durations[g0.cmd] += again.ms
       if (again.exit === 0) {
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
