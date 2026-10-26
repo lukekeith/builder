@@ -234,6 +234,9 @@ about fourteen times.
 
 Finished features merge into one branch — `merge_into` in `.claude/builder.md`, defaulting to
 `base_branch` — whatever you have checked out, and `--into <branch>` picks another for one run.
+`merge_into: current` is the opt-out for a feature-branch workflow: the target is the branch checked
+out when the fleet launches, so agent work merges back into the branch you are on. When you are asked
+**Land on?**, a feature branch you have checked out is the recommendation either way.
 A merged feature's worktree and branch are removed; a parked one keeps only its branch, with why and
 the next step. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
 what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
