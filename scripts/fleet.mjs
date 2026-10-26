@@ -24,7 +24,7 @@
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
-import { requireConfig } from './config.mjs'
+import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder } from './fleet-core.mjs'
@@ -403,13 +403,22 @@ const fleet = loadFleet(ROOT)
 /**
  * The branch every finished feature is merged into: --into for this run, else the config's
  * merge_into (default base_branch) — never whatever happens to be checked out, which is how work
- * ended up stranded on a feature branch. Kept in fleet.json; a fleet with unfinished rows keeps its
- * target until they finish.
+ * ended up stranded on a feature branch. The one exception is a repo that opts in with
+ * `merge_into: current`: then it is the branch checked out in the main worktree, resolved here, at
+ * launch. Kept in fleet.json; a fleet with unfinished rows keeps its target until they finish.
  */
-const TARGET_FROM = flag('--into') ? '--into' : 'merge_into'
+const TARGET_FROM = flag('--into') ? '--into' : CFG.mergeIntoCurrent ? 'merge_into: current' : 'merge_into'
 const TARGET = opt('--into') ?? CFG.mergeInto
 if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === null) {
   console.error(`The branch to merge into, ${TARGET}, does not exist — create it (git branch ${TARGET}) or set merge_into in .claude/builder.md.`)
+  process.exit(2)
+}
+// Each worktree is cut from the target, so its agents read the target's config — a target that
+// predates the agent_walk: block parks every feature on its first run. Refuse before anything starts.
+if (!hasAgentWalk(tryGit(['show', `refs/heads/${TARGET}:${CONFIG_PATH}`]))) {
+  const here = tryGit(['branch', '--show-current'])
+  const instead = here && here !== TARGET ? `, or land on this branch instead: --into ${here}` : ''
+  console.error(`${TARGET} has no agent_walk: block in ${CONFIG_PATH} — each worktree is cut from ${TARGET}, so its agents would park at once. Commit the config to ${TARGET}${instead}.`)
   process.exit(2)
 }
 if (fleet.target && fleet.target !== TARGET && Object.values(fleet.features).some((f) => f.status !== 'done')) {

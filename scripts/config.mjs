@@ -11,6 +11,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 export const CONFIG_PATH = '.claude/builder.md'
 const BUILD_PROFILE_DEFAULTS = ['rush', 'standard', 'thorough']
@@ -146,8 +147,15 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     project: fm.project ?? 'this project',
     registry: fm.registry ?? 'docs/features',
     baseBranch: fm.base_branch ?? 'main',
-    // Where finished features merge: merge_into, else base_branch. Never the checked-out branch.
-    mergeInto: fm.merge_into ?? fm.base_branch ?? 'main',
+    // Where finished features merge: merge_into, else base_branch. Never the checked-out branch —
+    // unless the repo opts in with `merge_into: current` (mergeIntoCurrent below).
+    mergeIntoCurrent: fm.merge_into === 'current',
+    // A getter, resolved on first read: `current` costs a git call, and the statusline loads the
+    // config on every render without ever asking where features merge.
+    get mergeInto() {
+      if (fm.merge_into !== 'current') return fm.merge_into ?? fm.base_branch ?? 'main'
+      return (this._mergeInto ??= checkedOutBranch(root) ?? fm.base_branch ?? 'main')
+    },
     buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
     // An unusable value, for whoever reports it (profile.mjs --recommend, /builder:init) — never
     // warned from here: the statusline loads the config on every render, each in a new process.
@@ -168,6 +176,20 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
+}
+
+/**
+ * `merge_into: current` — the branch the human has checked out in the MAIN worktree, which is the
+ * first entry `git worktree list` prints. Not `git branch --show-current`: scripts also run inside a
+ * fleet worktree, where that answer is the feature's own `builder/<feature>` branch. Null on a
+ * detached HEAD or outside git — the caller falls back to base_branch.
+ */
+export function checkedOutBranch(root) {
+  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' })
+  if (r.status !== 0) return null
+  const main = r.stdout.split('\n\n')[0] ?? ''
+  const ref = main.split('\n').find((l) => l.startsWith('branch '))
+  return ref ? ref.slice('branch '.length).replace(/^refs\/heads\//, '') : null
 }
 
 /**
@@ -245,6 +267,21 @@ const agentWalkOf = (block) => {
  * value that itself contains `=` (a query string, say) survives intact. `{feature}` is left alone
  * here — the fleet substitutes it per feature, once, right before it hands the env to a child.
  */
+/**
+ * Whether a `.claude/builder.md` text — another branch's copy, read with `git show` — carries a
+ * usable `agent_walk:` block. The fleet cuts each worktree from its target, so the agents there read
+ * the TARGET's config, not this checkout's.
+ */
+export function hasAgentWalk(text) {
+  const fm = text == null ? null : parseFrontmatter(text)
+  if (!fm) return false
+  try {
+    return Boolean(agentWalkOf(fm.agent_walk))
+  } catch {
+    return false
+  }
+}
+
 export function parseEnvPairs(s, where = 'agent_walk.env') {
   const tokens = s.match(/(?:[^\s"]|"[^"]*")+/g) ?? []
   const out = {}

@@ -284,6 +284,8 @@ test('agents get the right target, no hand build in agent_walk projects, and the
   // I-3: the target is its own question in the same call; Other on a testing question is the rest of the levers.
   assert.match(plan, /\*\*Land on\?\*\*/)
   assert.match(plan, /`<merge_into> \(Recommended\)`/)
+  // A feature branch the human has checked out is the recommendation, ahead of merge_into.
+  assert.match(plan, /the recommendation is \*\*the branch checked out here\*\* when it\n  is not `base_branch` and not a `builder\/\*` branch/)
   assert.match(plan, /The tool.s \*Other\* on any of the three testing questions is the rest of the levers/)
   // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
   const resume = resumeAll()

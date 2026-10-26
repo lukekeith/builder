@@ -4,6 +4,27 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.1.0
+
+Agent work can land back on the feature branch you are on. **Nothing to change in
+`.claude/builder.md`** — leaving `merge_into` out still means `base_branch`.
+
+**Added:**
+- **`merge_into: current`** — an opt-in config value: the target is the branch checked out in the
+  main worktree when the fleet launches (a fleet worktree's own `builder/<feature>` branch is never
+  it; a detached HEAD falls back to `base_branch`). For a feature-branch workflow, where a fleet that
+  merges into `main` strands the work away from the branch it was specced on. The dry run says
+  `merges into: <branch> (merge_into: current)`.
+
+**Changed:**
+- **Land on? recommends the branch you are on.** When the checked-out branch is not `base_branch`
+  (and not a `builder/*` branch), it is the recommendation, ahead of `merge_into` — it is where the
+  spec, and often the config, was committed. Plan's go-ahead A line names the same target.
+- **The fleet refuses a target with no `agent_walk:` block before anything starts.** Each worktree
+  is cut from the target, so its agents read the target's `.claude/builder.md`; a target that
+  predates the agent config used to park every feature on its first run. The dry run now exits 2
+  with the fix: commit the config to the target, or `--into <the branch you're on>`.
+
 ## 5.0.0
 
 Easier to start, lighter on every session, faster in agent mode, and checked by what it does. Built
