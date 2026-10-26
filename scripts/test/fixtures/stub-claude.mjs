@@ -12,6 +12,7 @@
 //   HANG-CHILD      spawn a grandchild that inherits stdout/stderr, then hang like HANG
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
 //   TOUCH:<path>:<step>  rewrite <path> (relative to the worktree) without committing it, then <step>
+//   CONFIG:<step>   edit .claude/builder.md in the worktree and commit it, then <step>
 // The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -60,7 +61,7 @@ if (/could not bring up the walk env/.test(prompt)) {
 
 let step = next(feature, 'NOOP')
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} fleet_dir=${process.env.BUILDER_FLEET_DIR ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} lane_env=${process.env.BUILDER_LANE ?? '-'} gate_env=${process.env.BUILDER_GATE_ENV ?? '-'} cfg_root=${process.env.BUILDER_CONFIG_ROOT ? 'set' : '-'} fleet_dir=${process.env.BUILDER_FLEET_DIR ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {
@@ -103,6 +104,13 @@ if (step.startsWith('SLOW:')) {
 if (step === 'HANG-CHILD') {
   spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
   await new Promise(() => setInterval(() => {}, 1e6))
+}
+// CONFIG:<step> — the run edits .claude/builder.md in its worktree and commits it, then <step>.
+if (step.startsWith('CONFIG:')) {
+  step = step.slice(7)
+  const cfg = join(process.cwd(), '.claude', 'builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8') + '\n<!-- loosened by an agent -->\n')
+  execFileSync('git', ['commit', '-qam', `stub: ${feature} edits the config`], { stdio: 'ignore' })
 }
 if (step === 'HANG') await new Promise(() => setInterval(() => {}, 1e6))
 if (step === 'FAIL') finish(3)

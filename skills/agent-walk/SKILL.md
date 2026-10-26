@@ -105,8 +105,9 @@ never the build's context: the agent that built it does not grade it.
 - the `## Cross-app (verify E2E)` section of `walk.md`, when present, is walked like every other
   item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes
   these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.
-- any gate the walker runs: a line at or under its baseline (`→ 7 (baseline 7)`) is green — note
-  the count and move on; never investigate failures that already fail on the base branch.
+- 🔴 **the walker runs no gates** — no test suite, no build, no `gate.mjs`. It judges the running
+  app; gates belong to the fix rounds and verify. A build run here rewrites what the walk env's dev
+  server serves from this worktree and takes the env down mid-walk.
 
 ## 3. Judge the report
 

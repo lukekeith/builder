@@ -27,6 +27,14 @@ between Bash calls. **The deep set's verdict is written here and nowhere else** 
 lane may have run the deep block already, and `gate.mjs` quotes that run when the tree is unchanged
 (REFERENCE §Quality gates).
 
+**`@walk` lines and the walk env.** Under the fleet, verify runs in the walk lane with the walk env
+up: a deep line marked `@walk` (an e2e suite) runs against it with `agent_walk.env`; every other
+line runs with the test env — never the walk env's database (REFERENCE §Quality gates — the
+mechanism, *Gates and the walk env*). An e2e suite with no `@walk` runs against whatever its own
+config points at, which under the fleet is not this feature's env: say so in the verdict rather than
+reading its failures as the feature's, and name `@walk` as the fix. **`gate.mjs` exit 3** — the walk
+env stopped answering after a set — is not a red gate: write the restart line and end the run.
+
 🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
 the background: independent subagents go out together in one foreground message, and a suite that
 may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code

@@ -238,7 +238,18 @@ function envFor(feature, lane) {
   // worktree_env first, every lane: it is how each worktree's tests get their own database, which
   // is what lets `parallel` builds share a machine without sharing a test DB.
   for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = v.replaceAll('{feature}', feature)
-  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  // For gate.mjs (gates-core gateEnv): which lane this is, and — in the walk lane — what each
+  // agent_walk.env key holds in the build lane, so a gate line that isn't @walk gets the test env
+  // back instead of the walk env's database. BUILDER_WALK_SMOKE lets it notice a gate that broke
+  // the running env; BUILDER_CONFIG_ROOT makes it read the gate lines from this checkout's config.
+  env.BUILDER_LANE = lane === 'walk' ? 'walk' : 'build'
+  env.BUILDER_CONFIG_ROOT = ROOT
+  if (lane === 'walk') {
+    const back = Object.fromEntries(Object.keys(AW.env).map((k) => [k, env[k] ?? null]))
+    for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+    env.BUILDER_GATE_ENV = JSON.stringify(back)
+    if (AW.start && AW.smoke) env.BUILDER_WALK_SMOKE = AW.smoke.replaceAll('{feature}', feature)
+  }
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
@@ -879,6 +890,9 @@ async function landNow(feature) {
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
+    // The config is the human's: a branch that changes it never lands it unseen.
+    const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
+    if (cfgDiff) return park(f, configParkReason(f.branch))
     if (f.worktree && existsSync(f.worktree)) {
       const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
       if (why) return park(f, why)
@@ -1141,10 +1155,12 @@ function clearBlocked(wt, feature) {
   tryGit(['commit', '-qm', `chore(${feature}): walk env restarted by the fleet`, '--', join(specOf(feature), 'MANIFEST.md')], wt)
 }
 
-/** Reset, then start and smoke the walk env. Null when it is up; else what failed. */
-async function bringUpWalkEnv(feature) {
+/** Reset, then start and smoke the walk env. Null when it is up; else what failed. A RESTART
+ *  mid-walk skips the reset: the walk's database already carries its migrations and its data, and a
+ *  reset can take minutes (a copy of the dev database). */
+async function bringUpWalkEnv(feature, { reset = true } = {}) {
   const f = fleet.features[feature]
-  if (!hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
+  if (reset && !hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
   // `smoke` without `start` has nothing to probe — ignored, as the spec says.
   if (AW.start && !(await startWalkEnv(feature))) return `walk env didn't come up — see ${f.startLog}`
   return null
@@ -1187,7 +1203,7 @@ async function walkOne(feature) {
     for (let restarts = 0; ; restarts++) {
       // A walk env that won't come up gets one agent run to find and fix the cause, then one more try.
       for (let attempt = 0; ; attempt++) {
-        const why = await bringUpWalkEnv(feature)
+        const why = await bringUpWalkEnv(feature, { reset: restarts === 0 })
         if (!why) break
         await killStart(f)
         if (attempt === 1) return park(f, `the walk env would not start (${why}) and an agent run could not fix it — next: run agent_walk.start in ${f.worktree} and fix what it prints, then /builder:agent`)
@@ -1258,7 +1274,11 @@ function enqueue(feature) {
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
 /** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising/
+const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising|^config change needed/
+
+/** Why a branch that changes the config parks, and the human's next step. */
+const configParkReason = (branch) =>
+  `config change needed — ${branch} changes ${CONFIG_PATH}, which is yours to change — next: read git diff ${TARGET}...${branch} -- ${CONFIG_PATH}, apply what you want on ${TARGET}, drop it from the branch (git checkout ${TARGET} -- ${CONFIG_PATH} in its worktree, commit), then /builder:agent`
 const YOUR_WALK = /^waiting for your walk/
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
