@@ -66,6 +66,8 @@ export const STEPS = {
   revise: [...R('Contract and the contract freeze', 'SPEC.md', 'The review', 'Continuing on "go"'), CONFIG],
   // resume SKILL: §Flags, §MANIFEST.md, §Condense (state detection), §The two-way footer, §Continuing on "go".
   resume: [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), CONFIG],
+  // resume SKILL §`--agent-walk`: under --agent-walk, the same plus AGENT-MODE.md.
+  'resume-agent': [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), FILE('skills/resume/AGENT-MODE.md'), CONFIG],
 }
 
 const PROMPT_FILES = ['implementer.md', 'task-reviewer.md', 're-review.md', 'final-reviewer.md'].map((f) => FILE(`skills/build/prompts/${f}`))

@@ -5,6 +5,8 @@ tree comes from (brainstorm: the user's intent; intake: a document's claims). Th
 machinery (intake's claims are grounded the same way — §Grounding). It is short on purpose: nothing here loads REFERENCE wholesale — the conversation comes first, and
 the spec formats belong to `/builder:spec`.
 
+**Contents:** §The record · §Grounding · §Discovery recon · §Ways on · §Rounds · §Approaches · §Confirm · §Size and the small path · §Steering and --auto
+
 ## The record
 
 `.builder/<feature>/brainstorm.md` (`<builder>/scripts/workspace <feature>` prints the directory).

@@ -3,6 +3,8 @@
 Every `builder:*` step reads this file for the shapes it writes and the rules it enforces. Load it
 before writing anything into a feature folder; steps cite sections by name (`REFERENCE §Sizes`).
 
+**Contents:** §The first principle · §The scripts · §Sizes · §The classifier · §Flags · §Continuing on "go" · §The two-way footer · §Before a picker · §The review — what an approval shows · §Branch and ticket · §Where things live · §MANIFEST.md · §SPEC.md · §PLAN.md · §PROGRAM.md · §Prototype mode · §The craft skills · §The project's own rules · §Quality gates — the mechanism · §Walk readiness · §Condense · §Agent model tiering
+
 🔴 **This plugin knows nothing about your project.** Every project fact — the apps, the gates, the
 house rules, the landmines, the recipe skills, the design source — lives in ONE host file,
 **`.claude/builder.md`** (`PROJECT.template.md` is the blank). This reference says what the pipeline
@@ -54,7 +56,7 @@ paste the absolute path thereafter — 🔴 a shell variable does not survive be
 `job.mjs` is the one for unattended runs: `start <name> -- <command>` launches a long command
 detached under `.builder/jobs/`, and `wait <name>` blocks up to 9 minutes (Bash timeout 600000) and
 exits with the command's own code — or 75 with `still running`, to be called again. It is how a
-headless run waits on a gate suite without backgrounding anything (resume §`--agent-walk`).
+headless run waits on a gate suite without backgrounding anything (resume's AGENT-MODE.md).
 
 🔴 **Prefer `$CLAUDE_PLUGIN_ROOT`.** It is the documented, portable way for a plugin to reference its
 own files, and it is correct for every install shape — marketplace, vendored, or a local skills
@@ -157,8 +159,8 @@ mid-task. When in doubt, the heavier size.
 | `--<design.flag> <ref>` | **prototype mode** — a finished design read AS the requirements. The flag's name comes from the config (`design.flag`), so it reads `--design`, `--ui2`, `--figma`… in your repo. Absent from the config → the flag does not exist and prototype mode never runs |
 | `--all` | with a ref that resolves ambiguously: take every match without asking. Otherwise redundant — a ref already means everything beneath it |
 | `--auto` | autopilot: recommendations become rulings, marked `auto (recommended)`; ends at the walk |
-| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume §`--agent-walk`). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
-| `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume §Ship in agent mode needs it |
+| `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume's AGENT-MODE.md). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume's AGENT-MODE.md §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
+| `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume's AGENT-MODE.md §Ship in agent mode needs it |
 | `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (**In this session**, §The two-way footer). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
@@ -202,7 +204,7 @@ migration). Those still ask, as they would have.
 
 **Opening the PR** — the one outward-facing step an affirmative can reach, through resume's §Ship —
 is still asked once, through AskUserQuestion (**Open the PR** / **Not yet**), before `gh pr create`
-runs — except under `--agent-walk`, where no PR opens at all: resume §Ship in agent mode merges into
+runs — except under `--agent-walk`, where no PR opens at all: resume's AGENT-MODE.md §Ship in agent mode merges into
 the fleet's target branch locally.
 
 **Anything more than an affirmative is not one.** "go, but make it blue" is a change: take it through
@@ -492,7 +494,7 @@ goes through `/builder:revise`.
 
 **Adjacent steps run as one under `--agent-walk`.** Audit continues straight into `/builder:plan`
 when it leaves no OPEN §Decisions row and no `blocked:` row, and a verify READY continues straight
-into resume §Ship in agent mode — in the same turn, with no return to the route table (each step
+into resume's AGENT-MODE.md §Ship in agent mode — in the same turn, with no return to the route table (each step
 still makes its own commit, so the history shows every step). Never across the go-ahead or the walk
 in a human run.
 

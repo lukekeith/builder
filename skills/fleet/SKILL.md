@@ -12,7 +12,7 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 
 **What it will do, per spec:** a worktree at `<agent_walk.worktrees>/<feature>` on a new branch
 `builder/<feature>` (or the branch it is already underway on); `claude -p "/builder:resume --path <spec> --agent-walk"` runs until the feature
-is **shipped** (resume §`--agent-walk`, §Ship in agent mode) — or, only when its spec leaves a
+is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the fleet **merges
 it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
 agent-verified, not human-tested` — and removes its worktree and `builder/` branch. **Migrations
