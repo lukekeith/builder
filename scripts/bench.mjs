@@ -601,7 +601,7 @@ export async function runAll(plan) {
   const data = { runId: plan.id, feature: plan.feature, fixture: plan.fixture, model: plan.model, startedAt: Date.now(), endedAt: null, versions: versions(), runs: [] }
   const save = () => {
     writeJson(join(outRoot, 'runs.json'), data)
-    writeFileSync(join(outRoot, 'REPORT.md'), renderReport(data))
+    writeFileSync(join(outRoot, 'REPORT.md'), renderReport({ ...data, budgets: budgetsFor(data.feature) }))
   }
   save()
   for (let rep = 1; rep <= plan.repeat; rep++) {
@@ -631,6 +631,8 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 const RESULTS = resultsDir(ROOT)
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURES = join(BUILDER, 'bench', 'fixtures')
+/** A feature's turn budgets per config (bench/budgets.json), or none. */
+const budgetsFor = (feature) => { try { return JSON.parse(readFileSync(join(BUILDER, 'bench', 'budgets.json'), 'utf8'))[feature] ?? {} } catch { return {} } }
 
 function planRun() {
   const feature = argv[1]
@@ -754,7 +756,7 @@ if (cmd === 'report') {
   if (!existsSync(join(RESULTS, id, 'runs.json'))) die(`no run '${id ?? ''}' under ${RESULTS}`)
   const data = readRun(id)
   if (backfillSplits(data, join(RESULTS, id))) writeJson(join(RESULTS, id, 'runs.json'), data)
-  writeFileSync(join(RESULTS, id, 'REPORT.md'), renderReport(data))
+  writeFileSync(join(RESULTS, id, 'REPORT.md'), renderReport({ ...data, budgets: budgetsFor(data.feature) }))
   console.log(renderStatusTable(data, null))
   console.log(`report: ${join(RESULTS, id, 'REPORT.md')}`)
   process.exit(0)

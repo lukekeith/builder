@@ -254,6 +254,10 @@ Pick up where you left off any time: /builder:resume --path <folder>
 Without a config `agent_walk:` block only Step by step is left: the single line
 `📍 <feature>: verify <…> — next: /builder:resume --path <folder> · or say go`.
 
+**Under `--agent-walk`, a READY goes straight on** into resume §Ship in agent mode in this turn — no
+footer, no return to the route table (REFERENCE §Under `--auto` and `--agent-walk`: adjacent steps
+run as one). The hand-off above is then the six-line closing report, not the evidence list.
+
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
 numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE
 §Continuing on "go" has the exceptions.
