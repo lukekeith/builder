@@ -479,6 +479,23 @@ The review is shown **where the human next looks**, so nothing lands unseen: the
 an `--auto` run (resume §🔒 The walk) and the fleet's report (fleet §5) open with the full review of
 what was built, written from `SPEC.md` — sections 1–8, in parts, every `(auto)` ruling marked.
 
+**Closing reports under `--agent-walk` are short.** Nobody reads a headless run's prose; the fleet
+reads the manifest, the ledger and the walk report, and its park diagnosis reads the log's last 25
+lines. So every step ends with **at most six lines, then its footer**: the state it reached, each
+ruling it took in one line (`ruled: <decision> → <choice>`), and one `worth checking:` line when
+there is something a human should look at. Never restate what the feature does or what it touches.
+
+**Decision rows under `--auto` are one line each.** §Decisions gets one table row per ruling —
+`| D<n> | <decision> | <choice> — <why, in one clause>; not <the alternative> | auto (recommended)
+YYYY-MM-DD |`. The reason is never dropped, only kept to one clause; a ruling a human questions later
+goes through `/builder:revise`.
+
+**Adjacent steps run as one under `--agent-walk`.** Audit continues straight into `/builder:plan`
+when it leaves no OPEN §Decisions row and no `blocked:` row, and a verify READY continues straight
+into resume §Ship in agent mode — in the same turn, with no return to the route table (each step
+still makes its own commit, so the history shows every step). Never across the go-ahead or the walk
+in a human run.
+
 ## Branch and ticket
 
 No skill in the family creates a branch, a worktree or a ticket — those belong to the developer.

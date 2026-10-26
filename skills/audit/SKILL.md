@@ -241,7 +241,9 @@ Without a config `agent_walk:` block there is no **Agent**: **Step by step** is 
 session** `2.`, and the reply line reads `Reply 1 or 2 — "go" is 1.`
 
 **Under `--auto`** no delta is printed (REFERENCE §The review — nobody approves): one line with the
-counts, then the footer. The plan's go-ahead and the walk show what moved.
+counts, then the footer. The plan's go-ahead and the walk show what moved. **Under `--agent-walk`**, with no
+OPEN §Decisions row and no `blocked:` row, go straight on into `/builder:plan --path <folder> --auto
+--agent-walk` in this turn (REFERENCE §Under `--auto` and `--agent-walk`: adjacent steps run as one).
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a
 numbered footer, option 1 (Agent, where it is offered) — never ask the human to paste it. REFERENCE

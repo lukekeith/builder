@@ -18,6 +18,8 @@ cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-de
   on `notes-hub`.
 - `features/<name>/accept.test.mjs` — acceptance tests the agent never sees, run after the feature lands.
 - `results/<run-id>/REPORT.md` + `runs.json` — committed; the raw streams beside them are not.
+- `budgets.json` — turn budgets per step, by feature and config. The report's *Turns per step* table
+  marks a step whose median goes over with ⚠. Lower a budget when a release beats it.
 
 GSD's `--auto` may run the whole pipeline in its first session; the benchmark then stops after the session that verifies the phase and says so in the report.
 

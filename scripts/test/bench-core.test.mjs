@@ -324,3 +324,14 @@ test('D2: the summary has an Orchestrator · Agents · Tools column and each ses
   // a run with no split shows —
   assert.match(md, /\| gsd \| done \|.*\| — \|$/m)
 })
+
+test('turnsPerStep: a step over its budget is marked, one within it is bare', async () => {
+  const { turnsPerStep } = await import('../bench-core.mjs')
+  const rows = [{ config: 'builder', stepTurns: { 'builder:audit': 12, 'builder:plan': 7 } }]
+  const out = turnsPerStep(rows, ['builder:audit', 'builder:plan'], { builder: { 'builder:audit': 10, 'builder:plan': 7 } }).join('\n')
+  assert.match(out, /\| builder \| 12 ⚠ 10 \| 7 \|/)
+  assert.match(out, /over the turn budget: builder builder:audit 12 \(budget 10\)/)
+  const ok = turnsPerStep(rows, ['builder:plan'], { builder: { 'builder:plan': 7 } }).join('\n')
+  assert.match(ok, /within its turn budget/)
+  assert.doesNotMatch(turnsPerStep(rows, ['builder:plan'], {}).join('\n'), /budget/)
+})
