@@ -898,6 +898,26 @@ test('the walk env is proved once at launch, in a throwaway worktree that is gon
   assert.ok(b.fleet.notes.some((n) => /walk env launch check failed on main: start\/smoke failed/.test(n)), JSON.stringify(b.fleet.notes))
 })
 
+test('a walk run that ends with the env dead is not believed: its verdict is dropped, the env restarts, the walk runs again', async () => {
+  const port = await freePort()
+  const scratch = mkdtempSync(join(tmpdir(), 'fleet-env-'))
+  const server = join(scratch, 'server.mjs')
+  writeFileSync(server, `import { createServer } from 'node:net'\nconst s = createServer((c) => c.end()).listen(${port}, '127.0.0.1')\nprocess.on('SIGTERM', () => s.close(() => process.exit(0)))\n`)
+  const probe = join(scratch, 'smoke.mjs')
+  writeFileSync(probe, `import { connect } from 'node:net'\nconnect(${port}, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))\n`)
+  // The env is "dead" while ../env-dead exists beside the worktree; a (re)start clears it.
+  const root = makeRepo(['s'], {
+    lines: [`start: rm -f ../env-dead; echo up >> ${join(scratch, 'starts')}; exec node ${server}`, `smoke: test ! -f ../env-dead && node ${probe}`],
+    manifest: ['state: built', 'tests: slice=own end=risk review=end'],
+  })
+  const r = runFleet(root, ['s', '--no-env-check'], { s: ['TOUCH:../env-dead:FIXES', 'signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  const a = assertLanded(r, 's')
+  assert.ok(r.fleet.notes.some((n) => /s: the walk env stopped answering during a walk run — its verdict was dropped, the env was restarted/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.equal(readFileSync(join(scratch, 'starts'), 'utf8').trim().split('\n').length, 2, 'started, then restarted once')
+  assert.ok(a.runs >= 4)
+})
+
 test('start is killed even when the walk parks', async () => {
   const { root, pidFile } = await walkEnvRepo('s')
   const r = runFleet(root, ['s'], { s: ['READY-PENDING', 'BLOCK:agent walk failed twice'] }, FAST)

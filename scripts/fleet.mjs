@@ -1068,15 +1068,22 @@ async function drive(feature, lane) {
   const f = fleet.features[feature]
   let failures = 0
   let stalls = 0
+  let envRestarted = false
   for (;;) {
     // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
     if (parkIfPaused(f, feature)) return 'parked'
     const before = snapshot(f.worktree, feature)
+    const headBefore = tryGit(['rev-parse', 'HEAD'], f.worktree)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
     f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
     save()
     const { exit, log } = await runClaude(f.worktree, feature, lane, f.runs)
     f.log = log
+    // A walk judged against a dead env says nothing about the feature: restart it and walk again.
+    if (lane === 'walk' && !envRestarted && (await envDied(feature, f, headBefore))) {
+      envRestarted = true
+      continue
+    }
     const d = decide({
       lane,
       manifestText: readManifest(f.worktree, feature),
@@ -1112,6 +1119,38 @@ async function drive(feature, lane) {
     save()
     return f.status
   }
+}
+
+/**
+ * After a walk-lane run, the fleet's own smoke (agent_walk.smoke, three tries) tells "the env broke"
+ * from "the feature is broken". Smoke red → the env died under the run: whatever the run concluded
+ * about the app was judged against nothing, so its doc-only commits (a walk round's verdict, ## Fixes
+ * rows, a park) are dropped — never a commit that touched code — and the env restarts without a
+ * reset. True when that happened; the caller walks again, once. No start or smoke: nothing to tell.
+ */
+async function envDied(feature, f, headBefore) {
+  if (!AW.start || !AW.smoke || !f.startPgid) return false
+  if (await smokeOk(feature, f)) return false
+  const after = tryGit(['rev-parse', 'HEAD'], f.worktree)
+  const touched = headBefore && after && headBefore !== after ? (tryGit(['diff', '--name-only', headBefore, after], f.worktree) ?? '').split('\n').filter(Boolean) : []
+  const docsOnly = touched.every((p) => p.startsWith(`${specOf(feature)}/`))
+  if (touched.length && docsOnly) tryGit(['reset', '--hard', '--quiet', headBefore], f.worktree)
+  clearBlocked(f.worktree, feature)
+  addNote(`${feature}: the walk env stopped answering during a walk run — ${touched.length && docsOnly ? 'its verdict was dropped, ' : ''}the env was restarted and the walk runs again`)
+  await killStart(f)
+  const back = AW.start ? await startWalkEnv(feature, f) : true
+  save()
+  return back
+}
+
+/** agent_walk.smoke against the running env, up to three tries a few seconds apart. */
+async function smokeOk(feature, f) {
+  for (let i = 0; i < 3; i++) {
+    const ok = await new Promise((r) => execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err)))
+    if (ok) return true
+    await sleep(Math.min(3000, SMOKE_INTERVAL_MS * 3))
+  }
+  return false
 }
 
 /** A config hook (reset/stop) in the worktree, with the feature's walk env. False when it failed. */
@@ -1889,7 +1928,12 @@ async function walkBatch(batch) {
       // The @walk gates, while the env is still up, for every feature signed off this session —
       // before verify, in the pool, can look for them.
       const signed = leaving.filter(([, d]) => d.action === 'handoff' && d.to === 'ship').map(([x]) => x)
-      if (signed.length) runWalkGates(signed)
+      // A gate that rewrote what the env serves (exit 3), or an env that died during the session: restart it.
+      if (signed.length && runWalkGates(signed) === 3) restart = true
+      if (AW.smoke && rec.startPgid && !(await smokeOk('_walk', rec))) {
+        addNote('the walk env stopped answering during a batch session — restarted without a reset')
+        restart = true
+      }
       for (const [x, d] of leaving) {
         const fx = fleet.features[x]
         failures[x] = 0
