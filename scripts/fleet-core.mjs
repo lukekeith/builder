@@ -327,10 +327,21 @@ export function tokensOf(ev) {
 
 /** A dispatch's kind from its Agent description — dispatch.mjs's templates first, then the words the skills use. */
 export function dispatchKind(description) {
-  const d = String(description ?? '')
+  const d = String(description ?? '').trim()
+  // dispatch.mjs's own descriptions first, by their fixed openings — the task or feature name after
+  // them ("Final review: checkout-fix", "Fix Task 2 round 1: re-review banner") never decides the kind.
+  const fixed = [
+    [/^implement task \d+\b/i, 'implement'],
+    [/^fix task \d+ round \d+\b/i, 'fix'],
+    [/^re-review\b/i, 're-review'],
+    [/^review (?:task|phase) \d+\b/i, 'task-review'],
+    [/^final review:/i, 'final-review'],
+    [/^fix the final review'?s findings\b/i, 'final-fix'],
+    [/^agent walk\b/i, 'walk'],
+  ]
+  for (const [re, kind] of fixed) if (re.test(d)) return kind
+  // Then the words the skills use for the dispatches they word themselves.
   if (/\bre-?review\b/i.test(d)) return 're-review'
-  if (/^implement\b/i.test(d)) return 'implement'
-  if (/\bfinal review'?s?\b.*\bfix|\bfix\b.*\bfinal\b/i.test(d)) return 'final-fix'
   if (/\bfinal\b.*\breview\b|\bwhole-branch\b/i.test(d)) return 'final-review'
   if (/\bfix\b/i.test(d)) return 'fix'
   if (/\breview\b/i.test(d)) return 'task-review'
