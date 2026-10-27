@@ -482,8 +482,12 @@ test('gate.mjs --typecheck runs only the @typecheck lines, through the same runn
   assert.match(r.stdout, /matched flaky "blip"/)
   assert.match(r.stdout, /KNOWN-RED/)
   assert.match(r.stdout, /no @typecheck line for web/)
-  assert.ok(readMemo(root, 'fast-server-typecheck'), 'its own memo')
+  // its flaky line passed only by a narrower re-run, so the set is not memoised — never quoted later
+  assert.equal(readMemo(root, 'fast-server-typecheck'), null, 'a narrower re-run proves the file, not the set')
   assert.equal(readMemo(root, 'fast-server'), null, 'never stands in for the full set')
+  writeFileSync(join(root, 'flaky.sh'), 'echo types ok\n')
+  git(root, 'commit', '-qam', 'the flake is fixed')
+  assert.ok(run(root, 'server', '--typecheck').status === 0 && readMemo(root, 'fast-server-typecheck'), 'its own memo once green on its own')
   const again = run(root, 'server', '--typecheck')
   assert.match(again.stdout, /PASS \(quoted\)/)
   const red = configured('### server — fast\n\n```\nfalse   # types @typecheck\n```\n')
@@ -629,7 +633,7 @@ test('a started @parallel command that dies without an exit status is red, never
   assert.equal(waitCommand(ok).exit, 0)
   assert.equal(waitCommand(again).output.trim(), 'second')
   const doomed = startCommand('sleep 30', { cwd: dir, logFile: join(dir, 'logs', '02.log') })
-  process.kill(-doomed.pid, 'SIGKILL')
+  process.kill(doomed.pid, 'SIGKILL') // its shell dies; nothing will write the exit status
   const t0 = Date.now()
   const r = waitCommand(doomed)
   assert.equal(r.exit, 1)

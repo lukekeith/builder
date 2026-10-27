@@ -1171,7 +1171,8 @@ async function envDied(feature, f, headBefore) {
   // a park the run wrote is cleared with it, never on its own.
   const clean = !(tryGit(['status', '--porcelain'], f.worktree) ?? '').trim()
   const dropped = touched.length > 0 && docsOnly && clean && tryGit(['reset', '--hard', '--quiet', headBefore], f.worktree) !== null
-  addNote(`${feature}: the walk env stopped answering during a walk run — ${dropped ? 'its verdict was dropped, ' : touched.length ? 'its commits touched code, so they stay; ' : ''}the env is restarted and the walk runs again`)
+  const kept = !touched.length ? '' : dropped ? 'its verdict was dropped, ' : !docsOnly ? 'its commits touched code, so they stay; ' : 'its verdict stays (uncommitted changes in the worktree), '
+  addNote(`${feature}: the walk env stopped answering during a walk run — ${kept}the env is restarted and the walk runs again`)
   await killStart(f)
   const back = await startWalkEnv(feature, f)
   save()
@@ -1285,7 +1286,11 @@ const RESTART = /^walk env needs a restart/
 function clearBlocked(wt, feature) {
   const p = join(wt, specOf(feature), 'MANIFEST.md')
   if (!existsSync(p)) return
-  writeFileSync(p, readFileSync(p, 'utf8').replace(/^blocked:.*$/m, 'blocked: none'))
+  const text = readFileSync(p, 'utf8')
+  const line = /^blocked:\s*"?(.*?)"?\s*$/m.exec(text)?.[1] ?? ''
+  // Only the restart line the fleet answers by restarting; any other block (a decision) stands.
+  if (!RESTART.test(line)) return
+  writeFileSync(p, text.replace(/^blocked:.*$/m, 'blocked: none'))
   tryGit(['commit', '-qm', `chore(${feature}): walk env restarted by the fleet`, '--', join(specOf(feature), 'MANIFEST.md')], wt)
 }
 
@@ -1866,11 +1871,14 @@ async function runWalkGates(features, wt = WALK_WT, envOf = '_walk') {
 }
 /** A command without holding the fleet's event loop (an e2e suite takes minutes; the lanes keep moving). */
 const execAsync = (cmd, args, opts) =>
-  new Promise((done) =>
-    execFile(cmd, args, { ...opts, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 60 * 60 * 1000 }, (err, stdout, stderr) =>
+  new Promise((done) => {
+    // Its own group, tracked in `active` like a claude run, so stopAll ends it with everything else.
+    const child = execFile(cmd, args, { ...opts, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 60 * 60 * 1000, detached: true }, (err, stdout, stderr) => {
+      active.delete(child)
       done({ status: err ? (typeof err.code === 'number' ? err.code : 1) : 0, output: `${stdout ?? ''}${stderr ?? ''}` })
-    )
-  )
+    })
+    if (child.pid) active.add(child)
+  })
 
 /**
  * One walk for several features: merge them into the walk worktree, bring the env up once (reset
@@ -2052,6 +2060,7 @@ async function envPreflight() {
   save()
 }
 let envCheck = Promise.resolve()
+delete fleet.envCheck // a record a killed run left: never signal a pgid that may have been reused
 
 async function walkLane() {
   await envCheck

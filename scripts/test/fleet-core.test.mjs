@@ -529,6 +529,10 @@ test('destructiveMigration never lets through raw SQL in strings, helpers upgrad
   assert.equal(d('db/migrate/5.rb', 'class X\n  def up\n    User.delete_all\n  end\n  def down\n  end\nend\n'), 'delete_all')
   assert.equal(d('m/6.sql', 'UPDATE users u SET x = 1;'), 'UPDATE users u SET')
   assert.equal(d('m/7.js', 'module.exports = { up: async (q) => q.bulkDelete("a"), down: async () => {} }'), 'bulkDelete')
+  assert.equal(d('m/8.js', 'exports.up = (knex) => dropOld(knex)\nexports.down = (knex) => {\n  return knex.schema.createTable("old")\n}\nfunction dropOld(k) { return k.schema.dropTable("old") }\n'), 'dropTable', 'a helper after down() is still read')
+  assert.equal(d('m/9.ts', 'export class M {\n  async up(q) { await q.query("ALTER TABLE a ADD b int") }\n  async down(q) {\n    await q.query("ALTER TABLE a DROP COLUMN b")\n  }\n}\n'), null, 'a class down() method is the backward half')
+  assert.equal(d('v/10.py', '"""drop table users — revision 1"""\ndef upgrade():\n    op.create_table("t")\n\ndef downgrade():\n    pass\n'), null, 'a docstring is prose')
+  assert.equal(d('v/11.py', 'def upgrade():\n    op.execute(\n        """DELETE FROM sessions"""\n    )\n\ndef downgrade():\n    pass\n'), 'DELETE FROM', 'SQL passed to a call on its own line')
 })
 
 test('landedMigrations: ask, human, or no apply command → a note naming the command', () => {

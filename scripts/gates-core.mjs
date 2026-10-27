@@ -212,7 +212,9 @@ export function runCommand(cmd, { cwd, env = process.env, logFile = null, timeou
  * Start a command in the background — for `@parallel` lines, which run together — and wait for it
  * later with waitCommand, synchronously like runCommand. Its output and exit status go to files
  * unique to this start (pid + nonce), so a run left over from a killed gate.mjs can never answer for
- * this one. Every started group is killed if this process exits first (killStarted).
+ * this one. They stay in gate.mjs's process group, so whatever stops gate.mjs — Ctrl-C, the fleet
+ * killing a run's group — stops them with it; on its own exit gate.mjs ends any still running
+ * (killStarted).
  */
 const startedGroups = new Set()
 export function startCommand(cmd, { cwd, env = process.env, logFile }) {
@@ -221,24 +223,29 @@ export function startCommand(cmd, { cwd, env = process.env, logFile }) {
   const tag = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const outFile = `${logFile}.${tag}.out`
   const exitFile = `${logFile}.${tag}.exit`
-  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3.tmp" && mv "$3.tmp" "$3"', 'gate', cmd, outFile, exitFile], { cwd, env, stdio: 'ignore', detached: true })
+  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3.tmp" && mv "$3.tmp" "$3"', 'gate', cmd, outFile, exitFile], { cwd, env, stdio: 'ignore' })
   child.on('error', () => {})
   child.unref()
   if (child.pid) startedGroups.add(child.pid)
   return { cmd, logFile, outFile, exitFile, t0: Date.now(), pid: child.pid ?? null }
 }
-/**
- * Whether the group still has a live (non-zombie) member. Not `kill(-pid, 0)`: waitCommand blocks
- * the event loop, so a dead child is never reaped and stays a zombie that kill(0) still finds.
- */
+/** The live (non-zombie) processes in `pid`'s tree. Not `kill(pid, 0)`: waitCommand blocks the event
+ *  loop, so a dead child is never reaped and stays a zombie that kill(0) still finds. */
+const liveTree = (pid) => {
+  if (!pid) return []
+  const r = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,stat='], { encoding: 'utf8' })
+  if (r.status !== 0) return null // can't tell
+  const rows = r.stdout.split('\n').map((l) => l.trim().split(/\s+/)).filter((x) => x.length >= 3).map(([p, pp, st]) => ({ p: Number(p), pp: Number(pp), st }))
+  const tree = new Set([pid])
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const x of rows) if (tree.has(x.pp) && !tree.has(x.p)) (tree.add(x.p), (grew = true))
+  }
+  return rows.filter((x) => tree.has(x.p) && !x.st.startsWith('Z')).map((x) => x.p)
+}
 const groupAlive = (pid) => {
-  if (!pid) return false
-  const r = spawnSync('ps', ['-A', '-o', 'pgid=,stat='], { encoding: 'utf8' })
-  if (r.status !== 0) return true // can't tell: keep waiting for the exit file
-  return r.stdout.split('\n').some((l) => {
-    const [g, stat] = l.trim().split(/\s+/)
-    return Number(g) === pid && stat && !stat.startsWith('Z')
-  })
+  const live = liveTree(pid)
+  return live == null || live.length > 0
 }
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 /** Wait for a started command. A group that died without writing its exit status is red, never a hang. */
@@ -262,9 +269,11 @@ export function waitCommand(h) {
 /** Kill every started group still running — gate.mjs calls it on exit and on a signal. */
 export function killStarted() {
   for (const pid of startedGroups) {
-    try {
-      process.kill(-pid, 'SIGKILL')
-    } catch {}
+    for (const p of liveTree(pid) ?? [pid]) {
+      try {
+        process.kill(p, 'SIGKILL')
+      } catch {}
+    }
   }
   startedGroups.clear()
 }
@@ -347,6 +356,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
   const newBaselines = {}
   const durations = {}
   const unverified = []
+  const narrowed = [] // flaky lines passed only by a narrower re-run — the set's memo can't quote them
   const greens = [] // lines that ran and passed — gate.mjs remembers each one's head (lines.json)
   const quoted = []
   gates.forEach((g0, i) => {
@@ -443,6 +453,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       durations[g0.cmd] += again.ms
       if (again.exit === 0) {
         if (!hit.rerun) greens.push(g0.cmd) // a narrower re-run proves the file, not the whole line
+        else narrowed.push(g0.cmd)
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
         return
       }
@@ -453,7 +464,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     red++
     say(`✗ ${g.cmd} exit ${r.exit} (${fmt(r.ms)})${logFile ? ` — ${logFile}` : ''}\n    ${tail(8)}`)
   })
-  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified, greens, quoted }
+  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified, greens, quoted, narrowed }
 }
 
 // ---- the memo ------------------------------------------------------------------------------
