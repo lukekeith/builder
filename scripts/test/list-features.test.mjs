@@ -281,3 +281,16 @@ test('a brainstorm.md left for an archived feature is not a draft', () => {
   const json = JSON.parse(list(root, '--json').stdout).features
   assert.deepEqual(json.map((f) => f.feature), ['live'])
 })
+
+test('--archived says which archived folders were closed or dropped rather than shipped', () => {
+  const root = setup({}, {
+    '_archive/s/SPEC.md': SHIPPED('s', '2026-09-01', 4),
+    '_archive/c/SPEC.md': '# c — spec\n> ✅ CLOSED 2026-10-27 — merged abc1234, not walked\n',
+    '_archive/d/SPEC.md': '# d — spec\n> ✖ DROPPED 2026-10-26 — superseded\n',
+  })
+  const r = list(root, '--archived')
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /\| c \| 2026-10-27 \(closed\) \|/)
+  assert.match(r.stdout, /\| d \| 2026-10-26 \(dropped\) \|/)
+  assert.match(r.stdout, /\| s \| 2026-09-01 \| #4 \|/)
+})

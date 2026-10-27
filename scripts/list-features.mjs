@@ -20,8 +20,8 @@
  * --status as in progress. A DONE feature is never offered as a pipeline target; /builder:archive
  * moves it out of the registry.
  *
- * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship. Never a row: only --archived reads
- * inside the archive, and --status counts it with one directory listing.
+ * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship or /builder:archive. Never a row: only
+ * --archived reads inside the archive, and --status counts it with one directory listing.
  *
  * DRAFTS = a design conversation in progress with no registry folder yet — `.builder/<f>/brainstorm.md`
  * (scripts/brainstorm-file.mjs). Listed with their resume command; only the header is read.
@@ -319,7 +319,10 @@ if (asArchived) {
     .map((name) => {
       const dir = join(ARCHIVE_DIR, name)
       const head = (read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? '').slice(0, 800)
-      return { feature: name, shipped: grab(head, /SHIPPED\s+([\d-]+)/), pr: grab(head, /PR\s*(#\d+)/), path: `${CFG.registry}/${ARCHIVE}/${name}` }
+      // /builder:archive also closes (merged, never walked) and drops (abandoned): the date says which.
+      const ended = /> (?:✅ (CLOSED)|✖ (DROPPED))\s+([\d-]+)/.exec(head)
+      const shipped = ended ? `${ended[3]} (${(ended[1] ?? ended[2]).toLowerCase()})` : grab(head, /SHIPPED\s+([\d-]+)/)
+      return { feature: name, shipped, pr: grab(head, /PR\s*(#\d+)/), path: `${CFG.registry}/${ARCHIVE}/${name}` }
     })
     .sort((a, b) => (b.shipped ?? '').localeCompare(a.shipped ?? '') || a.feature.localeCompare(b.feature))
   const shown = all.slice(0, LIMIT)
