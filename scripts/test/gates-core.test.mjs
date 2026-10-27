@@ -611,13 +611,13 @@ test('gate.mjs quotes a line whose green run still stands — a @scoped line not
 })
 
 test('gate.mjs starts @parallel lines together, across sets, and reports each in its turn', () => {
-  const root = configured('### server — fast\n\n```\nsleep 1 && echo s1   # slow one @parallel\necho in-order   # sequential\n```\n\n### web — fast\n\n```\nsleep 1 && echo w1   # slow two @parallel\nexit 4   # red @parallel\n```\n')
+  const root = configured('### server — fast\n\n```\nsleep 2 && echo s1   # slow one @parallel\necho in-order   # sequential\n```\n\n### web — fast\n\n```\nsleep 2 && echo w1   # slow two @parallel\nexit 4   # red @parallel\n```\n')
   const t0 = Date.now()
   const r = run(root, 'server', 'web')
   const took = Date.now() - t0
   assert.equal(r.status, 1, 'a red @parallel line is red')
-  assert.match(r.stdout, /✓ sleep 1 && echo s1[\s\S]*✓ echo in-order[\s\S]*✓ sleep 1 && echo w1[\s\S]*✗ exit 4 exit 4/)
-  assert.ok(took < 1900, `two 1s lines in parallel took ${took}ms`)
-  assert.match(readFileSync(join(root, '.builder/gates/fast-server-logs/01.log'), 'utf8'), /^\$ sleep 1 && echo s1\ns1\n/)
+  assert.match(r.stdout, /✓ sleep 2 && echo s1[\s\S]*✓ echo in-order[\s\S]*✓ sleep 2 && echo w1[\s\S]*✗ exit 4 exit 4/)
+  assert.ok(took < 3800, `two 2s lines in parallel took ${took}ms — one after the other is 4s or more`)
+  assert.match(readFileSync(join(root, '.builder/gates/fast-server-logs/01.log'), 'utf8'), /^\$ sleep 2 && echo s1\ns1\n/)
   assert.equal(parseGates('## Quality gates\n\n### a — fast\n\n```\nx   # y @parallel\n```\n').fast.a[0].parallel, true)
 })
