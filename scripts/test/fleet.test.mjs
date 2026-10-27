@@ -132,7 +132,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
   assert.equal(a.timing.length, 8)
   const { start, end, ...first } = a.timing[0]
-  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} }, meter: { orchestrator: { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 }, dispatches: [] } })
   assert.ok(Date.parse(start) <= Date.parse(end), 'each run records its wall-clock start and end')
   // The stage timeline, read from the branch's commits before the merge deleted it.
   assert.ok(a.wallMs >= 0 && a.stages && typeof a.stages === 'object', 'wall-clock and stages recorded')
@@ -218,7 +218,7 @@ test('a run that prints more than one result event is timed by the last', () => 
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
   const { start, end, ...first } = c.timing[0]
-  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} }, meter: { orchestrator: { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 }, dispatches: [] } })
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -1441,7 +1441,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, byKind: {}, orchestrator: { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }, costByModel: {}, quality: null, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1454,7 +1454,7 @@ test('--status --archived lists the latest landings', () => {
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
-  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| 9k \| [0-9a-f]{7,} \| — \| just now \|/)
+  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| \$0\.40 \| — \| [0-9a-f]{7,} \| — \| just now \|/)
   const none = runFleet(makeRepo(['c']), ['--status', '--archived'], {})
   assert.match(none.stdout, /No feature has landed from this fleet yet\./)
 })

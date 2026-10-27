@@ -262,10 +262,168 @@ export function laneTotals(timing) {
   return out
 }
 
-/** A `result` event's usage as { input, output, cacheRead, costUsd } — zeros without one. */
+/**
+ * A `result` event's usage as { input, output, cacheRead, cacheCreation, costUsd, byModel } — zeros
+ * without one. 🔴 `usage` is the ORCHESTRATOR's thread only (the main session's own turns); sub-agents
+ * are in `total_cost_usd` and in `modelUsage`, never in these token counts — so `costUsd` and
+ * `byModel` cover the whole run while input/output/cacheRead/cacheCreation do not. Per-dispatch
+ * tokens come from the run's stream (streamMeter).
+ */
 export function tokensOf(ev) {
   const u = ev?.usage ?? {}
-  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0 }
+  const byModel = {}
+  for (const [model, m] of Object.entries(ev?.modelUsage ?? {})) {
+    byModel[model] = { input: m.inputTokens ?? 0, output: m.outputTokens ?? 0, cacheRead: m.cacheReadInputTokens ?? 0, cacheCreation: m.cacheCreationInputTokens ?? 0, costUsd: m.costUSD ?? 0 }
+  }
+  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheCreation: u.cache_creation_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0, byModel }
+}
+
+// ---- per-dispatch measurement --------------------------------------------------------------------
+//
+// Where a run's tokens went, per Agent dispatch, read from its stream as it streams — so it is
+// recorded on the run's timing entry and survives into the archive row after the logs are pruned.
+// "Context" is a turn's input + cache_read + cache_creation: what the model re-read that turn. A
+// message streamed in chunks repeats one message.id; each field takes its max across the chunks.
+
+/** A dispatch's kind from its Agent description — dispatch.mjs's templates first, then the words the skills use. */
+export function dispatchKind(description) {
+  const d = String(description ?? '')
+  if (/\bre-?review\b/i.test(d)) return 're-review'
+  if (/^implement\b/i.test(d)) return 'implement'
+  if (/\bfinal review'?s?\b.*\bfix|\bfix\b.*\bfinal\b/i.test(d)) return 'final-fix'
+  if (/\bfinal\b.*\breview\b|\bwhole-branch\b/i.test(d)) return 'final-review'
+  if (/\bfix\b/i.test(d)) return 'fix'
+  if (/\breview\b/i.test(d)) return 'task-review'
+  if (/\bimplement\b/i.test(d)) return 'implement'
+  if (/\baudit\b/i.test(d)) return 'audit'
+  if (/\balign\b/i.test(d)) return 'align'
+  if (/\bplan\b|\bwriter\b|\btask blocks?\b/i.test(d)) return 'plan'
+  if (/\bwalk\b/i.test(d)) return 'walk'
+  if (/\bverif/i.test(d)) return 'verify'
+  return 'other'
+}
+
+const TEST_RUN = /\b(pytest|jest|vitest|playwright|mocha|rspec|phpunit|go test|cargo test|node --test|(?:npm|pnpm|yarn|bun) (?:run )?(?:test|e2e)\b)/
+
+/**
+ * An accumulator for one run's stream-json events: `add(ev)` per event, `summary()` at the end →
+ * { orchestrator: { turns, startCtx, peakCtx, sumCtx }, dispatches: [{ kind, task, description,
+ * model, agentType, turns, startCtx, peakCtx, sumCtx, testRuns, toolUses, ms }] } in dispatch order.
+ * A sub-agent whose turns never streamed (some harness versions report a foreground child only in its
+ * tool result) keeps its tool result's facts with turns/context null rather than zeros.
+ */
+export function streamMeter() {
+  const msgs = new Map() // message.id → { parent, input, cacheRead, cacheCreation }
+  const dispatches = new Map() // Agent tool_use id → its facts
+  const tests = new Map() // parent → test-run count
+  const add = (ev) => {
+    if (!ev || typeof ev !== 'object') return
+    const parent = ev.parent_tool_use_id ?? null
+    if (ev.type === 'assistant' && ev.message) {
+      const m = ev.message
+      const u = m.usage ?? {}
+      const id = m.id ?? `${parent}:${msgs.size}`
+      const cur = msgs.get(id) ?? { parent, input: 0, cacheRead: 0, cacheCreation: 0 }
+      cur.input = Math.max(cur.input, u.input_tokens ?? 0)
+      cur.cacheRead = Math.max(cur.cacheRead, u.cache_read_input_tokens ?? 0)
+      cur.cacheCreation = Math.max(cur.cacheCreation, u.cache_creation_input_tokens ?? 0)
+      msgs.set(id, cur)
+      for (const b of m.content ?? []) {
+        if (b?.type !== 'tool_use') continue
+        if (parent == null && (b.name === 'Agent' || b.name === 'Task') && !dispatches.has(b.id)) {
+          const i = b.input ?? {}
+          const task = /\bTask\s+(\d+)\b/i.exec(i.description ?? '')?.[1]
+          dispatches.set(b.id, { kind: dispatchKind(i.description), task: task ? +task : null, description: String(i.description ?? '').slice(0, 120), model: i.model ?? null, agentType: i.subagent_type ?? null })
+        }
+        if (parent != null && b.name === 'Bash' && TEST_RUN.test(String(b.input?.command ?? ''))) tests.set(parent, (tests.get(parent) ?? 0) + 1)
+      }
+    }
+    if (ev.type === 'user' && parent == null && ev.tool_use_result && typeof ev.tool_use_result === 'object') {
+      const id = (ev.message?.content ?? []).find((c) => c?.type === 'tool_result')?.tool_use_id
+      const d = id && dispatches.get(id)
+      if (d) {
+        const r = ev.tool_use_result
+        d.model = r.resolvedModel ?? d.model
+        d.agentType = r.agentType ?? d.agentType
+        d.toolUses = r.totalToolUseCount ?? null
+        d.ms = r.totalDurationMs ?? null
+        d.lastCtx = r.totalTokens ?? null
+      }
+    }
+  }
+  const summary = () => {
+    const groups = new Map()
+    for (const m of msgs.values()) {
+      const ctx = m.input + m.cacheRead + m.cacheCreation
+      const g = groups.get(m.parent) ?? { turns: 0, startCtx: ctx, peakCtx: 0, sumCtx: 0 }
+      g.turns += 1
+      g.peakCtx = Math.max(g.peakCtx, ctx)
+      g.sumCtx += ctx
+      groups.set(m.parent, g)
+    }
+    const none = { turns: null, startCtx: null, peakCtx: null, sumCtx: null }
+    return {
+      orchestrator: groups.get(null) ?? { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 },
+      dispatches: [...dispatches.entries()].map(([id, d]) => ({ ...d, ...(groups.get(id) ?? none), testRuns: tests.get(id) ?? 0 })),
+    }
+  }
+  return { add, summary }
+}
+
+/**
+ * A feature's timing entries → what its archive row says about where the tokens went: per dispatch
+ * kind { n, turns, sumCtx, peakCtx, testRuns }, the orchestrators' { runs, turns, sumCtx, peakCtx }
+ * and cost per model, summed across every run. Runs recorded before the meter existed add nothing.
+ */
+export function meterTotals(timing) {
+  const byKind = {}
+  const orchestrator = { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }
+  const costByModel = {}
+  for (const t of timing ?? []) {
+    for (const [model, m] of Object.entries(t.tokens?.byModel ?? {})) costByModel[model] = (costByModel[model] ?? 0) + (m.costUsd ?? 0)
+    const s = t.meter
+    if (!s) continue
+    const w = 1 / (t.shared || 1) // a batch walk's session, charged to each feature it walked (chargeBatch)
+    orchestrator.runs += w
+    orchestrator.turns += (s.orchestrator?.turns ?? 0) * w
+    orchestrator.sumCtx += (s.orchestrator?.sumCtx ?? 0) * w
+    orchestrator.peakCtx = Math.max(orchestrator.peakCtx, s.orchestrator?.peakCtx ?? 0)
+    for (const d of s.dispatches ?? []) {
+      const k = (byKind[d.kind] ??= { n: 0, turns: 0, sumCtx: 0, peakCtx: 0, testRuns: 0 })
+      k.n += w
+      k.turns += (d.turns ?? 0) * w
+      k.sumCtx += (d.sumCtx ?? 0) * w
+      k.peakCtx = Math.max(k.peakCtx, d.peakCtx ?? 0)
+      k.testRuns += (d.testRuns ?? 0) * w
+    }
+  }
+  const round = (o) => { for (const k of Object.keys(o)) if (typeof o[k] === 'number') o[k] = Math.round(o[k] * 100) / 100 }
+  round(orchestrator)
+  for (const k of Object.values(byKind)) round(k)
+  for (const m of Object.keys(costByModel)) costByModel[m] = Math.round(costByModel[m] * 100) / 100
+  return { byKind, orchestrator, costByModel }
+}
+
+/**
+ * The build's review facts from its workspace, for the archive row's quality line: the final
+ * review's findings by severity (its `#### Critical` / `Important` / `Minor` lists, as
+ * prompts/final-reviewer.md writes them), and the ledger's task-level fix rounds. Null without either file.
+ */
+export function reviewFacts({ finalReview = null, ledger = null } = {}) {
+  if (finalReview == null && ledger == null) return null
+  let findings = null
+  if (finalReview != null) {
+    findings = { critical: 0, important: 0, minor: 0 }
+    let at = null
+    for (const line of finalReview.split('\n')) {
+      const h = /^#{2,4}\s+(Critical|Important|Minor)\b/i.exec(line)
+      if (h) { at = h[1].toLowerCase(); continue }
+      if (/^#{1,4}\s/.test(line)) { at = null; continue }
+      if (at && /^(?:[-*]|\d+[.)])\s+\S/.test(line) && !/^(?:[-*]|\d+[.)])\s+\**none\b/i.test(line)) findings[at] += 1
+    }
+  }
+  const fixRounds = ledger == null ? null : (ledger.match(/^.*\bfix round \d+\/5\b.*$/gim) ?? []).length
+  return { finalFindings: findings, fixRounds }
 }
 
 /** `2.1M`, `340k`, `950`; `—` when absent or zero. */
@@ -280,13 +438,16 @@ export function formatTokens(n) {
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
-  // Tokens = input + output; cache reads are left out.
+  // Cost is the whole run's (every agent); per task divides it by the plan's task count. Token counts
+  // are left out: a row's `tokens` is the orchestrators' own threads only (tokensOf).
+  const usd = (v) => (v ? `$${v.toFixed(2)}` : null)
+  const perTask = (r) => (r.costUsd && r.size?.tasks > 0 ? usd(r.costUsd / r.size.tasks) : null)
   const time = (r) => {
     const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
     return ms ? duration(ms) : null
   }
-  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Tests | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
-  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(rowLabel(r))} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
+  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Tests | Time | Cost | Per task | Merged | PR | Landed |', '|---|---|---|---|---|---|---|---|']
+  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(rowLabel(r))} | ${cell(time(r))} | ${cell(usd(r.costUsd))} | ${cell(perTask(r))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
   return lines.join('\n') + '\n'
 }
 

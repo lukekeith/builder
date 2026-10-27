@@ -292,12 +292,12 @@ test('renderArchived lists the latest landings newest first', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
   assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
-  assert.match(out, /\| Feature \| Tests \| Time \| Tokens \| Merged \| PR \| Landed \|/)
+  assert.match(out, /\| Feature \| Tests \| Time \| Cost \| Per task \| Merged \| PR \| Landed \|/)
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
-  assert.match(out, /\| b \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
-  assert.match(out, /\| a \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
-  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
-  assert.match(full, /\| c \| own · touched · end \| 12m \| 2\.1M \| abc1234 \|/)
+  assert.match(out, /\| b \| — \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
+  assert.match(out, /\| a \| — \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
+  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 }, costUsd: 30, size: { tasks: 12 } }], 1, now)
+  assert.match(full, /\| c \| own · touched · end \| 12m \| \$30\.00 \| \$2\.50 \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -391,8 +391,8 @@ test('walkFacts counts walk.md checks and each round report\'s results', () => {
 })
 
 test('tokensOf reads a result event’s usage; zeros without one', () => {
-  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, costUsd: 0.1 })
-  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, costUsd: 0 })
+  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, cacheCreation: 0, costUsd: 0.1, byModel: {} })
+  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, costUsd: 0, byModel: {} })
 })
 
 test('formatTokens: 2.1M, 340k, — when absent', () => {
