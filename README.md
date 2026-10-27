@@ -79,6 +79,7 @@ recommendation, or pick another.
 | `/builder:signoff` | Your verdict after testing a feature — only you can type it |
 | `/builder:revise` | Changes a feature that is already planned or part-built |
 | `/builder:tidy` | Cleans up leftover builder branches and worktrees |
+| `/builder:archive` | Moves finished specs out of the registry — shipped, merged, abandoned — each kept as its SPEC |
 | `/builder:init` | Sets up builder in a repo |
 | `/builder:update` · `/builder:version` | Get the newest builder · see which one you're on |
 | `/builder:vendor` | Puts a copy of builder inside a repo that won't take outside plugins |

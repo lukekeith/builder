@@ -48,9 +48,9 @@
     "blurb": "More specs joining a fleet that is already running, its status mid-run and its final report.",
     "steps": ["fleet-add", "fleet-status", "fleet-report"] },
 
-  { "group": "Around the work", "id": "dashboards", "title": "Where things stand", "short": "status, the resume picker, tidy",
-    "blurb": "The read-mostly views: the status dashboard, the resume picker, tidy's table, version and the help card.",
-    "steps": ["status-dashboard", "resume-picker", "tidy-table", "version", "help-card"] },
+  { "group": "Around the work", "id": "dashboards", "title": "Where things stand", "short": "status, the resume picker, tidy, archive",
+    "blurb": "The read-mostly views: the status dashboard, the resume picker, tidy's table, archive's review, version and the help card.",
+    "steps": ["status-dashboard", "resume-picker", "tidy-table", "archive-review", "version", "help-card"] },
   { "group": "Around the work", "id": "setup", "title": "Setting up a repo", "short": "init",
     "blurb": "`/builder:init` writes `.claude/builder.md` from what the repo contains and asks only what it can't answer.",
     "steps": ["init-questions", "init-report"] },

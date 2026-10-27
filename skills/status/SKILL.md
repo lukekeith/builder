@@ -37,7 +37,8 @@ No `.claude/builder.md` → the script says so; relay it and name **`/builder:in
 ## 2. Show it
 
 Print the script's output **verbatim, as markdown** — the table, then any branch-switch and
-needs-attention lines under it, the 📦 archived-count line when there is one, the `repo:` line, and the ⬆️ line when
+needs-attention lines under it, the 🔒 line naming `/builder:archive` when shipped folders still sit in
+the registry, the 📦 archived-count line when there is one, the `repo:` line, and the ⬆️ line when
 this repo's vendored copy of builder is behind the newest release on this machine. Don't re-sort it, re-word the steps, or summarise it into prose: the
 user copies commands straight out of the last column.
 

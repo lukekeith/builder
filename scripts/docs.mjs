@@ -62,6 +62,8 @@ export const STEPS = {
   signoff: [['skills/ship/SKILL.md', 'At sign-off'], ...R('Condense', 'Walk readiness', 'The two-way footer', 'Continuing on "go"'), CONFIG],
   // ship SKILL: "REFERENCE §Condense says what each writes".
   ship: [...R('Condense', 'Continuing on "go"'), CONFIG],
+  // archive SKILL: §Condense (what SHIPPED, CLOSED and DROPPED mean), §Before a picker (its one confirmation).
+  archive: [...R('Condense', 'Before a picker'), CONFIG],
   // revise SKILL: §Contract and the contract freeze (the one way a frozen contract re-opens), §SPEC.md.
   revise: [...R('Contract and the contract freeze', 'SPEC.md', 'The review', 'Continuing on "go"'), CONFIG],
   // resume SKILL: §Flags, §MANIFEST.md, §Condense (state detection), §The two-way footer, §Continuing on "go".
