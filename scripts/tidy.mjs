@@ -9,14 +9,20 @@
  * Actions: delete-branch (a branch fully in the target, and its worktree) · force-delete-branch
  * (unmerged — only after the owner chose delete) · remove-worktree (keeps the branch) · merge (a
  * branch that carries the target merges --no-ff; a feature branch behind it is handed to the fleet,
- * listed on a final `handed:` line). One line per item; exit 1 when any item was refused.
+ * listed on a final `handed:` line). A `ready` feature (verified) is SHIPPED on its own branch first
+ * — `condense.mjs --ship --into <target>`, in its worktree or a throwaway one — exactly as the fleet
+ * lands one, so the merge brings in the archived SPEC and /builder:status never shows it again; a
+ * ship that refuses refuses the merge. `merge --as-is` (the owner's "Merge as is") skips the ship.
+ * One line per item; exit 1 when any item was refused. Archived logs past `keep_logs` are pruned.
  * Never pushes, never touches a remote, never loses uncommitted work (it is stashed by name).
  */
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync, realpathSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { requireConfig } from './config.mjs'
-import { loadFleet, fleetDir, fleetAlive } from './fleet-core.mjs'
+import { loadFleet, fleetDir, fleetAlive, pruneArchivedLogs } from './fleet-core.mjs'
 import { inventory, summaryLine, clearWorktree, worktrees, featureOf } from './tidy-core.mjs'
 
 const argv = process.argv.slice(2)
@@ -40,6 +46,7 @@ if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === nul
 }
 
 const [verb, action, ...rest] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--into')
+const AS_IS = argv.includes('--as-is')
 
 if (verb === 'plan') {
   const all = items()
@@ -48,7 +55,7 @@ if (verb === 'plan') {
   process.exit(0)
 }
 if (verb !== 'apply' || !action || !rest.length) {
-  console.error('Usage: tidy.mjs plan [--into <branch>] [--json] | apply <delete-branch|force-delete-branch|remove-worktree|merge> <name>… [--into <branch>]')
+  console.error('Usage: tidy.mjs plan [--into <branch>] [--json] | apply <delete-branch|force-delete-branch|remove-worktree|merge [--as-is]> <name>… [--into <branch>]')
   process.exit(2)
 }
 
@@ -108,6 +115,34 @@ function removeWorktree(name) {
   ok(name, `worktree removed${w.branch ? '' : ' (it was on no branch)'}${r.stash ? `; uncommitted changes are in stash "${r.stash}"` : ''}${r.kept ? `; its build workspace is kept in ${r.kept}` : ''}`)
 }
 
+/**
+ * Ship a verified feature on its own branch before it merges — the fleet's landing order, so the
+ * target receives the SHIPPED SPEC in `_archive/` and no live folder. Run in the branch's worktree,
+ * or in a throwaway one when it has none (the branch is checked out nowhere: hands() refused the
+ * main checkout). `{ shipped }`, `{ why }` when condense refused, or `{}` when there is nothing to
+ * ship (the branch already carries the ship). The workspace this checkout kept for it goes too.
+ */
+function shipOnBranch(b, feature) {
+  const rel = `${CFG.registry}/${feature}`
+  if (tryGit(['cat-file', '-e', `refs/heads/${b}:${rel}/MANIFEST.md`]) === null) return {}
+  const own = wtOf(b)?.path
+  const dir = own ?? realpathSync(mkdtempSync(join(tmpdir(), 'builder-tidy-ship-')))
+  try {
+    if (!own && tryGit(['worktree', 'add', '--quiet', dir, b]) === null) return { why: `could not check ${b} out to ship it` }
+    const condense = join(dirname(fileURLToPath(import.meta.url)), 'condense.mjs')
+    const r = spawnSync(process.execPath, [condense, join(dir, rel), '--ship', '--into', TARGET], { cwd: dir, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } })
+    if (r.status !== 0) return { why: `not shipped, so not merged: ${(r.stderr || r.stdout).trim().split('\n').pop()} — /builder:agent --path ${rel} finishes it, or merge it as is (--as-is)` }
+    rmSync(join(ROOT, '.builder', feature), { recursive: true, force: true })
+    return { shipped: true }
+  } finally {
+    if (!own) {
+      tryGit(['worktree', 'remove', '--force', dir])
+      rmSync(dir, { recursive: true, force: true })
+      tryGit(['worktree', 'prune'])
+    }
+  }
+}
+
 /** The fleet's merge rule: the target checked out here → git merge (clean tree); checked out nowhere → write the merge onto the ref. */
 function mergeBranch(b) {
   if (!exists(b)) return no(b, 'no such branch')
@@ -122,21 +157,25 @@ function mergeBranch(b) {
   const message = `merge(${feature ?? labelOf(b)}): merged by /builder:tidy`
   const elsewhere = worktrees(ROOT).slice(1).find((w) => w.branch === TARGET)
   if (elsewhere) return no(b, `${TARGET} is checked out in ${elsewhere.path} — merge it there`)
-  if (mainBranch() === TARGET) {
-    if (tryGit(['diff', '--quiet', 'HEAD']) === null) return no(b, `${TARGET} has uncommitted changes here — commit or stash them first`)
+  const here = mainBranch() === TARGET
+  if (here && tryGit(['diff', '--quiet', 'HEAD']) === null) return no(b, `${TARGET} has uncommitted changes here — commit or stash them first`)
+  if (!here && !carries) return no(b, `doesn't carry ${TARGET} and ${TARGET} isn't checked out — check out ${TARGET} and run it again`)
+  // Every refusal that doesn't need the ship is above: a ship is a commit, and it never lands on a branch that then isn't merged.
+  const shipped = feature && !AS_IS && now[b] === 'ready' ? shipOnBranch(b, feature) : {}
+  if (shipped.why) return no(b, shipped.why)
+  if (here) {
     if (tryGit(['merge', '--no-ff', '--no-edit', '-m', message, b]) === null) {
       tryGit(['merge', '--abort'])
       return no(b, `merging into ${TARGET} conflicted — backed out${feature ? `; /builder:agent --path ${CFG.registry}/${feature} resolves it` : ''}`)
     }
   } else {
-    if (!carries) return no(b, `doesn't carry ${TARGET} and ${TARGET} isn't checked out — check out ${TARGET} and run it again`)
     const old = git(['rev-parse', `refs/heads/${TARGET}`])
     const commit = tryGit(['commit-tree', `${b}^{tree}`, '-p', old, '-p', b, '-m', message])
     if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return no(b, `writing the merge onto ${TARGET} failed`)
   }
   const w = dropWorktree(b)
   if (inTarget(b) && !w.why) tryGit(['branch', '-D', b])
-  ok(b, `merged into ${TARGET}${w.why ? ` — ${w.why}` : w.note}`)
+  ok(b, `${shipped.shipped ? 'shipped and ' : ''}merged into ${TARGET}${w.why ? ` — ${w.why}` : w.note}`)
 }
 
 const run = { 'delete-branch': (n) => deleteBranch(n, false), 'force-delete-branch': (n) => deleteBranch(n, true), 'remove-worktree': removeWorktree, merge: mergeBranch }[action]
@@ -146,4 +185,5 @@ if (!run) {
 }
 for (const name of rest) run(name)
 if (handed.length) console.log(`handed: ${handed.join(' ')}`)
+pruneArchivedLogs(ROOT, CFG.agentWalk?.keepLogs ?? 30)
 process.exit(refused ? 1 : 0)

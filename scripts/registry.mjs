@@ -4,7 +4,11 @@
  * commit, where nothing routine reads it. Listing in-flight work never touches the archive, and
  * "has X shipped?" is one existsSync — the same cost at ten shipped features as at ten thousand.
  *
- *   node <plugin>/scripts/registry.mjs --sweep   # one-time: git mv every shipped folder into _archive/
+ *   node <plugin>/scripts/registry.mjs --sweep   # git mv every shipped folder into _archive/, staged
+ *
+ * /builder:archive (scripts/archive.mjs) does what --sweep does and more — shipped folders, merged
+ * ones never shipped, abandoned ones, and their leftovers — in one reviewed commit. --sweep stays
+ * for a script that wants only the move.
  */
 import { readdirSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
@@ -35,6 +39,21 @@ export function features(root, registry) {
 }
 
 export const isArchived = (root, registry, name) => existsSync(join(root, registry, ARCHIVE, name))
+
+/**
+ * How an archived folder ended, from its SPEC (or PROGRAM) header — one 800-byte read: 'dropped'
+ * (`✖ DROPPED`, abandoned by /builder:archive), 'closed' (`✅ CLOSED`, merged but never walked or
+ * verified), else 'shipped' — a `✅ SHIPPED` header, or a folder archived before archive wrote any
+ * other header (a legacy folder moved as it was). Null when it is not archived.
+ */
+export function archivedOutcome(root, registry, name) {
+  const dir = join(root, registry, ARCHIVE, name)
+  if (!existsSync(dir)) return null
+  const head = (read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? '').slice(0, 800)
+  if (/^> ✖ DROPPED/m.test(head)) return 'dropped'
+  if (/^> ✅ CLOSED/m.test(head)) return 'closed'
+  return 'shipped'
+}
 
 /** Where a feature's docs are: its live folder, else its archived one, else the live path (so a
  *  caller's "missing" handling is unchanged). */
