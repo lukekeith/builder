@@ -26,6 +26,8 @@ to 40 minutes a time when the walk env broke under a gate. **Nothing to change i
 - **`plan_writers: per-app`** — `/builder:plan` drafts each app's tasks in parallel against SPEC
   §Contract, then checks every cross-app interface by name.
 - **`--no-env-check`** on `/builder:fleet` — see the launch check below.
+- **§Walk readiness `pending:`** — a command that exits 0 only when the dev DB has every migration;
+  the fleet asks it after a merge (see below). `status:` is unchanged.
 
 **Changed:**
 - **A gate line stands on its own evidence.** A line that passed is remembered with its commit; a
@@ -41,16 +43,23 @@ to 40 minutes a time when the walk env broke under a gate. **Nothing to change i
 - **A dead walk env is not a broken feature.** The fleet smokes the env after every walk run and
   batch session: red, and a verdict that run committed is dropped, the env restarts without a reset,
   and the walk runs again — instead of a fix round chasing an env that was down.
-- **"The dev DB is behind" asks the database.** With §Walk readiness `status:` (exit 0 = nothing
-  pending), the note after a merge is only written when it is; without it, the note says the DB
-  *may* be behind. `/builder:init` writes a wrapper for tools that always exit 0.
+- **"The dev DB is behind" asks the database.** With §Walk readiness `pending:`, the note after a
+  merge is only written when the DB is behind (or the command couldn't tell); without it, the note
+  says the DB *may* be behind. `/builder:init` offers a one-liner for the common tools.
+- **The walk lane's run stops at the sign-off** (`--walk-lane`): when the fleet owns the walk env,
+  a walk-lane run does readiness and the walk, then ends — verify and fixes never start beside the env.
+- **A quoted gate line never comes before a line that runs** — an earlier line may be the later one's
+  setup (a reset, a migrate) — and a `@parallel` run left behind by a killed `gate.mjs` can never
+  answer for a new one.
 
 **Fixed:**
 - **The destructive-migration check reads only the forward half** — Alembic `upgrade()`, Rails
   `up`, Knex `up`, SQL before its down marker — so a drop in `downgrade()` no longer blocks an
   additive migration; and it now knows each tool's own operations (`op.drop_column`,
-  `remove_column`, `dropTable`, `RemoveField`, `ALTER COLUMN … TYPE`, `UPDATE … SET`), which raw-SQL
-  matching let through. Comments don't count; an unknown file kind is held for a human.
+  `remove_column`, `dropTable`, `RemoveField`, `delete_all`, `.del()`, `bulkDelete`, `deleteMany`,
+  `ALTER COLUMN … TYPE`, `UPDATE … SET`), which raw-SQL matching let through. Raw SQL in strings and
+  helpers `upgrade()` calls are read; comment lines don't count; an unknown file kind is held for a
+  human.
 - **Under the fleet an e2e suite without `@walk` is not run** — its URLs fell back to the human's
   dev stack — and is reported unverified, with the fix.
 

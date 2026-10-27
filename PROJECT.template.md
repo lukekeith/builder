@@ -175,7 +175,8 @@ What makes the **dev** environment run this branch before a human is asked to wa
 
 ```
 migrations: <dir holding migration files>             # e.g. packages/db/prisma/migrations
-status:     <command>   # exit 0 = the DEV db has every migration, else pending — e.g. npx prisma migrate status; for a tool that always exits 0 (alembic current, rails db:migrate:status) a wrapper: `alembic check`, or `! rails db:migrate:status | grep -q '^\s*down'`
+status:     <command>   # pending migrations on the DEV db, e.g. npx prisma migrate status
+pending:    <command>   # optional: exits 0 only when the DEV db has every migration — the fleet asks it after a merge instead of guessing from git; e.g. npx prisma migrate status, `alembic check`, `! rails db:migrate:status | grep -q '^\s*down'`
 apply:      <command>   # e.g. npx prisma migrate deploy
 apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it — the fleet also runs apply then regenerate in your checkout after landing a feature with new additive migrations)
 regenerate: <command>   # after a schema change, e.g. npx prisma generate — omit if none

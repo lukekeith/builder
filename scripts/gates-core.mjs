@@ -210,25 +210,63 @@ export function runCommand(cmd, { cwd, env = process.env, logFile = null, timeou
 
 /**
  * Start a command in the background — for `@parallel` lines, which run together — and wait for it
- * later with waitCommand, synchronously like runCommand. Its output goes to `logFile` (or a temp
- * file) and its exit status to `<log>.exit`.
+ * later with waitCommand, synchronously like runCommand. Its output and exit status go to files
+ * unique to this start (pid + nonce), so a run left over from a killed gate.mjs can never answer for
+ * this one. Every started group is killed if this process exits first (killStarted).
  */
+const startedGroups = new Set()
 export function startCommand(cmd, { cwd, env = process.env, logFile }) {
   mkdirSync(dirname(logFile), { recursive: true })
   if (cwd) mkdirSync(join(cwd, '.builder', 'gates'), { recursive: true })
-  const exitFile = `${logFile}.exit`
-  rmSync(exitFile, { force: true })
-  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3"', 'gate', cmd, `${logFile}.out`, exitFile], { cwd, env, stdio: 'ignore', detached: true })
+  const tag = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const outFile = `${logFile}.${tag}.out`
+  const exitFile = `${logFile}.${tag}.exit`
+  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3.tmp" && mv "$3.tmp" "$3"', 'gate', cmd, outFile, exitFile], { cwd, env, stdio: 'ignore', detached: true })
+  child.on('error', () => {})
   child.unref()
-  return { cmd, logFile, exitFile, t0: Date.now(), pid: child.pid }
+  if (child.pid) startedGroups.add(child.pid)
+  return { cmd, logFile, outFile, exitFile, t0: Date.now(), pid: child.pid ?? null }
 }
+/**
+ * Whether the group still has a live (non-zombie) member. Not `kill(-pid, 0)`: waitCommand blocks
+ * the event loop, so a dead child is never reaped and stays a zombie that kill(0) still finds.
+ */
+const groupAlive = (pid) => {
+  if (!pid) return false
+  const r = spawnSync('ps', ['-A', '-o', 'pgid=,stat='], { encoding: 'utf8' })
+  if (r.status !== 0) return true // can't tell: keep waiting for the exit file
+  return r.stdout.split('\n').some((l) => {
+    const [g, stat] = l.trim().split(/\s+/)
+    return Number(g) === pid && stat && !stat.startsWith('Z')
+  })
+}
+const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+/** Wait for a started command. A group that died without writing its exit status is red, never a hang. */
 export function waitCommand(h) {
-  spawnSync('sh', ['-c', 'while [ ! -s "$1" ]; do sleep 0.2; done', 'wait', h.exitFile])
-  const output = existsSync(`${h.logFile}.out`) ? readFileSync(`${h.logFile}.out`, 'utf8') : ''
-  const exit = Number(readFileSync(h.exitFile, 'utf8').trim())
-  writeFileSync(h.logFile, `$ ${h.cmd}\n${output}\n[exit ${exit}]\n`)
-  rmSync(`${h.logFile}.out`, { force: true })
-  return { exit: Number.isFinite(exit) ? exit : 1, stdout: output, output, ms: Date.now() - h.t0 }
+  let gone = 0
+  for (let i = 0; !existsSync(h.exitFile); i++) {
+    // ps once a second; a group with no live member gets two seconds' grace to write its exit file
+    if (i % 5 === 4 && !groupAlive(h.pid) && ++gone > 2) break
+    nap(200)
+  }
+  startedGroups.delete(h.pid)
+  const output = existsSync(h.outFile) ? readFileSync(h.outFile, 'utf8') : ''
+  const raw = existsSync(h.exitFile) ? readFileSync(h.exitFile, 'utf8').trim() : ''
+  const exit = raw === '' ? 1 : Number(raw)
+  const note = raw === '' ? '\n[the command died without an exit status]' : ''
+  writeFileSync(h.logFile, `$ ${h.cmd}\n${output}${note}\n[exit ${raw || 'none'}]\n`)
+  rmSync(h.outFile, { force: true })
+  rmSync(h.exitFile, { force: true })
+  return { exit: Number.isFinite(exit) ? exit : 1, stdout: output, output: output + note, ms: Date.now() - h.t0 }
+}
+/** Kill every started group still running — gate.mjs calls it on exit and on a signal. */
+export function killStarted() {
+  for (const pid of startedGroups) {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {}
+  }
+  startedGroups.clear()
 }
 
 const matcher = (pattern) => {
@@ -404,7 +442,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       const again = runCommand(hit.rerun || g.cmd, { cwd, env: lineEnv, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
       durations[g0.cmd] += again.ms
       if (again.exit === 0) {
-        greens.push(g0.cmd)
+        if (!hit.rerun) greens.push(g0.cmd) // a narrower re-run proves the file, not the whole line
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
         return
       }

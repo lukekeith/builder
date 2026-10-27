@@ -913,7 +913,7 @@ test('a walk run that ends with the env dead is not believed: its verdict is dro
   const r = runFleet(root, ['s', '--no-env-check'], { s: ['TOUCH:../env-dead:FIXES', 'signed-off', 'verified', 'SHIP'] }, FAST)
   assert.equal(r.status, 0, r.stderr)
   const a = assertLanded(r, 's')
-  assert.ok(r.fleet.notes.some((n) => /s: the walk env stopped answering during a walk run — its verdict was dropped, the env was restarted/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.ok(r.fleet.notes.some((n) => /s: the walk env stopped answering during a walk run — its verdict was dropped, the env is restarted/.test(n)), JSON.stringify(r.fleet.notes))
   assert.equal(readFileSync(join(scratch, 'starts'), 'utf8').trim().split('\n').length, 2, 'started, then restarted once')
   assert.ok(a.runs >= 4)
 })

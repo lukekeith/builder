@@ -473,54 +473,63 @@ const DESTRUCTIVE_OPS = [
   /\bALTER\s+COLUMN\b[^;]*\b(TYPE|SET\s+DATA\s+TYPE)\b/i,
   /\bDELETE\s+FROM\b/i,
   /\bTRUNCATE\b/i,
-  /\bUPDATE\s+["'`\w.]+\s+SET\b/i,
-  /\b(drop_table|drop_column|drop_constraint|drop_index|rename_table|rename_column|alter_column|remove_column|remove_columns|remove_reference|remove_index|remove_timestamps|change_column|change_table|batch_alter_table)\b/,
-  /\b(dropTable|dropTableIfExists|dropColumn|dropColumns|renameColumn|renameTable|dropIndex|dropForeign|removeColumn|changeColumn|renameColumn)\b/,
-  /\.alter\(\s*\)/,
+  /\bUPDATE\s+["'`\w.]+(\s+(AS\s+)?\w+)?\s+SET\b/i,
+  /\b(drop_table|drop_column|drop_constraint|drop_index|rename_table|rename_column|alter_column|remove_column|remove_columns|remove_reference|remove_index|remove_timestamps|change_column|change_table|batch_alter_table|delete_all|update_all|destroy_all)\b/,
+  /\b(dropTable|dropTableIfExists|dropColumn|dropColumns|renameColumn|renameTable|dropIndex|dropForeign|removeColumn|changeColumn|bulkDelete|bulkUpdate|removeConstraint|removeIndex|deleteMany|deleteOne|updateMany|dropCollection)\b/,
+  /\.(alter|del|drop)\(\s*\)|\.(delete|update)\(/,
+  /\bdelete\(\s*\w/,
   /\b(RemoveField|DeleteModel|RenameField|RenameModel|AlterField|RunPython|RunSQL)\b/,
 ]
 /** Files that only ever run backwards: a down-only migration cannot drop anything going forward. */
 const DOWN_ONLY = /\.down\.sql$|(^|\/)U\d+__[^/]*\.sql$|(^|\/)revert\//i
 const KNOWN_KINDS = /\.(sql|py|rb|js|cjs|mjs|ts|cts|mts)$/i
 
-/** Comments out, so a word in a comment or a docstring never reads as an operation. */
+/**
+ * Whole-line comments out, so a word in a comment never reads as an operation. Strings stay: raw SQL
+ * lives in them (`op.execute("""DELETE …""")`), and a word in a docstring is caught only by the
+ * SQL-shaped patterns above, which a sentence doesn't match.
+ */
 const stripComments = (path, text) => {
   let t = String(text ?? '')
-  if (/\.py$/i.test(path)) t = t.replace(/("""|''')[\s\S]*?\1/g, '').replace(/^\s*#.*$/gm, '')
-  if (/\.rb$/i.test(path)) t = t.replace(/^=begin[\s\S]*?^=end/gm, '').replace(/^\s*#.*$/gm, '')
-  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) t = t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-  if (/\.sql$/i.test(path)) t = t.replace(/\/\*[\s\S]*?\*\//g, '')
+  if (/\.(py|rb)$/i.test(path)) t = t.replace(/^\s*#.*$/gm, '')
+  if (/\.rb$/i.test(path)) t = t.replace(/^=begin[\s\S]*?^=end/gm, '')
+  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*\/\/.*$/gm, '')
+  if (/\.sql$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*--.*$/gm, '')
   return t
 }
 
+/** `text` with the span from `start` up to `end` (or the end of the file) taken out. */
+const cutOut = (text, start, end) => {
+  const i = text.search(start)
+  if (i < 0) return text
+  const rest = text.slice(i + 1)
+  const j = rest.search(end)
+  return text.slice(0, i) + (j < 0 ? '' : rest.slice(j))
+}
+
 /**
- * The forward half of a migration — what `apply` runs — or null when the file only runs backwards.
- * Alembic `def upgrade(` up to the next top-level def; Rails `def up` up to `def down` (`def change`
- * is the whole file); Knex/TypeORM `up` up to `down`; SQL before a down marker (`-- migrate:down`,
- * `-- +goose Down`, `-- +migrate Down`, `-- down`). Anything else — Django, Prisma's migration.sql,
- * a file whose boundary isn't found — is the whole file: when unsure, read more, not less.
+ * What `apply` runs: the file with only its backward half taken out — Alembic's `def downgrade(`
+ * body, Rails' `def down`, Knex/TypeORM's `down`, the SQL after an exact down marker
+ * (`-- migrate:down`, `-- +goose Down`, `-- +migrate Down`, a bare `-- down` line) — or null when the
+ * file only runs backwards. Everything else stays, helpers `upgrade()` calls included: when unsure,
+ * read more, not less.
  */
 export function forwardHalf(path, text) {
   if (DOWN_ONLY.test(path)) return null
   const t = String(text ?? '')
-  const cut = (start, end) => {
-    const i = t.search(start)
-    if (i < 0) return t
-    const rest = t.slice(i)
-    const j = rest.slice(1).search(end)
-    return j < 0 ? rest : rest.slice(0, j + 1)
+  if (/\.py$/i.test(path)) return cutOut(t, /^def downgrade\s*\(/m, /^(def |class |@)/m)
+  if (/\.rb$/i.test(path)) {
+    const m = /^([ \t]*)def down\b/m.exec(t)
+    if (!m) return t
+    const ind = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return cutOut(t, /^[ \t]*def down\b/m, new RegExp(`^${ind}(def |end\\b)`, 'm'))
   }
-  if (/\.py$/i.test(path)) return /^def upgrade\s*\(/m.test(t) ? cut(/^def upgrade\s*\(/m, /^def \w/m) : t
-  if (/\.rb$/i.test(path)) return /^\s*def up\b/m.test(t) ? cut(/^\s*def up\b/m, /^\s*def down\b/m) : t
   if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) {
     const up = /exports\.up\b|export\s+(async\s+)?function\s+up\b|export\s+const\s+up\b|(public\s+)?async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(function|\()/m
     const down = /exports\.down\b|export\s+(async\s+)?function\s+down\b|export\s+const\s+down\b|(public\s+)?async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(function|\()/m
-    return up.test(t) ? cut(up, down) : t
+    return cutOut(t, down, up)
   }
-  if (/\.sql$/i.test(path)) {
-    const m = /^--\s*(migrate:down|\+goose\s+down|\+migrate\s+down|down\b)/im.exec(t)
-    return m ? t.slice(0, m.index) : t
-  }
+  if (/\.sql$/i.test(path)) return cutOut(t, /^--\s*(migrate:down|\+goose\s+down|\+migrate\s+down|down)\s*$/im, /^--\s*(migrate:up|\+goose\s+up|\+migrate\s+up|up)\s*$/im)
   return t
 }
 
@@ -543,9 +552,10 @@ export function destructiveMigration({ path, text }) {
  * What to do about migrations a landing brought into the checkout: `files` are the new migration
  * files ({ path, text }), `readiness` is parseWalkReadiness. `apply` (apply_mode agent, additive
  * only) → the commands to run in order; otherwise a `note` naming what to run by hand. `pending` is
- * the database's own answer when §Walk readiness has a `status:` command (exit 0 = nothing pending):
- * false → no note, the dev DB already has them; true → it is behind; null (no status, or not asked) →
- * git only knows the files landed, so the note says the DB *may* be behind.
+ * the database's own answer when §Walk readiness has a `pending:` command (exit 0 = nothing pending —
+ * not `status:`, which many tools exit 0 from either way): false → no note, the dev DB already has
+ * them; true → behind, or the command couldn't tell; null (no command, or not asked) → git only knows
+ * the files landed, so the note says the DB *may* be behind (`kind: 'maybe'` — the caller asks then).
  */
 export function landedMigrations({ files, readiness, pending = null }) {
   if (!files?.length) return { action: 'none' }
@@ -556,9 +566,9 @@ export function landedMigrations({ files, readiness, pending = null }) {
   const destructive = files.map((f) => [f.path, destructiveMigration(f)]).filter(([, why]) => why)
   if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.map(([p, why]) => `${p} (${why})`).join(', ')} may drop or rewrite data going forward, so nothing was applied — check it, then run ${run}` }
   if ((readiness.apply_mode ?? 'ask') !== 'agent') {
-    if (pending === false) return { action: 'none', why: `${n} landed; \`${readiness.status}\` says the dev DB already has them` }
-    if (pending === true) return { action: 'note', why: `${n} landed — the dev DB is behind (\`${readiness.status}\` says so): run ${run}` }
-    return { action: 'note', why: `${n} landed — the dev DB may be behind: if it lacks them, run ${run}` }
+    if (pending === false) return { action: 'none', why: `${n} landed; \`${readiness.pending}\` says the dev DB already has them` }
+    if (pending === true) return { action: 'note', why: `${n} landed — the dev DB is behind, or \`${readiness.pending}\` couldn't reach it: run ${run}` }
+    return { action: 'note', kind: 'maybe', why: `${n} landed — the dev DB may be behind: if it lacks them, run ${run}` }
   }
   return { action: 'apply', commands: cmds }
 }
@@ -657,7 +667,17 @@ const STAGE_MARKS = [
   ['verify', /— verify (READY|INCOMPLETE)/],
   ['ship', / shipped (into|in PR)\b|— PR #\d+ open/],
 ]
-const markOf = (subject) => STAGE_MARKS.find(([, re]) => re.test(subject))?.[0] ?? null
+/**
+ * A subject is a stage mark only when it is builder's own for this feature — the feature named right
+ * after the colon (`docs(KEY): <feature> audited`, `docs(KEY): plan <feature>`), the fleet's own
+ * `chore(<feature>): unparked …` lines — or the final review's fix commit, which names none. A task
+ * commit (`feat(KEY): keep labels right-aligned`) is a task, whatever words it ends in.
+ */
+const markOf = (subject, feature = null) => {
+  const f = feature?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const own = !feature || new RegExp(`\\): (plan )?${f}( |$)|^chore\\(${f}\\): (unparked|walk env restarted|built here|build here)`).test(subject) || /^fix\([^)]*\): final review findings$/.test(subject)
+  return own ? (STAGE_MARKS.find(([, re]) => re.test(subject))?.[0] ?? null) : null
+}
 /** Where a plain commit (a task, a fix) falls, from the last mark before it. */
 const PHASE_AFTER = { audit: 'plan', plan: 'build', finalReview: 'finalReview', endGates: 'walk', walk: 'walk', verify: 'verify', ship: 'ship' }
 
@@ -669,7 +689,7 @@ const PHASE_AFTER = { audit: 'plan', plan: 'build', finalReview: 'finalReview', 
  * (failed rounds committed), parks, startedAt, endGatesAt (ms, for the walk queue), lastAt.
  * Commits a stage didn't make leave its key out; nothing here is a guess.
  */
-export function stagesFromCommits(commits) {
+export function stagesFromCommits(commits, feature = null) {
   const cs = (commits ?? []).filter((c) => c && Number.isFinite(c.t)).sort((a, b) => a.t - b.t)
   const out = { stages: {}, walkRounds: 0, parks: 0, startedAt: null, endGatesAt: null, lastAt: null }
   if (!cs.length) return out
@@ -678,7 +698,7 @@ export function stagesFromCommits(commits) {
   let parkedSince = null
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i]
-    const mark = markOf(c.s)
+    const mark = markOf(c.s, feature)
     const gap = i ? (c.t - cs[i - 1].t) * 1000 : 0
     if (parkedSince != null) add('parked', gap)
     else if (mark && !['parked', 'resumed'].includes(mark)) add(mark, gap)

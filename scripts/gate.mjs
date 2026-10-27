@@ -48,7 +48,7 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations, readLineMemo, writeLineMemo, lineQuote, startCommand, gateEnv, unwalkedE2E } from './gates-core.mjs'
+import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations, readLineMemo, writeLineMemo, lineQuote, startCommand, killStarted, gateEnv, unwalkedE2E } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
 const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --walk-only | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
@@ -155,8 +155,20 @@ const reaches = (glob, from) => {
   if (!impactSince.has(from)) impactSince.set(from, impactOf(ROOT, { baseBranch: CFG.baseBranch, since: from }))
   return scopeTests(impactSince.get(from), glob).mode
 }
-const quoteFor = (set) =>
-  flag('--force') || flag('--whole') || dirty ? null : (g) => lineQuote(g, LINES[g.cmd], { changedSince, exclude: set.exclude, reaches })
+/**
+ * A quoted line never comes before a line that runs: an earlier line may be setup the later one needs
+ * (a reset, a migrate, a generate) — quoting it would run the later line on a state nothing prepared.
+ * So only the lines after the set's last running line can be quoted. Decided once per set.
+ */
+const quoteFor = (set) => {
+  if (flag('--force') || flag('--whole') || dirty) return null
+  if (!set.quotes) {
+    const raw = set.gates.map((g) => lineQuote(g, LINES[g.cmd], { changedSince, exclude: set.exclude, reaches }))
+    const lastRun = raw.reduce((last, q, i) => (q ? last : i), -1)
+    set.quotes = new Map(set.gates.map((g, i) => [g.cmd, i > lastRun ? raw[i] : null]))
+  }
+  return (g) => set.quotes.get(g.cmd) ?? null
+}
 const registry = CFG.registry
 let baseline = readBaseline(MAIN)
 let anyRed = false
@@ -188,7 +200,11 @@ const markRunning = (label) => {
   mkdirSync(dirname(RUNNING), { recursive: true })
   writeFileSync(RUNNING, JSON.stringify({ sets: label, pid: process.pid, startedAt: new Date().toISOString() }) + '\n')
 }
-process.on('exit', () => rmSync(RUNNING, { force: true }))
+process.on('exit', () => {
+  rmSync(RUNNING, { force: true })
+  killStarted() // a @parallel line must not outlive the run that started it
+})
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130))
 
 // Each set's memo verdict, once: a quoted set runs nothing, so its @parallel lines don't start.
 for (const set of sets) {
