@@ -122,10 +122,10 @@ Picks with different targets follow the one-target-per-run rule: launch those ma
 name the rest to run once it ends.
 
 ~~~
-📍 agents: <n> feature(s) running — next: /builder:fleet --status
+📍 agents: <n> feature(s) running — next: /builder:fleet:status
 ~~~
 
 When a fleet is already running, the dry run says `adds to the running fleet (pid N)`: the
 confirmation is **Add to the running fleet** / **Not now**, the command runs in the foreground and
 returns at once, and the footer is `/builder:fleet` §4's `added` line. The running fleet starts each
-pick as a lane frees; `/builder:fleet --status` shows the queue.
+pick as a lane frees; `/builder:fleet:status` shows the queue.

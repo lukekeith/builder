@@ -131,7 +131,12 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(a.runs, 8)
   // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
   assert.equal(a.timing.length, 8)
-  assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  const { start, end, ...first } = a.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  assert.ok(Date.parse(start) <= Date.parse(end), 'each run records its wall-clock start and end')
+  // The stage timeline, read from the branch's commits before the merge deleted it.
+  assert.ok(a.wallMs >= 0 && a.stages && typeof a.stages === 'object', 'wall-clock and stages recorded')
+  assert.ok('walkRounds' in a && 'parks' in a)
   assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
   assert.equal(a.profile, null, 'the fixture manifest has no profile:')
@@ -569,7 +574,7 @@ test('--status renders the table live, with progress read from each feature', ()
   const r = runFleet(root, ['--status'], {})
   // a landed, so it is archived, not a row — but it is this run's, so the run reads 1 merged, 100%; b never joined.
   assert.match(r.stdout, /# builder fleet — 1 feature\(s\): 1 merged this run · ▓▓▓▓▓▓▓▓▓▓ 100%/)
-  assert.match(r.stdout, /^1 archived \(last: a, just now\) · --status --archived for the latest 20$/m)
+  assert.match(r.stdout, /^1 archived \(last: a, just now\) · \/builder:fleet:status --archived for the latest 20$/m)
   assert.doesNotMatch(r.stdout, /\| a \|/)
   // Progress is read at --status time, not from the saved file: edit the manifest, the table follows.
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
@@ -600,7 +605,7 @@ test('--detach starts the fleet in its own session and returns at once; the flee
   const root = makeRepo(['a'])
   const r = runFleet(root, ['a', '--detach'], { a: HAPPY.map((s) => `SLOW:${s}`) })
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet --status$/m)
+  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet:status$/m)
   const pid = Number(/pid (\d+)/.exec(r.stdout)[1])
   // Its own session: a process-group leader, so the shell or agent that ran the launch can end
   // without taking the fleet with it.
@@ -1390,7 +1395,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1399,7 +1404,7 @@ test('--status --archived lists the latest landings', () => {
   const root = makeRepo(['a', 'b'])
   runFleet(root, ['a', 'b'], { a: HAPPY, b: HAPPY })
   const st = runFleet(root, ['--status'], {})
-  assert.match(st.stdout, /^2 archived \(last: [ab], just now\) · --status --archived for the latest 20$/m)
+  assert.match(st.stdout, /^2 archived \(last: [ab], just now\) · \/builder:fleet:status --archived for the latest 20$/m)
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)

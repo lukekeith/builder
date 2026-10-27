@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -412,7 +412,7 @@ if (flag('--detach') && !flag('--dry-run') && !runningPid) {
     stdio: ['ignore', outFd, outFd],
   })
   child.unref()
-  console.log(`fleet started detached (pid ${child.pid}) — output in .builder/fleet/fleet.out · /builder:fleet --status`)
+  console.log(`fleet started detached (pid ${child.pid}) — output in .builder/fleet/fleet.out · /builder:fleet:status`)
   process.exit(0)
 }
 
@@ -458,7 +458,7 @@ function landedOn(dep) {
 }
 const asked = requested()
 if (!asked.length && runningPid) {
-  console.error(`Another fleet is running in this repo (pid ${runningPid}). Name specs to add them to its queue; /builder:fleet --status shows where it stands.`)
+  console.error(`Another fleet is running in this repo (pid ${runningPid}). Name specs to add them to its queue; /builder:fleet:status shows where it stands.`)
   process.exit(3)
 }
 if (!asked.length && !Object.keys(fleet.features).length) {
@@ -551,7 +551,7 @@ function addToRunning(pid) {
   for (const f of requeue) drop(f, 're-queued')
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
   for (const f of asked) if (fleet.features[f] && !requeue.includes(f)) console.log(`  ↻ ${f} — already in the running fleet (${fleet.features[f].status})`)
-  if (fresh.length || requeue.length) console.log('picked up when a lane frees — /builder:fleet --status shows the queue')
+  if (fresh.length || requeue.length) console.log('picked up when a lane frees — /builder:fleet:status shows the queue')
   process.exit(0)
 }
 /** Create the lock only if there is none — 'wx' makes check-and-take one step. */
@@ -569,7 +569,7 @@ if (!takeLock()) {
   const pid = lockHolder()
   if (pid) {
     if (asked.length) addToRunning(pid) // exits
-    console.error(`Another fleet is running in this repo (pid ${pid}). Name specs to add them to its queue; /builder:fleet --status shows where it stands.`)
+    console.error(`Another fleet is running in this repo (pid ${pid}). Name specs to add them to its queue; /builder:fleet:status shows where it stands.`)
     process.exit(3)
   }
   let stale = '?'
@@ -714,7 +714,8 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       delete rec.pgid
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
       const timing = rec.timing ?? (rec.timing = [])
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, turns: result?.num_turns ?? null, tokens: tokensOf(result) })
+      // start/end are wall-clock, for the stage timeline (queueing, parks); ms is the run's own time.
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result) })
       save()
       try {
         child.stdout.destroy()
@@ -829,7 +830,22 @@ function noteFacts(f, feature) {
   const mf = readManifest(f.worktree, feature)
   if (mf == null) return
   const plan = readDoc(f.worktree, feature, 'PLAN.md')
-  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)) }
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null }
+}
+
+/** The walk's size and rounds from the workspace (walkFacts) — null when nothing was walked yet. */
+function readWalkFacts(worktree, feature) {
+  const ws = join(worktree, '.builder', feature)
+  const dir = join(ws, 'agent-walk')
+  const reports = existsSync(dir)
+    ? readdirSync(dir).map((d) => /^round-(\d+)$/.exec(d)).filter(Boolean).flatMap((m) => {
+        const p = join(dir, m[0], 'report.md')
+        return existsSync(p) ? [{ n: Number(m[1]), text: readFileSync(p, 'utf8') }] : []
+      })
+    : []
+  const walkMd = existsSync(join(ws, 'walk.md')) ? readFileSync(join(ws, 'walk.md'), 'utf8') : null
+  if (!reports.length && walkMd == null) return null
+  return walkFacts({ walkMd, reports })
 }
 
 /** A manifest → { tests, profile }: the resolved plan as a manifest value, and the old `profile:` as written (null without one). */
@@ -847,11 +863,36 @@ function landingFacts(f, feature) {
   return { size: plan == null ? null : planSize(plan), ...planFacts(mf == null ? {} : parseManifest(mf)) }
 }
 
+/**
+ * The feature's stage timeline, from its branch's own commits (stagesFromCommits) — read before the
+ * merge and the branch deletion take them out of reach. Only commits this branch added count.
+ */
+function noteStages(f) {
+  if (!f.branch || tryGit(['rev-parse', '--verify', '-q', `refs/heads/${f.branch}`]) === null) return
+  const base = tryGit(['merge-base', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`])
+  if (!base) return
+  const log = tryGit(['log', '--reverse', '--first-parent', '--format=%ct%x09%s', `${base}..refs/heads/${f.branch}`]) ?? ''
+  const commits = log.split('\n').filter(Boolean).map((l) => { const i = l.indexOf('\t'); return { t: Number(l.slice(0, i)), s: l.slice(i + 1) } })
+  if (commits.length) f.stages = stagesFromCommits(commits)
+}
+
+/**
+ * Wall-clock facts for the archive row: start → merge (`wallMs`), the stage timeline, how long the
+ * built feature waited for the walk lane (first walk run after the end gates), and the merge itself.
+ */
+function wallFacts(f, now = Date.now()) {
+  const st = f.stages
+  if (!st?.startedAt) return { wallMs: null, stages: null, walkQueueMs: null }
+  const firstWalk = (f.timing ?? []).filter((t) => t.lane === 'walk' && t.start).map((t) => Date.parse(t.start)).sort((a, b) => a - b).find((at) => st.endGatesAt != null && at >= st.endGatesAt)
+  const stages = { ...st.stages, ...(st.lastAt ? { merge: Math.max(0, now - st.lastAt) } : {}) }
+  return { wallMs: now - st.startedAt, stages, walkQueueMs: firstWalk != null ? firstWalk - st.endGatesAt : null, walkRounds: st.walkRounds, parks: st.parks }
+}
+
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature, facts, thisRun = true) {
   clearPause(feature)
   const f = fleet.features[feature]
-  const { size, tests, profile } = facts ?? landingFacts(f, feature)
+  const { size, tests, profile, walk } = facts ?? landingFacts(f, feature)
   const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
   appendArchive(ROOT, {
     feature,
@@ -868,6 +909,8 @@ function archiveRow(feature, facts, thisRun = true) {
     profile: profile ?? null,
     tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
     costUsd: sum('costUsd'),
+    ...wallFacts(f),
+    walk: walk ?? f.facts?.walk ?? null,
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]
@@ -898,6 +941,7 @@ async function landNow(feature) {
   if (parkIfPaused(f, feature)) return 'parked'
   noteFacts(f, feature)
   const facts = landingFacts(f, feature)
+  noteStages(f)
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
@@ -1668,6 +1712,22 @@ async function poolWorker() {
 const walkRec = () => (fleet.walkBatch ??= { worktree: WALK_WT, runs: 0, timing: [] })
 
 /**
+ * A batch session's time belongs to the features it walked: each gets its share as a walk-lane run
+ * (`shared: <n>`), so a batched feature's walk lane is not empty in the archive and --status.
+ */
+function chargeBatch(rec, features) {
+  const t = rec.timing?.[rec.timing.length - 1]
+  if (!t || !features.length) return
+  const share = (v) => (typeof v === 'number' ? v / features.length : v)
+  for (const x of features) {
+    const fx = fleet.features[x]
+    if (!fx) continue
+    ;(fx.timing ??= []).push({ ...t, ms: share(t.ms), shared: features.length, tokens: Object.fromEntries(Object.entries(t.tokens ?? {}).map(([k, v]) => [k, share(v)])) })
+  }
+  save()
+}
+
+/**
  * The walk worktree: the target with each batched feature's branch merged in, in order. A feature
  * that conflicts with the ones merged before it waits for the next batch (first in line). Untracked
  * files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
@@ -1796,6 +1856,7 @@ async function walkBatch(batch) {
       save()
       const folders = active.map((x) => join(fleet.features[x].worktree, specOf(x)))
       const { exit, log } = await runClaude(WALK_WT, '_walk', 'walk', rec.runs, `/builder:agent-walk --batch --into ${TARGET} ${folders.join(' ')}`, rec)
+      chargeBatch(rec, active)
       const next = []
       const leaving = []
       let restart = false

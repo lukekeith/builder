@@ -394,13 +394,16 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   const count = run ? run.total : rows.length
   const lines = [`# builder fleet — ${count} feature(s): ${mergedNote}${summary || (mergedNote ? '' : 'none')}${overall ? ` · ${overall}` : ''}`]
   if (fleet.target) lines.push('', `merges into **${fleet.target}**${roots.size ? ` · worktrees under ${[...roots].join(', ')}` : ''}`)
-  if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · --status --archived for the latest 20`)
-  // The mean time per lane of the recently landed features that recorded it (builder 4.6+).
+  if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · /builder:fleet:status --archived for the latest 20`)
+  // Recent landings: wall-clock start → merge where recorded (builder 5.3+: parks, restarts and
+  // queueing included, by stage), else the mean agent time per lane (builder 4.6+).
+  const walled = recent.filter((r) => typeof r.wallMs === 'number' && r.wallMs > 0)
   const timed = recent.filter((r) => r.lanes && Object.keys(r.lanes).length)
-  if (timed.length) {
+  if (walled.length) lines.push(`last ${walled.length} landed, mean wall-clock ${wallSummary(walled)}`)
+  else if (timed.length) {
     const sums = {}
     for (const r of timed) for (const [lane, ms] of Object.entries(r.lanes)) sums[lane] = (sums[lane] ?? 0) + ms
-    lines.push(`last ${timed.length} landed, mean per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
+    lines.push(`last ${timed.length} landed, mean agent time per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
   }
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
@@ -552,4 +555,92 @@ export function initWithoutBuilder(ev) {
   if (ev?.type !== 'system' || ev.subtype !== 'init' || !Array.isArray(ev.plugins)) return null
   if (ev.plugins.some((p) => p?.name === 'builder')) return null
   return 'the session started without the builder plugin loaded (bare mode, or the plugin is disabled for this repo) — its skills and the PR lock are missing, so the run was stopped. Check `claude plugin list`, and that agent_walk.claude_args has no --bare'
+}
+
+// ---- stage timing ---------------------------------------------------------------------------
+
+/**
+ * Each pipeline step ends in a commit with a known subject (advance.mjs PRESETS and the skills'
+ * commit lines), so a feature's branch history is its timeline. Order matters: the first match wins.
+ */
+const STAGE_MARKS = [
+  ['parked', /— parked:/],
+  ['resumed', /unparked — was:|walk env restarted by the fleet/],
+  ['audit', /\b(audited|aligned)$/],
+  ['plan', /: plan [\w.-]+$|— go-ahead\b/],
+  ['finalReview', /final[- ]review/i],
+  ['endGates', /— (phases closed|built, walk readiness pending|built, awaiting the walk)\b|built here — not walked/],
+  ['walk', /agent walk round \d+|agent signed off|\bsigned off\b|re-signed|walk found \d+ problems|re-walk after verify/],
+  ['verify', /— verify (READY|INCOMPLETE)/],
+  ['ship', / shipped (into|in PR)\b|— PR #\d+ open/],
+]
+const markOf = (subject) => STAGE_MARKS.find(([, re]) => re.test(subject))?.[0] ?? null
+/** Where a plain commit (a task, a fix) falls, from the last mark before it. */
+const PHASE_AFTER = { audit: 'plan', plan: 'build', finalReview: 'finalReview', endGates: 'walk', walk: 'walk', verify: 'verify', ship: 'ship' }
+
+/**
+ * A feature branch's commits, oldest first ({ t: epoch seconds, s: subject }) → wall-clock ms per
+ * stage: audit, plan, build (the task commits), finalReview, endGates, walk (readiness, rounds,
+ * sign-off — queueing included; walkQueue below splits it), verify, ship — and `parked`, the time
+ * from a park to whatever came next, kept apart from the stage it interrupted. Also: walkRounds
+ * (failed rounds committed), parks, startedAt, endGatesAt (ms, for the walk queue), lastAt.
+ * Commits a stage didn't make leave its key out; nothing here is a guess.
+ */
+export function stagesFromCommits(commits) {
+  const cs = (commits ?? []).filter((c) => c && Number.isFinite(c.t)).sort((a, b) => a.t - b.t)
+  const out = { stages: {}, walkRounds: 0, parks: 0, startedAt: null, endGatesAt: null, lastAt: null }
+  if (!cs.length) return out
+  const add = (k, ms) => { if (ms > 0) out.stages[k] = (out.stages[k] ?? 0) + ms }
+  let phase = 'audit'
+  let parkedSince = null
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i]
+    const mark = markOf(c.s)
+    const gap = i ? (c.t - cs[i - 1].t) * 1000 : 0
+    if (parkedSince != null) add('parked', gap)
+    else if (mark && !['parked', 'resumed'].includes(mark)) add(mark, gap)
+    else if (mark !== 'resumed') add(phase, gap)
+    if (mark === 'parked') { parkedSince = c.t; out.parks++; continue }
+    parkedSince = null
+    if (mark === 'resumed') continue
+    if (mark === 'walk' && /agent walk round \d+/.test(c.s)) out.walkRounds++
+    if (mark === 'endGates' && out.endGatesAt == null) out.endGatesAt = c.t * 1000
+    if (mark) phase = PHASE_AFTER[mark] ?? phase
+  }
+  out.startedAt = cs[0].t * 1000
+  out.lastAt = cs[cs.length - 1].t * 1000
+  return out
+}
+
+/**
+ * A walk workspace's round reports (`agent-walk/round-<n>/report.md`, agent-walk SKILL §report) and
+ * walk.md → { checks, rounds: [{ n, pass, fail, unverifiable, verdict }] }. Read before /builder:ship
+ * deletes the workspace, so the archive row keeps the size of the walk.
+ */
+export function walkFacts({ walkMd = null, reports = [] } = {}) {
+  // walk.md's items are numbered lines, per app (`1. [risk] …`) and cross-app (`E1. …`), as walk-script.mjs writes them.
+  const checks = walkMd == null ? null : (walkMd.match(/^E?\d+\.\s+\S/gm) ?? []).length
+  const rounds = reports
+    .filter((r) => r && typeof r.text === 'string')
+    .map(({ n, text }) => {
+      const rows = text.split('\n').filter((l) => /^\|\s*E?\d+\s*\|/.test(l))
+      const count = (re) => rows.filter((l) => re.test(l)).length
+      return { n, pass: count(/\|\s*PASS\s*\|/), fail: count(/\|\s*FAIL\s*\|/), unverifiable: count(/\|\s*UNVERIFIABLE\s*\|/), verdict: /^verdict:\s*(PASS|PROBLEMS)/m.exec(text)?.[1] ?? null }
+    })
+    .sort((a, b) => a.n - b.n)
+  return { checks, rounds }
+}
+
+const STAGE_ORDER = ['audit', 'plan', 'build', 'finalReview', 'endGates', 'walk', 'verify', 'ship', 'merge', 'parked']
+const STAGE_LABEL = { finalReview: 'final review', endGates: 'end gates' }
+/**
+ * Archive rows with `wallMs` → `3h32m start → merge (audit 7m · plan 31m · … · parked 10m)`: the
+ * mean per feature, each stage's mean over the rows, so the parts add up to about the whole.
+ */
+export function wallSummary(rows) {
+  const n = rows.length
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / n
+  const total = mean(rows.map((r) => r.wallMs))
+  const parts = STAGE_ORDER.map((k) => [k, mean(rows.map((r) => r.stages?.[k] ?? 0))]).filter(([, ms]) => ms >= 30000)
+  return `${duration(total)} start → merge${parts.length ? ` (${parts.map(([k, ms]) => `${STAGE_LABEL[k] ?? k} ${duration(ms)}`).join(' · ')})` : ''}`
 }
