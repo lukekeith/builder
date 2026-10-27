@@ -758,7 +758,7 @@ const mtimeOf = (p) => {
 /**
  * A running row that has gone quiet: `{ runningMs, sinceMs }` when nothing has moved for STALL_MS —
  * not HEAD, not the ledger (`<wt>/.builder/<feature>/progress.md`), not the workspace (a brief or a
- * report added), and the current run (`f.runStartedAt`) is older than that too. A run that keeps
+ * report added), not the newest agent-walk round (a screenshot or a report row), and the current run (`f.runStartedAt`) is older than that too. A run that keeps
  * printing but goes round in circles outlives the idle timeout; this is what catches it. Only stats.
  */
 export function stallOf(feature, f, now = Date.now()) {
@@ -766,7 +766,14 @@ export function stallOf(feature, f, now = Date.now()) {
   const started = Date.parse(f.runStartedAt)
   if (!Number.isFinite(started)) return null
   const ws = join(f.worktree, '.builder', feature)
-  const moved = [started, headMovedMs(f.worktree), mtimeOf(join(ws, 'progress.md')), mtimeOf(ws)].filter((t) => Number.isFinite(t))
+  // A walk commits nothing and ticks no ledger: its evidence lands in agent-walk/round-N/, whose
+  // writes never touch the workspace folder's own mtime — so the newest round counts as movement.
+  let round = null
+  try {
+    const last = readdirSync(join(ws, 'agent-walk')).filter((d) => /^round-\d+$/.test(d)).sort((a, b) => +a.slice(6) - +b.slice(6)).at(-1)
+    if (last) round = Math.max(mtimeOf(join(ws, 'agent-walk', last)) ?? 0, mtimeOf(join(ws, 'agent-walk', last, 'report.md')) ?? 0)
+  } catch {}
+  const moved = [started, headMovedMs(f.worktree), mtimeOf(join(ws, 'progress.md')), mtimeOf(ws), round].filter((t) => Number.isFinite(t) && t > 0)
   const since = Math.max(...moved)
   return now - since >= STALL_MS ? { runningMs: now - started, sinceMs: since } : null
 }
