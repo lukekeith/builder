@@ -108,6 +108,20 @@ test('session-start: in-flight features listed with state and next step', () => 
   assert.match(text, /In flight, most recent first:\n- note-tags \(planned\) — next: [^\n]+ · \/builder:resume --path docs\/features\/note-tags/)
 })
 
+test('session-start: what the fleet parked or failed is listed with why and next, and not again under In flight', () => {
+  const { root } = leanRepo('note-tags')
+  mkdirSync(join(root, '.builder', 'fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder', 'fleet', 'fleet.json'), JSON.stringify({ features: {
+    'note-tags': { status: 'parked', reason: "merge into main conflicted and an agent run couldn't settle it — next: finish the merge in /wt/note-tags, then /builder:agent" },
+    other: { status: 'failed', reason: 'run timed out twice — both no output for 30 min (the idle timeout) — see /l/other-04.log — next: /builder:agent to retry' },
+    busy: { status: 'building' },
+  } }))
+  const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
+  assert.match(text, /Stopped in the fleet — each waits on you \(\/builder:fleet:status has the table; naming one in \/builder:agent retries it\):\n- ⛔ note-tags parked — merge into main conflicted and an agent run couldn't settle it — next: finish the merge in \/wt\/note-tags, then \/builder:agent\n- ⛔ other failed — run timed out twice — both no output for 30 min \(the idle timeout\) — next: \/builder:agent to retry\n/)
+  assert.doesNotMatch(text, /busy/)
+  assert.doesNotMatch(text, /In flight/, 'the one in-flight feature is the parked one, said once')
+})
+
 test('session-start: at most five features, then a pointer to /builder:status', () => {
   const { root, folder } = leanRepo('note-tags')
   const manifest = readFileSync(join(folder, 'MANIFEST.md'), 'utf8')
