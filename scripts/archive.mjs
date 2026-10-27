@@ -123,7 +123,7 @@ export function plan(root, cfg, { target = cfg.mergeInto, days = 14, now = Date.
     }
     if (onTarget && ['built', 'signed-off', 'verified'].includes(state)) {
       if (!idle) {
-        left.push({ name, why: `${state}, last moved ${moved ? isoDay(moved) : 'never'} — still in hand (archive closes one after ${days} days)` })
+        left.push({ name, why: `${state}, last moved ${moved ? isoDay(moved) : 'never'} — still in hand; archive closes one after ${days} days` })
         continue
       }
       const walked = state !== 'built' || /^agent-pass/.test(mf.walk ?? '')
@@ -139,7 +139,8 @@ export function plan(root, cfg, { target = cfg.mergeInto, days = 14, now = Date.
       add('legacy', 'old', 'move', 'no SPEC.md and no manifest — an earlier pipeline\'s docs or notes; moved as it is')
       continue
     }
-    left.push({ name, why: !onTarget && state ? `${state} — archive judges merged work on ${target}` : `${state ?? 'no state'} — in flight` })
+    const why = !mfText && hasSpec && !state ? 'a SPEC with no manifest — incomplete; /builder:resume writes the missing one' : !onTarget && state ? `${state} — archive judges merged work on ${target}` : `${state ?? 'no state'} — in flight`
+    left.push({ name, why })
   }
   // Archived folders that still hold working files (moved by hand, or by a ship before 5.4).
   const archDir = join(root, reg, ARCHIVE)

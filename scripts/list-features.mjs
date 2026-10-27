@@ -529,7 +529,7 @@ if (asStatus) {
     for (const r of flagged) console.log(`- **${r.feature}**: ${r.problems.join('; ')}`)
   }
   if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — /builder:archive moves them out of the registry.`)
-  if (archivedCount) console.log(`\n📦 ${archivedCount} shipped features archived · list-features.mjs --archived lists them.`)
+  if (archivedCount) console.log(`\n📦 ${archivedCount} features archived · list-features.mjs --archived lists them.`)
   if (NEWER) console.log(`\n${NEWER}`)
   process.exit(0)
 }
