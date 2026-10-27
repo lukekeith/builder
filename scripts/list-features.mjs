@@ -14,8 +14,11 @@
  *   - ANALYSIS: docs that feed a design conversation but were never driven by a pipeline. Nothing
  *     to convert — its next step is /builder:brainstorm.
  *
- * DONE = a SPEC.md header carrying `✅ SHIPPED`, or a README.md header or `**Status:**` line that
- * opens SHIPPED. A DONE feature is never offered as a pipeline target.
+ * DONE = registry.mjs isShippedFolder: a SPEC.md or PROGRAM.md header carrying `✅ SHIPPED`, a manifest
+ * at `state: shipped`, or a README.md header or `**Status:**` line that opens SHIPPED — the one rule
+ * the archive and program dependencies use too, so a folder that says it shipped never sits in
+ * --status as in progress. A DONE feature is never offered as a pipeline target; /builder:archive
+ * moves it out of the registry.
  *
  * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship. Never a row: only --archived reads
  * inside the archive, and --status counts it with one directory listing.
@@ -34,7 +37,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
-import { features, ARCHIVE } from './registry.mjs'
+import { features, ARCHIVE, isShippedFolder } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { parseTestPlan } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -171,6 +174,9 @@ const inspect = (root, name) => {
     const planText = read(join(dir, 'PLAN.md'))
     if (planText && planText.split('\n').length > PLAN_LINE_BUDGET && out.layout !== 'program')
       out.warnings.push(`PLAN.md is ${planText.split('\n').length} lines — long, but it carries code; not a blocker`)
+    // A manifest left at `state: shipped`, or a program whose PROGRAM.md header says SHIPPED, has
+    // arrived like a condensed one — only the archive move is owed, and that is /builder:archive's.
+    if (isShippedFolder(dir)) Object.assign(out, { done: true, next: 'nothing — shipped' })
     return out
   }
 
@@ -519,7 +525,7 @@ if (asStatus) {
     console.log('\nNeeds attention:')
     for (const r of flagged) console.log(`- **${r.feature}**: ${r.problems.join('; ')}`)
   }
-  if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — \`node <builder>/scripts/registry.mjs --sweep\` archives them.`)
+  if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — /builder:archive moves them out of the registry.`)
   if (archivedCount) console.log(`\n📦 ${archivedCount} shipped features archived · list-features.mjs --archived lists them.`)
   if (NEWER) console.log(`\n${NEWER}`)
   process.exit(0)

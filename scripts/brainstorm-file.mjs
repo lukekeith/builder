@@ -6,6 +6,7 @@
  */
 import { existsSync, openSync, readSync, closeSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { ARCHIVE } from './registry.mjs'
 
 export const BRAINSTORM_FILE = 'brainstorm.md'
 const HEADER_BYTES = 4096
@@ -64,7 +65,7 @@ function describe(name, registry, h) {
   return row(`brainstorming (${frac(h)})`, 'Continue the brainstorm', again)
 }
 
-/** Rows for conversations that have no registry folder yet. A live folder owns its own row. */
+/** Rows for conversations that have no registry folder yet — live or archived. */
 export function draftRows(root, registry) {
   const base = join(root, '.builder')
   let names = []
@@ -76,7 +77,9 @@ export function draftRows(root, registry) {
   const rows = []
   for (const name of names.sort()) {
     const file = join(base, name, BRAINSTORM_FILE)
-    if (!existsSync(file) || existsSync(join(root, registry, name))) continue
+    // A live folder owns its own row; an archived one finished (or was dropped) — a brainstorm.md
+    // left behind for it is a leftover workspace, not a conversation waiting (/builder:archive clears it).
+    if (!existsSync(file) || existsSync(join(root, registry, name)) || existsSync(join(root, registry, ARCHIVE, name))) continue
     const h = readBrainstormHeader(file)
     if (h?.status === 'handed-off') continue
     const d = describe(name, registry, h)

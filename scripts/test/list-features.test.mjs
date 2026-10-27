@@ -257,3 +257,27 @@ test('a feature whose workspace was just written is active — a session is buil
   assert.equal(rows.b.inSession, false, 'no fresh workspace')
   assert.equal(rows.s.inSession, false, 'just specced in a session is not being built')
 })
+
+test('a folder that says it shipped is done everywhere: manifest state: shipped, a SHIPPED program — never an in-progress row', () => {
+  const root = setup({
+    live: 'state: building',
+    gone: 'state: shipped',
+    prog: 'tier: program\nchild: a — shipped',
+  }, { 'prog/PROGRAM.md': '# prog — program\n> ✅ SHIPPED 2026-10-01 — every child shipped · last: a\n', 'gone/SPEC.md': '# gone — spec\n' })
+  const rows = Object.fromEntries(JSON.parse(list(root, '--json').stdout).features.map((f) => [f.feature, f]))
+  assert.equal(rows.gone.done, true)
+  assert.equal(rows.prog.done, true)
+  assert.equal(rows.live.done, false)
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /1 in progress/)
+  assert.doesNotMatch(st.stdout, /\*\*gone\*\*|\*\*prog\*\*/)
+  assert.match(st.stdout, /🔒 2 shipped, not shown — \/builder:archive moves them out of the registry\./)
+})
+
+test('a brainstorm.md left for an archived feature is not a draft', () => {
+  const root = setup({ live: 'state: building' }, { '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4) })
+  draft(root, 'old', 'status: exploring\nsource: brainstorm\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 2')
+  const json = JSON.parse(list(root, '--json').stdout).features
+  assert.deepEqual(json.map((f) => f.feature), ['live'])
+})
