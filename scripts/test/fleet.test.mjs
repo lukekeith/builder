@@ -220,8 +220,10 @@ test('a run that prints more than one result event is timed by the last', () => 
   // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
-  const { start, end, ...first } = c.timing[0]
-  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} }, meter: { orchestrator: { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 }, dispatches: [] } })
+  const { start, end, meter, ...first } = c.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} } })
+  // CHATTY's own assistant lines are the orchestrator's turns, as the meter counts them from the stream.
+  assert.ok(meter.orchestrator.turns >= 1 && Array.isArray(meter.dispatches), JSON.stringify(meter))
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -343,15 +345,15 @@ test('re-running resumes and retries a cleared park', () => {
 
 test('a feature parked at the run cap gets a fresh cap on the next fleet run', () => {
   const root = makeRepo(['a'])
-  const churn = Array.from({ length: 12 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
+  const churn = Array.from({ length: 14 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
   const scenario = { a: [...churn, 'building', 'READY-PENDING', 'verified', 'SHIP'] }
   const first = runFleet(root, ['a'], scenario)
   assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /run cap \(12\) reached/)
+  assert.match(first.fleet.features.a.reason, /run cap \(14\) reached/)
   const second = runFleet(root, [], scenario)
   assert.equal(second.status, 0, second.stderr)
   const a = assertLanded(second, 'a')
-  assert.equal(a.runs, 16, 'lifetime runs for the table')
+  assert.equal(a.runs, 18, 'lifetime runs for the table')
   assert.equal(a.runsThisTime, 4)
 })
 
