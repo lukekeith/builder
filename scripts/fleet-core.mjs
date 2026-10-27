@@ -190,7 +190,10 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  *  its archive row is written — the row carries what was read from them, and they are most of the
  *  bytes (hundreds of MB across a few dozen landings). No row yet → they move with the rest.
  *  Null when done (or nothing to move); else a note. */
-export function archiveLogs(root, feature) {
+/** An archive row whose runs carry the meter (5.4+): its raw .jsonl streams have been read into it. */
+const metered = (row) => Boolean(row?.timing?.some?.((t) => t?.meter))
+
+export function archiveLogs(root, feature, keepDays = 30) {
   const logs = join(fleetDir(root), 'logs')
   if (!existsSync(logs)) return null
   const mine = new RegExp(`^${escapeRe(feature)}-(\\d+|setup|start|sync)\\.(log|jsonl)$`)
@@ -198,10 +201,12 @@ export function archiveLogs(root, feature) {
   try {
     const names = readdirSync(logs).filter((n) => mine.test(n))
     if (!names.length) return null
-    const rowWritten = tailArchive(root, 50).some((r) => r.feature === feature)
+    // The raw stream goes only once the archive row holds what was read from it, and never when the
+    // project keeps its logs forever (keep_logs: 0).
+    const dropJsonl = keepDays > 0 && metered(tailArchive(root, 50).findLast((r) => r.feature === feature))
     mkdirSync(dest, { recursive: true })
     for (const n of names) {
-      if (rowWritten && n.endsWith('.jsonl')) rmSync(join(logs, n), { force: true })
+      if (dropJsonl && n.endsWith('.jsonl')) rmSync(join(logs, n), { force: true })
       else renameSync(join(logs, n), join(dest, n))
     }
     return null
@@ -211,9 +216,10 @@ export function archiveLogs(root, feature) {
 }
 
 /** Archived log files older than `days` go, each by its own mtime (a folder's mtime moves whenever
- *  a later landing of the same name adds to it); `days` <= 0 keeps them. A `.jsonl` transcript of
- *  a feature with an archive row goes whatever its age — one archived before archiveLogs deleted
- *  them. An emptied folder goes too. Run at fleet start, /builder:archive and /builder:tidy apply.
+ *  a later landing of the same name adds to it); `days` <= 0 keeps every one. A `.jsonl` transcript
+ *  of a feature whose archive row carries the meter goes whatever its age — the row holds what was
+ *  read from it; a row from before the meter keeps its transcripts to `days`, as the only
+ *  per-dispatch record. An emptied folder goes too. Run at fleet start, /builder:archive and /builder:tidy apply.
  *  Best effort — the next run retries. → the number of files removed. */
 export function pruneArchivedLogs(root, days, now = Date.now()) {
   const base = join(fleetDir(root), 'logs', ARCHIVE)
@@ -239,7 +245,7 @@ export function pruneArchivedLogs(root, days, now = Date.now()) {
       }
       for (const f of readdirSync(dir)) {
         const p = join(dir, f)
-        if ((f.endsWith('.jsonl') && landed.has(n)) || stale(p)) drop(p)
+        if ((days > 0 && f.endsWith('.jsonl') && metered(landed.get(n))) || stale(p)) drop(p)
       }
       if (!readdirSync(dir).length) rmSync(dir, { recursive: true, force: true })
     } catch {}
