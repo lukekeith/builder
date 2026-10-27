@@ -184,6 +184,8 @@ apply:      <command>   # e.g. npx prisma migrate deploy
 apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it — the fleet also runs apply then regenerate in your checkout after landing a feature with new additive migrations)
 regenerate: <command>   # after a schema change, e.g. npx prisma generate — omit if none
 start:      <command>   # how the dev env comes up, and who may start it
+restart:    <command>   # optional: restarts what doesn't reload by itself (a server container) — a fleet's wrap-up runs it after landing
+fixtures:   <command>   # optional: resets the dev data a walk starts from — the wrap-up runs it after landing
 smoke:      <command>   # a health check / smoke subset against the running app — omit if none
 ```
 

@@ -170,7 +170,10 @@ shows where it stands (and the `builder` status line, if it's on), and §5's rep
 `/builder:fleet:status` shows once every row has landed, parked or failed. Nothing waits on it here,
 so what happens is told where you look instead. A merge: the status line reads `✔ <feature> merged —
 /builder:fleet:status` once the fleet has exited, and the next session's brief names it with its sha
-and "test it yourself" — both until `/builder:fleet:status` is opened. A park: the status line reads `⛔ <feature>: <why>` (and keeps it
+and "test it yourself" — both until `/builder:fleet:status` is opened, which then offers the wrap-up
+(§5): anything this checkout needs before you test what landed — the migrations, a restart, the
+fixtures, the merged branches — in one answer. Say that, rather than offering to run those steps
+yourself later. A park: the status line reads `⛔ <feature>: <why>` (and keeps it
 after the fleet exits, until a new run changes the row), the next session's brief lists each parked
 or failed feature with its next step, and `.builder/fleet/fleet.out` gets a block per park — why,
 next, and its PARKED.md. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
@@ -194,6 +197,23 @@ When asked after the fleet has ended (`/builder:fleet:status` shows no row in fl
   decision the spec left open or a step the config reserves — a conflict, a gate, a walk — is work
   the agents should have done; retrying it is the right next step.
 - **failed** — the log path.
+
+**Then the wrap-up** — what's left to do in this checkout now that features landed:
+`node <builder>/scripts/wrapup.mjs plan --json`. Its steps run in the order they stand on each
+other — check out the target, apply the landed migrations to the dev DB, restart, reset the fixtures,
+smoke, delete the branches already in the target — each from the config's §Walk readiness (`apply:`,
+`regenerate:`, `restart:`, `fixtures:`, `smoke:`) or tidy. No steps and nothing held → say nothing
+and go on. Otherwise, above the picker (REFERENCE §Before a picker), in plain words: **what is being
+decided** — whether to run them now, here; **the options** — each step on its own line with what it
+does (its `title`), then the held ones and why each is held (a migration that may drop data, a
+dirty tree in the way, a branch only `/builder:tidy` can settle — never in "all"); **why the
+recommendation** — every step is what you'd otherwise do by hand before testing what landed, and
+none of them is held. One AskUserQuestion: **Wrap up — all <n> steps (Recommended)** · **Choose
+steps** · **Not now**. All → `wrapup.mjs run all`; Choose → one more AskUserQuestion, multi-select,
+a step per option, then `wrapup.mjs run <ids…>`; Not now → `wrapup.mjs dismiss`. Print each line it
+prints. A `✗` stops the steps after it: name the step, point at the log it names, and say what the
+rest would have done. A sentence never offers to run these later from another session — this picker
+is where they run.
 
 **Then the review of what landed** — REFERENCE §The review: nobody approved these designs, the audits
 or the go-aheads (the run asked nothing), so this is where the human sees them. For each merged

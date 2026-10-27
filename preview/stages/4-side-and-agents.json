@@ -693,8 +693,8 @@
         }
       ],
       "stamp": {
-        "hash": "70e867d79e7e",
-        "version": "5.4.0",
+        "hash": "3b4f216bf998",
+        "version": "5.4.1",
         "date": "2026-10-27"
       }
     },
@@ -756,8 +756,8 @@
         }
       ],
       "stamp": {
-        "hash": "aa4289cd1a56",
-        "version": "5.4.0",
+        "hash": "b25c289fbaa0",
+        "version": "5.4.1",
         "date": "2026-10-27"
       }
     },
@@ -810,7 +810,39 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · end gates 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**What landed** — nobody approved these runs, so here's what each merged feature built, one part at a time.\n\n**Part 1 of 3 — cert-history**\n\n- **What changes for users** — a certificate has a **History** tab on the web: every change — who, what, from what to what, when — newest first. Owners only; mobile is unchanged.\n- **What they'll see** — certificate page → *History* after *Details*: 50 changes at a time, *Load more*; non-owners don't see the tab.\n- **Added · Changed · Removed** — Added: the History tab · Changed: nothing · Removed: nothing\n- **Apps** — web only; api already served the changes.\n- **Decisions** — hidden from non-owners · 50 per page *(assumed)* · times in the viewer's timezone *(assumed)* · an event with no actor shows \"System\" *(auto)*\n- **Not included** — History on mobile; searching the history.\n\nSpec: `docs/features/_archive/cert-history/SPEC.md`\n\nA. Looks right — next part\nB. Something's wrong — say what\nReply A or B — \"go\" is A."
+          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · end gates 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**Wrap-up** — what this checkout needs before you test what landed. Run now, here, it takes these, in this order:\n\n1. **migrate** — apply the migration cert-history brought to the dev DB, then regenerate (`pnpm -F api prisma migrate deploy`, then `pnpm -F api prisma generate`)\n2. **restart** — restart the dev server, so it runs what landed (`docker restart acme-api`)\n3. **fixtures** — reset the dev fixtures (`pnpm -F api fixtures:reset`)\n4. **smoke** — check the dev server answers (`curl -sf localhost:4000/health`)\n\nHeld — not in \"all\": the `builder/cert-tags` worktree — it's parked, and only `/builder:tidy` settles it.\n\n**Why all four:** each is what you'd otherwise do by hand before testing, in the order they stand on each other, and nothing in them can drop data."
+        },
+        {
+          "role": "picker",
+          "question": "Wrap up now — run these four steps here?",
+          "header": "Wrap-up",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Wrap up — all 4 steps (Recommended)",
+              "description": "migrate, restart, fixtures, smoke — in that order; a failure stops the rest"
+            },
+            {
+              "label": "Choose steps",
+              "description": "Pick which of the four run"
+            },
+            {
+              "label": "Not now",
+              "description": "Nothing runs; the next landing starts a new wrap-up"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Wrap up — all 4 steps (Recommended)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/wrapup.mjs run all) — ✓ migrate · ✓ restart · ✓ fixtures · ✓ smoke"
+        },
+        {
+          "role": "claude",
+          "text": "Wrapped up: the dev DB has cert-history's migration, the server restarted on `main`, fixtures are fresh, and it answers.\n\n**What landed** — nobody approved these runs, so here's what each merged feature built, one part at a time.\n\n**Part 1 of 3 — cert-history**\n\n- **What changes for users** — a certificate has a **History** tab on the web: every change — who, what, from what to what, when — newest first. Owners only; mobile is unchanged.\n- **What they'll see** — certificate page → *History* after *Details*: 50 changes at a time, *Load more*; non-owners don't see the tab.\n- **Added · Changed · Removed** — Added: the History tab · Changed: nothing · Removed: nothing\n- **Apps** — web only; api already served the changes.\n- **Decisions** — hidden from non-owners · 50 per page *(assumed)* · times in the viewer's timezone *(assumed)* · an event with no actor shows \"System\" *(auto)*\n- **Not included** — History on mobile; searching the history.\n\nSpec: `docs/features/_archive/cert-history/SPEC.md`\n\nA. Looks right — next part\nB. Something's wrong — say what\nReply A or B — \"go\" is A."
         },
         {
           "role": "user",
@@ -826,8 +858,8 @@
         }
       ],
       "stamp": {
-        "hash": "d06150690237",
-        "version": "5.2.0",
+        "hash": "059b1cc41ac6",
+        "version": "5.4.1",
         "date": "2026-10-27"
       }
     },
