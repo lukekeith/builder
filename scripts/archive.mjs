@@ -44,13 +44,14 @@ import { features, ARCHIVE, isShippedFolder, isArchived } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { read, writeAtomic, git as gitStrict, today, cli, parseArgs, workspaceDir } from './feature-core.mjs'
 import { stripPlan, setHeader, ship } from './condense.mjs'
+import { newerThanArchive } from './brainstorm-file.mjs'
 import { buildingInSession, loadFleet, fleetDir, fleetAlive, pruneArchivedLogs } from './fleet-core.mjs'
 
 const git = (root, args) => gitStrict(root, args, { allowFail: true })
 const DAY = 86400000
 
 /** Files that are only ever the pipeline's working state — never the record. */
-const ALWAYS_GO = /^(PLAN|MANIFEST|PARKED)\.md$|^continue\.md$|^progress\.md$|ledger|^TASK.*RESULT/i
+const ALWAYS_GO = /^(PLAN|MANIFEST|PARKED)\.md$|^continue\.md$|^progress\.md$|^ledger\.md$|^TASK[\w-]*RESULT[\w-]*(\.md)?$/i
 const KEEP_DOCS = ['SPEC.md', 'PROGRAM.md']
 
 /** The commit that brought a folder into this checkout: the manifest's `head:` when this branch has
@@ -62,11 +63,14 @@ function mergedSha(root, rel, mf) {
 }
 
 /** When the folder, or its branch, last moved — the later of the two, as epoch ms (0 = never committed). */
-function lastMoved(root, rel, mf, name) {
+function lastMoved(root, rel, mf, name, mainline = []) {
   const at = (args) => Number(git(root, args) ?? 0) * 1000
   const folder = at(['log', '-1', '--format=%ct', '--', rel])
   const branch = isSet(mf.branch) ? String(mf.branch).trim() : `builder/${name}`
-  const onBranch = git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null ? at(['log', '-1', '--format=%ct', `refs/heads/${branch}`]) : 0
+  // A feature built on the target itself (`build: here`) has no branch of its own: the target's last
+  // commit is everyone's, and would keep it looking busy for ever.
+  const own = !mainline.includes(branch)
+  const onBranch = own && git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) !== null ? at(['log', '-1', '--format=%ct', `refs/heads/${branch}`]) : 0
   return Math.max(folder, onBranch)
 }
 
@@ -91,7 +95,7 @@ export function plan(root, cfg, { target = cfg.mergeInto, days = 14, now = Date.
     const hasSpec = existsSync(join(dir, 'SPEC.md'))
     const hasProgram = existsSync(join(dir, 'PROGRAM.md'))
     const row = fleet?.features?.[name]
-    const moved = lastMoved(root, rel, mf, name)
+    const moved = lastMoved(root, rel, mf, name, [target, cfg.baseBranch])
     const add = (kind, tier, action, why, extra = {}) => items.push({ name, kind, tier, action, why, path: rel, moved: moved ? isoDay(moved) : null, ...extra })
     if (git(root, ['status', '--porcelain', '--', rel])) {
       left.push({ name, why: 'uncommitted changes in the folder' })
@@ -114,7 +118,13 @@ export function plan(root, cfg, { target = cfg.mergeInto, days = 14, now = Date.
     const ready = /^READY\b/.test(mf.verify ?? '')
     const idle = now - moved > days * DAY
     if (mf.tier === 'program') {
-      left.push({ name, why: 'a program — it archives itself when its last child ships' })
+      // A program archives itself when its last child ships; one whose children all ended some other
+      // way (a child closed or dropped here) never gets that ship, so it is offered here instead.
+      const kids = (mf.children ?? []).map((c) => /—\s*(shipped|closed|dropped)\b/.exec(c)?.[1] ?? null)
+      if (kids.length && kids.every(Boolean)) {
+        const n = (k) => kids.filter((x) => x === k).length
+        add('program', 'finished', 'program', `every child ended — ${['shipped', 'closed', 'dropped'].filter(n).map((k) => `${n(k)} ${k}`).join(', ')}`, { kids: { shipped: n('shipped'), closed: n('closed'), dropped: n('dropped') } })
+      } else left.push({ name, why: 'a program — it archives itself when its last child ships' })
       continue
     }
     if (onTarget && mfText && ready && ['verified', 'signed-off'].includes(state)) {
@@ -170,7 +180,8 @@ function orphanWorkspaces(root, reg) {
     }
   }
   const out = []
-  for (const n of names(base).filter((n) => !['fleet', 'kept'].includes(n))) if (isArchived(root, reg, n) && !existsSync(join(root, reg, n))) out.push(n)
+  // A brainstorm newer than the archiving is a new conversation reusing the name — never a leftover.
+  for (const n of names(base).filter((n) => !['fleet', 'kept'].includes(n))) if (isArchived(root, reg, n) && !existsSync(join(root, reg, n)) && !newerThanArchive(root, reg, n)) out.push(n)
   for (const n of names(join(base, 'kept'))) if (isArchived(root, reg, n) && !existsSync(join(root, reg, n))) out.push(`kept/${n}`)
   return [...new Set(out)].sort()
 }
@@ -215,6 +226,26 @@ function moveIn(root, reg, name) {
   return join(root, reg, ARCHIVE, name)
 }
 
+/**
+ * A program child that ended here — shipped as it read, closed or dropped — says so on its program's
+ * `child:` line, so the program can end too (plan offers a program whose children all ended) instead
+ * of waiting for good on a ship that never comes. → what it wrote, or null for no program child.
+ */
+function settleChild(root, reg, name, state) {
+  if (!state) return null
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const prog of features(root, reg)) {
+    const mp = join(root, reg, prog, 'MANIFEST.md')
+    const text = read(mp)
+    if (!text || parseManifest(text).tier !== 'program') continue
+    const next = text.replace(new RegExp(`^child:\\s*${esc}(\\s.*)?$`, 'm'), `child: ${name} — ${state}`)
+    if (next === text) continue
+    writeAtomic(mp, next)
+    return `program ${prog}: child ${name} — ${state}`
+  }
+  return null
+}
+
 function dropWorkspace(root, name) {
   for (const ws of [workspaceDir(root, name, { create: false }), join(root, '.builder', 'kept', name)]) rmSync(ws, { recursive: true, force: true })
 }
@@ -243,17 +274,44 @@ function applyOne(root, cfg, target, it, dropReason) {
   }
   if (action === 'close') header = `> ✅ CLOSED ${date} — merged ${it.sha}, ${it.walked ? 'walked, not verified' : 'not walked'}`
   if (action === 'drop') header = `> ✖ DROPPED ${date} — ${dropReason ?? it.reason}`
+  if (action === 'program') {
+    const k = it.kids
+    const tally = ['shipped', 'closed', 'dropped'].filter((x) => k[x]).map((x) => `${k[x]} ${x}`).join(', ')
+    header = k.shipped || k.closed ? `> ✅ ${k.shipped && !k.closed ? 'SHIPPED' : 'CLOSED'} ${date} — every child ended: ${tally}` : `> ✖ DROPPED ${date} — every child dropped`
+  }
   const hasDoc = KEEP_DOCS.some((d) => existsSync(join(dir, d)))
   if (header && hasDoc && !writeHeader(dir, header)) throw new Error(`its ${existsSync(join(dir, 'SPEC.md')) ? 'SPEC.md' : 'PROGRAM.md'} has no "# " title line to put the header under`)
   const gone = hasDoc && action !== 'move' ? trim(root, dir) : []
   moveIn(root, reg, it.name)
   dropWorkspace(root, it.name)
-  const what = { archive: 'archived', close: 'closed (not shipped)', drop: 'dropped', move: 'moved as it is' }[action]
-  return `✓ ${it.name} — ${what}${gone.length ? `; ${gone.join(', ')} removed` : ''}`
+  const parent = settleChild(root, reg, it.name, { archive: 'shipped', close: 'closed', drop: 'dropped' }[action])
+  const what = { archive: 'archived', close: 'closed (not shipped)', drop: 'dropped', move: 'moved as it is', program: 'archived (program)' }[action]
+  return `✓ ${it.name} — ${what}${gone.length ? `; ${gone.join(', ')} removed` : ''}${parent ? `; ${parent}` : ''}`
+}
+
+/**
+ * Undo one item that failed half-way — a header written, files `git rm`'d, the folder moved — so the
+ * batch's commit never carries a half-archived folder. The registry was clean when apply began
+ * (it refuses otherwise), so HEAD is the state to go back to. → whether it got there.
+ */
+function rollback(root, reg, it) {
+  if (it.action === 'workspace') return true
+  const live = it.path.startsWith(`${reg}/${ARCHIVE}/`) ? null : `${reg}/${it.name}`
+  const arch = `${reg}/${ARCHIVE}/${it.name}`
+  const paths = [live, arch].filter(Boolean)
+  git(root, ['reset', '-q', '--', ...paths])
+  if (live) {
+    git(root, ['checkout', '-q', 'HEAD', '--', live])
+    // The archive held no folder of this name (plan refuses one), so whatever is there is this move's.
+    git(root, ['clean', '-fdq', '--', arch])
+  } else git(root, ['checkout', '-q', 'HEAD', '--', arch])
+  return !git(root, ['status', '--porcelain', '--', ...paths])
 }
 
 export function apply(root, cfg, names, { target = cfg.mergeInto, days = 14, drop = null, commit = true } = {}) {
   const reg = cfg.registry
+  // `drop`: one reason for every name, or { name: reason } — so a batch mixing drops and the rest is one commit.
+  const dropFor = (name) => (drop && typeof drop === 'object' ? (drop[name] ?? null) : drop)
   const p = plan(root, cfg, { target, days })
   if (!p.onTarget) return { ok: false, lines: [`archive runs on ${target}, where merged work is — switch to it (git switch ${target}). Nothing was changed.`] }
   const dirty = git(root, ['status', '--porcelain', '--', reg])
@@ -266,18 +324,19 @@ export function apply(root, cfg, names, { target = cfg.mergeInto, days = 14, dro
     // The owner dropping a feature archive left alone as in flight: their call, with their reason —
     // never one running, uncommitted, or whose name the archive already holds.
     const why = p.left.find((l) => l.name === name)?.why
-    if (!it && drop && why && !/running now|uncommitted|already exists|a program/.test(why)) it = { name, kind: 'abandoned', tier: 'old', action: 'drop', path: `${reg}/${name}` }
+    if (!it && dropFor(name) && why && !/running now|uncommitted|already exists|a program/.test(why)) it = { name, kind: 'abandoned', tier: 'old', action: 'drop', path: `${reg}/${name}` }
     if (!it) {
       refused++
       lines.push(`✗ ${name} — ${why ? `left alone: ${why}` : 'not a folder archive would act on'}`)
       continue
     }
     try {
-      lines.push(applyOne(root, cfg, target, it, it.action === 'drop' ? drop : null))
+      lines.push(applyOne(root, cfg, target, it, it.action === 'drop' ? dropFor(name) : null))
       if (it.action !== 'workspace') done.push(it.name)
     } catch (e) {
       refused++
-      lines.push(`✗ ${name} — ${e.message}`)
+      const back = rollback(root, reg, it)
+      lines.push(`✗ ${name} — ${e.message}${back ? ' — put back as it was' : ` — could not be put back: check git status -- ${it.path}`}`)
     }
   }
   const pruned = pruneArchivedLogs(root, cfg.agentWalk?.keepLogs ?? 30)
@@ -302,7 +361,7 @@ export function summaryLine(p) {
   return `registry: ${[finished && `${finished} finished`, old && `${old} old`].filter(Boolean).join(' · ')} to archive → /builder:archive`
 }
 
-const KIND = { shipped: 'Shipped, not archived', verified: 'Verified, merged — ship it', merged: 'Merged, never verified — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' }
+const KIND = { program: 'Program, every child ended', shipped: 'Shipped, not archived', verified: 'Verified, merged — ship it', merged: 'Merged, never verified — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' }
 
 function render(cfg, p) {
   const out = [`**${cfg.project}** — the registry against ${p.target}\n`]
@@ -314,7 +373,7 @@ function render(cfg, p) {
     out.push(tier === 'finished' ? '**Finished** — archived on your go-ahead:\n' : '**Old** — archived only if you say so:\n')
     out.push('| Folder | What it is | Becomes | Last moved |', '|---|---|---|---|')
     for (const i of rows) {
-      const becomes = { archive: 'SHIPPED (as it reads)', ship: `SHIPPED — merged ${i.sha}`, close: `CLOSED — merged ${i.sha}, ${i.walked ? 'walked, not verified' : 'not walked'}`, drop: `DROPPED — ${i.reason}`, move: 'moved as it is', trim: 'trimmed to its SPEC', workspace: 'removed' }[i.action]
+      const becomes = { archive: 'SHIPPED (as it reads)', ship: `SHIPPED — merged ${i.sha}`, close: `CLOSED — merged ${i.sha}, ${i.walked ? 'walked, not verified' : 'not walked'}`, drop: `DROPPED — ${i.reason}`, move: 'moved as it is', trim: 'trimmed to its SPEC', workspace: 'removed', program: 'archived with its PROGRAM.md' }[i.action]
       out.push(`| ${cell(i.path)} | ${cell(`${KIND[i.kind]}: ${i.why}`)} | ${cell(becomes)} | ${cell(i.moved)} |`)
     }
     out.push('')
@@ -325,7 +384,7 @@ function render(cfg, p) {
 }
 
 async function main(argv) {
-  const a = parseArgs(argv, { bool: ['json', 'summary', 'no-commit'] })
+  const a = parseArgs(argv, { bool: ['json', 'summary', 'no-commit'], repeat: ['drop'] })
   const cfg = requireConfig()
   const target = a.into ?? cfg.mergeInto
   const days = Number(a.days) > 0 ? Number(a.days) : 14
@@ -336,11 +395,15 @@ async function main(argv) {
     return 0
   }
   if (verb === 'apply' && names.length) {
-    const r = apply(cfg.root, cfg, names, { target, days, drop: a.drop ?? null, commit: !a['no-commit'] })
+    // --drop "<reason>" (every name) or --drop "<name>=<reason>", repeatable.
+    const drops = a.drop ?? []
+    const named = drops.filter((d) => /^[\w.-]+=/.test(d))
+    const drop = named.length ? Object.fromEntries(named.map((d) => [d.slice(0, d.indexOf('=')), d.slice(d.indexOf('=') + 1)])) : (drops.at(-1) ?? null)
+    const r = apply(cfg.root, cfg, names, { target, days, drop, commit: !a['no-commit'] })
     for (const l of r.lines) console.log(l)
     return r.ok ? 0 : 1
   }
-  console.error('usage: archive.mjs plan [--into <branch>] [--days N] [--json | --summary] | apply <name>… [--into <branch>] [--drop "<reason>"] [--no-commit]')
+  console.error('usage: archive.mjs plan [--into <branch>] [--days N] [--json | --summary] | apply <name>… [--into <branch>] [--drop "<reason>" | --drop "<name>=<reason>"…] [--no-commit]')
   return 2
 }
 

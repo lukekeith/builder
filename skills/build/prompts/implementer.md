@@ -3,7 +3,7 @@
 Adapted from superpowers' `subagent-driven-development` (MIT — see `LICENSE-THIRD-PARTY.md`).
 
 ```
-Subagent (general-purpose):
+Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose where it is absent):
   description: "Implement Task N: [task name]"
   model: [MODEL — REQUIRED per EXECUTION.md §Model selection; an omitted model
          silently inherits the session's most expensive one]

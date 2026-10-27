@@ -6,7 +6,7 @@ fix diff for new breakage. It is **not** a fresh review — the full review alre
 Adapted from superpowers' `subagent-driven-development` (MIT — see `LICENSE-THIRD-PARTY.md`).
 
 ```
-Subagent (general-purpose):
+Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose where it is absent):
   description: "Re-review Task N fix round R"
   model: [MODEL — REQUIRED per EXECUTION.md §Model selection; scoped re-reviews
          of small fix diffs take a cheap-to-mid tier]

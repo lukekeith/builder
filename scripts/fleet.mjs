@@ -507,7 +507,9 @@ for (const feature of asked) {
   // waited for; one nothing here will ship is a refusal, not a wait that never ends.
   const waits = why ? [] : waitsOn(ROOT, CFG.registry, feature).filter((d) => !landedOn(d.name))
   const outside = waits.filter((d) => !inRun.has(d.name))
-  if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
+  const dropped = outside.filter((d) => d.state === 'dropped')
+  if (!why && dropped.length) why = `${waitsOnText(dropped)} — it will never ship: take it out of this child's "Depends on" in its program's PROGRAM.md §Children (or drop this child too)`
+  else if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
   if (why) refused[feature] = why
   else {
     fresh.push(feature)

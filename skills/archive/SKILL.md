@@ -59,7 +59,8 @@ node <builder>/scripts/archive.mjs apply <path…> [--into <branch>]
 ```
 
 The paths are the chosen rows' first column. A folder the owner drops that the plan left as in flight
-takes `--drop "<their reason>"`, in its own call. Print each line it prints. It refuses — nothing
+takes `--drop "<name>=<their reason>"` in the same call — one per dropped folder, so the batch is
+still one commit. Print each line it prints; a folder that fails half-way is put back as it was. It refuses — nothing
 changed — off the target branch or while the registry has uncommitted changes; relay the line.
 
 ## 4. Done
