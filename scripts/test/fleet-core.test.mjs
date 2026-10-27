@@ -104,7 +104,7 @@ test('saveFleet writes fleet.json atomically, STATUS.md, and the .builder ignore
   assert.equal(readFileSync(join(root, '.builder/.gitignore'), 'utf8'), '*\n')
   const status = readFileSync(join(fleetDir(root), 'STATUS.md'), 'utf8')
   assert.match(status, /# builder fleet — 1 feature\(s\): 1 parked/)
-  assert.match(status, /^1 archived · --status --archived for the latest 20$/m, 'a done row is counted, not listed')
+  assert.match(status, /^1 archived · \/builder:fleet:status --archived for the latest 20$/m, 'a done row is counted, not listed')
   assert.doesNotMatch(status, /\| a \|/)
   assert.match(status, /x \\\| y/, 'pipes escaped')
   assert.match(status, /- No agent_walk.reset/)
@@ -127,7 +127,7 @@ test('renderStatus keeps only informative columns, names the target and the work
     },
     notes: ['a note'],
   })
-  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
+  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · \/builder:fleet:status --archived for the latest 20\n/)
   assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| — \| — \| yes \|/)
@@ -283,7 +283,7 @@ test('renderStatus names the archive with the last landing', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderStatus({ target: 'main', archived: 412, features: {} }, null, { feature: 'auth-refresh', landedAt: '2026-09-29T10:00:00Z' }, now)
   assert.match(out, /^# builder fleet — 0 feature\(s\): none\n/)
-  assert.match(out, /^412 archived \(last: auth-refresh, 2h ago\) · --status --archived for the latest 20$/m)
+  assert.match(out, /^412 archived \(last: auth-refresh, 2h ago\) · \/builder:fleet:status --archived for the latest 20$/m)
   assert.match(out, /^Nothing in flight\.$/m)
   assert.doesNotMatch(out, /\| Feature \|/)
 })
@@ -348,7 +348,43 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
   assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| 42m \| — \| yes \|/)
   assert.match(out, /\| b \| queued \| — \| 0 \| — \| — \| — \|/)
-  assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
+  assert.match(out, /^last 2 landed, mean agent time per lane: build 50m · walk 40m$/m)
+})
+
+test('renderStatus prefers wall-clock by stage when the landings recorded it', () => {
+  const rows = [
+    { feature: 'x', lanes: { build: 1 }, wallMs: 200 * 60000, stages: { audit: 10 * 60000, plan: 30 * 60000, build: 40 * 60000, walk: 60 * 60000, parked: 20 * 60000, verify: 40 * 60000 } },
+    { feature: 'y', lanes: { build: 1 }, wallMs: 220 * 60000, stages: { audit: 6 * 60000, plan: 30 * 60000, build: 44 * 60000, walk: 80 * 60000, verify: 60 * 60000 } },
+  ]
+  const out = renderStatus({ target: 'main', archived: 2, features: {} }, null, null, Date.now(), rows)
+  assert.match(out, /^last 2 landed, mean wall-clock 3h30m start → merge \(audit 8m · plan 30m · build 42m · walk 1h10m · verify 50m · parked 10m\)$/m)
+})
+
+test('stagesFromCommits splits a branch history into stages, parks kept apart', () => {
+  const c = (min, s) => ({ t: 1000 + min * 60, s })
+  const r = stagesFromCommits([
+    c(0, 'chore(x): x — agent mode on'), c(7, 'docs(x): x audited'), c(38, 'docs(x): plan x'),
+    c(41, 'feat(x): engine'), c(84, 'feat(x): view'), c(94, 'docs(x): x — final-review rulings'), c(106, 'fix(x): final review findings'),
+    c(146, 'chore(x): x — phases closed, awaiting the walk lane'), c(150, 'chore(x): x — parked: walk env needs a restart'),
+    c(160, 'chore(x): walk env restarted by the fleet'), c(188, 'docs(x): x — agent walk round 1: 1 fixes'), c(189, 'fix(x): one'),
+    c(196, 'docs(x): x agent signed off'), c(232, 'docs(x): x — verify READY'), c(235, 'docs(x): x shipped into main'),
+  ])
+  const m = (k) => r.stages[k] / 60000
+  assert.deepEqual([m('audit'), m('plan'), m('build'), m('finalReview'), m('endGates'), m('walk'), m('parked'), m('verify'), m('ship')], [7, 31, 46, 22, 40, 40, 10, 36, 3])
+  assert.equal(r.walkRounds, 1); assert.equal(r.parks, 1)
+  assert.equal(r.endGatesAt, (1000 + 146 * 60) * 1000)
+  assert.deepEqual(stagesFromCommits([]).stages, {})
+})
+
+test('walkFacts counts walk.md checks and each round report\'s results', () => {
+  const report = (verdict, rows) => `sha: abc\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n${rows.map(([n, r]) => `| ${n} | web | item | ${r} | e.png |`).join('\n')}\nverdict: ${verdict}\n`
+  const f = walkFacts({
+    walkMd: '# walk\n\n## web\n\n1. [risk] saves\n2. lists\n\n## Cross-app (verify E2E)\n\nE1. end to end\n',
+    reports: [{ n: 2, text: report('PASS', [[1, 'PASS']]) }, { n: 1, text: report('PROBLEMS (1)', [[1, 'FAIL'], [2, 'PASS'], ['E1', 'UNVERIFIABLE']]) }],
+  })
+  assert.equal(f.checks, 3)
+  assert.deepEqual(f.rounds, [{ n: 1, pass: 1, fail: 1, unverifiable: 1, verdict: 'PROBLEMS' }, { n: 2, pass: 1, fail: 0, unverifiable: 0, verdict: 'PASS' }])
+  assert.deepEqual(walkFacts(), { checks: null, rounds: [] })
 })
 
 test('tokensOf reads a result event’s usage; zeros without one', () => {
@@ -422,7 +458,7 @@ test('landedRow reads the whole archive and returns the last row for a feature',
 })
 
 // ---- 4.9.2: migrations that land with a feature reach the dev DB ------------------------------
-import { parseWalkReadiness, landedMigrations } from '../fleet-core.mjs'
+import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts } from '../fleet-core.mjs'
 
 const BODY = [
   '## Quality gates', '', '```', 'x: y', '```', '',

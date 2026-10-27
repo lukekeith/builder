@@ -685,7 +685,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet --status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet --status\n~~~"
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet:status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -748,7 +748,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n  ↳ portal-cert-list — queued for the running fleet (pid 48213)\n  ↳ portal-downloads — queued for the running fleet (pid 48213)\n```\n\n~~~\n📍 fleet: 2 spec(s) added to the running fleet — next: /builder:fleet --status\n~~~"
+          "text": "```\n  ↳ portal-cert-list — queued for the running fleet (pid 48213)\n  ↳ portal-downloads — queued for the running fleet (pid 48213)\n```\n\n~~~\n📍 fleet: 2 spec(s) added to the running fleet — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -766,12 +766,12 @@
       "skill": "fleet",
       "title": "Fleet: --status mid-run",
       "when": "Any time while the fleet runs.",
-      "source": "skills/fleet/SKILL.md §1. `--status`",
+      "source": "skills/fleet/SKILL.md §1. Where it stands — `/builder:fleet:status`",
       "feature": "cert-tags",
       "turns": [
         {
           "role": "user",
-          "text": "/builder:fleet --status"
+          "text": "/builder:fleet:status"
         },
         {
           "role": "tool",
@@ -802,7 +802,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "/builder:fleet --status"
+          "text": "/builder:fleet:status"
         },
         {
           "role": "tool",

@@ -1,11 +1,11 @@
 ---
 name: fleet
-description: Runs several written specs through the whole pipeline unattended, each in its own worktree, and merges each finished feature; agents work conflicts and failures. Use when the user wants several specs built unattended or overnight; --status shows the last run.
+description: Runs several written specs through the whole pipeline unattended, each in its own worktree, and merges each finished feature; agents work conflicts and failures. Use when the user wants several specs built unattended or overnight; /builder:fleet:status shows where it stands.
 ---
 
 # `/builder:fleet` — many specs, no one watching
 
-Invocation: **`/builder:fleet [--all | <feature|folder>…] [--parallel N] [--dry-run] [--status]`**.
+Invocation: **`/builder:fleet [--all | <feature|folder>…] [--parallel N] [--dry-run]`** · where it stands: **`/builder:fleet:status`**.
 
 The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it and reports. Resolve
 `<builder>` per [REFERENCE](../resume/REFERENCE.md) §The scripts.
@@ -63,30 +63,10 @@ dependencies' merged code. A dependency that isn't in the run and hasn't shipped
 (`✗ <child> — waits on <dep> (<state>) — not in this run`); one that parks or fails parks its
 waiters too, naming it.
 
-## 1. `--status`
+## 1. Where it stands — `/builder:fleet:status`
 
-`node <builder>/scripts/fleet.mjs --status` — reply with its contents **as markdown, never inside a
-code fence**: the heading line, then the table as a markdown table (the terminal renders it; fenced,
-it shows as raw pipes), then the `## Parked` list if there is one — each parked feature with its why
-and its `next:` step — then any notes as bullets. Change no cell. Then stop.
-
-The table is rendered live: its `Progress` column reads each feature's manifest, plan and ledger from
-its worktree at that moment, and the heading's bar covers **the whole run**: every feature in it,
-each one this run merged counted at 100% (`N merged this run` in the heading) — so a feature that
-lands never pulls the bar down, and a spec added while the fleet runs grows the total. It measures **steps,
-not time** — the manifest state sets a floor (planned 15, built 75, verified 90, merged 100) and inside
-the build the bar climbs with `Task N: complete` ledger lines against the plan's tasks (`build 5/9`).
-Half the bar is not half the wall-clock: the walk lane is one at a time and a task takes as long as it
-takes. If asked how long is left, say that.
-
-The `Time` column is time spent so far — each run's own duration as Claude reported it, summed — and
-the line under the heading gives the mean per lane for the last five landed features that recorded
-it. For "how long is left", the honest answer is that mean for the lanes the feature hasn't finished,
-offered as an estimate.
-
-A feature that landed is not a row: it is counted in the line under the heading
-(`412 archived (last: …) · --status --archived for the latest 20`). `node <builder>/scripts/fleet.mjs
---status --archived [N]` lists the latest N landings — relay it the same way when asked what merged.
+`/builder:fleet:status` (commands/fleet/status.md) shows the table and says how to read it; asked
+here, follow that file. `--status` on this skill still works and means the same.
 
 ## 2. Always dry-run first
 
@@ -152,7 +132,7 @@ Detached, it outlives the session, and nothing is waiting on it here.
 inbox and returns at once. Print its `↳` / `✗` / `↻` lines, then the footer:
 
 ~~~
-📍 fleet: <n> spec(s) added to the running fleet — next: /builder:fleet --status
+📍 fleet: <n> spec(s) added to the running fleet — next: /builder:fleet:status
 ~~~
 
 and stop; the rest of this section is the launch of a NEW fleet.
@@ -181,15 +161,15 @@ still working is never cut off. Each run's words go to `.builder/fleet/logs/<fea
 works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets one more run before
 the feature parks.
 
-Then say, in two lines: it's running on its own and outlives this session; `/builder:fleet --status`
+Then say, in two lines: it's running on its own and outlives this session; `/builder:fleet:status`
 shows where it stands (and the `builder` status line, if it's on), and §5's report is what
-`--status` shows once every row has landed, parked or failed — nothing here is notified when it
+`/builder:fleet:status` shows once every row has landed, parked or failed — nothing here is notified when it
 ends. A fleet whose process is gone with work mid-run shows `⚠ fleet stopped` under the table, with
 the `--detach` command that resumes it.
 
 ## 5. When it finishes
 
-When asked after the fleet has ended (`--status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+When asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
 - **done** — merged into the target, its worktree and branch removed, and archived: the row leaves the table for

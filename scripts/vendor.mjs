@@ -9,7 +9,7 @@
  *   1. Finds where builder lives in the host: the host's own `.claude-plugin/marketplace.json`
  *      entry named `builder` (its `source` path), else `plugins/builder` in a marketplace named
  *      after the host directory, created if missing.
- *   2. Builds the copy: `skills/` (not `update`), `scripts/` (not its tests), `hooks/`, `PROJECT.template.md`, the licences,
+ *   2. Builds the copy: `skills/` (not `update`), `scripts/` (not its tests), `hooks/`, `commands/`, `PROJECT.template.md`, the licences,
  *      and `.claude-plugin/plugin.json` cut to name, description and version, its author the host
  *      marketplace's owner. Nothing else — no
  *      README, changelog, release notes, docs, marketplace file or git metadata.
@@ -118,6 +118,8 @@ function buildCopy(author) {
   // The plugin's hooks (the session brief, the PR lock): the host's marketplace loads this copy as a
   // plugin, so Claude Code reads hooks/hooks.json from it exactly as from an install.
   if (existsSync(join(SRC, 'hooks'))) walk('hooks')
+  // Slash commands that need a two-level name (/builder:fleet:status): commands/<group>/<name>.md.
+  if (existsSync(join(SRC, 'commands'))) walk('commands')
   walk('bench')
   for (const f of ['PROJECT.template.md', 'LICENSE', 'LICENSE-THIRD-PARTY.md']) if (existsSync(join(SRC, f))) add(f)
   const pj = { name: srcPlugin.name, description: srcPlugin.description, version: srcPlugin.version, author }
