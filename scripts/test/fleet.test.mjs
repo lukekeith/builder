@@ -212,7 +212,9 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   assert.match(log, /· still working/)
   assert.match(log, /did audited/)
   assert.equal(log.match(/did audited/g).length, 1, 'the result repeating the last assistant text is printed once')
-  assert.match(readFileSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl'), 'utf8'), /"text":"still working"/)
+  // The raw stream of a landed feature goes once its archive row holds the meter read from it.
+  assert.ok(!existsSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl')), 'a landed feature keeps its .log, not its .jsonl')
+  assert.ok(t1.timing[0].meter.orchestrator.turns >= 1, 'the meter read the stream before it went')
 })
 
 test('a run that prints more than one result event is timed by the last', () => {
