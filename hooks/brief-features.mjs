@@ -34,7 +34,9 @@ async function stops() {
     const { repoRoots } = await import('../scripts/statusline.mjs')
     // The fleet keeps its state in the main checkout, wherever this session was opened.
     const main = repoRoots(project)?.main ?? project
-    return fleetStops(JSON.parse(readFileSync(join(main, '.builder', 'fleet', 'fleet.json'), 'utf8')))
+    const { loadConfig } = await import('../scripts/config.mjs')
+    const cfg = loadConfig(main)
+    return fleetStops(JSON.parse(readFileSync(join(main, '.builder', 'fleet', 'fleet.json'), 'utf8')), { main, registry: cfg.ok ? cfg.registry : null })
   } catch {
     return []
   }

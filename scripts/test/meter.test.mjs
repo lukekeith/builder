@@ -80,3 +80,24 @@ test('tokensOf keeps cache creation and cost per model; usage stays the orchestr
   assert.deepEqual(t, { input: 3, output: 4, cacheRead: 5, cacheCreation: 6, costUsd: 17, byModel: { 'claude-sonnet-5-5': { input: 1, output: 2, cacheRead: 3, cacheCreation: 4, costUsd: 3.5 } } })
   assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, costUsd: 0, byModel: {} })
 })
+
+test('fleetStops leaves out a park settled outside the fleet — folder archived, or branch gone', async () => {
+  const { fleetStops } = await import('../fleet-core.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const main = mkdtempSync(join(tmpdir(), 'stops-'))
+  mkdirSync(join(main, '.git', 'refs', 'heads', 'builder'), { recursive: true })
+  writeFileSync(join(main, '.git', 'refs', 'heads', 'builder', 'live'), 'abc\n')
+  writeFileSync(join(main, '.git', 'packed-refs'), '# pack-refs\nabc refs/heads/builder/packed\n')
+  for (const f of ['live', 'packed', 'gone-branch', '_archive/archived']) mkdirSync(join(main, 'docs', 'features', f), { recursive: true })
+  const fleet = { features: {
+    live: { status: 'parked', branch: 'builder/live', reason: 'x — next: y' },
+    packed: { status: 'failed', branch: 'builder/packed', reason: 'z' },
+    'gone-branch': { status: 'parked', branch: 'builder/gone-branch', reason: 'merged by tidy' },
+    archived: { status: 'parked', branch: 'builder/live', reason: 'its folder moved to _archive' },
+    running: { status: 'running', branch: 'builder/live' },
+  } }
+  assert.deepEqual(fleetStops(fleet, { main, registry: 'docs/features' }).map((s) => s.name), ['live', 'packed'])
+  assert.equal(fleetStops(fleet).length, 4, 'without a checkout to look in, every stopped row shows')
+})
