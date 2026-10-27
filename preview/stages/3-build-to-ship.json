@@ -30,11 +30,19 @@
         },
         {
           "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --brief) — the plan's outline: header, Global Constraints, the Phases table and 12 task heads (App · Phase · Recipe · Files · Interfaces) — no steps, no code · Read(docs/features/cert-tags/SPEC.md)"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --scan) — 3 rows to rule on · checked clean: tasks 6, 8, 9"
+        },
+        {
+          "role": "tool",
           "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --ledger \"<the pre-flight table>\" --ledger \"Ruling: …\") — ledger: .builder/cert-tags/progress.md (# builder ledger — plan: docs/features/cert-tags/PLAN.md)"
         },
         {
           "role": "claude",
-          "text": "Building cert-tags on `feat/ACME-412-cert-tags` — 3 phases · 12 slices · phase 1 (api) freezes the contract · test plan own · risk · end: each slice runs its own tests, the suites wait for the end, one review at the end. Pre-flight scan written to the ledger:\n\n```markdown\n# builder ledger — plan: docs/features/cert-tags/PLAN.md\n\n## Pre-flight\n| Row | Tasks | Shared | Finding |\n|---|---|---|---|\n| shared file | 1 · 2 | apps/api/prisma/schema.prisma | 2 reads the models 1 migrates — ordered, no conflict |\n| shared file | 3 · 4 | apps/api/src/routes/certificates.ts | 4 extends the payload 3 filters — ordered |\n| interface | 4 → 5 · 7 · 10 · 11 · 12 | `CertificateListItem.tags`, `?tag=` | consumers read exactly the §Contract shape |\n| self-consistency | 1–12 | — | Files, Interfaces and steps agree |\n| stays in its app | 1–12 | — | every task's Files sit under its App: path |\n| unruled | 2 | §Decisions D3 \"no duplicate tags\" | case not said — Ruling below |\n\nRuling: tag names unique per owner, case-insensitive — D3 says \"no duplicate tags\" and \"Urgent\"/\"urgent\" would read as duplicates — costs one migration relaxing the index if wrong\n\n## env notes\n```\n\nPhase 1 (api) — Task 1.",
+          "text": "Building cert-tags on `feat/ACME-412-cert-tags` — 3 phases · 12 slices · phase 1 (api) freezes the contract · test plan own · risk · end: each slice runs its own tests, the suites wait for the end, one review at the end. Pre-flight scan — the script's rows, ruled, plus one my reading of the outline raised — written to the ledger:\n\n```markdown\n# builder ledger — plan: docs/features/cert-tags/PLAN.md\n\n## Pre-flight\n| # | Check | Tasks | Finding | Ruling |\n|---|---|---|---|---|\n| 1 | shared file | 1, 2 | `apps/api/prisma/schema.prisma` is in each one's Files — order and overlap | 2 reads the models 1 migrates — ordered, no conflict |\n| 2 | shared file | 3, 4 | `apps/api/src/routes/certificates.ts` is in each one's Files — order and overlap | 4 extends the payload 3 filters — ordered |\n| 3 | interface | 4 → 5 | `CertificateListItem.tags` — the same spelling in both blocks | consumers read exactly the §Contract shape |\n| 4 | unruled | 2 | §Decisions D3 \"no duplicate tags\" — case not said | Ruling below |\n\nRuling: tag names unique per owner, case-insensitive — D3 says \"no duplicate tags\" and \"Urgent\"/\"urgent\" would read as duplicates — costs one migration relaxing the index if wrong\n\n## env notes\n```\n\nPhase 1 (api) — Task 1.",
           "inferred": true
         },
         {
@@ -43,9 +51,9 @@
         }
       ],
       "stamp": {
-        "hash": "a483a1006c23",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "99ae4610f573",
+        "version": "5.3.0",
+        "date": "2026-10-27"
       }
     },
     {
@@ -63,11 +71,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — task-2-brief.md (+ SPEC §api, §Contract (open), recipe path, craft skills, §Global constraints) · dispatch-implementer-task-2.md · BASE 3f2a1c0"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — task-2-brief.md (+ SPEC §api, §Contract (open), recipe path, §Global constraints) · dispatch-implementer-task-2.md · BASE 3f2a1c0 · subagent_type: builder:implementer"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(implementer — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
+          "text": "⏺ Agent(builder:implementer — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
         },
         {
           "role": "claude",
@@ -84,7 +92,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(task reviewer — Task 2) — spec ✅ · quality: 1 Important, 1 Minor"
+          "text": "⏺ Agent(builder:reviewer — Task 2) — spec ✅ · quality: 1 Important, 1 Minor"
         },
         {
           "role": "claude",
@@ -97,7 +105,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs re-review docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · Agent(re-review — Task 2, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs re-review docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · Agent(builder:reviewer, re-review — Task 2, scoped 6e81b0d..b20c4f7) — 1 ADDRESSED"
         },
         {
           "role": "claude",
@@ -110,9 +118,9 @@
         }
       ],
       "stamp": {
-        "hash": "22cc5d28dd06",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "efee187b9b47",
+        "version": "5.3.0",
+        "date": "2026-10-27"
       }
     },
     {
