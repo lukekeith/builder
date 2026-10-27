@@ -33,16 +33,31 @@ const parseLine = (raw) => {
   // @walk: the line needs the running walk env (an e2e suite) — it gets agent_walk.env and runs only
   // while the fleet's walk env is up (gateEnv below). Every other line runs with the test env.
   const walk = /@walk\b/.test(note)
+  // @local: an e2e-looking line that is safe to run as written under the fleet (its own stack).
+  const local = /@local\b/.test(note)
   return {
     cmd,
-    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk|@local/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
     ...(scope && { scope }),
     ...(typecheck && { typecheck }),
     ...(walk && { walk }),
+    ...(local && { local }),
   }
 }
+
+/** A command that drives a running app: a browser e2e runner, or a script named e2e. */
+const E2E = /\b(playwright|cypress|testcafe|webdriverio|wdio|selenium|puppeteer|nightwatch)\b|(^|[\s:/_-])e2e\b/i
+export const looksE2E = (cmd) => E2E.test(cmd ?? '')
+
+/**
+ * Under the fleet, an e2e suite not tagged `@walk` has no env of its own: the walk env's values are
+ * taken from it (gateEnv), so it falls back to its own defaults — usually the human's dev stack on
+ * localhost. It is not run there: reported unverified, with the fix. `@local` says the line brings
+ * its own stack and runs as written. Outside the fleet nothing changes.
+ */
+export const unwalkedE2E = (g, env = process.env) => Boolean(env.BUILDER_LANE) && !g.walk && !g.local && looksE2E(g.cmd)
 
 /**
  * The environment one gate line runs with, from the lane the fleet says it is in (BUILDER_LANE):
@@ -266,6 +281,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
   let partial = false
   const newBaselines = {}
   const durations = {}
+  const unverified = []
   gates.forEach((g0, i) => {
     const logFile = logDir ? join(logDir, `${String(i + 1).padStart(2, '0')}.log`) : null
     let g = g0
@@ -289,6 +305,12 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       if (scoped.subset) partial = true
       if (scoped.say) say(scoped.say)
       g = { ...g0, cmd: scoped.cmd }
+    }
+    if (unwalkedE2E(g0, env)) {
+      partial = true
+      unverified.push(g0.cmd)
+      say(`? ${g0.cmd} — an e2e suite without @walk: not run, so it can't hit your dev stack — unverified. Tag it @walk to run it against the walk env (or @local if it starts its own)`)
+      return
     }
     const lineEnv = gateEnv(g0, env)
     if (lineEnv === null) {
@@ -353,7 +375,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     red++
     say(`✗ ${g.cmd} exit ${r.exit} (${fmt(r.ms)})${logFile ? ` — ${logFile}` : ''}\n    ${tail(8)}`)
   })
-  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial }
+  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified }
 }
 
 // ---- the memo ------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations } from '../gates-core.mjs'
+import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations, looksE2E } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -559,4 +559,23 @@ test('gate.mjs --walk-only runs only the deep set\'s @walk lines; none → says 
   const n = spawnSync('node', [GATE, '--walk-only'], { cwd: none, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: none } })
   assert.equal(n.status, 0)
   assert.match(n.stdout, /no @walk line in the deep set/)
+})
+
+test('under the fleet an e2e line without @walk is not run against the dev stack: unverified, not red', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-e2e-'))
+  const gates = [
+    { cmd: 'npx playwright test', note: '', delta: false, knownRed: false },
+    { cmd: 'npm run test:e2e', note: '', delta: false, knownRed: false },
+    { cmd: 'echo cypress run', note: '', delta: false, knownRed: false, local: true },
+    { cmd: 'echo unit', note: '', delta: false, knownRed: false },
+  ]
+  const fleet = runGateSet(gates, { cwd: dir, env: { ...process.env, BUILDER_LANE: 'walk' } })
+  assert.equal(fleet.exit, 0)
+  assert.deepEqual(fleet.unverified, ['npx playwright test', 'npm run test:e2e'])
+  assert.match(fleet.lines[0], /^\? npx playwright test — an e2e suite without @walk: not run/)
+  assert.equal(fleet.partial, true)
+  const outside = runGateSet([{ cmd: 'echo playwright', note: '', delta: false, knownRed: false }], { cwd: dir, env: { ...process.env, BUILDER_LANE: '' } })
+  assert.deepEqual(outside.unverified, [], 'outside the fleet nothing changes')
+  assert.equal(looksE2E('vitest run'), false)
+  assert.equal(parseGates('## Quality gates\n\n### Deep set\n\n```\nnpx cypress run   # the UI @local\n```\n').deep[0].local, true)
 })
