@@ -347,3 +347,31 @@ test('dispatch walk-batch: one brief for several features — every walk script,
   }
   assert.match(p, /An item fails in the feature whose walk script lists it/)
 })
+
+test('dispatch: every build dispatch names the agent it runs as — builder\'s lean agents, a recipe only the Skill tool reaches, the config\'s override', () => {
+  const r = leanRepo('note-tags')
+  const typeOf = (out) => /^ {2}subagent_type: (\S+)/m.exec(out.stdout)?.[1]
+  const impl = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(impl.status, 0, impl.stderr)
+  assert.equal(typeOf(impl), 'builder:implementer', 'a builder-skill recipe is read by path')
+  assert.match(impl.stdout, /subagent_type: builder:implementer — if this session has no agent of that type, general-purpose/)
+  commitTask(r)
+  assert.equal(typeOf(run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })), 'builder:reviewer')
+
+  // A companion skill the project ships is resolved to its path; one it doesn't needs the Skill tool.
+  const plan = join(r.folder, 'PLAN.md')
+  const text = readText(plan)
+  writeFileSync(plan, text.replace('Recipe: builder:test-driven-development\n', 'Recipe: house-cli\n'))
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'builder:implementer-skills')
+  mkdirSync(join(r.root, '.claude', 'skills', 'house-cli'), { recursive: true })
+  writeFileSync(join(r.root, '.claude', 'skills', 'house-cli', 'SKILL.md'), '# house cli\n')
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'builder:implementer')
+  assert.match(readText(join(WS(r), 'task-1-brief.md')), /\.claude\/skills\/house-cli\/SKILL\.md {2}\(Recipe: house-cli — the project's companion skill; read it with the Read tool\)/)
+
+  // agent_types opts back out.
+  const cfg = join(r.root, '.claude', 'builder.md')
+  writeFileSync(cfg, readText(cfg).replace(/^registry:/m, 'agent_types: general-purpose\nregistry:'))
+  const gp = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(typeOf(gp), 'general-purpose')
+  assert.doesNotMatch(gp.stdout, /if this session has no agent/)
+})

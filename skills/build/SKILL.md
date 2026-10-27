@@ -149,8 +149,10 @@ EXECUTION.md §1–5 unchanged, with these bindings:
 
 - 🔴 **Every dispatch is rendered, never typed:** `node <builder>/scripts/dispatch.mjs <kind> <folder> …`
   writes the subagent's whole prompt into the workspace and prints the Agent call — its
-  `description`, the model guidance (**name the model yourself**, EXECUTION.md §Model selection) and
-  the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
+  `description`, its **`subagent_type`** (send it as printed: builder's lean `builder:implementer`,
+  `builder:implementer-skills` or `builder:reviewer` unless the config's `agent_types:` says
+  otherwise — general-purpose only when this session has no agent of that type), the model guidance
+  (**name the model yourself**, EXECUTION.md §Model selection) and the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
   the file and survives a crash. The kinds:
 

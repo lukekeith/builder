@@ -17,6 +17,9 @@ base_branch: main
 # merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch.
 #                       # `current` = the branch checked out when the fleet launches (feature-branch workflows)
 # plan_writers: per-app   # /builder:plan writes each app's tasks in parallel, one writer per app, against SPEC §Contract — faster for multi-app plans; default one writer
+#                         # per-phase — one writer per phase (6+ tasks split), each holding a small slice of the code: lower peak context on big plans
+# agent_types: general-purpose   # what build's implementers and reviewers run as; default builder's lean agents (no MCP, no skills list).
+#                                # `implementer=<agent>, reviewer=<agent>` names your own .claude/agents/* — e.g. an implementer that needs an MCP server
 # build_profile_default: standard   # the test plan the go-ahead recommends: rush (least testing) · standard · thorough (most)
 
 # ─── apps ──────────────────────────────────────────────────────────────────

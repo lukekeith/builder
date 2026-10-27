@@ -136,7 +136,13 @@ guaranteeing a stuck or lost child is noticed within minutes, not at the end of 
 `<plugin>/scripts/dispatch.mjs implementer <folder> --task N [--context "<one paragraph>"]` records
 **BASE** (HEAD now) the first time — the review package and fix-round diffs need it — writes the
 brief and the whole prompt to the workspace, and prints the Agent call: send
-`Read <file> and do what it says.`, naming the model.
+`Read <file> and do what it says.`, naming the model and the `subagent_type` it printed.
+
+**Why a lean agent:** a general-purpose subagent starts with every tool schema, the skills list and
+every MCP server's tool names — about 20k tokens it re-reads on every turn before it reads a line of
+its brief. Builder's implementer and reviewer agents carry file, shell and search tools only, and
+still load the project's CLAUDE.md. A project whose implementers need an MCP tool names its own agent
+in the config's `agent_types:`.
 
 - **Task brief:** `<WS>/task-N-brief.md` — the task block exactly as `<plugin>/scripts/task-brief`
   cuts it, plus what build §Composing the brief adds. The brief is the single source of
