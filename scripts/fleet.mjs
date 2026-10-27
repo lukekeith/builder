@@ -27,7 +27,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -698,6 +698,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
     const t0 = Date.now()
     let result = null // the last `result` event: { duration_ms, num_turns }
+    const meter = streamMeter() // per-dispatch turns and context, from the stream as it streams
     let settled = false
     let timedOut = false
     // A killed run has no result event; say why in its log, or an empty log reads as a lost one.
@@ -725,7 +726,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
       const timing = rec.timing ?? (rec.timing = [])
       // start/end are wall-clock, for the stage timeline (queueing, parks); ms is the run's own time.
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result) })
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result), meter: meter.summary() })
       save()
       try {
         child.stdout.destroy()
@@ -763,6 +764,9 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       const lines = buf.split('\n')
       buf = lines.pop()
       for (const line of lines) {
+        try {
+          meter.add(JSON.parse(line))
+        } catch {}
         if (line.includes('"subtype":"init"')) {
           try {
             const why = initWithoutBuilder(JSON.parse(line))
@@ -840,7 +844,14 @@ function noteFacts(f, feature) {
   const mf = readManifest(f.worktree, feature)
   if (mf == null) return
   const plan = readDoc(f.worktree, feature, 'PLAN.md')
-  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null }
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null, review: readReviewFacts(f.worktree, feature) ?? f.facts?.review ?? null }
+}
+
+/** The final review's findings and the fix rounds, from the workspace (reviewFacts) — null before the build reviewed anything. */
+function readReviewFacts(worktree, feature) {
+  const ws = join(worktree, '.builder', feature)
+  const txt = (name) => (existsSync(join(ws, name)) ? readFileSync(join(ws, name), 'utf8') : null)
+  return reviewFacts({ finalReview: txt('final-review.md'), ledger: txt('progress.md') })
 }
 
 /** The walk's size and rounds from the workspace (walkFacts) — null when nothing was walked yet. */
@@ -921,8 +932,11 @@ function archiveRow(feature, facts, thisRun = true) {
     size,
     tests: tests ?? null,
     profile: profile ?? null,
-    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
+    // tokens: the orchestrators' own threads (tokensOf); costUsd and the meter cover every agent.
+    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead'), cacheCreation: sum('cacheCreation') },
     costUsd: sum('costUsd'),
+    ...meterTotals(f.timing),
+    quality: f.facts?.review ?? null,
     ...wallFacts(f),
     walk: walk ?? f.facts?.walk ?? null,
     landedAt: new Date().toISOString(),
@@ -1812,7 +1826,10 @@ function chargeBatch(rec, features) {
   for (const x of features) {
     const fx = fleet.features[x]
     if (!fx) continue
-    ;(fx.timing ??= []).push({ ...t, ms: share(t.ms), shared: features.length, tokens: Object.fromEntries(Object.entries(t.tokens ?? {}).map(([k, v]) => [k, share(v)])) })
+    const tokens = Object.fromEntries(Object.entries(t.tokens ?? {}).map(([k, v]) => [k, share(v)]))
+    if (t.tokens?.byModel) tokens.byModel = Object.fromEntries(Object.entries(t.tokens.byModel).map(([m, u]) => [m, Object.fromEntries(Object.entries(u).map(([k, v]) => [k, share(v)]))]))
+    // The meter is kept whole; meterTotals divides it by `shared`, so the batch is counted once across its features.
+    ;(fx.timing ??= []).push({ ...t, ms: share(t.ms), shared: features.length, tokens })
   }
   save()
 }

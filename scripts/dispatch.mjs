@@ -349,7 +349,8 @@ function implementer(f, a, ws) {
   return {
     file: join(ws, `dispatch-implementer-task-${n}${round ? `-round-${round}` : ''}.md`),
     body,
-    description: tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
+    // A fix round says so — the fleet's meter tells a fix from an implementer by this description.
+    description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
     model: round >= 4 ? 'REQUIRED — one tier above the implementer that got stuck (EXECUTION.md §Model selection)' : `REQUIRED — EXECUTION.md §Model selection${recipe?.tiny ? ' (Recipe says tiny: the cheapest tier)' : ''}`,
     note: `BASE ${rec.base} recorded for task ${n}`,
   }
