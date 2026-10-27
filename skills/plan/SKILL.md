@@ -157,6 +157,19 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    **cross-app check**: every interface a consumer task consumes is named exactly as the producer
    task that produces it names it (path, field, type, status) — a mismatch is fixed to §Contract's
    spelling in the task that strayed. Without the key, or with one app, one writer writes it all.
+
+   **With `plan_writers: per-phase`**, the same, one writer **per phase** instead of per app — a
+   phase over six tasks split into two writers of consecutive tasks — so no writer holds more than a
+   few tasks' code: a single writer's context grew to 400–525k on measured plans and was re-read on
+   every turn. Each writer gets what a per-app writer gets, scoped to its phase's app, plus **the
+   blocks the earlier phases' writers already wrote for the interfaces its tasks consume** (their
+   **Interfaces** lines, not their code). Phases of different apps run in one message; phases of one
+   app run in order, each after the last has written its file. The cross-app check runs at **every
+   writer boundary**, same-app ones included.
+
+   **Every writer, in every mode, reads `<WS>/audit-digest.md` first** (audit §Exit) — where the
+   code it builds on is, and what is there — and opens a file to copy what it changes, not to
+   rediscover what the audit read. No digest (an audit from before it existed) → read as before.
 3. **The checks before anything is committed:**
    - every `### Task N` block opens with an `App:` line and a `Phase:` line matching its table row;
    - every block carries a `Recipe:` line from the config's §Companion skills — or, for work with no
