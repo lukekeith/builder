@@ -178,7 +178,7 @@ You MUST complete each phase before proceeding to the next.
    - Automated test if possible
    - One-off test script if no framework
    - MUST have before fixing
-   - Use the `builder:test-driven-development` skill for writing proper failing tests
+   - Follow `../test-driven-development/SKILL.md` (read it by path) for writing proper failing tests
 
 2. **Implement Single Fix**
    - Address the root cause identified
@@ -190,7 +190,7 @@ You MUST complete each phase before proceeding to the next.
    - Test passes now?
    - No other tests broken?
    - Issue actually resolved?
-   - Use the `builder:verification-before-completion` skill before claiming success
+   - Follow `../verification-before-completion/SKILL.md` (read it by path) before claiming success
 
 4. **If Fix Doesn't Work**
    - STOP

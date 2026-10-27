@@ -183,3 +183,50 @@ test('CLI: no folder → usage, exit 2; no PLAN.md → says so, exit 1', () => {
   assert.equal(r.status, 1)
   assert.match(r.stderr, /no PLAN\.md/)
 })
+
+test('--brief: the header and every task\'s head, never its steps or code', async () => {
+  const { planBrief } = await import('../plan-slices.mjs')
+  const plan = readFileSync(new URL('./fixtures/lean/note-tags/PLAN.md', import.meta.url), 'utf8')
+  const b = planBrief(plan)
+  assert.match(b, /^# note-tags — implementation plan\n/)
+  assert.match(b, /\n## Global Constraints\n\n- No dependencies/)
+  assert.match(b, /\n## Phases\n\n\| Phase \| App \| Tasks \| Goal \| Gates \|/)
+  for (const n of [1, 2, 3]) assert.match(b, new RegExp(`\\n### Task ${n}: `))
+  assert.match(b, /\*\*Files:\*\*\n- Modify: `src\/cli\.mjs`/)
+  assert.match(b, /\*\*Interfaces:\*\*/)
+  assert.match(b, /\(5 steps · 7 test cases in the block\)/)
+  assert.doesNotMatch(b, /- \[ \] \*\*Step 1/, 'no step reaches the outline')
+  assert.doesNotMatch(b, /```js/, 'no code reaches the outline')
+  assert.ok(b.length < plan.length / 2)
+})
+
+test('--scan: shared files, interfaces handed between tasks, Files outside the App, steps naming unlisted paths', async () => {
+  const { planScan } = await import('../plan-slices.mjs')
+  const plan = [
+    '# p', '', '## Phases', '', '| Phase | App | Tasks | Goal | Gates |', '|---|---|---|---|---|', '| 1 | api | 1–2 | g | t |', '| 2 | web | 3 | g | t |', '',
+    '### Task 1: model', 'App: api', 'Phase: 1', '', '**Files:**', '- Create: `api/model.py`', '- Test: `api/tests/test_model.py`', '', '**Interfaces:**', '- Produces:', '  - `Invoice(id: int)` — the row', '  - `total(inv) -> int`', '', '- [ ] **Step 1: test** — edit `api/tests/test_model.py` and `api/conftest.py`',
+    '### Task 2: route', 'App: api', 'Phase: 1', '', '**Files:**', '- Modify: `api/model.py:3-9`', '- Create: `web/leak.ts`', '', '**Interfaces:**', '- Consumes: `Invoice(id)` from Task 1; `db.session` (existing)', '- Produces: `GET /invoices`', '', '- [ ] **Step 1: x**',
+    '### Task 3: screen', 'App: web', 'Phase: 2', '', '**Files:**', '- Create: `web/Invoices.tsx`', '', '**Interfaces:**', '- Consumes: `total(inv)`, `later()`', '', '- [ ] **Step 1: x**',
+    '### Task 4: late', 'App: web', 'Phase: 2', '', '**Files:**', '- Create: `web/late.ts`', '', '**Interfaces:**', '- Produces: `later()`', '', '- [ ] **Step 1: x**',
+  ].join('\n')
+  const out = planScan(plan, [{ name: 'api', path: 'api/' }, { name: 'web', path: './web' }])
+  assert.match(out, /\| shared file \| 1, 2 \| `api\/model\.py` is in each one's Files/)
+  assert.match(out, /\| interface \| 1 → 2 \| `Invoice` — the same spelling in both blocks/)
+  assert.match(out, /\| interface \| 1 → 3 \| `total` — the same spelling/)
+  assert.match(out, /\| interface \| 4 → 3 \| task 3 consumes `later` before task 4 produces it/)
+  assert.doesNotMatch(out, /db\.session/, 'a name no task produces is existing code, not a row')
+  assert.match(out, /\| app boundary \| 2 \| App: api \(api\/\) but Files lists `web\/leak\.ts`/)
+  assert.match(out, /\| files ↔ steps \| 1 \| steps name `api\/conftest\.py`, not in Files/)
+  assert.match(out, /rows to rule on · checked clean: none/)
+})
+
+test('--brief ends a task\'s head at its first step however the plan writes steps', async () => {
+  const { planBrief } = await import('../plan-slices.mjs')
+  const plan = ['# p', '', '### Task 1: a', 'App: api', '', '**Files:**', '- Create: `api/a.py`', '', '**Step 1: Write the test**', '', '```py', 'def test_a(): ...', '```',
+    '### Task 2: b', 'App: api', '', '**Files:**', '- Create: `api/b.py`', '', 'Then:', '', '```py', 'SECRET_CODE = 1', '```'].join('\n')
+  const b = planBrief(plan)
+  assert.match(b, /- Create: `api\/a\.py`/)
+  assert.match(b, /- Create: `api\/b\.py`/)
+  assert.doesNotMatch(b, /def test_a|SECRET_CODE|\*\*Step 1/)
+  assert.match(b, /### Task 1: a[\s\S]*\(1 step · /)
+})

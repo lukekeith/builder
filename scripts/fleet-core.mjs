@@ -61,8 +61,20 @@ export function shippedPr(specText) {
   return /PR\s*(#\d+)/.exec(head)?.[1] ?? 'shipped'
 }
 
+/**
+ * Why two timed-out runs were killed, in the order they died: `killed` holds the fleet's kill line for
+ * each (runClaude's `kill(why)`, carried on the row as `killedBy`) — the idle timeout, the run cap, or
+ * a session that started without builder. Two kills with one cause say it once.
+ */
+function killCause(killed) {
+  const why = (killed ?? []).filter(Boolean)
+  if (!why.length) return ''
+  if (why.length === 1) return ` — ${why[0]}`
+  return new Set(why).size === 1 ? ` — both ${why[0]}` : ` — ${why.join(', then ')}`
+}
+
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
-export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>', batched = false }) {
+export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>', batched = false, killed = [] }) {
   // Shipped is done however the run ended — one that timed out after the ship commit must not be
   // retried into a second one.
   const shipped = manifestText == null ? shippedPr(specText) : null
@@ -71,7 +83,7 @@ export function decide({ lane, manifestText, specText = null, exit, failures, st
   if (mf && laneOf(mf, { batched, specText }) === 'done') return { action: 'done', pr: mf.pr ?? null }
   if (exit !== 0) {
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
-    return failures >= 1 ? { action: 'fail', reason: `run ${what} twice` } : { action: 'retry' }
+    return failures >= 1 ? { action: 'fail', reason: `run ${what} twice${exit === null ? killCause(killed) : ''}` } : { action: 'retry' }
   }
   if (mf == null) return { action: 'park', reason: 'MANIFEST.md was gone after the run — next: /builder:status to see where the feature stands' }
   const next = laneOf(mf, { batched, specText })
@@ -174,8 +186,14 @@ export function appendArchive(root, row) {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** This feature's run, setup, start and sync logs into logs/_archive/<feature>/. Exact names only:
- *  `a` must not take `a-b-01.log`. Null when done (or nothing to move); else a note. */
-export function archiveLogs(root, feature) {
+ *  `a` must not take `a-b-01.log`. Its `.jsonl` stream transcripts are deleted instead of moved once
+ *  its archive row is written — the row carries what was read from them, and they are most of the
+ *  bytes (hundreds of MB across a few dozen landings). No row yet → they move with the rest.
+ *  Null when done (or nothing to move); else a note. */
+/** An archive row whose runs carry the meter (5.4+): its raw .jsonl streams have been read into it. */
+const metered = (row) => Boolean(row?.timing?.some?.((t) => t?.meter))
+
+export function archiveLogs(root, feature, keepDays = 30) {
   const logs = join(fleetDir(root), 'logs')
   if (!existsSync(logs)) return null
   const mine = new RegExp(`^${escapeRe(feature)}-(\\d+|setup|start|sync)\\.(log|jsonl)$`)
@@ -183,31 +201,53 @@ export function archiveLogs(root, feature) {
   try {
     const names = readdirSync(logs).filter((n) => mine.test(n))
     if (!names.length) return null
+    // The raw stream goes only once the archive row holds what was read from it, and never when the
+    // project keeps its logs forever (keep_logs: 0).
+    const dropJsonl = keepDays > 0 && metered(tailArchive(root, 50).findLast((r) => r.feature === feature))
     mkdirSync(dest, { recursive: true })
-    for (const n of names) renameSync(join(logs, n), join(dest, n))
+    for (const n of names) {
+      if (dropJsonl && n.endsWith('.jsonl')) rmSync(join(logs, n), { force: true })
+      else renameSync(join(logs, n), join(dest, n))
+    }
     return null
   } catch (e) {
     return `${feature} merged, but its logs could not be moved into ${dest}: ${e.message}`
   }
 }
 
-/** Archived logs older than `days` go; `days` <= 0 keeps them. Best effort — the next start retries. */
+/** Archived log files older than `days` go, each by its own mtime (a folder's mtime moves whenever
+ *  a later landing of the same name adds to it); `days` <= 0 keeps every one. A `.jsonl` transcript
+ *  of a feature whose archive row carries the meter goes whatever its age — the row holds what was
+ *  read from it; a row from before the meter keeps its transcripts to `days`, as the only
+ *  per-dispatch record. An emptied folder goes too. Run at fleet start, /builder:archive and /builder:tidy apply.
+ *  Best effort — the next run retries. → the number of files removed. */
 export function pruneArchivedLogs(root, days, now = Date.now()) {
-  if (!(days > 0)) return 0
   const base = join(fleetDir(root), 'logs', ARCHIVE)
-  let removed = 0
   let names = []
   try {
     names = readdirSync(base)
   } catch {
     return 0
   }
+  const landed = landedRows(root)
+  const stale = (p) => days > 0 && now - statSync(p).mtimeMs > days * 86400000
+  let removed = 0
+  const drop = (p) => {
+    rmSync(p, { recursive: true, force: true })
+    removed++
+  }
   for (const n of names) {
+    const dir = join(base, n)
     try {
-      if (now - statSync(join(base, n)).mtimeMs > days * 86400000) {
-        rmSync(join(base, n), { recursive: true, force: true })
-        removed++
+      if (!statSync(dir).isDirectory()) {
+        if (stale(dir)) drop(dir)
+        continue
       }
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f)
+        if ((days > 0 && f.endsWith('.jsonl') && metered(landed.get(n))) || stale(p)) drop(p)
+      }
+      if (!readdirSync(dir).length) rmSync(dir, { recursive: true, force: true })
     } catch {}
   }
   return removed
@@ -262,10 +302,179 @@ export function laneTotals(timing) {
   return out
 }
 
-/** A `result` event's usage as { input, output, cacheRead, costUsd } — zeros without one. */
+/**
+ * A `result` event's usage as { input, output, cacheRead, cacheCreation, costUsd, byModel } — zeros
+ * without one. 🔴 `usage` is the ORCHESTRATOR's thread only (the main session's own turns); sub-agents
+ * are in `total_cost_usd` and in `modelUsage`, never in these token counts — so `costUsd` and
+ * `byModel` cover the whole run while input/output/cacheRead/cacheCreation do not. Per-dispatch
+ * tokens come from the run's stream (streamMeter).
+ */
 export function tokensOf(ev) {
   const u = ev?.usage ?? {}
-  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0 }
+  const byModel = {}
+  for (const [model, m] of Object.entries(ev?.modelUsage ?? {})) {
+    byModel[model] = { input: m.inputTokens ?? 0, output: m.outputTokens ?? 0, cacheRead: m.cacheReadInputTokens ?? 0, cacheCreation: m.cacheCreationInputTokens ?? 0, costUsd: m.costUSD ?? 0 }
+  }
+  return { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheCreation: u.cache_creation_input_tokens ?? 0, costUsd: ev?.total_cost_usd ?? 0, byModel }
+}
+
+// ---- per-dispatch measurement --------------------------------------------------------------------
+//
+// Where a run's tokens went, per Agent dispatch, read from its stream as it streams — so it is
+// recorded on the run's timing entry and survives into the archive row after the logs are pruned.
+// "Context" is a turn's input + cache_read + cache_creation: what the model re-read that turn. A
+// message streamed in chunks repeats one message.id; each field takes its max across the chunks.
+
+/** A dispatch's kind from its Agent description — dispatch.mjs's templates first, then the words the skills use. */
+export function dispatchKind(description) {
+  const d = String(description ?? '').trim()
+  // dispatch.mjs's own descriptions first, by their fixed openings — the task or feature name after
+  // them ("Final review: checkout-fix", "Fix Task 2 round 1: re-review banner") never decides the kind.
+  const fixed = [
+    [/^implement task \d+\b/i, 'implement'],
+    [/^fix task \d+ round \d+\b/i, 'fix'],
+    [/^re-review\b/i, 're-review'],
+    [/^review (?:task|phase) \d+\b/i, 'task-review'],
+    [/^final review:/i, 'final-review'],
+    [/^fix the final review'?s findings\b/i, 'final-fix'],
+    [/^agent walk\b/i, 'walk'],
+  ]
+  for (const [re, kind] of fixed) if (re.test(d)) return kind
+  // Then the words the skills use for the dispatches they word themselves.
+  if (/\bre-?review\b/i.test(d)) return 're-review'
+  if (/\bfinal\b.*\breview\b|\bwhole-branch\b/i.test(d)) return 'final-review'
+  if (/\bfix\b/i.test(d)) return 'fix'
+  if (/\breview\b/i.test(d)) return 'task-review'
+  if (/\bimplement\b/i.test(d)) return 'implement'
+  if (/\baudit\b/i.test(d)) return 'audit'
+  if (/\balign\b/i.test(d)) return 'align'
+  if (/\bplan\b|\bwriter\b|\btask blocks?\b/i.test(d)) return 'plan'
+  if (/\bwalk\b/i.test(d)) return 'walk'
+  if (/\bverif/i.test(d)) return 'verify'
+  return 'other'
+}
+
+const TEST_RUN = /\b(pytest|jest|vitest|playwright|mocha|rspec|phpunit|go test|cargo test|node --test|(?:npm|pnpm|yarn|bun) (?:run )?(?:test|e2e)\b)/
+
+/**
+ * An accumulator for one run's stream-json events: `add(ev)` per event, `summary()` at the end →
+ * { orchestrator: { turns, startCtx, peakCtx, sumCtx }, dispatches: [{ kind, task, description,
+ * model, agentType, turns, startCtx, peakCtx, sumCtx, testRuns, toolUses, ms }] } in dispatch order.
+ * A sub-agent whose turns never streamed (some harness versions report a foreground child only in its
+ * tool result) keeps its tool result's facts with turns/context null rather than zeros.
+ */
+export function streamMeter() {
+  const msgs = new Map() // message.id → { parent, input, cacheRead, cacheCreation }
+  const dispatches = new Map() // Agent tool_use id → its facts
+  const tests = new Map() // parent → test-run count
+  const add = (ev) => {
+    if (!ev || typeof ev !== 'object') return
+    const parent = ev.parent_tool_use_id ?? null
+    if (ev.type === 'assistant' && ev.message) {
+      const m = ev.message
+      const u = m.usage ?? {}
+      const id = m.id ?? `${parent}:${msgs.size}`
+      const cur = msgs.get(id) ?? { parent, input: 0, cacheRead: 0, cacheCreation: 0 }
+      cur.input = Math.max(cur.input, u.input_tokens ?? 0)
+      cur.cacheRead = Math.max(cur.cacheRead, u.cache_read_input_tokens ?? 0)
+      cur.cacheCreation = Math.max(cur.cacheCreation, u.cache_creation_input_tokens ?? 0)
+      msgs.set(id, cur)
+      for (const b of m.content ?? []) {
+        if (b?.type !== 'tool_use') continue
+        if (parent == null && (b.name === 'Agent' || b.name === 'Task') && !dispatches.has(b.id)) {
+          const i = b.input ?? {}
+          const task = /\bTask\s+(\d+)\b/i.exec(i.description ?? '')?.[1]
+          dispatches.set(b.id, { kind: dispatchKind(i.description), task: task ? +task : null, description: String(i.description ?? '').slice(0, 120), model: i.model ?? null, agentType: i.subagent_type ?? null })
+        }
+        if (parent != null && b.name === 'Bash' && TEST_RUN.test(String(b.input?.command ?? ''))) tests.set(parent, (tests.get(parent) ?? 0) + 1)
+      }
+    }
+    if (ev.type === 'user' && parent == null && ev.tool_use_result && typeof ev.tool_use_result === 'object') {
+      const id = (ev.message?.content ?? []).find((c) => c?.type === 'tool_result')?.tool_use_id
+      const d = id && dispatches.get(id)
+      if (d) {
+        const r = ev.tool_use_result
+        d.model = r.resolvedModel ?? d.model
+        d.agentType = r.agentType ?? d.agentType
+        d.toolUses = r.totalToolUseCount ?? null
+        d.ms = r.totalDurationMs ?? null
+        d.lastCtx = r.totalTokens ?? null
+      }
+    }
+  }
+  const summary = () => {
+    const groups = new Map()
+    for (const m of msgs.values()) {
+      const ctx = m.input + m.cacheRead + m.cacheCreation
+      const g = groups.get(m.parent) ?? { turns: 0, startCtx: ctx, peakCtx: 0, sumCtx: 0 }
+      g.turns += 1
+      g.peakCtx = Math.max(g.peakCtx, ctx)
+      g.sumCtx += ctx
+      groups.set(m.parent, g)
+    }
+    const none = { turns: null, startCtx: null, peakCtx: null, sumCtx: null }
+    return {
+      orchestrator: groups.get(null) ?? { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 },
+      dispatches: [...dispatches.entries()].map(([id, d]) => ({ ...d, ...(groups.get(id) ?? none), testRuns: tests.get(id) ?? 0 })),
+    }
+  }
+  return { add, summary }
+}
+
+/**
+ * A feature's timing entries → what its archive row says about where the tokens went: per dispatch
+ * kind { n, turns, sumCtx, peakCtx, testRuns }, the orchestrators' { runs, turns, sumCtx, peakCtx }
+ * and cost per model, summed across every run. Runs recorded before the meter existed add nothing.
+ */
+export function meterTotals(timing) {
+  const byKind = {}
+  const orchestrator = { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }
+  const costByModel = {}
+  for (const t of timing ?? []) {
+    for (const [model, m] of Object.entries(t.tokens?.byModel ?? {})) costByModel[model] = (costByModel[model] ?? 0) + (m.costUsd ?? 0)
+    const s = t.meter
+    if (!s) continue
+    const w = 1 / (t.shared || 1) // a batch walk's session, charged to each feature it walked (chargeBatch)
+    orchestrator.runs += w
+    orchestrator.turns += (s.orchestrator?.turns ?? 0) * w
+    orchestrator.sumCtx += (s.orchestrator?.sumCtx ?? 0) * w
+    orchestrator.peakCtx = Math.max(orchestrator.peakCtx, s.orchestrator?.peakCtx ?? 0)
+    for (const d of s.dispatches ?? []) {
+      const k = (byKind[d.kind] ??= { n: 0, turns: 0, sumCtx: 0, peakCtx: 0, testRuns: 0 })
+      k.n += w
+      k.turns += (d.turns ?? 0) * w
+      k.sumCtx += (d.sumCtx ?? 0) * w
+      k.peakCtx = Math.max(k.peakCtx, d.peakCtx ?? 0)
+      k.testRuns += (d.testRuns ?? 0) * w
+    }
+  }
+  const round = (o) => { for (const k of Object.keys(o)) if (typeof o[k] === 'number') o[k] = Math.round(o[k] * 100) / 100 }
+  round(orchestrator)
+  for (const k of Object.values(byKind)) round(k)
+  for (const m of Object.keys(costByModel)) costByModel[m] = Math.round(costByModel[m] * 100) / 100
+  return { byKind, orchestrator, costByModel }
+}
+
+/**
+ * The build's review facts from its workspace, for the archive row's quality line: the final
+ * review's findings by severity (its `#### Critical` / `Important` / `Minor` lists, as
+ * prompts/final-reviewer.md writes them), and the ledger's task-level fix rounds. Null without either file.
+ */
+export function reviewFacts({ finalReview = null, ledger = null } = {}) {
+  if (finalReview == null && ledger == null) return null
+  let findings = null
+  if (finalReview != null) {
+    findings = { critical: 0, important: 0, minor: 0 }
+    let at = null
+    for (const line of finalReview.split('\n')) {
+      const h = /^#{2,4}\s+(Critical|Important|Minor)\b/i.exec(line)
+      if (h) { at = h[1].toLowerCase(); continue }
+      if (/^#{1,4}\s/.test(line)) { at = null; continue }
+      if (at && /^(?:[-*]|\d+[.)])\s+\S/.test(line) && !/^(?:[-*]|\d+[.)])\s+\**none\b/i.test(line)) findings[at] += 1
+    }
+  }
+  const fixRounds = ledger == null ? null : (ledger.match(/^.*\bfix round \d+\/5\b.*$/gim) ?? []).length
+  return { finalFindings: findings, fixRounds }
 }
 
 /** `2.1M`, `340k`, `950`; `—` when absent or zero. */
@@ -280,62 +489,300 @@ export function formatTokens(n) {
 export function renderArchived(rows, total, now = Date.now()) {
   if (!rows.length) return 'No feature has landed from this fleet yet.\n'
   const cell = (s) => String(s ?? '—').replace(/\|/g, '\\|')
-  // Tokens = input + output; cache reads are left out.
+  // Cost is the whole run's (every agent); per task divides it by the plan's task count. Token counts
+  // are left out: a row's `tokens` is the orchestrators' own threads only (tokensOf).
+  const usd = (v) => (v ? `$${v.toFixed(2)}` : null)
+  const perTask = (r) => (r.costUsd && r.size?.tasks > 0 ? usd(r.costUsd / r.size.tasks) : null)
   const time = (r) => {
     const ms = Object.values(r.lanes ?? {}).reduce((a, b) => a + b, 0)
     return ms ? duration(ms) : null
   }
-  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Tests | Time | Tokens | Merged | PR | Landed |', '|---|---|---|---|---|---|---|']
-  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(rowLabel(r))} | ${cell(time(r))} | ${formatTokens((r.tokens?.input ?? 0) + (r.tokens?.output ?? 0))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
+  const lines = [`# builder fleet — archive: latest ${rows.length} of ${Math.max(total, rows.length)}`, '', '| Feature | Tests | Time | Cost | Per task | Merged | PR | Landed |', '|---|---|---|---|---|---|---|---|']
+  for (const r of [...rows].reverse()) lines.push(`| ${cell(r.feature)} | ${cell(rowLabel(r))} | ${cell(time(r))} | ${cell(usd(r.costUsd))} | ${cell(perTask(r))} | ${cell(r.merged)} | ${cell(r.pr)} | ${cell(r.landedAt ? ago(r.landedAt, now) : null)} |`)
   return lines.join('\n') + '\n'
 }
 
 // ---- progress ----------------------------------------------------------------------------------
 //
 // How far along the pipeline a feature is, as a percentage of STEPS — not of time. Each manifest
-// state has a floor; inside `building` the span up to 70 scales with the ledger's `Task N: complete`
-// lines against the plan's `### Task N` headings. The weights are a judgment of where the effort
-// usually falls (a sixth before the build, more than half in it, the rest walk → verify → merge).
-const STAGE_FLOOR = { spec: 0, aligned: 5, audited: 10, planned: 15, building: 15, built: 75, 'signed-off': 80, verified: 90, shipped: 100 }
+// state has a floor, and the three long stretches move inside their band by what the workspace
+// (`.builder/<feature>/`, git-ignored) shows has been written so far:
+//   plan   10 → 15  drafted `### Task` blocks (PLAN.md, or the per-app writers' plan-<app>.md) against
+//                   the Phases table's task count;
+//   build  15 → 70  each task an equal share: 0.2 once its brief is written, 0.7 once its report is,
+//                   all of it once the ledger says `Task N: complete` — ticks land only after the
+//                   reviews (a whole phase at once under review=app), so ticks alone stalled, then jumped;
+//   walk   75 → 85  PASS/FAIL rows in the current agent-walk round's report against walk.md's items.
+// The weights are a judgment of where the effort usually falls (a sixth before the build, more than
+// half in it, the rest walk → verify → merge). Bands never overlap, so the number only goes back when
+// the pipeline does (a new walk round after fixes starts its rows again).
+const STAGE_FLOOR = { spec: 0, aligned: 5, audited: 10, planned: 15, building: 15, built: 75, 'signed-off': 87, verified: 92, shipped: 100 }
+const PLAN_TOP = 15
 const BUILD_TOP = 70
+const WALK_TOP = 85
+const PR_OPEN = 96
+const BRIEF_SHARE = 0.2
+const REPORT_SHARE = 0.7
 
 const taskIds = (text, re) => new Set([...(text ?? '').matchAll(re)].map((m) => Number(m[1])))
+const PLAN_TASK = /^#{2,4}\s+Task\s+(\d+)\b/gm
+
+/** The number of tasks the `## Phases` table's Tasks column names (`1–3`, `4`, `5, 7`), or 0. */
+export function phaseTaskCount(planText) {
+  const at = (planText ?? '').search(/^## Phases\s*$/m)
+  if (at < 0) return 0
+  const rows = planText.slice(at).split('\n').slice(1)
+  const table = []
+  for (const l of rows) {
+    if (/^## /.test(l)) break
+    if (/^\s*\|/.test(l)) table.push(l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
+  }
+  const col = (table[0] ?? []).findIndex((c) => /^tasks?$/i.test(c))
+  if (col < 0) return 0
+  const ids = new Set()
+  for (const row of table.slice(1)) {
+    for (const part of String(row[col] ?? '').split(/[,;]/)) {
+      const m = /^\s*(\d+)\s*(?:[–—-]\s*(\d+))?\s*$/.exec(part)
+      if (!m) continue
+      const [a, b] = [Number(m[1]), Number(m[2] ?? m[1])]
+      for (let n = a; n <= b && n - a < 500; n++) ids.add(n)
+    }
+  }
+  return ids.size
+}
 
 /**
  * `{ pct, label }` for one feature from what the fleet knows (its status) and what the worktree
- * says (manifest, plan, ledger — any may be null). Pure; readProgress does the file reads.
+ * says (manifest, plan, ledger — any may be null). `ws` is the feature's workspace as
+ * `{ files, list(rel), read(rel) }` (readProgress builds it from disk; null when there is none).
+ * Pure: every read goes through `ws`.
  */
-export function featureProgress({ status, manifestText = null, planText = null, ledgerText = null }) {
+export function featureProgress({ status, manifestText = null, planText = null, ledgerText = null, ws = null }) {
   if (status === 'done') return { pct: 100, label: 'merged' }
   if (manifestText == null) return { pct: 0, label: '—' }
   const mf = parseManifest(manifestText)
   const state = mf.state ?? ''
+  const files = new Set(ws?.files ?? [])
+  if (state === 'audited') {
+    // Planning: the Phases table fixes the task count first, then the task blocks are drafted —
+    // into PLAN.md by one writer, or into plan-<app>.md by one writer per app.
+    const drafts = [...files].filter((n) => /^plan-.+\.md$/.test(n)).map((n) => ws.read(n) ?? '')
+    const total = phaseTaskCount(planText) || Math.max(0, ...drafts.map(phaseTaskCount))
+    if (total) {
+      const drafted = Math.min(total, new Set([...taskIds(planText, PLAN_TASK), ...drafts.flatMap((t) => [...taskIds(t, PLAN_TASK)])]).size)
+      return { pct: Math.round(STAGE_FLOOR.audited + ((PLAN_TOP - STAGE_FLOOR.audited) * drafted) / total), label: `plan ${drafted}/${total}` }
+    }
+  }
   // The build writes `state: building` at a phase close or a stop, not at its first task — so a
-  // `planned` manifest whose ledger already has completed tasks is a build in its first phase.
+  // `planned` manifest whose ledger or workspace already shows tasks under way is a build in its first phase.
   if (state === 'building' || state === 'planned') {
     if (/^pending/.test(mf.ready ?? '')) return { pct: BUILD_TOP + 2, label: 'walk readiness' }
-    const total = taskIds(planText, /^#{2,4}\s+Task\s+(\d+)\b/gm).size
-    const done = Math.min(total, taskIds(ledgerText, /^\W*Task\s+(\d+):\s*complete\b/gm).size)
-    if (state === 'planned' && !done) return { pct: STAGE_FLOOR.planned, label: 'planned' }
+    const tasks = taskIds(planText, PLAN_TASK)
+    const total = tasks.size
+    const ticked = taskIds(ledgerText, /^\W*Task\s+(\d+):\s*complete\b/gm)
+    let share = 0
+    let done = 0
+    for (const n of tasks) {
+      if (ticked.has(n)) {
+        share += 1
+        done++
+      } else if (files.has(`task-${n}-report.md`)) share += REPORT_SHARE
+      else if (files.has(`task-${n}-brief.md`)) share += BRIEF_SHARE
+    }
+    if (state === 'planned' && !share) return { pct: STAGE_FLOOR.planned, label: 'planned' }
     if (!total) return { pct: STAGE_FLOOR.building, label: 'build' }
-    return { pct: Math.round(STAGE_FLOOR.building + ((BUILD_TOP - STAGE_FLOOR.building) * done) / total), label: `build ${done}/${total}` }
+    return { pct: Math.round(STAGE_FLOOR.building + ((BUILD_TOP - STAGE_FLOOR.building) * share) / total), label: `build ${done}/${total}` }
   }
-  if (state === 'built' && /^agent-pass|^pass/.test(mf.walk ?? '')) return { pct: 78, label: 'walked' }
-  if (state === 'verified' && isSet(mf.pr)) return { pct: 95, label: 'PR open' }
+  if (state === 'built' && /^agent-pass|^pass/.test(mf.walk ?? '')) return { pct: WALK_TOP, label: 'walked' }
+  if (state === 'built' && files.has('walk.md')) {
+    // The agent walk: rows its current round has written so far, against walk.md's numbered items.
+    const total = ((ws.read('walk.md') ?? '').match(/^E?\d+\.\s/gm) ?? []).length
+    const rounds = (ws.list?.('agent-walk') ?? []).map((n) => Number(/^round-(\d+)$/.exec(n)?.[1])).filter(Boolean)
+    const report = rounds.length ? ws.read(join('agent-walk', `round-${Math.max(...rounds)}`, 'report.md')) : null
+    const rows = ((report ?? '').match(/^\s*\|.*\|\s*\**(PASS|FAIL)\**\s*\|/gim) ?? []).length
+    if (total && report != null) return { pct: Math.round(STAGE_FLOOR.built + ((WALK_TOP - STAGE_FLOOR.built) * Math.min(rows, total)) / total), label: `walk ${Math.min(rows, total)}/${total}` }
+  }
+  if (state === 'verified' && isSet(mf.pr)) return { pct: PR_OPEN, label: 'PR open' }
   return { pct: STAGE_FLOOR[state] ?? 0, label: state || '—' }
 }
 
-/** featureProgress fed from disk: `<base>/<registry>/<feature>/{MANIFEST,PLAN}.md` and the
- *  git-ignored ledger `<base>/.builder/<feature>/progress.md`. `base` is the worktree, or the
- *  repo root before one exists. */
+const listDir = (d) => {
+  try {
+    return readdirSync(d)
+  } catch {
+    return []
+  }
+}
+const readIf = (p) => {
+  try {
+    return readFileSync(p, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+/** featureProgress fed from disk: `<base>/<registry>/<feature>/{MANIFEST,PLAN}.md`, the git-ignored
+ *  ledger `<base>/.builder/<feature>/progress.md` and the workspace beside it (one readdir; a file
+ *  is read only when its stage needs it). `base` is the worktree, or the repo root before one exists. */
 export function readProgress(base, registry, feature, status) {
-  const read = (...p) => (existsSync(join(base, ...p)) ? readFileSync(join(base, ...p), 'utf8') : null)
+  const ws = join(base, '.builder', feature)
   return featureProgress({
     status,
-    manifestText: read(registry, feature, 'MANIFEST.md'),
-    planText: read(registry, feature, 'PLAN.md'),
-    ledgerText: read('.builder', feature, 'progress.md'),
+    manifestText: readIf(join(base, registry, feature, 'MANIFEST.md')),
+    planText: readIf(join(base, registry, feature, 'PLAN.md')),
+    ledgerText: readIf(join(ws, 'progress.md')),
+    ws: { files: listDir(ws), list: (rel) => listDir(join(ws, rel)), read: (rel) => readIf(join(ws, rel)) },
   })
+}
+
+/**
+ * A fleet row's progress: read from its worktree, and remembered on the row (`lastProgress`, saved
+ * with fleet.json) — so once the worktree is gone (a parked feature's is removed when the fleet
+ * exits) the row keeps its last reading instead of falling back to the root checkout, which holds
+ * only the spec and reads 0%. A reading of nothing (the ship run removed the manifest) keeps the
+ * last one too. `root` is where a row with no worktree yet is read.
+ */
+export function rowProgress(root, registry, feature, f) {
+  const live = Boolean(f.worktree) && existsSync(f.worktree)
+  const last = f.lastProgress && typeof f.lastProgress.pct === 'number' ? f.lastProgress : null
+  if (!live && last && f.status !== 'done') return last
+  const p = readProgress(live ? f.worktree : root, registry, feature, f.status)
+  if (p.label === '—' && last) return last
+  if (live) f.lastProgress = p
+  return p
+}
+
+// ---- what stopped, and what has gone quiet ---------------------------------------------------
+//
+// The fleet runs detached: nothing in a session is told when a feature parks. These are what the
+// status line, the session brief, `--status` and fleet.out say about it.
+
+const STOPPED = new Set(['parked', 'failed'])
+const RUNNING = new Set(['building', 'walking', 'shipping'])
+
+/**
+ * The fleet's parked and failed rows as `[{ name, status, why, next }]`, by name. `why` drops a failed
+ * row's ` — see <log>` (the log path is fleet.out's and PARKED.md's to give; a line has no room).
+ */
+export function fleetStops(fleet, { main = null, registry = null } = {}) {
+  return Object.entries(fleet?.features ?? {})
+    .filter(([, f]) => STOPPED.has(f?.status))
+    .filter(([name, f]) => !main || !stopSettled(main, registry, name, f))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, f]) => {
+      const { why, next } = parkParts(f.reason ?? '')
+      return { name, status: f.status, why: why.replace(/\s—\ssee\s\S+$/, '').trim(), next: next ?? RETRY_NEXT }
+    })
+}
+
+/**
+ * A parked or failed row someone has since settled outside the fleet — its feature folder moved to
+ * `<registry>/_archive/`, or its branch gone (merged and deleted by /builder:tidy, or by hand). Only a landing removes
+ * a fleet.json row, so without this a settled park would sit on the status line and in every session
+ * brief for good. File reads only: the status line runs this on every render.
+ */
+export function stopSettled(main, registry, name, f) {
+  if (registry && existsSync(join(main, registry, '_archive', name)) && !existsSync(join(main, registry, name))) return true
+  return Boolean(f?.branch) && !branchExists(main, f.branch)
+}
+
+/** Whether a local branch exists, from .git's refs and packed-refs — no git process. Unknown (no .git dir) → true. */
+export function branchExists(main, branch) {
+  const dir = join(main, '.git')
+  try {
+    if (!statSync(dir).isDirectory()) return true
+  } catch {
+    return true
+  }
+  if (existsSync(join(dir, 'refs', 'heads', ...String(branch).split('/')))) return true
+  try {
+    return readFileSync(join(dir, 'packed-refs'), 'utf8').split('\n').some((l) => l.endsWith(` refs/heads/${branch}`))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The block route() appends to fleet.out when a feature parks or fails — what stopped, why, the next
+ * step, and where the park record is (PARKED.md, committed on the feature's branch, so it outlives
+ * the worktree). `retry` names the automatic retry the fleet starts at once, when it does.
+ */
+export function parkBlock({ feature, status, reason, record = null, branch = null, log = null, retry = null, at = new Date() }) {
+  const { why, next } = parkParts(reason ?? '')
+  const stamp = `${at.toISOString().slice(0, 16).replace('T', ' ')}Z`
+  return [
+    '',
+    `[${stamp}] ⛔ ${feature} ${status}`,
+    `  why:    ${why || 'no reason recorded'}`,
+    `  next:   ${next ?? RETRY_NEXT}`,
+    ...(record ? [`  record: ${record}${branch ? ` (committed on ${branch})` : ''}`] : []),
+    ...(log && !String(reason).includes(log) ? [`  log:    ${log}`] : []),
+    ...(retry ? [`  the fleet retries it now — ${retry}`] : []),
+    '',
+  ].join('\n')
+}
+
+/** How long a running feature may go with no commit and no ledger tick before it is flagged. */
+export const STALL_MS = 45 * 60 * 1000
+
+/**
+ * The mtime (ms) of a worktree's last HEAD move — its reflog, `<gitdir>/logs/HEAD`, which every
+ * commit, reset and merge appends to — read through the `.git` file, so no git process is spawned
+ * (the status line renders every couple of seconds). null when there is none to read.
+ */
+export function headMovedMs(worktree) {
+  if (!worktree) return null
+  try {
+    const dotGit = join(worktree, '.git')
+    const st = statSync(dotGit)
+    const gitdir = st.isDirectory() ? dotGit : /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'))?.[1]?.trim()
+    if (!gitdir) return null
+    const dir = gitdir.startsWith('/') ? gitdir : join(worktree, gitdir)
+    for (const p of [join(dir, 'logs', 'HEAD'), join(dir, 'HEAD')]) {
+      try {
+        return statSync(p).mtimeMs
+      } catch {}
+    }
+  } catch {}
+  return null
+}
+
+const mtimeOf = (p) => {
+  try {
+    return statSync(p).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A running row that has gone quiet: `{ runningMs, sinceMs }` when nothing has moved for STALL_MS —
+ * not HEAD, not the ledger (`<wt>/.builder/<feature>/progress.md`), not the workspace (a brief or a
+ * report added), not the newest agent-walk round (a screenshot or a report row), and the current run (`f.runStartedAt`) is older than that too. A run that keeps
+ * printing but goes round in circles outlives the idle timeout; this is what catches it. Only stats.
+ */
+export function stallOf(feature, f, now = Date.now()) {
+  if (!RUNNING.has(f?.status) || !f.worktree || !f.runStartedAt) return null
+  const started = Date.parse(f.runStartedAt)
+  if (!Number.isFinite(started)) return null
+  const ws = join(f.worktree, '.builder', feature)
+  // A walk commits nothing and ticks no ledger: its evidence lands in agent-walk/round-N/, whose
+  // writes never touch the workspace folder's own mtime — so the newest round counts as movement.
+  let round = null
+  try {
+    const last = readdirSync(join(ws, 'agent-walk')).filter((d) => /^round-\d+$/.test(d)).sort((a, b) => +a.slice(6) - +b.slice(6)).at(-1)
+    if (last) round = Math.max(mtimeOf(join(ws, 'agent-walk', last)) ?? 0, mtimeOf(join(ws, 'agent-walk', last, 'report.md')) ?? 0)
+  } catch {}
+  const moved = [started, headMovedMs(f.worktree), mtimeOf(join(ws, 'progress.md')), mtimeOf(ws), round].filter((t) => Number.isFinite(t) && t > 0)
+  const since = Math.max(...moved)
+  return now - since >= STALL_MS ? { runningMs: now - started, sinceMs: since } : null
+}
+
+/** `⚠ <feature> running 1h10m with no commit or ledger tick since 14:05` — the clock is local. */
+export function stallLine(feature, stall) {
+  const at = new Date(stall.sinceMs)
+  const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  return `⚠ ${feature} running ${duration(stall.runningMs)} with no commit or ledger tick since ${hhmm}`
 }
 
 /**

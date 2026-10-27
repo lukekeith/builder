@@ -22,19 +22,22 @@
  * after agent_walk.keep_logs days); fleet.json holds only work in flight.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
-const RUN_CAP = 12
+// Runs per feature per fleet run. The build lane ends a run at the audit's and the go-ahead's commits
+// (a fresh context per stage, AGENT-MODE.md), so two of these are stage boundaries, not retries.
+const RUN_CAP = 14
 // A run is killed when it goes quiet, not when it runs long: a 20-task build can take hours and
 // still be healthy. Its stream-json output is the heartbeat. The hard cap is only a backstop.
 const IDLE_TIMEOUT_MS = Number(process.env.FLEET_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
@@ -89,8 +92,10 @@ const pauseFile = (feature) => join(DIR, 'requests', `${feature}.pause`)
 const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
 
 // Progress is read live from each feature's worktree (or the root before it has one): the manifest's
-// state, the plan's tasks and the ledger's completed ones. A few small files per feature.
-const progressOf = (feature, f) => readProgress(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature, f.status)
+// state, the plan's tasks, the ledger's completed ones and the workspace's briefs and reports. A few
+// small files per feature. The reading is kept on the row (lastProgress), so a feature whose worktree
+// is gone keeps its last value instead of the root checkout's 0%.
+const progressOf = (feature, f) => rowProgress(ROOT, CFG.registry, feature, f)
 // The table's Tests before the fleet has noted a row's facts: what its manifest's test plan reads as.
 const testsOf = (feature, f) => {
   const p = join(specDir(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature), 'MANIFEST.md')
@@ -106,6 +111,15 @@ if (flag('--status') || flag('--archived')) {
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
     if (note) console.log(note)
+    // A run that keeps printing but goes in circles outlives the idle timeout: name the ones whose
+    // HEAD, ledger and workspace have not moved for STALL_MS.
+    if (fleet && fleetAlive(ROOT)) {
+      const quiet = Object.entries(fleet.features).flatMap(([name, f]) => {
+        const st = stallOf(name, f)
+        return st ? [stallLine(name, st)] : []
+      })
+      if (quiet.length) console.log(`\n${quiet.join('\n')}`)
+    }
   }
   process.exit(0)
 }
@@ -459,7 +473,12 @@ const landed = new Set()
 function landedOn(dep) {
   const row = fleet.features[dep]
   if (row) return row.status === 'done'
-  return landed.has(dep) || tryGit(['cat-file', '-e', `${TARGET}:${CFG.registry}/${ARCHIVE}/${dep}`]) !== null
+  if (landed.has(dep)) return true
+  // Archived on the target — unless /builder:archive dropped it: a dropped feature built nothing to wait for.
+  const at = `${TARGET}:${CFG.registry}/${ARCHIVE}/${dep}`
+  if (tryGit(['cat-file', '-e', at]) === null) return false
+  const head = (tryGit(['show', `${at}/SPEC.md`]) ?? tryGit(['show', `${at}/PROGRAM.md`]) ?? '').slice(0, 800)
+  return !/^> ✖ DROPPED/m.test(head)
 }
 const asked = requested()
 if (!asked.length && runningPid) {
@@ -488,7 +507,9 @@ for (const feature of asked) {
   // waited for; one nothing here will ship is a refusal, not a wait that never ends.
   const waits = why ? [] : waitsOn(ROOT, CFG.registry, feature).filter((d) => !landedOn(d.name))
   const outside = waits.filter((d) => !inRun.has(d.name))
-  if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
+  const dropped = outside.filter((d) => d.state === 'dropped')
+  if (!why && dropped.length) why = `${waitsOnText(dropped)} — it will never ship: take it out of this child's "Depends on" in its program's PROGRAM.md §Children (or drop this child too)`
+  else if (!why && outside.length) why = `${waitsOnText(outside)} — not in this run, so nothing here will ship it`
   if (why) refused[feature] = why
   else {
     fresh.push(feature)
@@ -698,6 +719,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
     const t0 = Date.now()
     let result = null // the last `result` event: { duration_ms, num_turns }
+    const meter = streamMeter() // per-dispatch turns and context, from the stream as it streams
     let settled = false
     let timedOut = false
     // A killed run has no result event; say why in its log, or an empty log reads as a lost one.
@@ -707,6 +729,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
         try {
           out.write(`\n[fleet] killed: ${why}\n`)
         } catch {}
+        rec.killedBy = why // decide() names the cause: the idle timeout is not the run cap
       }
       timedOut = true
       try {
@@ -725,7 +748,7 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
       const timing = rec.timing ?? (rec.timing = [])
       // start/end are wall-clock, for the stage timeline (queueing, parks); ms is the run's own time.
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result) })
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result), meter: meter.summary() })
       save()
       try {
         child.stdout.destroy()
@@ -763,6 +786,9 @@ async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path 
       const lines = buf.split('\n')
       buf = lines.pop()
       for (const line of lines) {
+        try {
+          meter.add(JSON.parse(line))
+        } catch {}
         if (line.includes('"subtype":"init"')) {
           try {
             const why = initWithoutBuilder(JSON.parse(line))
@@ -840,7 +866,14 @@ function noteFacts(f, feature) {
   const mf = readManifest(f.worktree, feature)
   if (mf == null) return
   const plan = readDoc(f.worktree, feature, 'PLAN.md')
-  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null }
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null, review: readReviewFacts(f.worktree, feature) ?? f.facts?.review ?? null }
+}
+
+/** The final review's findings and the fix rounds, from the workspace (reviewFacts) — null before the build reviewed anything. */
+function readReviewFacts(worktree, feature) {
+  const ws = join(worktree, '.builder', feature)
+  const txt = (name) => (existsSync(join(ws, name)) ? readFileSync(join(ws, name), 'utf8') : null)
+  return reviewFacts({ finalReview: txt('final-review.md'), ledger: txt('progress.md') })
 }
 
 /** The walk's size and rounds from the workspace (walkFacts) — null when nothing was walked yet. */
@@ -921,8 +954,11 @@ function archiveRow(feature, facts, thisRun = true) {
     size,
     tests: tests ?? null,
     profile: profile ?? null,
-    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead') },
+    // tokens: the orchestrators' own threads (tokensOf); costUsd and the meter cover every agent.
+    tokens: { input: sum('input'), output: sum('output'), cacheRead: sum('cacheRead'), cacheCreation: sum('cacheCreation') },
     costUsd: sum('costUsd'),
+    ...meterTotals(f.timing),
+    quality: f.facts?.review ?? null,
     ...wallFacts(f),
     walk: walk ?? f.facts?.walk ?? null,
     landedAt: new Date().toISOString(),
@@ -931,7 +967,7 @@ function archiveRow(feature, facts, thisRun = true) {
   fleet.archived = (fleet.archived ?? 0) + 1
   if (thisRun) fleet.landedThisRun = [...new Set([...(fleet.landedThisRun ?? []), feature])]
   landed.add(feature)
-  const why = archiveLogs(ROOT, feature)
+  const why = archiveLogs(ROOT, feature, AW.keepLogs)
   if (why) addNote(why)
 }
 
@@ -1080,6 +1116,12 @@ function parkIfPaused(f, feature) {
   return true
 }
 
+/** A run starts: its start is what stallOf measures quiet from, and its kill reason is its own. */
+function startRun(f) {
+  f.runStartedAt = new Date().toISOString()
+  delete f.killedBy
+}
+
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
   delete f.lastPark // superseded — the new reason is the one to act on
@@ -1095,6 +1137,7 @@ async function drive(feature, lane) {
   let failures = 0
   let stalls = 0
   let envRestarted = false
+  const kills = [] // why each failed run of this streak was killed (null: it exited on its own)
   for (;;) {
     // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
     if (parkIfPaused(f, feature)) return 'parked'
@@ -1102,9 +1145,11 @@ async function drive(feature, lane) {
     const headBefore = tryGit(['rev-parse', 'HEAD'], f.worktree)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
     f.runsThisTime = (f.runsThisTime ?? 0) + 1 // this fleet run, for the cap
+    startRun(f)
     save()
     const { exit, log } = await runClaude(f.worktree, feature, lane, f.runs)
     f.log = log
+    if (exit !== 0) kills.push(exit === null ? f.killedBy ?? null : null)
     // A walk judged against a dead env says nothing about the feature: restart it and walk again.
     if (lane === 'walk' && !envRestarted) {
       const died = await envDied(feature, f, headBefore)
@@ -1129,12 +1174,14 @@ async function drive(feature, lane) {
       progressed: snapshot(f.worktree, feature) !== before,
       folder: specOf(feature),
       batched: SPLIT,
+      killed: kills,
     })
     if (d.action === 'retry') {
       failures++
       continue
     }
     failures = 0
+    kills.length = 0
     if (d.action === 'stalled') {
       stalls++
       continue
@@ -1308,6 +1355,7 @@ async function bringUpWalkEnv(feature, { reset = true } = {}, f = fleet.features
 async function fixWalkEnv(feature, why) {
   const f = fleet.features[feature]
   f.runs = (f.runs ?? 0) + 1
+  startRun(f)
   save()
   const prompt =
     `The builder fleet could not bring up the walk env for this worktree — the feature at --path ${specOf(feature)} on branch ${f.branch} — because ${why}. ` +
@@ -1758,11 +1806,29 @@ const idle = () => !pool.length && !walkQueue.length && inFlight === 0
 function route(feature, outcome) {
   if (outcome === 'parked') {
     ensureParkRecord(feature)
-    if (autoRetry(feature)) return
+    const told = { ...fleet.features[feature] }
+    const retried = autoRetry(feature)
+    tellStop(feature, told, retried ? `automatic retry ${fleet.features[feature].autoUnparks} of ${retryBudget(fleet.features[feature], feature)}` : null)
+    if (retried) return
   }
+  if (outcome === 'failed') tellStop(feature, fleet.features[feature])
   if (outcome === 'walk') walkQueue.push(feature)
   else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
   else if (outcome === 'done') release()
+}
+
+/**
+ * The fleet runs detached, so nothing in a session hears a park: say it in fleet.out (the detached
+ * fleet's own output, appended to) as a block a person reads — what, why, next, and the park record.
+ * `f` is the row as it parked (autoRetry has already unparked the live one when it retries).
+ */
+function tellStop(feature, f, retry = null) {
+  const rel = join(specOf(feature), 'PARKED.md')
+  const record = f.status === 'parked' && f.worktree && existsSync(join(f.worktree, rel)) ? join(f.worktree, rel) : null
+  try {
+    mkdirSync(DIR, { recursive: true })
+    appendFileSync(join(DIR, 'fleet.out'), parkBlock({ feature, status: f.status, reason: f.reason, record, branch: f.branch, log: f.log, retry }))
+  } catch {}
 }
 
 async function poolWorker() {
@@ -1812,7 +1878,10 @@ function chargeBatch(rec, features) {
   for (const x of features) {
     const fx = fleet.features[x]
     if (!fx) continue
-    ;(fx.timing ??= []).push({ ...t, ms: share(t.ms), shared: features.length, tokens: Object.fromEntries(Object.entries(t.tokens ?? {}).map(([k, v]) => [k, share(v)])) })
+    const tokens = Object.fromEntries(Object.entries(t.tokens ?? {}).map(([k, v]) => [k, share(v)]))
+    if (t.tokens?.byModel) tokens.byModel = Object.fromEntries(Object.entries(t.tokens.byModel).map(([m, u]) => [m, Object.fromEntries(Object.entries(u).map(([k, v]) => [k, share(v)]))]))
+    // The meter is kept whole; meterTotals divides it by `shared`, so the batch is counted once across its features.
+    ;(fx.timing ??= []).push({ ...t, ms: share(t.ms), shared: features.length, tokens })
   }
   save()
 }
@@ -1930,6 +1999,7 @@ async function walkBatch(batch) {
   let active = [...tree.merged]
   const failures = {}
   const stalls = {}
+  const kills = {} // per feature: why each failed session of its streak was killed
   try {
     // Up once for the batch — `reset` once — and kept up across its sessions; a restart line
     // restarts it without a reset.
@@ -1944,8 +2014,10 @@ async function walkBatch(batch) {
         const fx = fleet.features[x]
         fx.runs = (fx.runs ?? 0) + 1
         fx.runsThisTime = (fx.runsThisTime ?? 0) + 1
+        startRun(fx)
       }
       rec.runs = (rec.runs ?? 0) + 1
+      delete rec.killedBy
       save()
       const folders = active.map((x) => join(fleet.features[x].worktree, specOf(x)))
       const { exit, log } = await runClaude(WALK_WT, '_walk', 'walk', rec.runs, `/builder:agent-walk --batch --into ${TARGET} ${folders.join(' ')}`, rec)
@@ -1956,7 +2028,8 @@ async function walkBatch(batch) {
       for (const x of active) {
         const fx = fleet.features[x]
         fx.log = log
-        const d = decide({ lane: 'walk', manifestText: readManifest(fx.worktree, x), specText: readSpec(fx.worktree, x), exit, failures: failures[x] ?? 0, stalls: stalls[x] ?? 0, runs: fx.runsThisTime, cap: RUN_CAP, progressed: snapshot(fx.worktree, x) !== before[x], folder: specOf(x), batched: SPLIT })
+        if (exit !== 0) (kills[x] ??= []).push(exit === null ? rec.killedBy ?? null : null)
+        const d = decide({ lane: 'walk', manifestText: readManifest(fx.worktree, x), specText: readSpec(fx.worktree, x), exit, failures: failures[x] ?? 0, stalls: stalls[x] ?? 0, runs: fx.runsThisTime, cap: RUN_CAP, progressed: snapshot(fx.worktree, x) !== before[x], folder: specOf(x), batched: SPLIT, killed: kills[x] ?? [] })
         if (d.action === 'park' && RESTART.test(d.reason)) {
           clearBlocked(fx.worktree, x)
           restart = true
@@ -1984,6 +2057,7 @@ async function walkBatch(batch) {
         const fx = fleet.features[x]
         failures[x] = 0
         stalls[x] = 0
+        delete kills[x]
         if (d.action === 'handoff') {
           Object.assign(fx, { status: QUEUED[d.to] ?? 'queued', reason: null })
           save()
@@ -2110,9 +2184,11 @@ do {
 clearInterval(poll)
 
 // Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
-for (const f of Object.values(fleet.features))
-  if (f.status === 'waiting')
+for (const [feature, f] of Object.entries(fleet.features))
+  if (f.status === 'waiting') {
     Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}, which never merged — next: settle ${pendingDeps(f).join(', ')}, then pick both in /builder:agent` })
+    tellStop(feature, f)
+  }
 // An unfinished feature keeps its branch — every finished task is committed there — and loses its
 // worktree; picking it again recreates the worktree from the branch. FLEET_KEEP_STOPPED_WORKTREES=1
 // keeps them, for looking inside one while debugging the fleet itself.

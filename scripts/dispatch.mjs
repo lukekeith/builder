@@ -13,8 +13,9 @@
  *                          cuts it, then the SPEC sections it implements (its app's section, §Testing,
  *                          §Decisions, §Schema & API changes for a schema task, the §Findings rows
  *                          marked `build-time risk` that name it), §Contract verbatim with whether it is
- *                          frozen, the Recipe: line resolved to a path, the four craft skills by path,
- *                          the config's §Global constraints verbatim with <TICKET> replaced — then
+ *                          frozen, the Recipe: line resolved to a path, the config's §Global
+ *                          constraints verbatim with <TICKET> replaced (the craft skills are the
+ *                          prompt's, with when to read each) — then
  *                          renders prompts/implementer.md: the task name, the app, the commit
  *                          instruction from the app's `commit:` mode (with the plan's commit subject),
  *                          the working directory, the report path, and a Context line (task i of n,
@@ -24,7 +25,7 @@
  *                          the same file): the findings verbatim, receiving-code-review first, and from
  *                          round 3 systematic-debugging; from round 4 the "you own it now" framing.
  *   implementer --final    the final review's ONE fix wave: <WS>/final-fix-brief.md (the findings — by
- *                          default from <WS>/final-review.md —, §Contract, the craft skills, the
+ *                          default from <WS>/final-review.md —, §Contract, the
  *                          constraints) and the implementer template across the in-scope apps.
  *   task-review --task N   generates the review package BASE..HEAD (the recorded BASE, never HEAD~1)
  *                          and renders prompts/task-reviewer.md with §Contract verbatim and its status.
@@ -180,17 +181,34 @@ function taskOf(f, n) {
   return { plan, tasks, t, block }
 }
 
-/** The Recipe: line → the path to read first (a builder skill or REFERENCE section resolved), else verbatim. */
-function recipeOf(block) {
+/**
+ * The Recipe: line → the path to read first, else verbatim. Resolved: a builder skill, a REFERENCE
+ * section, or the project's own `.claude/skills/<name>/SKILL.md`. `path: false` means the
+ * implementer can only reach it through the Skill tool — the one case it runs as implementer-skills.
+ */
+function recipeOf(block, root = null) {
   const raw = /^\s*[-*]*\s*\**Recipe:?\**:?\s*(.+)$/m.exec(block)?.[1]?.trim()
   if (!raw) return null
+  const tiny = /·\s*tiny\b/.test(raw)
   const name = raw.replace(/\s*·\s*tiny\b.*$/, '').replace(/`/g, '').trim()
   const skill = /^(?:builder:)?([a-z0-9-]+)$/.exec(name)?.[1]
-  if (skill && existsSync(skillPath(skill))) return { text: `${skillPath(skill)}  (Recipe: ${raw})`, tiny: /·\s*tiny\b/.test(raw) }
+  if (skill && existsSync(skillPath(skill))) return { text: `${skillPath(skill)}  (Recipe: ${raw})`, tiny, path: true }
   const ref = /REFERENCE\s*(§.*)$/.exec(name)
-  if (ref) return { text: `${join(BUILDER, 'skills', 'resume', 'REFERENCE.md')} ${ref[1]}  (Recipe: ${raw})`, tiny: /·\s*tiny\b/.test(raw) }
-  return { text: `${raw} — the project's companion skill (the config's §Companion skills)`, tiny: /·\s*tiny\b/.test(raw) }
+  if (ref) return { text: `${join(BUILDER, 'skills', 'resume', 'REFERENCE.md')} ${ref[1]}  (Recipe: ${raw})`, tiny, path: true }
+  const own = root && /^[\w.-]+$/.test(name) ? join(root, '.claude', 'skills', name, 'SKILL.md') : null
+  // A project skill that drives an MCP server (`mcp__<server>__<tool>`) needs an agent that has it.
+  if (own && existsSync(own)) return { text: `${own}  (Recipe: ${raw} — the project's companion skill; read it with the Read tool)`, tiny, path: true, mcp: /\bmcp__\w/.test(read(own) ?? '') }
+  return { text: `${raw} — the project's companion skill (the config's §Companion skills)`, tiny, path: false }
 }
+
+/** A task whose recipe uses MCP tools: the project's own implementer when it named one, else general-purpose — builder's lean agents carry no MCP. */
+const mcpAgent = (f) => {
+  const t = agentTypeOf(f, 'implementer')
+  return t.startsWith('builder:') ? 'general-purpose' : t
+}
+
+/** The subagent_type a build dispatch runs as — the config's agent_types (builder's lean agents by default). */
+const agentTypeOf = (f, kind) => f.cfg?.agentTypes?.[kind] ?? { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }[kind] ?? 'general-purpose'
 
 /** The brief: the task block + build §Composing the brief's four blocks, in order. */
 function composeBrief(f, n, block, app) {
@@ -212,9 +230,9 @@ function composeBrief(f, n, block, app) {
   if (risky.length) parts.push('## Findings & risks — build-time risks for this task', '', '| # | Finding | Resolution |', '|---|---|---|', ...risky.map((r) => `| ${r.join(' | ')} |`), '')
   const c = contractOf(f)
   parts.push(`## §Contract — ${c.status}`, '', c.body, '', c.rule, '')
-  const recipe = recipeOf(block)
+  const recipe = recipeOf(block, f.root)
   if (recipe) parts.push('## Read first — the recipe', '', recipe.text, '')
-  parts.push('## The craft skills — read them by path', '', ...Object.values(CRAFT).map((s) => `- ${skillPath(s)}`), '')
+  // The craft skills are not repeated here: the implementer's prompt names each with when to read it.
   parts.push("## Global constraints (the project config's, verbatim)", '', constraints(f), '')
   return parts.join('\n')
 }
@@ -273,10 +291,6 @@ function finalFix(f, a, ws) {
     '',
     c.rule,
     '',
-    '## The craft skills — read them by path',
-    '',
-    ...Object.values(CRAFT).map((s) => `- ${skillPath(s)}`),
-    '',
     "## Global constraints (the project config's, verbatim)",
     '',
     constraints(f),
@@ -302,11 +316,10 @@ function finalFix(f, a, ws) {
     BRIEF_FILE: briefPath,
     APP: `each finding's own app (${apps.join(', ')}) — a fix stays inside the app its finding names`,
     COMMIT_INSTRUCTION: commit,
-    GLOBAL_CONSTRAINTS: constraints(f),
     REPORT_FILE: reportPath,
     ...craftValues(),
   })
-  return { file: join(ws, 'dispatch-implementer-final-fix.md'), body, description: `Fix the final review's findings: ${f.feature}`, model: 'REQUIRED — EXECUTION.md §Model selection (a standard model at least: the wave spans the branch)' }
+  return { file: join(ws, 'dispatch-implementer-final-fix.md'), body, description: `Fix the final review's findings: ${f.feature}`, model: 'REQUIRED — EXECUTION.md §Model selection (a standard model at least: the wave spans the branch)', agentType: agentTypeOf(f, 'implementer') }
 }
 
 function implementer(f, a, ws) {
@@ -344,12 +357,14 @@ function implementer(f, a, ws) {
   const tpl = promptOf(readFileSync(join(PROMPTS, 'implementer.md'), 'utf8'))
   let body = tpl.body.replaceAll('Task N:', `Task ${n}:`).replaceAll('[task name]', t.name).replaceAll('[directory]', f.root)
   body = body.replace(/\[One line on where this fits\.[^\]]*\]/, () => ctx.join('\n'))
-  body = fill(body, { BRIEF_FILE: briefPath, APP: t.app, COMMIT_INSTRUCTION: commit, GLOBAL_CONSTRAINTS: constraints(f), REPORT_FILE: reportPath, ...craftValues() })
-  const recipe = recipeOf(block)
+  body = fill(body, { BRIEF_FILE: briefPath, APP: t.app, COMMIT_INSTRUCTION: commit, REPORT_FILE: reportPath, ...craftValues() })
+  const recipe = recipeOf(block, f.root)
   return {
     file: join(ws, `dispatch-implementer-task-${n}${round ? `-round-${round}` : ''}.md`),
+    agentType: recipe?.mcp ? mcpAgent(f) : agentTypeOf(f, recipe && !recipe.path ? 'implementer-skills' : 'implementer'),
     body,
-    description: tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
+    // A fix round says so — the fleet's meter tells a fix from an implementer by this description.
+    description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
     model: round >= 4 ? 'REQUIRED — one tier above the implementer that got stuck (EXECUTION.md §Model selection)' : `REQUIRED — EXECUTION.md §Model selection${recipe?.tiny ? ' (Recipe says tiny: the cheapest tier)' : ''}`,
     note: `BASE ${rec.base} recorded for task ${n}`,
   }
@@ -396,7 +411,7 @@ function taskReview(f, a, ws) {
       DIFF_FILE: diff,
       FINDINGS_FILE: findingsPath(ws, `review-phase-${a.phase}`),
     })
-    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: 'REQUIRED — EXECUTION.md §Model selection', findings: findingsPath(ws, `review-phase-${a.phase}`) }
+    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: 'REQUIRED — EXECUTION.md §Model selection', findings: findingsPath(ws, `review-phase-${a.phase}`), agentType: agentTypeOf(f, 'reviewer') }
   }
   const { t } = taskOf(f, a.task)
   const rec = (st.tasks[t.n] ??= {})
@@ -422,7 +437,7 @@ function taskReview(f, a, ws) {
     FINDINGS_FILE: findingsPath(ws, `task-${t.n}-review`),
   })
   const tiny = recipeOf(taskOf(f, t.n).block)?.tiny
-  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: `REQUIRED — EXECUTION.md §Model selection${tiny ? ' (Recipe says tiny: the cheapest tier that can read a diff)' : ''}`, findings: findingsPath(ws, `task-${t.n}-review`) }
+  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), agentType: agentTypeOf(f, 'reviewer'), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: `REQUIRED — EXECUTION.md §Model selection${tiny ? ' (Recipe says tiny: the cheapest tier that can read a diff)' : ''}`, findings: findingsPath(ws, `task-${t.n}-review`) }
 }
 
 function reReview(f, a, ws) {
@@ -460,6 +475,7 @@ function reReview(f, a, ws) {
     description: a.final ? `Re-review the final review's fix wave` : tpl.description.replace('Task N', label).replace('round R', `round ${round}`),
     model: 'REQUIRED — a cheap-to-mid tier for a small fix diff (EXECUTION.md §Model selection)',
     findings: out,
+    agentType: agentTypeOf(f, 'reviewer'),
   }
 }
 
@@ -493,7 +509,7 @@ function finalReview(f, a, ws) {
     HEAD_SHA: head,
     FINDINGS_FILE: findingsPath(ws, 'final-review'),
   })
-  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review') }
+  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review'), agentType: agentTypeOf(f, 'reviewer') }
 }
 
 /**
@@ -668,6 +684,7 @@ async function main(argv) {
     writeAtomic(r.file, r.body)
     console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
     console.log(`Agent call — description: ${r.description}`)
+    console.log('  subagent_type: general-purpose')
     console.log(`  model: ${r.model}`)
     console.log(`  prompt: Read ${r.file} and do what it says.`)
     return 0
@@ -685,6 +702,8 @@ async function main(argv) {
   if (r.note) console.log(r.note)
   if (r.findings) console.log(`findings: ${r.findings} — the reviewer writes its report here; a fix round passes it as --findings-file`)
   console.log(`Agent call — description: ${r.description}`)
+  // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
+  console.log(`  subagent_type: ${r.agentType ?? 'general-purpose'}${r.agentType && r.agentType !== 'general-purpose' ? ' — if this session has no agent of that type, general-purpose' : ''}`)
   console.log(`  model: ${r.model}`)
   console.log(`  prompt: Read ${r.file} and do what it says.`)
   return 0

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
@@ -81,7 +81,7 @@ test('archived features are never rows; --status counts them in one line', () =>
   assert.deepEqual(JSON.parse(json.stdout).features.map((f) => f.feature), ['live'])
   const st = list(root, '--status')
   assert.equal(st.status, 0, st.stderr)
-  assert.match(st.stdout, /📦 2 shipped features archived · list-features\.mjs --archived lists them/)
+  assert.match(st.stdout, /📦 2 features archived · list-features\.mjs --archived lists them/)
 })
 
 test('--archived lists the archive newest first; --limit caps it', () => {
@@ -256,4 +256,48 @@ test('a feature whose workspace was just written is active — a session is buil
   assert.equal(rows.a.inSession, true)
   assert.equal(rows.b.inSession, false, 'no fresh workspace')
   assert.equal(rows.s.inSession, false, 'just specced in a session is not being built')
+})
+
+test('a folder that says it shipped is done everywhere: manifest state: shipped, a SHIPPED program — never an in-progress row', () => {
+  const root = setup({
+    live: 'state: building',
+    gone: 'state: shipped',
+    prog: 'tier: program\nchild: a — shipped',
+  }, { 'prog/PROGRAM.md': '# prog — program\n> ✅ SHIPPED 2026-10-01 — every child shipped · last: a\n', 'gone/SPEC.md': '# gone — spec\n' })
+  const rows = Object.fromEntries(JSON.parse(list(root, '--json').stdout).features.map((f) => [f.feature, f]))
+  assert.equal(rows.gone.done, true)
+  assert.equal(rows.prog.done, true)
+  assert.equal(rows.live.done, false)
+  const st = list(root, '--status')
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /1 in progress/)
+  assert.doesNotMatch(st.stdout, /\*\*gone\*\*|\*\*prog\*\*/)
+  assert.match(st.stdout, /🔒 2 shipped, not shown — \/builder:archive moves them out of the registry\./)
+})
+
+test('a brainstorm.md left for an archived feature is not a draft', () => {
+  const root = setup({ live: 'state: building' }, { '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4) })
+  draft(root, 'old', 'status: exploring\nsource: brainstorm\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 2')
+  // Left behind: written before the folder was archived (the archived SPEC is rewritten then).
+  const before = new Date(Date.now() - 86400000)
+  utimesSync(join(root, '.builder', 'old', 'brainstorm.md'), before, before)
+  const json = JSON.parse(list(root, '--json').stdout).features
+  assert.deepEqual(json.map((f) => f.feature), ['live'])
+  // Written after: the name is being reused for a new conversation, which is a draft.
+  const after = new Date(Date.now() + 60000)
+  utimesSync(join(root, '.builder', 'old', 'brainstorm.md'), after, after)
+  assert.deepEqual(JSON.parse(list(root, '--json').stdout).features.map((f) => f.feature).sort(), ['live', 'old'])
+})
+
+test('--archived says which archived folders were closed or dropped rather than shipped', () => {
+  const root = setup({}, {
+    '_archive/s/SPEC.md': SHIPPED('s', '2026-09-01', 4),
+    '_archive/c/SPEC.md': '# c — spec\n> ✅ CLOSED 2026-10-27 — merged abc1234, not walked\n',
+    '_archive/d/SPEC.md': '# d — spec\n> ✖ DROPPED 2026-10-26 — superseded\n',
+  })
+  const r = list(root, '--archived')
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /\| c \| 2026-10-27 \(closed\) \|/)
+  assert.match(r.stdout, /\| d \| 2026-10-26 \(dropped\) \|/)
+  assert.match(r.stdout, /\| s \| 2026-09-01 \| #4 \|/)
 })

@@ -12,6 +12,7 @@ index is cut out of the SPEC, and git history **is** the full process.
 Invocation: **`/builder:ship --path <folder>`**. Without `--path`,
 `node <builder>/scripts/list-features.mjs --json` offers the eligible rows: manifests at
 `state: signed-off` (sign-off moment) and rows whose `pr:` is open and `verify: READY` (ship moment).
+Several finished folders at once — shipped, merged, abandoned — are `/builder:archive`'s.
 
 **Two moments, one file** — REFERENCE §Condense says what each writes; the procedures below say how.
 `node <builder>/scripts/docs.mjs ship` prints §Condense, §Continuing on "go" and the config in one call.
@@ -95,6 +96,14 @@ commit lands. Without `--agent-walk` and `--into`, refuse in one line: nobody ha
 human either hands it back to agents (`/builder:fleet <feature>`) or tests it and runs
 `/builder:signoff --path <folder>`.
 
+**Already merged, never shipped** (a manual `git merge`, a `build: here` feature built on the
+target, a PR merged before this ran — `gh pr view` says `MERGED`): the code is in the target and
+there is no open PR to write on, so the ship is written **on the target itself**, naming the commit
+that brought it in — the PR's merge commit (`gh pr view --json mergeCommit`), else the merge. The
+precondition is `verify: READY` and that commit in the target; the header is
+`> ✅ SHIPPED <date> — merged <sha> · <ticket> · <who signed off>`. A feature that never reached
+READY is not shipped this way — `/builder:archive` closes it as `CLOSED — not walked`.
+
 ⛔ **Archive collision check, before step 1.** If `<registry>/_archive/<feature>` already exists — or,
 when this ship will flip the program header (this is the program's last child),
 `<registry>/_archive/<program>` — stop before touching anything and name the collision: a second
@@ -131,7 +140,8 @@ header flip would leave a half-shipped tree.
    <registry>/_archive/<program>`. The collision was ruled out before step 1. Nothing routine reads the archive; `list-features.mjs --archived`
    lists it.
 
-Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>`.
+Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>` —
+already merged: `docs(<key>): <feature> shipped — merged <sha>`.
 
 **Before the ship call, one lesson for next time.** The config's §Standing traps is what this repo
 has already paid to learn, and every step reads it — so a cost this feature paid goes there, or the
@@ -156,8 +166,10 @@ At most one, as one line a newcomer could act on. None qualifies → nothing, an
 
 The collision check, steps 1–5 and the commit are one call, after you have confirmed the precondition:
 `node <builder>/scripts/condense.mjs <folder> --ship --pr <N>` — agent form
-`node <builder>/scripts/condense.mjs <folder> --ship --into <branch>`. It refuses unless `verify:
-READY` (and, with `--into`, until `<branch>` is merged into this branch), removes the workspace itself
+`node <builder>/scripts/condense.mjs <folder> --ship --into <branch>` — already merged
+`node <builder>/scripts/condense.mjs <folder> --ship --merged <sha>`. It refuses unless `verify:
+READY` (with `--into`, until `<branch>` is merged into this branch; with `--merged`, unless `<sha>` is
+in the target and this branch), removes the workspace itself
 (no `rm -rf`), and an interrupted ship — header flipped, manifest gone, folder already moved — is
 finished by running it again.
 

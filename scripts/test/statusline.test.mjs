@@ -47,7 +47,50 @@ test('a live fleet leads with builder and one overall bar, then done/total, each
   } }))
   feature(root, 'b', 'building', { tasks: 9, done: 4 })
   const line = render({ cwd: root, now: NOW, bootTime: BOOT })
-  assert.match(line, /^builder [▓░]{10} \d+% · ⚙ fleet 1\/4 · b build 4\/9 · ⛔ c$/)
+  // What waits on you comes before what is running.
+  assert.match(line, /^builder [▓░]{10} \d+% · ⚙ fleet 1\/4 · ⛔ c · b build 4\/9$/)
+})
+
+const PARKED = { features: {
+  c: { status: 'parked', reason: 'the spec leaves open whether a revoked certificate can be downloaded [D3] — next: answer D3 in SPEC §Decisions, then /builder:agent' },
+  d: { status: 'failed', reason: 'run timed out twice — both no output for 30 min (the idle timeout) — see /x/logs/d-02.log — next: /builder:agent to retry' },
+} }
+
+test('a park reads ⛔ <feature>: <why>, and stays after the fleet has exited', () => {
+  const root = repo()
+  write(root, '.builder/fleet/lock', String(DEAD))
+  write(root, '.builder/fleet/fleet.json', JSON.stringify(PARKED))
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 200 }), 'builder · ⛔ c: the spec leaves open whether a revoked certificate can be d… · ⛔ d: run timed out twice — both no output for 30 min (the idle t…', 'a why is never more than 60 columns')
+  write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: { c: { status: 'parked', reason: 'plan wants to split — next: /builder:revise' }, e: { status: 'parked' } } }))
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · ⛔ c: plan wants to split · ⛔ e')
+  write(root, '.builder/fleet/fleet.json', JSON.stringify(PARKED))
+  // Short of room, each why is cut to its share; shorter still, they fold into a count.
+  const mid = render({ cwd: root, now: NOW, bootTime: BOOT, width: 80 })
+  assert.match(mid, /^builder · ⛔ c: [^·]+… · ⛔ d: [^·]+…$/)
+  assert.ok([...mid].length <= 80, mid)
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 60 }), 'builder · ⛔ 1 parked, 1 failed — /builder:fleet:status')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 30 }), 'builder · ⛔ 1 parked, 1 failed')
+  // A new run that clears them clears the line.
+  write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: { c: { status: 'queued' } } }))
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), '')
+})
+
+test('a running feature whose HEAD, ledger and workspace have not moved for 45 minutes gets a ⚠', () => {
+  const root = repo()
+  const wt = join(root, 'wt-b')
+  const old = NOW - 50 * 60 * 1000
+  write(root, 'wt-b/.git', `gitdir: ${join(root, '.git/worktrees/b')}\n`)
+  write(root, '.git/worktrees/b/logs/HEAD', 'x\n', old)
+  write(root, 'wt-b/docs/features/b/MANIFEST.md', 'size: md\nstate: building\nnext: x\n')
+  write(root, 'wt-b/.builder/b/progress.md', 'Task 1: complete\n', old)
+  utimesSync(join(wt, '.builder/b'), old / 1000, old / 1000)
+  write(root, '.builder/fleet/lock', String(process.pid))
+  const fleet = (startedAt) => JSON.stringify({ features: { b: { status: 'building', worktree: wt, runStartedAt: new Date(startedAt).toISOString() } } })
+  write(root, '.builder/fleet/fleet.json', fleet(NOW - 70 * 60 * 1000))
+  assert.match(render({ cwd: root, now: NOW, bootTime: BOOT }), / · ⚠ b build$/)
+  // A run that started 10 minutes ago has not been quiet for 45.
+  write(root, '.builder/fleet/fleet.json', fleet(NOW - 10 * 60 * 1000))
+  assert.match(render({ cwd: root, now: NOW, bootTime: BOOT }), / · b build$/)
 })
 
 test('a fleet whose process is gone shows nothing (stale fleet.json)', () => {

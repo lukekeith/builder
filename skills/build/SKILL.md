@@ -133,12 +133,15 @@ you know what not to repeat in `--context`:
    - **What the block's `Recipe:` line names, read first** — the path, not the text. In prototype
      mode, a task implementing a design item also takes that item's contract path and its frozen
      snapshot: the contract is the item's spec, and an undesigned state is not invented here.
-   - **The four craft skills, by path** — `test-driven-development`,
-     `systematic-debugging`, `receiving-code-review` and `verification-before-completion`
-     (REFERENCE §The craft skills). Paths, never pasted text.
-   - **The config's §Global constraints, verbatim**, with `<TICKET>` replaced. Paste it **even though
-     `PLAN.md`'s header carries the same block**: the implementer sees only its own block plus this
-     brief. A later session must not "de-duplicate" it away.
+   - **The config's §Global constraints, verbatim**, with `<TICKET>` replaced — **once, here**: the
+     implementer, the task reviewer and the re-reviewer all read this brief, so the prompts point at
+     it instead of repeating it. Paste it **even though `PLAN.md`'s header carries the same block**:
+     the implementer sees only its own block plus this brief. A later session must not
+     "de-duplicate" it away.
+
+   The four craft skills (REFERENCE §The craft skills) are the implementer **prompt's**, by path,
+   each with when to read it — TDD and verification before starting, debugging and
+   receiving-code-review at the moment each names — never pasted, and not repeated in the brief.
 
 ### Dispatch, review, fix
 
@@ -146,8 +149,10 @@ EXECUTION.md §1–5 unchanged, with these bindings:
 
 - 🔴 **Every dispatch is rendered, never typed:** `node <builder>/scripts/dispatch.mjs <kind> <folder> …`
   writes the subagent's whole prompt into the workspace and prints the Agent call — its
-  `description`, the model guidance (**name the model yourself**, EXECUTION.md §Model selection) and
-  the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
+  `description`, its **`subagent_type`** (send it as printed: builder's lean `builder:implementer`,
+  `builder:implementer-skills` or `builder:reviewer` unless the config's `agent_types:` says
+  otherwise — general-purpose only when this session has no agent of that type), the model guidance
+  (**name the model yourself**, EXECUTION.md §Model selection) and the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
   the file and survives a crash. The kinds:
 

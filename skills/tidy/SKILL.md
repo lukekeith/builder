@@ -28,7 +28,9 @@ The safe actions, from `tidy.mjs plan --json` (same flags):
 - `merged` → `delete-branch` (with its worktree)
 - `dead` → `remove-worktree`
 - `parked` with a worktree → `remove-worktree` (the branch stays — it holds the work)
-- `ready` → `merge`
+- `ready` → `merge` — a verified feature is shipped on its own branch first (its SPEC flipped to
+  `SHIPPED` and archived, as the fleet lands one), so the target never holds a finished feature's
+  live folder; a ship that refuses leaves the branch unmerged and says why
 
 None of them → skip to §3. Otherwise one AskUserQuestion listing each by name, grouped:
 **Do all of it** (recommended) / **Not now**. On **Do all of it**, run them grouped by action:
@@ -50,7 +52,8 @@ each with its row's facts in the question — commits ahead, last touched, and f
 
 - **Finish with agents** — a feature branch: `/builder:agent --path <registry>/<feature>` (recommended
   for `in-progress` and `parked`; for parked, only once its *next* step is done — say so).
-- **Merge as is** — `tidy.mjs apply merge <branch>`.
+- **Merge as is** — `tidy.mjs apply merge --as-is <branch>` (no ship: the folder lands live, and
+  `/builder:archive` closes it later).
 - **Keep** — nothing changes; it stays in the picture.
 - **Delete** — `tidy.mjs apply force-delete-branch <branch>`; the option's description says how many
   commits are lost (`ahead`) — "N commits not in <target> are lost".
@@ -59,11 +62,13 @@ An `unknown` branch's recommendation is **Keep**: builder didn't make it and can
 
 ## 4. Done
 
-Run `inventory.mjs` again and print it. End with one footer:
+Run `inventory.mjs` again and print it, then `node <builder>/scripts/archive.mjs plan --summary` — the
+registry's own line. End with one footer, the `registry:` line after it when it is not clean:
 
 ~~~
 📍 repo: clean
 📍 <the repo: line> — kept by your choice: <names>
+📍 registry: 3 finished to archive → /builder:archive
 ~~~
 
 🔴 It never pushes, never deletes a remote branch, never runs `git stash drop`, and never deletes a
