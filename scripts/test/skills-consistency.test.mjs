@@ -261,6 +261,23 @@ test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line;
   for (const f of ['tidy.mjs', 'inventory.mjs', 'tidy-core.mjs']) assert.ok(existsSync(join(ROOT, 'scripts', f)), f)
 })
 
+test('archive: the skill drives archive.mjs plan and apply with one confirmation; status, tidy and ship point at it', () => {
+  const a = read('skills/archive/SKILL.md')
+  assert.match(a, /^name: archive$/m)
+  assert.match(a, /scripts\/archive\.mjs plan/)
+  assert.match(a, /scripts\/archive\.mjs apply/)
+  assert.match(a, /Archive the finished ones\*\* \(Recommended\)/)
+  assert.match(a, /REFERENCE §Before a picker/)
+  assert.match(a, /CLOSED — not walked/)
+  assert.match(a, /DROPPED — <reason>/)
+  assert.match(read('skills/tidy/SKILL.md'), /archive\.mjs plan --summary/)
+  assert.match(read('skills/tidy/SKILL.md'), /apply merge --as-is/)
+  assert.match(read('skills/status/SKILL.md'), /\/builder:archive/)
+  assert.match(read('skills/ship/SKILL.md'), /--ship --merged <sha>/)
+  assert.match(read('skills/help/SKILL.md'), /\/builder:archive/)
+  assert.ok(existsSync(join(ROOT, 'scripts', 'archive.mjs')))
+})
+
 test('the go-ahead takes a test plan and launches the fleet; resume routes an agent go-ahead to the agents', () => {
   const plan = read('skills/plan/SKILL.md')
   assert.match(plan, /profile\.mjs --recommend <folder>/)

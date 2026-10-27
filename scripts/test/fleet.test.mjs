@@ -1494,7 +1494,7 @@ test('archived logs older than keep_logs are pruned at fleet start', () => {
     writeFileSync(join(base, n, `${n}-01.log`), 'x')
   }
   const old = new Date(Date.now() - 3 * 86400000)
-  utimesSync(join(base, 'stale'), old, old)
+  utimesSync(join(base, 'stale', 'stale-01.log'), old, old)
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(existsSync(join(base, 'stale')), false)

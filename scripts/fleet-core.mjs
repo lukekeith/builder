@@ -186,7 +186,10 @@ export function appendArchive(root, row) {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** This feature's run, setup, start and sync logs into logs/_archive/<feature>/. Exact names only:
- *  `a` must not take `a-b-01.log`. Null when done (or nothing to move); else a note. */
+ *  `a` must not take `a-b-01.log`. Its `.jsonl` stream transcripts are deleted instead of moved once
+ *  its archive row is written — the row carries what was read from them, and they are most of the
+ *  bytes (hundreds of MB across a few dozen landings). No row yet → they move with the rest.
+ *  Null when done (or nothing to move); else a note. */
 export function archiveLogs(root, feature) {
   const logs = join(fleetDir(root), 'logs')
   if (!existsSync(logs)) return null
@@ -195,31 +198,50 @@ export function archiveLogs(root, feature) {
   try {
     const names = readdirSync(logs).filter((n) => mine.test(n))
     if (!names.length) return null
+    const rowWritten = tailArchive(root, 50).some((r) => r.feature === feature)
     mkdirSync(dest, { recursive: true })
-    for (const n of names) renameSync(join(logs, n), join(dest, n))
+    for (const n of names) {
+      if (rowWritten && n.endsWith('.jsonl')) rmSync(join(logs, n), { force: true })
+      else renameSync(join(logs, n), join(dest, n))
+    }
     return null
   } catch (e) {
     return `${feature} merged, but its logs could not be moved into ${dest}: ${e.message}`
   }
 }
 
-/** Archived logs older than `days` go; `days` <= 0 keeps them. Best effort — the next start retries. */
+/** Archived log files older than `days` go, each by its own mtime (a folder's mtime moves whenever
+ *  a later landing of the same name adds to it); `days` <= 0 keeps them. A `.jsonl` transcript of
+ *  a feature with an archive row goes whatever its age — one archived before archiveLogs deleted
+ *  them. An emptied folder goes too. Run at fleet start, /builder:archive and /builder:tidy apply.
+ *  Best effort — the next run retries. → the number of files removed. */
 export function pruneArchivedLogs(root, days, now = Date.now()) {
-  if (!(days > 0)) return 0
   const base = join(fleetDir(root), 'logs', ARCHIVE)
-  let removed = 0
   let names = []
   try {
     names = readdirSync(base)
   } catch {
     return 0
   }
+  const landed = landedRows(root)
+  const stale = (p) => days > 0 && now - statSync(p).mtimeMs > days * 86400000
+  let removed = 0
+  const drop = (p) => {
+    rmSync(p, { recursive: true, force: true })
+    removed++
+  }
   for (const n of names) {
+    const dir = join(base, n)
     try {
-      if (now - statSync(join(base, n)).mtimeMs > days * 86400000) {
-        rmSync(join(base, n), { recursive: true, force: true })
-        removed++
+      if (!statSync(dir).isDirectory()) {
+        if (stale(dir)) drop(dir)
+        continue
       }
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f)
+        if ((f.endsWith('.jsonl') && landed.has(n)) || stale(p)) drop(p)
+      }
+      if (!readdirSync(dir).length) rmSync(dir, { recursive: true, force: true })
     } catch {}
   }
   return removed

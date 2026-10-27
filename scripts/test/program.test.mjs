@@ -102,3 +102,20 @@ test('a dependency that lives only in the archive is met — child or registry f
   })
   assert.deepEqual(waitsOn(root, REG, 'c'), [])
 })
+
+test('an archived dependency is met by how it ended: CLOSED (merged) yes, DROPPED never — child or registry feature', () => {
+  const root = registry({
+    children: { api: 'built', ui: 'spec', c: 'spec' },
+    deps: { c: 'api, ui, lib, old' },
+    folders: {
+      '_archive/api': { 'SPEC.md': '# api — spec\n> ✅ CLOSED 2026-10-27 — merged abc1234, not walked\n' },
+      '_archive/ui': { 'SPEC.md': '# ui — spec\n> ✖ DROPPED 2026-10-27 — no activity since 2026-06-01\n' },
+      '_archive/lib': { 'SPEC.md': '# lib — spec\n> ✖ DROPPED 2026-10-27 — superseded\n' },
+      '_archive/old': { 'README.md': '# old notes\n' },
+    },
+  })
+  assert.deepEqual(waitsOn(root, REG, 'c'), [
+    { name: 'ui', state: 'dropped' },
+    { name: 'lib', state: 'dropped' },
+  ])
+})

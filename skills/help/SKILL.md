@@ -44,6 +44,7 @@ it can't find the config, that file is what's missing. Nothing else needs instal
 | **Record that you tried it and it works** | `/builder:signoff --path <folder> <your words>` — only you can type it; `--hold "<reason>"` means "works, don't push yet" |
 | **Change a feature that's already planned or part-built** | `/builder:revise --path <folder> <the change>` |
 | **Clean up leftover branches and worktrees** | `/builder:tidy` |
+| **Clear finished specs out of the way** | `/builder:archive` — shipped, merged and abandoned folders move into `_archive/`, each kept as its SPEC |
 | **Build from a finished design** | `/builder:check --<design.flag> <ref>` to see if it's ready, then `/builder:intake --<design.flag> <ref>` — the flag's name comes from your config |
 | **Update builder, or see which one you're on** | `/builder:update` · `/builder:version` (a copy inside the repo updates with `/builder:vendor`) |
 | **Watch it run** | `/builder:statusline` — a live builder progress bar; `--off` removes it |

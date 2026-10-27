@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,17 @@ const configure = (root) => {
   mkdirSync(join(root, '.claude'), { recursive: true })
   writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nregistry: docs/features\nbase_branch: main\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
   return root
+}
+/** A verified feature on the current branch the way the pipeline leaves it: signed-off SPEC, READY manifest, a workspace. */
+function verified(root, f, { signed = true } = {}) {
+  mkdirSync(join(root, 'docs/features', f), { recursive: true })
+  writeFileSync(join(root, 'docs/features', f, 'MANIFEST.md'), `size: md\nstate: verified\nverify: READY 2026-10-23\nticket: none\nnext: x\n`)
+  writeFileSync(join(root, 'docs/features', f, 'SPEC.md'), `# ${f} — spec\n${signed ? '> ✅ SIGNED OFF 2026-10-23 — abc1234 · by Luke: "works"\n' : ''}> md · no ticket\n\n## Idea\n`)
+  mkdirSync(join(root, '.builder', f), { recursive: true })
+  writeFileSync(join(root, '.builder', f, 'progress.md'), 'x\n')
+  utimesSync(join(root, '.builder', f, 'progress.md'), new Date(0), new Date(0))
+  git(root, 'add', '-A', 'docs')
+  git(root, 'commit', '-qm', `${f} verified`)
 }
 const tidy = (root, ...args) => spawnSync('node', [TIDY, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
 
@@ -61,10 +72,7 @@ test('merge: a branch carrying the target merges --no-ff and goes; one that does
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'config')
   git(root, 'switch', '-q', '-c', 'builder/r')
-  mkdirSync(join(root, 'docs/features/r'), { recursive: true })
-  writeFileSync(join(root, 'docs/features/r/MANIFEST.md'), 'size: md\nstate: verified\nnext: x\n')
-  git(root, 'add', '-A')
-  git(root, 'commit', '-qm', 'r verified')
+  verified(root, 'r')
   git(root, 'switch', '-q', '-c', 'builder/s', 'main')
   mkdirSync(join(root, 'docs/features/s'), { recursive: true })
   writeFileSync(join(root, 'docs/features/s/MANIFEST.md'), 'size: md\nstate: verified\nnext: x\n')
@@ -78,9 +86,14 @@ test('merge: a branch carrying the target merges --no-ff and goes; one that does
   git(root, 'merge', '-q', 'main', '-m', 'r takes main')
   git(root, 'switch', '-q', 'main')
   const r = tidy(root, 'apply', 'merge', 'builder/r', 'builder/s')
-  assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /✓ builder\/r — merged into main/)
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /✓ builder\/r — shipped and merged into main/)
   assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(r\): merged by \/builder:tidy/)
+  // The ship rode the merge: main holds the archived SPEC, no live folder, and no workspace is left.
+  assert.match(git(root, 'show', 'main:docs/features/_archive/r/SPEC.md'), /^> ✅ SHIPPED \S+ — merged into main · no ticket · signed off by Luke: "works"$/m)
+  assert.throws(() => git(root, 'cat-file', '-e', 'main:docs/features/r/MANIFEST.md'))
+  assert.equal(existsSync(join(root, '.builder/r')), false)
+  assert.doesNotMatch(git(root, 'worktree', 'list'), /builder-tidy-ship/, 'the throwaway worktree is gone')
   assert.equal(git(root, 'branch', '--list', 'builder/r'), '')
   assert.match(r.stdout, /→ builder\/s — behind main: the fleet brings it up to date and merges it/)
   assert.match(r.stdout, /^handed: s$/m)
@@ -105,4 +118,40 @@ test('apply refuses anything the inventory says is running', () => {
   assert.equal(r.status, 1)
   assert.match(r.stdout, /✗ builder\/run — running now/)
   assert.ok(git(root, 'branch', '--list', 'builder/run'))
+})
+
+test('merge: a ready feature whose ship refuses is not merged; --as-is merges it unshipped', () => {
+  const root = configure(repo())
+  writeFileSync(join(root, '.gitignore'), '.builder/\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'config')
+  git(root, 'switch', '-q', '-c', 'builder/u')
+  verified(root, 'u', { signed: false })
+  git(root, 'switch', '-q', 'main')
+  const before = git(root, 'rev-parse', 'main')
+  const r = tidy(root, 'apply', 'merge', 'builder/u')
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /✗ builder\/u — not shipped, so not merged: .*sign-off header.*--as-is/)
+  assert.equal(git(root, 'rev-parse', 'main'), before)
+  assert.ok(git(root, 'branch', '--list', 'builder/u'), 'the branch stays')
+  const asIs = tidy(root, 'apply', 'merge', 'builder/u', '--as-is')
+  assert.equal(asIs.status, 0, asIs.stdout)
+  assert.match(asIs.stdout, /✓ builder\/u — merged into main/)
+  assert.ok(git(root, 'show', 'main:docs/features/u/MANIFEST.md'), 'merged as it was')
+})
+
+test('merge: a ready feature with its own worktree ships there, then merges', () => {
+  const root = configure(repo())
+  writeFileSync(join(root, '.gitignore'), '.builder/\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'config')
+  git(root, 'switch', '-q', '-c', 'builder/w')
+  verified(root, 'w')
+  git(root, 'switch', '-q', 'main')
+  git(root, 'worktree', 'add', '-q', `${root}-wt-w`, 'builder/w')
+  const r = tidy(root, 'apply', 'merge', 'builder/w')
+  assert.equal(r.status, 0, r.stdout)
+  assert.match(r.stdout, /✓ builder\/w — shipped and merged into main/)
+  assert.ok(git(root, 'show', 'main:docs/features/_archive/w/SPEC.md'))
+  assert.equal(existsSync(`${root}-wt-w`), false)
 })
