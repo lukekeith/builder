@@ -141,6 +141,11 @@ const WORKTREES = AW.worktrees ? resolve(ROOT, AW.worktrees) : join(dirname(ROOT
 // waiting to walk — up to agent_walk.batch — into one combined walk branch, one env, one walker.
 const BATCH = Number(process.env.FLEET_WALK_BATCH) || AW.batch
 const BATCHED = Boolean(AW.start) && BATCH > 1
+// With a walk env of the fleet's own (agent_walk.start), the walk lane holds only what needs it —
+// readiness, the walk, the @walk gates. Verify and a walk's fixes run in the parallel pool, away
+// from the folder the env serves from, whatever the batch size: a build there rewrote a running
+// dev server's output. Without `start` the env is the human's own checkout, and nothing moves.
+const SPLIT = Boolean(AW.start)
 /** The batch's own worktree and branch: the target with every batched feature merged in. Never merged. */
 const WALK_WT = join(WORKTREES, '_walk')
 const WALK_BRANCH = 'builder/_walk'
@@ -506,7 +511,7 @@ if (flag('--dry-run')) {
   console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
-  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}`)
+  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}${SPLIT ? ' · verify and walk fixes in the build lane, away from the walk env' : ''}`)
   if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
   for (const f of fresh) {
     const mf = parseManifest(readManifest(ROOT, f))
@@ -1083,7 +1088,7 @@ async function drive(feature, lane) {
       cap: RUN_CAP,
       progressed: snapshot(f.worktree, feature) !== before,
       folder: specOf(feature),
-      batched: BATCHED,
+      batched: SPLIT,
     })
     if (d.action === 'retry') {
       failures++
@@ -1264,6 +1269,8 @@ async function walkOne(feature) {
         await fixWalkEnv(feature, why)
       }
       const outcome = await drive(feature, 'walk')
+      // Signed off with the env still up: its @walk gates now, for verify in the pool to read.
+      if (SPLIT && parseManifest(readManifest(f.worktree, feature) ?? '').state === 'signed-off') runWalkGates([feature], f.worktree, feature)
       // Walk readiness met a change the running env can't pick up (REFERENCE §Walk readiness): the
       // fleet owns the env, so it clears the line, restarts it, and the walk goes on.
       if (outcome !== 'parked' || !RESTART.test(f.reason ?? '') || restarts === 2) return outcome
@@ -1313,7 +1320,7 @@ function enqueue(feature) {
   if (f.unpark) unpark(feature)
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
-  const lane = text == null ? 'unknown' : laneOf(mf, { batched: BATCHED, specText: readSpec(f.worktree, feature) })
+  const lane = text == null ? 'unknown' : laneOf(mf, { batched: SPLIT, specText: readSpec(f.worktree, feature) })
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
   else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' }) // shipped, the merge still owed
   else if (lane === 'done') {
@@ -1767,16 +1774,17 @@ function prepareWalkTree(features) {
  * The deep set's @walk lines, once for the batch, against the env serving every feature in it —
  * written to each feature's workspace as walk-gates.md, which its verify reads (verify §@walk lines).
  */
-function runWalkGates(features) {
-  if (!parseGates(CFG.body).deep.some((g) => g.walk)) return
-  const r = spawnSyncSafe(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--walk-only', '--force'], { cwd: WALK_WT, env: envFor('_walk', 'walk') })
-  const head = tryGit(['rev-parse', '--short', 'HEAD'], WALK_WT)
-  const text = `# @walk gates — walk batch at ${head}\n\nfeatures in the batch: ${features.join(', ')}\nexit: ${r.status}${r.status === 3 ? ' (the walk env stopped answering)' : ''}\n\n\`\`\`\n${r.output.trim().split('\n').slice(-120).join('\n')}\n\`\`\`\n`
+function runWalkGates(features, wt = WALK_WT, envOf = '_walk') {
+  if (!parseGates(CFG.body).deep.some((g) => g.walk)) return null
+  const r = spawnSyncSafe(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--walk-only', '--force'], { cwd: wt, env: envFor(envOf, 'walk') })
+  const head = tryGit(['rev-parse', '--short', 'HEAD'], wt)
+  const text = `# @walk gates — ${wt === WALK_WT ? 'walk batch' : 'the walk'} at ${head}\n\nfeatures in the batch: ${features.join(', ')}\nexit: ${r.status}${r.status === 3 ? ' (the walk env stopped answering)' : ''}\n\n\`\`\`\n${r.output.trim().split('\n').slice(-120).join('\n')}\n\`\`\`\n`
   for (const x of features) {
     const ws = join(fleet.features[x].worktree, '.builder', x)
     mkdirSync(ws, { recursive: true })
     writeFileSync(join(ws, 'walk-gates.md'), text)
   }
+  return r.status
 }
 const spawnSyncSafe = (cmd, args, opts) => {
   try {
@@ -1863,7 +1871,7 @@ async function walkBatch(batch) {
       for (const x of active) {
         const fx = fleet.features[x]
         fx.log = log
-        const d = decide({ lane: 'walk', manifestText: readManifest(fx.worktree, x), specText: readSpec(fx.worktree, x), exit, failures: failures[x] ?? 0, stalls: stalls[x] ?? 0, runs: fx.runsThisTime, cap: RUN_CAP, progressed: snapshot(fx.worktree, x) !== before[x], folder: specOf(x), batched: BATCHED })
+        const d = decide({ lane: 'walk', manifestText: readManifest(fx.worktree, x), specText: readSpec(fx.worktree, x), exit, failures: failures[x] ?? 0, stalls: stalls[x] ?? 0, runs: fx.runsThisTime, cap: RUN_CAP, progressed: snapshot(fx.worktree, x) !== before[x], folder: specOf(x), batched: SPLIT })
         if (d.action === 'park' && RESTART.test(d.reason)) {
           clearBlocked(fx.worktree, x)
           restart = true

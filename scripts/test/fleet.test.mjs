@@ -217,7 +217,8 @@ test('a run that prints more than one result event is timed by the last', () => 
   // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
-  assert.deepEqual(c.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  const { start, end, ...first } = c.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -870,6 +871,16 @@ test('start and smoke bring up a walk env for the walk, and it is gone afterward
   const pid = Number(readFileSync(pidFile, 'utf8'))
   assert.equal(alive(pid), false, 'the start process is gone')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/s/s-start.log')), 'start output is logged')
+})
+
+test('with a walk env of its own, verify runs in the pool even one walk at a time — never beside the env', async () => {
+  const { root } = await walkEnvRepo('s')
+  const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_WALK_BATCH: '1' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 's')
+  const lanes = r.calls.filter((l) => l.startsWith('start')).map((l) => l.split(' ')[2])
+  // readiness and the walk in the walk lane; the sign-off hands verify and ship to the pool.
+  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'build', 'build'])
 })
 
 test('start is killed even when the walk parks', async () => {
