@@ -41,7 +41,7 @@ test('taskBlock: one task from its heading to the next Task heading, a fenced he
   assert.equal(taskBlock(plan, 3), null)
 })
 
-test('dispatch implementer: the brief (task + SPEC sections + §Contract + recipe + craft skills + constraints) and the full prompt, nothing left unfilled', () => {
+test('dispatch implementer: the brief (task + SPEC sections + §Contract + recipe + constraints) and the full prompt (+ craft skills), nothing left unfilled', () => {
   const r = leanRepo('note-tags')
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--context', 'Tasks 2 and 3 build on parse/tagsOf/line — use exactly those names.'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
@@ -63,7 +63,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
     assert.ok(p.includes(`**${sp}**`), s)
     assert.ok(existsSync(sp))
   }
-  assert.match(p, /- No dependencies\. Node's own modules only\.\n- The CLI entry stays `src\/cli\.mjs`/)
+  // The constraints close the brief, once — the prompt points at them rather than repeating them.
+  assert.doesNotMatch(p, /- No dependencies\. Node's own modules only\./)
+  assert.match(p, /Read it\s+with the Read tool, in one call — never `cat` or `sed` it/)
   assert.match(p, new RegExp(`Write your full report to ${join(WS(r), 'task-1-report.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`))
 
   const brief = readText(join(WS(r), 'task-1-brief.md'))
@@ -76,8 +78,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
   assert.doesNotMatch(brief, /\| F2 \|/)
   assert.match(brief, /## §Contract — not frozen yet\n/)
   assert.match(brief, /\| `notes tags` \| notes/)
-  assert.ok(brief.includes(join(BUILDER, 'skills', 'test-driven-development', 'SKILL.md')))
-  assert.match(brief, /## Global constraints \(the project config's, verbatim\)\n\n- No dependencies/)
+  assert.ok(!brief.includes('## The craft skills') && !brief.includes(join(BUILDER, 'skills', 'systematic-debugging', 'SKILL.md')), 'the craft skills are the prompt\'s, not repeated in the brief')
+  assert.match(brief, /## Read first — the recipe\n\n.*test-driven-development/)
+  assert.match(brief, /## Global constraints \(the project config's, verbatim\)\n\n- No dependencies\. Node's own modules only\.\n- The CLI entry stays `src\/cli\.mjs`/)
   const state = JSON.parse(readText(join(WS(r), 'dispatch-state.json')))
   assert.equal(state.tasks['1'].base, git(r.root, 'rev-parse', '--short', 'HEAD'))
 })

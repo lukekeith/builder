@@ -13,7 +13,9 @@ Subagent (general-purpose):
     ## Task description
 
     Read your task brief first: [BRIEF_FILE]
-    It is your requirements, with the exact values to use verbatim.
+    It is your requirements, with the exact values to use verbatim. Read it
+    with the Read tool, in one call — never `cat` or `sed` it: a long brief
+    overflows a shell's output and you pay for it twice.
 
     ## Context
 
@@ -101,8 +103,9 @@ Subagent (general-purpose):
 
     ## How this work is done
 
-    Read these before you start. They are not background reading — they bind
-    how you write this task, and the reviewer judges your diff against them.
+    Read the first and the last before you start; the other two at the
+    moment each names. They are not background reading — they bind how you
+    write this task, and the reviewer judges your diff against them.
 
     - **[TDD_PATH]** — the test comes first, you watch it fail, then you write
       the minimal code. If you didn't watch it fail, you don't know it tests
@@ -120,7 +123,8 @@ Subagent (general-purpose):
 
     ## Global constraints
 
-    [GLOBAL_CONSTRAINTS — pasted verbatim from the project config]
+    The project config's §Global constraints close your brief, verbatim. They
+    bind every line you write, and the reviewer reads the same block.
 
     ## Before reporting back: self-review
 
@@ -179,7 +183,8 @@ Subagent (general-purpose):
   For an app marked `commit: manual`: 🔴 *"`git add` your work and STOP — stage
   it and propose the commit message in your report. Do NOT run `git commit`:
   a commit in this app is the human's to approve."*
-- `[GLOBAL_CONSTRAINTS]` — the config's §Global constraints, verbatim
+- §Global constraints are not a placeholder here: they close the brief, verbatim, where the
+  implementer, the task reviewer and the re-reviewer all read them once
 - `[TDD_PATH]` · `[DEBUGGING_PATH]` · `[REVIEW_PATH]` · `[VERIFICATION_PATH]` —
   the four craft skills, as absolute paths to
   `<builder>/skills/{test-driven-development,systematic-debugging,receiving-code-review,verification-before-completion}/SKILL.md`.
