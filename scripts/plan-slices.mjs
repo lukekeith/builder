@@ -101,6 +101,7 @@ export function slices(planText) {
 // orchestrator to read with task-brief when a ruling needs them.
 
 const STEP = /^\s*[-*]\s+\[[ xX]\]\s/
+const STEP_LOOSE = /^\s*(?:[-*]\s+|\d+\.\s+)?\*\*Step\s+\d+/i
 /** An interface's name: `parse(argv: string[])` and `parse(argv) → {…}` are both `parse`; a path or a literal is not a name. */
 const ident = (code) => {
   const m = /^\s*(?:export\s+)?(?:const|function|class|type|interface|def)?\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/.exec(code)
@@ -118,7 +119,10 @@ export function taskHeads(planText) {
     if (h) { cur = { n: +h[1], name: h[2].trim(), head: [line], steps: 0, files: [], consumes: [], produces: [], stepText: [], open: true }; out.push(cur); part = null; continue }
     if (!cur) continue
     if (!inside && /^## /.test(line)) { cur = null; continue }
-    if (!inside && STEP.test(line)) { cur.open = false; cur.steps += 1 }
+    // A step: a `- [ ]` box (PLAN-FORMAT), a `**Step N` line written without one, or — in a plan
+    // written neither way — the first code fence. The head ends at whichever comes first.
+    if (!inside && (STEP.test(line) || STEP_LOOSE.test(line))) { cur.open = false; cur.steps += 1 }
+    else if (cur.open && inside) cur.open = false
     if (cur.open) {
       cur.head.push(line)
       if (/^\s*\**Files:?\**:?\s*$/i.test(line)) part = 'files'

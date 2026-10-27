@@ -219,3 +219,14 @@ test('--scan: shared files, interfaces handed between tasks, Files outside the A
   assert.match(out, /\| files ↔ steps \| 1 \| steps name `api\/conftest\.py`, not in Files/)
   assert.match(out, /rows to rule on · checked clean: none/)
 })
+
+test('--brief ends a task\'s head at its first step however the plan writes steps', async () => {
+  const { planBrief } = await import('../plan-slices.mjs')
+  const plan = ['# p', '', '### Task 1: a', 'App: api', '', '**Files:**', '- Create: `api/a.py`', '', '**Step 1: Write the test**', '', '```py', 'def test_a(): ...', '```',
+    '### Task 2: b', 'App: api', '', '**Files:**', '- Create: `api/b.py`', '', 'Then:', '', '```py', 'SECRET_CODE = 1', '```'].join('\n')
+  const b = planBrief(plan)
+  assert.match(b, /- Create: `api\/a\.py`/)
+  assert.match(b, /- Create: `api\/b\.py`/)
+  assert.doesNotMatch(b, /def test_a|SECRET_CODE|\*\*Step 1/)
+  assert.match(b, /### Task 1: a[\s\S]*\(1 step · /)
+})
