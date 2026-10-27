@@ -27,7 +27,9 @@ change in `.claude/builder.md`** — every new key is optional.
   REFERENCE section, the project's `.claude/skills/<name>/SKILL.md`) runs without the Skill tool. The
   walker stays general-purpose. **`agent_types:`** opts out — `general-purpose`, or
   `implementer=<agent>, reviewer=<agent>` for a project's own agents (an implementer that needs an MCP
-  server). Vendored copies carry `agents/`.
+  server); the YAML map form and `implementer: x` read the same. A task whose recipe is a project
+  skill that drives an MCP server (`mcp__…`) runs as general-purpose, or as the project's own
+  implementer. Vendored copies carry `agents/`.
 - **`plan-slices.mjs --brief` and `--scan`** — the build orchestrator's view of the plan: the header
   and each task's head (App, Phase, Recipe, Files, Interfaces), never its code; and the pre-flight
   scan's mechanical rows (shared files, interfaces handed between tasks, Files outside the App, steps
@@ -39,7 +41,11 @@ change in `.claude/builder.md`** — every new key is optional.
 - **`/builder:archive`** — one table of the registry's finished folders, one confirmation, one commit.
   Each keeps only its SPEC (PROGRAM for a program) under a `SHIPPED`, `CLOSED — not walked` or
   `DROPPED — <reason>` header in `_archive/`; PLAN, manifest, ledgers and workspaces go (`git log`
-  keeps them). A dropped feature never satisfies a program dependency; a closed one does.
+  keeps them). A dropped feature never satisfies a program dependency (the fleet's refusal says what
+  to edit); a closed one does. A program child archived here is recorded on its program, and a
+  program whose children all ended — shipped, closed or dropped — is offered too. `--drop
+  <name>=<reason>` takes one reason per folder in the same commit; a folder that fails half-way is
+  put back as it was.
 - **`condense.mjs --ship --merged <sha>`** — ships a verified feature that is already in the target
   without a PR (merged by hand, or a PR merged before ship ran).
 
@@ -57,7 +63,7 @@ change in `.claude/builder.md`** — every new key is optional.
 - **Parks are told.** The status line shows `⛔ <feature>: <why>` and keeps parked and failed rows
   after the fleet exits (folding to `⛔ N parked — /builder:fleet:status` when short of room); the
   session brief lists what the fleet stopped, with why and next; `fleet.out` gets a block per park or
-  failure. A run timed out twice says why — the idle timeout or the run cap.
+  failure. A park settled outside the fleet — its folder archived, its branch gone — leaves both. A run timed out twice says why — the idle timeout or the run cap.
 - **A quiet run is flagged** — a running feature with no commit, ledger tick or workspace write for 45
   minutes gets `⚠` on the status line and a line under `/builder:fleet:status`.
 - **Progress moves per task** — 0.2 of its share when the brief is written, 0.7 at its report, all at
@@ -67,8 +73,9 @@ change in `.claude/builder.md`** — every new key is optional.
   program are done; a conversation for an archived feature is no longer listed as a draft.
 - **`/builder:tidy` ships a verified branch on its branch before merging it**, as the fleet does;
   `merge --as-is` skips that.
-- **Logs:** a landed feature's `.jsonl` transcripts are deleted once its archive row (with the meter)
-  is written; archived logs are pruned by each file's own age at fleet start, tidy and archive.
+- **Logs:** a landed feature's `.jsonl` transcripts are deleted once its archive row holds the meter
+  read from them — never under `keep_logs: 0`, and never a pre-5.4 landing's (its only per-dispatch
+  record); archived logs are pruned by each file's own age at fleet start, tidy and archive.
 
 **Fixed:**
 - A parked feature whose worktree was removed at fleet exit read 0% — it keeps its last progress.
