@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
@@ -278,8 +278,15 @@ test('a folder that says it shipped is done everywhere: manifest state: shipped,
 test('a brainstorm.md left for an archived feature is not a draft', () => {
   const root = setup({ live: 'state: building' }, { '_archive/old/SPEC.md': SHIPPED('old', '2026-09-01', 4) })
   draft(root, 'old', 'status: exploring\nsource: brainstorm\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 2')
+  // Left behind: written before the folder was archived (the archived SPEC is rewritten then).
+  const before = new Date(Date.now() - 86400000)
+  utimesSync(join(root, '.builder', 'old', 'brainstorm.md'), before, before)
   const json = JSON.parse(list(root, '--json').stdout).features
   assert.deepEqual(json.map((f) => f.feature), ['live'])
+  // Written after: the name is being reused for a new conversation, which is a draft.
+  const after = new Date(Date.now() + 60000)
+  utimesSync(join(root, '.builder', 'old', 'brainstorm.md'), after, after)
+  assert.deepEqual(JSON.parse(list(root, '--json').stdout).features.map((f) => f.feature).sort(), ['live', 'old'])
 })
 
 test('--archived says which archived folders were closed or dropped rather than shipped', () => {
