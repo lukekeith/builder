@@ -117,7 +117,7 @@ export function parkItems(stops, budget) {
 function fleetItems(main, registry, bootTime, now) {
   const fleet = readJson(join(main, '.builder', 'fleet', 'fleet.json'))
   if (!fleet) return null
-  const stops = fleetStops(fleet)
+  const stops = fleetStops(fleet, { main, registry })
   const lock = join(main, '.builder', 'fleet', 'lock')
   // The fleet has exited: its parked and failed rows still wait on someone, and fleet.json still
   // holds them — they stay on the line until a new run changes them. Nothing else from it does.

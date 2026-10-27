@@ -647,14 +647,42 @@ const RUNNING = new Set(['building', 'walking', 'shipping'])
  * The fleet's parked and failed rows as `[{ name, status, why, next }]`, by name. `why` drops a failed
  * row's ` — see <log>` (the log path is fleet.out's and PARKED.md's to give; a line has no room).
  */
-export function fleetStops(fleet) {
+export function fleetStops(fleet, { main = null, registry = null } = {}) {
   return Object.entries(fleet?.features ?? {})
     .filter(([, f]) => STOPPED.has(f?.status))
+    .filter(([name, f]) => !main || !stopSettled(main, registry, name, f))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, f]) => {
       const { why, next } = parkParts(f.reason ?? '')
       return { name, status: f.status, why: why.replace(/\s—\ssee\s\S+$/, '').trim(), next: next ?? RETRY_NEXT }
     })
+}
+
+/**
+ * A parked or failed row someone has since settled outside the fleet — its feature folder moved to
+ * `<registry>/_archive/`, or its branch gone (merged and deleted by /builder:tidy, or by hand). Only a landing removes
+ * a fleet.json row, so without this a settled park would sit on the status line and in every session
+ * brief for good. File reads only: the status line runs this on every render.
+ */
+export function stopSettled(main, registry, name, f) {
+  if (registry && existsSync(join(main, registry, '_archive', name)) && !existsSync(join(main, registry, name))) return true
+  return Boolean(f?.branch) && !branchExists(main, f.branch)
+}
+
+/** Whether a local branch exists, from .git's refs and packed-refs — no git process. Unknown (no .git dir) → true. */
+export function branchExists(main, branch) {
+  const dir = join(main, '.git')
+  try {
+    if (!statSync(dir).isDirectory()) return true
+  } catch {
+    return true
+  }
+  if (existsSync(join(dir, 'refs', 'heads', ...String(branch).split('/')))) return true
+  try {
+    return readFileSync(join(dir, 'packed-refs'), 'utf8').split('\n').some((l) => l.endsWith(` refs/heads/${branch}`))
+  } catch {
+    return false
+  }
 }
 
 /**
