@@ -1606,7 +1606,7 @@ test('apply_mode ask leaves a note naming the command; a drop is never run under
   const d = runFleet(drop, ['a'], { a: HAPPY })
   assertLanded(d, 'a')
   assert.ok(!existsSync(join(drop, 'applied.txt')))
-  assert.ok(d.fleet.notes.some((n) => /drops or rewrites data, so it was not applied/.test(n)), JSON.stringify(d.fleet.notes))
+  assert.ok(d.fleet.notes.some((n) => /may drop or rewrite data going forward, so nothing was applied/.test(n)), JSON.stringify(d.fleet.notes))
 })
 
 // ---- agents never take a feature a session is building, or one branch several features share ----

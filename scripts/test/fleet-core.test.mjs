@@ -458,7 +458,7 @@ test('landedRow reads the whole archive and returns the last row for a feature',
 })
 
 // ---- 4.9.2: migrations that land with a feature reach the dev DB ------------------------------
-import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts } from '../fleet-core.mjs'
+import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts, destructiveMigration, forwardHalf } from '../fleet-core.mjs'
 
 const BODY = [
   '## Quality gates', '', '```', 'x: y', '```', '',
@@ -492,9 +492,28 @@ test('landedMigrations: a drop or rewrite is never run, only noted', () => {
   for (const text of ['DROP TABLE "A";', 'ALTER TABLE "A" DROP COLUMN "b";', 'DELETE FROM "A";', 'TRUNCATE "A";', 'ALTER TABLE "A" RENAME COLUMN "b" TO "c";']) {
     const r = landedMigrations({ files: [{ path: 'm/1/migration.sql', text }], readiness: parseWalkReadiness(BODY) })
     assert.equal(r.action, 'note', text)
-    assert.match(r.why, /drops or rewrites data/)
+    assert.match(r.why, /may drop or rewrite data going forward/)
     assert.match(r.why, /npm run db:migrate/)
   }
+})
+
+test('destructiveMigration reads only the forward half, catches ORM operations, ignores comments', () => {
+  const alembic = (up, down) => `"""add plans — rename later?"""\nfrom alembic import op\n\ndef upgrade():\n    ${up}\n\n\ndef downgrade():\n    ${down}\n`
+  assert.equal(destructiveMigration({ path: 'alembic/versions/1_add.py', text: alembic('op.add_column("plans", sa.Column("x", sa.Text()))', 'op.drop_column("plans", "x")') }), null, 'a drop only in downgrade() is not a forward drop')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/2.py', text: alembic('op.drop_column("plans", "x")', 'pass') }), 'drop_column')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/3.py', text: alembic('op.execute("DROP TABLE old")', 'pass') }), 'DROP TABLE')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/4.py', text: alembic('# we may rename this later\n    op.create_table("t")', 'op.drop_table("t")') }), null, 'a comment is not an operation')
+  assert.equal(destructiveMigration({ path: 'db/migrate/1_x.rb', text: 'class X < ActiveRecord::Migration[7.1]\n  def up\n    add_column :a, :b, :string\n  end\n  def down\n    remove_column :a, :b\n  end\nend\n' }), null)
+  assert.equal(destructiveMigration({ path: 'db/migrate/2_x.rb', text: 'class X < ActiveRecord::Migration[7.1]\n  def change\n    remove_column :a, :b\n  end\nend\n' }), 'remove_column')
+  assert.equal(destructiveMigration({ path: 'migrations/1.js', text: 'exports.up = (knex) => knex.schema.table("a", (t) => t.string("b"))\nexports.down = (knex) => knex.schema.table("a", (t) => t.dropColumn("b"))\n' }), null)
+  assert.equal(destructiveMigration({ path: 'migrations/2.ts', text: 'export async function up(knex) { await knex.schema.dropTable("a") }\nexport async function down() {}\n' }), 'dropTable')
+  assert.equal(destructiveMigration({ path: 'app/migrations/0002_x.py', text: 'operations = [migrations.RemoveField(model_name="a", name="b")]' }), 'RemoveField', 'Django: the whole file')
+  assert.equal(destructiveMigration({ path: 'db/1.sql', text: 'CREATE TABLE a (id int);\n-- migrate:down\nDROP TABLE a;\n' }), null)
+  assert.equal(destructiveMigration({ path: 'db/2.down.sql', text: 'DROP TABLE a;' }), null, 'a down-only file')
+  assert.equal(destructiveMigration({ path: 'm/3/migration.sql', text: 'ALTER TABLE "a" ALTER COLUMN "b" TYPE bigint;' }), 'ALTER COLUMN "b" TYPE')
+  assert.equal(destructiveMigration({ path: 'm/4/migration.sql', text: 'UPDATE "a" SET b = 1;' }), 'UPDATE "a" SET')
+  assert.match(destructiveMigration({ path: 'migrations/5.go', text: 'func Up() {}' }), /unrecognised/)
+  assert.equal(forwardHalf('db/2.down.sql', 'x'), null)
 })
 
 test('landedMigrations: ask, human, or no apply command → a note naming the command', () => {

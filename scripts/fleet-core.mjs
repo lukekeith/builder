@@ -460,8 +460,84 @@ export function parseWalkReadiness(body) {
   return out
 }
 
-/** SQL that drops or rewrites data — never applied unattended, whatever apply_mode says. */
-const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|CONSTRAINT)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
+/**
+ * What drops or rewrites data — never applied unattended, whatever apply_mode says. Raw SQL (also
+ * inside an ORM's execute string), then each common migration tool's own operations: Alembic, Rails,
+ * Knex, Django, TypeORM/Sequelize-style query runners.
+ */
+const DESTRUCTIVE_OPS = [
+  /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|CONSTRAINT|DATABASE|MATERIALIZED\s+VIEW)\b/i,
+  /\bALTER\s+TABLE\b[^;]*\bDROP\b/i,
+  /\bALTER\s+(TABLE|INDEX|TYPE|SCHEMA|VIEW)\b[^;]*\bRENAME\b/i,
+  /\bRENAME\s+(TO|COLUMN|CONSTRAINT|TABLE)\b/i,
+  /\bALTER\s+COLUMN\b[^;]*\b(TYPE|SET\s+DATA\s+TYPE)\b/i,
+  /\bDELETE\s+FROM\b/i,
+  /\bTRUNCATE\b/i,
+  /\bUPDATE\s+["'`\w.]+\s+SET\b/i,
+  /\b(drop_table|drop_column|drop_constraint|drop_index|rename_table|rename_column|alter_column|remove_column|remove_columns|remove_reference|remove_index|remove_timestamps|change_column|change_table|batch_alter_table)\b/,
+  /\b(dropTable|dropTableIfExists|dropColumn|dropColumns|renameColumn|renameTable|dropIndex|dropForeign|removeColumn|changeColumn|renameColumn)\b/,
+  /\.alter\(\s*\)/,
+  /\b(RemoveField|DeleteModel|RenameField|RenameModel|AlterField|RunPython|RunSQL)\b/,
+]
+/** Files that only ever run backwards: a down-only migration cannot drop anything going forward. */
+const DOWN_ONLY = /\.down\.sql$|(^|\/)U\d+__[^/]*\.sql$|(^|\/)revert\//i
+const KNOWN_KINDS = /\.(sql|py|rb|js|cjs|mjs|ts|cts|mts)$/i
+
+/** Comments out, so a word in a comment or a docstring never reads as an operation. */
+const stripComments = (path, text) => {
+  let t = String(text ?? '')
+  if (/\.py$/i.test(path)) t = t.replace(/("""|''')[\s\S]*?\1/g, '').replace(/^\s*#.*$/gm, '')
+  if (/\.rb$/i.test(path)) t = t.replace(/^=begin[\s\S]*?^=end/gm, '').replace(/^\s*#.*$/gm, '')
+  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) t = t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  if (/\.sql$/i.test(path)) t = t.replace(/\/\*[\s\S]*?\*\//g, '')
+  return t
+}
+
+/**
+ * The forward half of a migration — what `apply` runs — or null when the file only runs backwards.
+ * Alembic `def upgrade(` up to the next top-level def; Rails `def up` up to `def down` (`def change`
+ * is the whole file); Knex/TypeORM `up` up to `down`; SQL before a down marker (`-- migrate:down`,
+ * `-- +goose Down`, `-- +migrate Down`, `-- down`). Anything else — Django, Prisma's migration.sql,
+ * a file whose boundary isn't found — is the whole file: when unsure, read more, not less.
+ */
+export function forwardHalf(path, text) {
+  if (DOWN_ONLY.test(path)) return null
+  const t = String(text ?? '')
+  const cut = (start, end) => {
+    const i = t.search(start)
+    if (i < 0) return t
+    const rest = t.slice(i)
+    const j = rest.slice(1).search(end)
+    return j < 0 ? rest : rest.slice(0, j + 1)
+  }
+  if (/\.py$/i.test(path)) return /^def upgrade\s*\(/m.test(t) ? cut(/^def upgrade\s*\(/m, /^def \w/m) : t
+  if (/\.rb$/i.test(path)) return /^\s*def up\b/m.test(t) ? cut(/^\s*def up\b/m, /^\s*def down\b/m) : t
+  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) {
+    const up = /exports\.up\b|export\s+(async\s+)?function\s+up\b|export\s+const\s+up\b|(public\s+)?async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(function|\()/m
+    const down = /exports\.down\b|export\s+(async\s+)?function\s+down\b|export\s+const\s+down\b|(public\s+)?async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(function|\()/m
+    return up.test(t) ? cut(up, down) : t
+  }
+  if (/\.sql$/i.test(path)) {
+    const m = /^--\s*(migrate:down|\+goose\s+down|\+migrate\s+down|down\b)/im.exec(t)
+    return m ? t.slice(0, m.index) : t
+  }
+  return t
+}
+
+/**
+ * Why a migration file is not safe to apply unattended — the operation it runs going forward, or
+ * that its kind is unknown — or null when it only adds. Errs towards a note: a false alarm costs
+ * one command run by hand; a miss costs data.
+ */
+export function destructiveMigration({ path, text }) {
+  const p = String(path ?? '')
+  if (!KNOWN_KINDS.test(p)) return 'an unrecognised migration file — checked by hand'
+  const fwd = forwardHalf(p, text)
+  if (fwd == null) return null
+  const body = stripComments(p, fwd)
+  const hit = DESTRUCTIVE_OPS.map((re) => re.exec(body)).find(Boolean)
+  return hit ? hit[0].replace(/\s+/g, ' ').trim() : null
+}
 
 /**
  * What to do about migrations a landing brought into the checkout: `files` are the new migration
@@ -474,8 +550,8 @@ export function landedMigrations({ files, readiness }) {
   const cmds = [readiness.apply, readiness.regenerate].filter(Boolean)
   const run = cmds.map((c) => `\`${c}\``).join(', then ')
   if (!readiness.apply) return { action: 'note', why: `${n} landed, but the config's §Walk readiness has no \`apply:\` command — apply them to the dev DB by hand` }
-  const destructive = files.filter((f) => DESTRUCTIVE.test(f.text ?? '')).map((f) => f.path)
-  if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.join(', ')} drops or rewrites data, so it was not applied — check it, then run ${run}` }
+  const destructive = files.map((f) => [f.path, destructiveMigration(f)]).filter(([, why]) => why)
+  if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.map(([p, why]) => `${p} (${why})`).join(', ')} may drop or rewrite data going forward, so nothing was applied — check it, then run ${run}` }
   if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
   return { action: 'apply', commands: cmds }
 }
