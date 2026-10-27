@@ -168,6 +168,9 @@ test('a blocked spec parks with its reason and the fleet exits 1', () => {
   assert.equal(r.status, 1)
   assert.equal(r.fleet.features.b.status, 'parked')
   assert.equal(r.fleet.features.b.reason, 'plan wants to split')
+  const out = readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8')
+  assert.match(out, /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z\] ⛔ b parked$/m)
+  assert.match(out, /^  why: +plan wants to split\n  next: +\/builder:agent — naming it again unparks it and retries\n  record: .*\/docs\/features\/b\/PARKED\.md \(committed on builder\/b\)$/m)
 })
 
 test('a run that changes nothing parks as no progress', () => {
@@ -197,7 +200,7 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   const t1 = assertLanded(r, 't1')
   assert.equal(t1.timing[0].turns, 3, `run 1 was not the chatty run that finished: ${JSON.stringify(t1.timing[0])}`)
   assert.equal(r.fleet.features.t2.status, 'failed')
-  assert.match(r.fleet.features.t2.reason, /timed out twice/)
+  assert.match(r.fleet.features.t2.reason, /timed out twice — both no output for \d+ s \(the idle timeout\)/, 'the cause is kept')
   // A killed run says why in its log, so an empty-looking log is never mistaken for a lost one.
   assert.match(readFileSync(join(root, '.builder/fleet/logs/t2-01.log'), 'utf8'), /\[fleet\] killed: no output for \d+ s \(the idle timeout\)/)
   assert.equal(reached(r, 't2', 'HANG'), 2, 'both silent runs started and hung, rather than dying while starting')
@@ -238,7 +241,9 @@ test('a hung run times out twice and fails', () => {
   const root = makeRepo(['e'])
   const r = runFleet(root, ['e'], { e: ['HANG', 'HANG'] }, { FLEET_RUN_TIMEOUT_MS: String(STUB_WINDOW_MS) })
   assert.equal(r.fleet.features.e.status, 'failed')
-  assert.match(r.fleet.features.e.reason, /timed out twice/)
+  assert.match(r.fleet.features.e.reason, /timed out twice — both still running after \d+ s \(the run timeout\)/, 'the run cap, not the idle timeout')
+  // Detached, nothing in a session hears it: fleet.out says what stopped, why and what next.
+  assert.match(readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8'), /\] ⛔ e failed\n  why: +run timed out twice — both still running after [^\n]+\n  next: +\/builder:agent to retry\n/)
   assert.equal(reached(r, 'e', 'HANG'), 2, 'both runs started and hung, rather than dying while starting')
 })
 
@@ -441,6 +446,9 @@ test('a parked feature keeps its branch but not its worktree; picking it again c
   assert.ok(existsSync(join(root, '.builder/kept/p/progress.md')), 'the build workspace outlives the worktree')
   assert.equal(r.fleet.features.p.status, 'parked')
   assert.equal(r.fleet.features.p.worktree, null)
+  // Its progress is the worktree's last reading, not the root checkout's spec at 0%.
+  assert.deepEqual(r.fleet.features.p.lastProgress, { pct: 10, label: 'audited' })
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| p \| parked \|[^\n]*10% · audited/)
   assert.equal(existsSync(`${root}-wt/p`), false, 'the worktree is removed at exit')
   assert.ok(git(root, 'branch', '--list', 'builder/p'), 'the branch holds the work')
   const r2 = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later', ...HAPPY.slice(1)] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
@@ -600,6 +608,23 @@ test('--status says when the fleet process is gone with features mid-run, and ho
   // A live lock: no warning.
   writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
   assert.doesNotMatch(runFleet(root, ['--status'], {}).stdout, /fleet stopped/)
+})
+
+test('--status warns about a running feature with no commit or ledger tick for 45 minutes', () => {
+  const root = makeRepo(['b'])
+  const wt = mkdtempSync(join(tmpdir(), 'fleet-stall-'))
+  const old = (Date.now() - 50 * 60 * 1000) / 1000
+  mkdirSync(join(wt, '.builder/b'), { recursive: true })
+  writeFileSync(join(wt, '.builder/b/progress.md'), '- Task 1: dispatched\n')
+  utimesSync(join(wt, '.builder/b/progress.md'), old, old)
+  utimesSync(join(wt, '.builder/b'), old, old)
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  const row = (min) => JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 3, branch: 'builder/b', worktree: wt, runStartedAt: new Date(Date.now() - min * 60 * 1000).toISOString() } } })
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), row(80))
+  writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  assert.match(runFleet(root, ['--status'], {}).stdout, /^⚠ b running 1h20m with no commit or ledger tick since \d{2}:\d{2}$/m)
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), row(20))
+  assert.doesNotMatch(runFleet(root, ['--status'], {}).stdout, /⚠ b running/, 'a run 20 minutes old has not been quiet for 45')
 })
 
 test('--detach starts the fleet in its own session and returns at once; the fleet carries on', async () => {
