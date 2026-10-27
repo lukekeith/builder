@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, realpathSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, realpathSync, utimesSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -163,4 +163,68 @@ test('apply prunes archived fleet logs past keep_logs', () => {
   assert.equal(r.status, 0, r.stdout + r.stderr)
   assert.match(r.stdout, /✓ fleet logs — 1 archived log file pruned/)
   assert.equal(existsSync(join(logs, 'x-01.log')), false)
+})
+
+test('apply puts back a folder that fails half-way — its header and trims undone, nothing of it committed', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'arch-rb-')))
+  git(root, ['init', '-q', '-b', 'main'])
+  git(root, ['config', 'user.email', 't@t'])
+  git(root, ['config', 'user.name', 't'])
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nregistry: docs/features\nbase_branch: main\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
+  commit(root, { 'm/MANIFEST.md': 'size: md\nstate: built\nwalk: none\nnext: x\n', 'm/SPEC.md': SPEC('m'), 'm/PLAN.md': 'plan\n' }, 100, 'old work')
+  // A read-only archive folder: the move fails after the header is written and PLAN.md is removed.
+  mkdirSync(join(root, REG, '_archive'))
+  chmodSync(join(root, REG, '_archive'), 0o555)
+  const before = git(root, ['rev-parse', 'HEAD'])
+  let r
+  try {
+    r = archive(root, 'apply', 'm')
+  } finally {
+    chmodSync(join(root, REG, '_archive'), 0o755)
+  }
+  assert.notEqual(r.status, 0)
+  assert.match(r.stdout + r.stderr, /✗ m — .* — put back as it was/)
+  assert.equal(git(root, ['rev-parse', 'HEAD']), before, 'nothing committed')
+  assert.equal(git(root, ['status', '--porcelain']), '')
+  assert.equal(text(root, `${REG}/m/SPEC.md`), SPEC('m'))
+  assert.ok(existsSync(join(root, REG, 'm', 'PLAN.md')))
+})
+
+test('apply takes a drop reason per name, so a batch mixing drops and the rest is one commit', () => {
+  const root = fixture()
+  const before = Number(git(root, ['rev-list', '--count', 'HEAD']))
+  const r = archive(root, 'apply', 'm', 'f', 'r', '--drop', 'f=superseded by g', '--drop', 'r=the idea moved to a program')
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.equal(Number(git(root, ['rev-list', '--count', 'HEAD'])), before + 1)
+  assert.match(text(root, `${REG}/_archive/f/SPEC.md`).split('\n')[1], /^> ✖ DROPPED 2026-10-27 — superseded by g$/)
+  assert.match(text(root, `${REG}/_archive/r/SPEC.md`).split('\n')[1], /^> ✖ DROPPED 2026-10-27 — the idea moved to a program$/)
+  assert.match(text(root, `${REG}/_archive/m/SPEC.md`).split('\n')[1], /^> ✅ CLOSED /)
+})
+
+test('a program child dropped here says so on its program, and a program whose children all ended is offered', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'arch-prog-')))
+  git(root, ['init', '-q', '-b', 'main'])
+  git(root, ['config', 'user.email', 't@t'])
+  git(root, ['config', 'user.name', 't'])
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\nregistry: docs/features\nbase_branch: main\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
+  commit(root, {
+    'p/MANIFEST.md': 'tier: program\nchild: c1 — shipped\nchild: c2 — building\nnext: x\n',
+    'p/PROGRAM.md': '# p — program\n> xl\n\n## Children\n\n| # | Child | Depends on |\n|---|---|---|\n| 1 | c1 | — |\n| 2 | c2 | c1 |\n',
+    '_archive/c1/SPEC.md': '# c1 — spec\n> ✅ SHIPPED 2026-09-01 — PR #1\n',
+    'c2/MANIFEST.md': 'size: md\nstate: building\nnext: x\n',
+    'c2/SPEC.md': SPEC('c2'),
+  }, 100, 'old work')
+  const r = archive(root, 'apply', 'c2', '--drop', 'c2=folded into c1')
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /program p: child c2 — dropped/)
+  assert.match(text(root, `${REG}/p/MANIFEST.md`), /^child: c2 — dropped$/m)
+  const plan = JSON.parse(archive(root, 'plan', '--json').stdout)
+  const prog = plan.items.find((i) => i.name === 'p')
+  assert.equal(prog?.action, 'program', JSON.stringify(plan))
+  const a = archive(root, 'apply', 'p')
+  assert.equal(a.status, 0, a.stdout + a.stderr)
+  assert.match(text(root, `${REG}/_archive/p/PROGRAM.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — every child ended: 1 shipped, 1 dropped$/)
+  assert.equal(existsSync(join(root, REG, '_archive/p/MANIFEST.md')), false)
 })

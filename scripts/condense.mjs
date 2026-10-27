@@ -267,16 +267,19 @@ export function ship(a) {
     extra.push(mp)
     const kids = parseManifest(next).children ?? []
     const pp = join(dir, 'PROGRAM.md')
-    if (kids.length && kids.every((c) => /—\s*shipped\b/.test(c)) && existsSync(pp)) {
+    // Every child ended — shipped, or closed / dropped by /builder:archive — ends the program.
+    if (kids.length && kids.every((c) => /—\s*(shipped|closed|dropped)\b/.test(c)) && existsSync(pp)) {
       const prog = read(pp)
-      const flipped = setHeader(prog, [`> ✅ SHIPPED ${today()} — every child shipped · last: ${f.feature}`])
+      const others = ['closed', 'dropped'].map((k) => [k, kids.filter((c) => new RegExp(`—\\s*${k}\\b`).test(c)).length]).filter(([, n]) => n)
+      const tail = others.length ? `every child ended (${others.map(([k, n]) => `${n} ${k}`).join(', ')})` : 'every child shipped'
+      const flipped = setHeader(prog, [`> ✅ SHIPPED ${today()} — ${tail} · last: ${f.feature}`])
       if (flipped !== prog) writeAtomic(pp, flipped)
       const parch = join(f.root, registry, ARCHIVE, basename(dir))
       if (!existsSync(parch)) {
         mkdirSync(dirname(parch), { recursive: true })
         git(f.root, ['add', '-A', '--', posix(relative(f.root, dir))])
         git(f.root, ['mv', posix(relative(f.root, dir)), posix(relative(f.root, parch))])
-        out.push(`program ${basename(dir)}: every child shipped — PROGRAM.md flipped, archived`)
+        out.push(`program ${basename(dir)}: ${tail} — PROGRAM.md flipped, archived`)
       }
       extra.push(dir, parch)
     }

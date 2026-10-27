@@ -4,7 +4,7 @@
  * the lines before the first blank line — so listing a hundred conversations reads a few KB.
  * The format is skills/brainstorm/CONVERSATION.md §The record.
  */
-import { existsSync, openSync, readSync, closeSync, readdirSync } from 'node:fs'
+import { existsSync, openSync, readSync, closeSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { ARCHIVE } from './registry.mjs'
 
@@ -65,6 +65,26 @@ function describe(name, registry, h) {
   return row(`brainstorming (${frac(h)})`, 'Continue the brainstorm', again)
 }
 
+/**
+ * A brainstorm.md under an archived feature's name that is newer than the archived record — a NEW
+ * conversation reusing the name, not the old one's leftover. The archived SPEC (or PROGRAM) is
+ * rewritten when it is archived, so its mtime marks the archiving. Git-ignored and unrecoverable,
+ * so when in doubt it counts as new.
+ */
+export function newerThanArchive(root, registry, name) {
+  const mt = (p) => {
+    try {
+      return statSync(p).mtimeMs
+    } catch {
+      return null
+    }
+  }
+  const draft = mt(join(root, '.builder', name, BRAINSTORM_FILE))
+  if (draft == null) return false
+  const rec = Math.max(...['SPEC.md', 'PROGRAM.md'].map((d) => mt(join(root, registry, ARCHIVE, name, d)) ?? 0))
+  return draft > rec
+}
+
 /** Rows for conversations that have no registry folder yet — live or archived. */
 export function draftRows(root, registry) {
   const base = join(root, '.builder')
@@ -78,8 +98,10 @@ export function draftRows(root, registry) {
   for (const name of names.sort()) {
     const file = join(base, name, BRAINSTORM_FILE)
     // A live folder owns its own row; an archived one finished (or was dropped) — a brainstorm.md
-    // left behind for it is a leftover workspace, not a conversation waiting (/builder:archive clears it).
-    if (!existsSync(file) || existsSync(join(root, registry, name)) || existsSync(join(root, registry, ARCHIVE, name))) continue
+    // left behind for it is a leftover workspace (/builder:archive clears it), unless it is newer
+    // than the archiving: then the name is being reused for a new conversation.
+    if (!existsSync(file) || existsSync(join(root, registry, name))) continue
+    if (existsSync(join(root, registry, ARCHIVE, name)) && !newerThanArchive(root, registry, name)) continue
     const h = readBrainstormHeader(file)
     if (h?.status === 'handed-off') continue
     const d = describe(name, registry, h)

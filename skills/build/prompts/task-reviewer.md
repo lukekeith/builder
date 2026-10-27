@@ -5,7 +5,7 @@ The reviewer reads one task's diff once and returns two verdicts: spec complianc
 Adapted from superpowers' `subagent-driven-development` (MIT — see `LICENSE-THIRD-PARTY.md`).
 
 ```
-Subagent (general-purpose):
+Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose where it is absent):
   description: "Review Task N (spec + quality)"
   model: [MODEL — REQUIRED per EXECUTION.md §Model selection; an omitted model
          silently inherits the session's most expensive one]
