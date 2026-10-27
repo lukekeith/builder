@@ -16,6 +16,7 @@ registry: docs/features
 base_branch: main
 # merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch.
 #                       # `current` = the branch checked out when the fleet launches (feature-branch workflows)
+# plan_writers: per-app   # /builder:plan writes each app's tasks in parallel, one writer per app, against SPEC §Contract — faster for multi-app plans; default one writer
 # build_profile_default: standard   # the test plan the go-ahead recommends: rush (least testing) · standard · thorough (most)
 
 # ─── apps ──────────────────────────────────────────────────────────────────
@@ -133,7 +134,20 @@ nothing has touched. Markers go at the end of a line's comment:
 - `@walk` — the line needs the running app (an e2e suite against a URL). Under
   the fleet it runs in verify against the walk env, with `agent_walk.env`, and
   the build lane skips it; every untagged line runs with the test env, never
-  the walk env's database. Outside the fleet it changes nothing.
+  the walk env's database. Outside the fleet it changes nothing. Under the
+  fleet an e2e-looking line (playwright, cypress, `e2e`…) without `@walk` is
+  not run at all — it would hit your dev stack — and is reported unverified.
+- `@local` — an e2e line that starts its own stack and is safe to run as
+  written under the fleet (no `@walk` needed).
+- `@parallel` — the line shares no database, port or output folder with the
+  others: it starts with every other `@parallel` line in the run instead of
+  waiting its turn, so a run takes its slowest line, not the sum. Leave it off
+  any two suites that share a test database.
+
+A line that passed is remembered with the commit it passed at. A later run
+quotes it — evidence, not a re-run — when nothing changed since is its input,
+or, for a `@scoped` line, when the import graph says no change since reaches
+its tests. `--force` and `--whole` never quote.
 
 🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
 `gate:all` that re-runs the typecheck, the unit suites and the e2e suite again
@@ -162,6 +176,7 @@ What makes the **dev** environment run this branch before a human is asked to wa
 ```
 migrations: <dir holding migration files>             # e.g. packages/db/prisma/migrations
 status:     <command>   # pending migrations on the DEV db, e.g. npx prisma migrate status
+pending:    <command>   # optional: exits 0 only when the DEV db has every migration — the fleet asks it after a merge instead of guessing from git; e.g. npx prisma migrate status, `alembic check`, `! rails db:migrate:status | grep -q '^\s*down'`
 apply:      <command>   # e.g. npx prisma migrate deploy
 apply_mode: ask         # ask (default) · human (print the command, never run it) · agent (just run it — the fleet also runs apply then regenerate in your checkout after landing a feature with new additive migrations)
 regenerate: <command>   # after a schema change, e.g. npx prisma generate — omit if none

@@ -5,7 +5,7 @@ description: Shows where a builder feature stands and runs its next step, pausin
 
 # `/builder:resume` — where a feature stands, and the next step
 
-Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--agent-walk] [--here] [--no-dev-env] [--help]`**. Flags:
+Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [--agent-walk] [--here] [--no-dev-env] [--walk-lane] [--help]`**. Flags:
 [REFERENCE](REFERENCE.md) §Flags — flags first, and **ignore any flag this step does not use rather
 than erroring on it**.
 

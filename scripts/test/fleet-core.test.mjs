@@ -104,7 +104,7 @@ test('saveFleet writes fleet.json atomically, STATUS.md, and the .builder ignore
   assert.equal(readFileSync(join(root, '.builder/.gitignore'), 'utf8'), '*\n')
   const status = readFileSync(join(fleetDir(root), 'STATUS.md'), 'utf8')
   assert.match(status, /# builder fleet — 1 feature\(s\): 1 parked/)
-  assert.match(status, /^1 archived · --status --archived for the latest 20$/m, 'a done row is counted, not listed')
+  assert.match(status, /^1 archived · \/builder:fleet:status --archived for the latest 20$/m, 'a done row is counted, not listed')
   assert.doesNotMatch(status, /\| a \|/)
   assert.match(status, /x \\\| y/, 'pipes escaped')
   assert.match(status, /- No agent_walk.reset/)
@@ -127,7 +127,7 @@ test('renderStatus keeps only informative columns, names the target and the work
     },
     notes: ['a note'],
   })
-  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · --status --archived for the latest 20\n/)
+  assert.match(out, /^# builder fleet — 1 feature\(s\): 1 building\n\nmerges into \*\*main\*\* · worktrees under \/w\/root\n\n1 archived · \/builder:fleet:status --archived for the latest 20\n/)
   assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.doesNotMatch(out, /Evidence|\| PR \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| — \| — \| yes \|/)
@@ -283,7 +283,7 @@ test('renderStatus names the archive with the last landing', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderStatus({ target: 'main', archived: 412, features: {} }, null, { feature: 'auth-refresh', landedAt: '2026-09-29T10:00:00Z' }, now)
   assert.match(out, /^# builder fleet — 0 feature\(s\): none\n/)
-  assert.match(out, /^412 archived \(last: auth-refresh, 2h ago\) · --status --archived for the latest 20$/m)
+  assert.match(out, /^412 archived \(last: auth-refresh, 2h ago\) · \/builder:fleet:status --archived for the latest 20$/m)
   assert.match(out, /^Nothing in flight\.$/m)
   assert.doesNotMatch(out, /\| Feature \|/)
 })
@@ -348,7 +348,46 @@ test('renderStatus adds a Time column, and the mean per lane of recently landed 
   assert.match(out, /\| Feature \| Status \| Tests \| Runs \| Time \| Reason \| Worktree \|/)
   assert.match(out, /\| a \| building \| — \| 2 \| 42m \| — \| yes \|/)
   assert.match(out, /\| b \| queued \| — \| 0 \| — \| — \| — \|/)
-  assert.match(out, /^last 2 landed, mean per lane: build 50m · walk 40m$/m)
+  assert.match(out, /^last 2 landed, mean agent time per lane: build 50m · walk 40m$/m)
+})
+
+test('renderStatus prefers wall-clock by stage when the landings recorded it', () => {
+  const rows = [
+    { feature: 'x', lanes: { build: 1 }, wallMs: 200 * 60000, stages: { audit: 10 * 60000, plan: 30 * 60000, build: 40 * 60000, walk: 60 * 60000, parked: 20 * 60000, verify: 40 * 60000 } },
+    { feature: 'y', lanes: { build: 1 }, wallMs: 220 * 60000, stages: { audit: 6 * 60000, plan: 30 * 60000, build: 44 * 60000, walk: 80 * 60000, verify: 60 * 60000 } },
+  ]
+  const out = renderStatus({ target: 'main', archived: 2, features: {} }, null, null, Date.now(), rows)
+  assert.match(out, /^last 2 landed, mean wall-clock 3h30m start → merge \(audit 8m · plan 30m · build 42m · walk 1h10m · verify 50m · parked 10m\)$/m)
+})
+
+test('stagesFromCommits splits a branch history into stages, parks kept apart', () => {
+  const c = (min, s) => ({ t: 1000 + min * 60, s })
+  const r = stagesFromCommits([
+    c(0, 'chore(x): x — agent mode on'), c(7, 'docs(x): x audited'), c(38, 'docs(x): plan x'),
+    c(41, 'feat(x): engine'), c(84, 'feat(x): view'), c(94, 'docs(x): x — final-review rulings'), c(106, 'fix(x): final review findings'),
+    c(146, 'chore(x): x — phases closed, awaiting the walk lane'), c(150, 'chore(x): x — parked: walk env needs a restart'),
+    c(160, 'chore(x): walk env restarted by the fleet'), c(188, 'docs(x): x — agent walk round 1: 1 fixes'), c(189, 'fix(x): one'),
+    c(196, 'docs(x): x agent signed off'), c(232, 'docs(x): x — verify READY'), c(235, 'docs(x): x shipped into main'),
+  ])
+  const m = (k) => r.stages[k] / 60000
+  assert.deepEqual([m('audit'), m('plan'), m('build'), m('finalReview'), m('endGates'), m('walk'), m('parked'), m('verify'), m('ship')], [7, 31, 46, 22, 40, 40, 10, 36, 3])
+  assert.equal(r.walkRounds, 1); assert.equal(r.parks, 1)
+  assert.equal(r.endGatesAt, (1000 + 146 * 60) * 1000)
+  assert.deepEqual(stagesFromCommits([]).stages, {})
+  // With the feature named, only builder's own subjects for it are marks — a task that says "aligned" is a task.
+  const anchored = stagesFromCommits([c(0, 'docs(x): x audited'), c(10, 'docs(x): plan x'), c(20, 'feat(x): keep labels right-aligned'), c(30, 'feat(x): signed off copy'), c(40, 'chore(x): x — phases closed, awaiting the walk lane')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(anchored.stages).map(([k, v]) => [k, v / 60000])), { plan: 10, build: 20, endGates: 10 })
+})
+
+test('walkFacts counts walk.md checks and each round report\'s results', () => {
+  const report = (verdict, rows) => `sha: abc\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n${rows.map(([n, r]) => `| ${n} | web | item | ${r} | e.png |`).join('\n')}\nverdict: ${verdict}\n`
+  const f = walkFacts({
+    walkMd: '# walk\n\n## web\n\n1. [risk] saves\n2. lists\n\n## Cross-app (verify E2E)\n\nE1. end to end\n',
+    reports: [{ n: 2, text: report('PASS', [[1, 'PASS']]) }, { n: 1, text: report('PROBLEMS (1)', [[1, 'FAIL'], [2, 'PASS'], ['E1', 'UNVERIFIABLE']]) }],
+  })
+  assert.equal(f.checks, 3)
+  assert.deepEqual(f.rounds, [{ n: 1, pass: 1, fail: 1, unverifiable: 1, verdict: 'PROBLEMS' }, { n: 2, pass: 1, fail: 0, unverifiable: 0, verdict: 'PASS' }])
+  assert.deepEqual(walkFacts(), { checks: null, rounds: [] })
 })
 
 test('tokensOf reads a result event’s usage; zeros without one', () => {
@@ -422,7 +461,7 @@ test('landedRow reads the whole archive and returns the last row for a feature',
 })
 
 // ---- 4.9.2: migrations that land with a feature reach the dev DB ------------------------------
-import { parseWalkReadiness, landedMigrations } from '../fleet-core.mjs'
+import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts, destructiveMigration, forwardHalf } from '../fleet-core.mjs'
 
 const BODY = [
   '## Quality gates', '', '```', 'x: y', '```', '',
@@ -456,9 +495,44 @@ test('landedMigrations: a drop or rewrite is never run, only noted', () => {
   for (const text of ['DROP TABLE "A";', 'ALTER TABLE "A" DROP COLUMN "b";', 'DELETE FROM "A";', 'TRUNCATE "A";', 'ALTER TABLE "A" RENAME COLUMN "b" TO "c";']) {
     const r = landedMigrations({ files: [{ path: 'm/1/migration.sql', text }], readiness: parseWalkReadiness(BODY) })
     assert.equal(r.action, 'note', text)
-    assert.match(r.why, /drops or rewrites data/)
+    assert.match(r.why, /may drop or rewrite data going forward/)
     assert.match(r.why, /npm run db:migrate/)
   }
+})
+
+test('destructiveMigration reads only the forward half, catches ORM operations, ignores comments', () => {
+  const alembic = (up, down) => `"""add plans — rename later?"""\nfrom alembic import op\n\ndef upgrade():\n    ${up}\n\n\ndef downgrade():\n    ${down}\n`
+  assert.equal(destructiveMigration({ path: 'alembic/versions/1_add.py', text: alembic('op.add_column("plans", sa.Column("x", sa.Text()))', 'op.drop_column("plans", "x")') }), null, 'a drop only in downgrade() is not a forward drop')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/2.py', text: alembic('op.drop_column("plans", "x")', 'pass') }), 'drop_column')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/3.py', text: alembic('op.execute("DROP TABLE old")', 'pass') }), 'DROP TABLE')
+  assert.equal(destructiveMigration({ path: 'alembic/versions/4.py', text: alembic('# we may rename this later\n    op.create_table("t")', 'op.drop_table("t")') }), null, 'a comment is not an operation')
+  assert.equal(destructiveMigration({ path: 'db/migrate/1_x.rb', text: 'class X < ActiveRecord::Migration[7.1]\n  def up\n    add_column :a, :b, :string\n  end\n  def down\n    remove_column :a, :b\n  end\nend\n' }), null)
+  assert.equal(destructiveMigration({ path: 'db/migrate/2_x.rb', text: 'class X < ActiveRecord::Migration[7.1]\n  def change\n    remove_column :a, :b\n  end\nend\n' }), 'remove_column')
+  assert.equal(destructiveMigration({ path: 'migrations/1.js', text: 'exports.up = (knex) => knex.schema.table("a", (t) => t.string("b"))\nexports.down = (knex) => knex.schema.table("a", (t) => t.dropColumn("b"))\n' }), null)
+  assert.equal(destructiveMigration({ path: 'migrations/2.ts', text: 'export async function up(knex) { await knex.schema.dropTable("a") }\nexport async function down() {}\n' }), 'dropTable')
+  assert.equal(destructiveMigration({ path: 'app/migrations/0002_x.py', text: 'operations = [migrations.RemoveField(model_name="a", name="b")]' }), 'RemoveField', 'Django: the whole file')
+  assert.equal(destructiveMigration({ path: 'db/1.sql', text: 'CREATE TABLE a (id int);\n-- migrate:down\nDROP TABLE a;\n' }), null)
+  assert.equal(destructiveMigration({ path: 'db/2.down.sql', text: 'DROP TABLE a;' }), null, 'a down-only file')
+  assert.equal(destructiveMigration({ path: 'm/3/migration.sql', text: 'ALTER TABLE "a" ALTER COLUMN "b" TYPE bigint;' }), 'ALTER COLUMN "b" TYPE')
+  assert.equal(destructiveMigration({ path: 'm/4/migration.sql', text: 'UPDATE "a" SET b = 1;' }), 'UPDATE "a" SET')
+  assert.match(destructiveMigration({ path: 'migrations/5.go', text: 'func Up() {}' }), /unrecognised/)
+  assert.equal(forwardHalf('db/2.down.sql', 'x'), null)
+})
+
+test('destructiveMigration never lets through raw SQL in strings, helpers upgrade() calls, or data-changing ORM calls', () => {
+  const py = (body) => `${body}\n\ndef downgrade():\n    pass\n`
+  const d = (path, text) => destructiveMigration({ path, text })
+  assert.equal(d('v/1.py', py('def upgrade():\n    op.execute("""DELETE FROM sessions""")')), 'DELETE FROM', 'SQL in a triple-quoted string')
+  assert.equal(d('v/2.py', py('def _drop():\n    op.drop_table("x")\n\ndef upgrade():\n    _drop()')), 'drop_table', 'a helper upgrade() calls')
+  assert.equal(d('db/3.sql', '-- Down payment column\nALTER TABLE a ADD COLUMN b int;\nDELETE FROM a;\n'), 'DELETE FROM', 'a comment starting "-- Down" is not a down marker')
+  assert.equal(d('m/4.js', 'exports.up = (k) => k("a").del()\nexports.down = () => {}\n'), '.del()')
+  assert.equal(d('db/migrate/5.rb', 'class X\n  def up\n    User.delete_all\n  end\n  def down\n  end\nend\n'), 'delete_all')
+  assert.equal(d('m/6.sql', 'UPDATE users u SET x = 1;'), 'UPDATE users u SET')
+  assert.equal(d('m/7.js', 'module.exports = { up: async (q) => q.bulkDelete("a"), down: async () => {} }'), 'bulkDelete')
+  assert.equal(d('m/8.js', 'exports.up = (knex) => dropOld(knex)\nexports.down = (knex) => {\n  return knex.schema.createTable("old")\n}\nfunction dropOld(k) { return k.schema.dropTable("old") }\n'), 'dropTable', 'a helper after down() is still read')
+  assert.equal(d('m/9.ts', 'export class M {\n  async up(q) { await q.query("ALTER TABLE a ADD b int") }\n  async down(q) {\n    await q.query("ALTER TABLE a DROP COLUMN b")\n  }\n}\n'), null, 'a class down() method is the backward half')
+  assert.equal(d('v/10.py', '"""drop table users — revision 1"""\ndef upgrade():\n    op.create_table("t")\n\ndef downgrade():\n    pass\n'), null, 'a docstring is prose')
+  assert.equal(d('v/11.py', 'def upgrade():\n    op.execute(\n        """DELETE FROM sessions"""\n    )\n\ndef downgrade():\n    pass\n'), 'DELETE FROM', 'SQL passed to a call on its own line')
 })
 
 test('landedMigrations: ask, human, or no apply command → a note naming the command', () => {
@@ -565,4 +639,14 @@ test('laneOf, batched: the walk lane keeps readiness and the walk; fixes and ver
   assert.equal(laneOf({ state: 'built' }, { specText: fixes }), 'walk')
   assert.equal(laneOf({ state: 'signed-off' }), 'walk')
   assert.equal(hasOpenFixes('## Testing\n\n- [ ] x\n'), false, 'a box outside ## Fixes is not a fix')
+})
+
+test('landedMigrations asks the dev DB when a status: command says: current → no note, pending → behind, unknown → may be', () => {
+  const readiness = { apply: 'npm run db:migrate', apply_mode: 'ask', status: 'npm run db:status', pending: 'npm run db:pending' }
+  const files = [{ path: 'm/1/migration.sql', text: 'ALTER TABLE "A" ADD COLUMN "b" TEXT;' }]
+  assert.equal(landedMigrations({ files, readiness, pending: false }).action, 'none')
+  assert.match(landedMigrations({ files, readiness, pending: true }).why, /the dev DB is behind, or `npm run db:pending` couldn't reach it: run `npm run db:migrate`/)
+  const maybe = landedMigrations({ files, readiness })
+  assert.match(maybe.why, /the dev DB may be behind: if it lacks them, run/)
+  assert.equal(maybe.kind, 'maybe', 'the caller asks pending: only then')
 })
