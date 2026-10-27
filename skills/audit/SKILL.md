@@ -180,6 +180,14 @@ the same gap at several sites counted as one gap with its sites listed.
 
 ## Exit
 
+**The code map, for the plan's writers** — `<WS>/audit-digest.md` (`<builder>/scripts/workspace
+<feature>`; git-ignored, never committed). Per app, one line per file the sweep read that the
+feature changes or builds on: `` `path:lines` — what is there `` (the signature, the pattern a new
+piece should copy, the test file that covers it). Ask each sweep agent to end its report with those
+lines and write them as they come back — never re-read the files to make it. The plan's writers read
+it before they open code, so a writer opens a file to copy what it changes, not to rediscover what
+this pass already read. It is a map, not a finding: anything that needs a decision is a §Findings row.
+
 **One SPEC edit, at the end of the pass**: corrections in place (including §Apps rows this pass proved
 wrong), §Findings & risks rows, OPEN §Decisions rows with recommendations, and `build-time risk` on
 anything the cap leaves unsettled.
