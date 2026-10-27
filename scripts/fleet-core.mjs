@@ -61,8 +61,20 @@ export function shippedPr(specText) {
   return /PR\s*(#\d+)/.exec(head)?.[1] ?? 'shipped'
 }
 
+/**
+ * Why two timed-out runs were killed, in the order they died: `killed` holds the fleet's kill line for
+ * each (runClaude's `kill(why)`, carried on the row as `killedBy`) — the idle timeout, the run cap, or
+ * a session that started without builder. Two kills with one cause say it once.
+ */
+function killCause(killed) {
+  const why = (killed ?? []).filter(Boolean)
+  if (!why.length) return ''
+  if (why.length === 1) return ` — ${why[0]}`
+  return new Set(why).size === 1 ? ` — both ${why[0]}` : ` — ${why.join(', then ')}`
+}
+
 /** What one finished `claude -p` run means for its feature. See the plan's Task 3 interface. */
-export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>', batched = false }) {
+export function decide({ lane, manifestText, specText = null, exit, failures, stalls = 0, runs, cap, progressed, folder = '<folder>', batched = false, killed = [] }) {
   // Shipped is done however the run ended — one that timed out after the ship commit must not be
   // retried into a second one.
   const shipped = manifestText == null ? shippedPr(specText) : null
@@ -71,7 +83,7 @@ export function decide({ lane, manifestText, specText = null, exit, failures, st
   if (mf && laneOf(mf, { batched, specText }) === 'done') return { action: 'done', pr: mf.pr ?? null }
   if (exit !== 0) {
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
-    return failures >= 1 ? { action: 'fail', reason: `run ${what} twice` } : { action: 'retry' }
+    return failures >= 1 ? { action: 'fail', reason: `run ${what} twice${exit === null ? killCause(killed) : ''}` } : { action: 'retry' }
   }
   if (mf == null) return { action: 'park', reason: 'MANIFEST.md was gone after the run — next: /builder:status to see where the feature stands' }
   const next = laneOf(mf, { batched, specText })
@@ -293,49 +305,249 @@ export function renderArchived(rows, total, now = Date.now()) {
 // ---- progress ----------------------------------------------------------------------------------
 //
 // How far along the pipeline a feature is, as a percentage of STEPS — not of time. Each manifest
-// state has a floor; inside `building` the span up to 70 scales with the ledger's `Task N: complete`
-// lines against the plan's `### Task N` headings. The weights are a judgment of where the effort
-// usually falls (a sixth before the build, more than half in it, the rest walk → verify → merge).
-const STAGE_FLOOR = { spec: 0, aligned: 5, audited: 10, planned: 15, building: 15, built: 75, 'signed-off': 80, verified: 90, shipped: 100 }
+// state has a floor, and the three long stretches move inside their band by what the workspace
+// (`.builder/<feature>/`, git-ignored) shows has been written so far:
+//   plan   10 → 15  drafted `### Task` blocks (PLAN.md, or the per-app writers' plan-<app>.md) against
+//                   the Phases table's task count;
+//   build  15 → 70  each task an equal share: 0.2 once its brief is written, 0.7 once its report is,
+//                   all of it once the ledger says `Task N: complete` — ticks land only after the
+//                   reviews (a whole phase at once under review=app), so ticks alone stalled, then jumped;
+//   walk   75 → 85  PASS/FAIL rows in the current agent-walk round's report against walk.md's items.
+// The weights are a judgment of where the effort usually falls (a sixth before the build, more than
+// half in it, the rest walk → verify → merge). Bands never overlap, so the number only goes back when
+// the pipeline does (a new walk round after fixes starts its rows again).
+const STAGE_FLOOR = { spec: 0, aligned: 5, audited: 10, planned: 15, building: 15, built: 75, 'signed-off': 87, verified: 92, shipped: 100 }
+const PLAN_TOP = 15
 const BUILD_TOP = 70
+const WALK_TOP = 85
+const PR_OPEN = 96
+const BRIEF_SHARE = 0.2
+const REPORT_SHARE = 0.7
 
 const taskIds = (text, re) => new Set([...(text ?? '').matchAll(re)].map((m) => Number(m[1])))
+const PLAN_TASK = /^#{2,4}\s+Task\s+(\d+)\b/gm
+
+/** The number of tasks the `## Phases` table's Tasks column names (`1–3`, `4`, `5, 7`), or 0. */
+export function phaseTaskCount(planText) {
+  const at = (planText ?? '').search(/^## Phases\s*$/m)
+  if (at < 0) return 0
+  const rows = planText.slice(at).split('\n').slice(1)
+  const table = []
+  for (const l of rows) {
+    if (/^## /.test(l)) break
+    if (/^\s*\|/.test(l)) table.push(l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
+  }
+  const col = (table[0] ?? []).findIndex((c) => /^tasks?$/i.test(c))
+  if (col < 0) return 0
+  const ids = new Set()
+  for (const row of table.slice(1)) {
+    for (const part of String(row[col] ?? '').split(/[,;]/)) {
+      const m = /^\s*(\d+)\s*(?:[–—-]\s*(\d+))?\s*$/.exec(part)
+      if (!m) continue
+      const [a, b] = [Number(m[1]), Number(m[2] ?? m[1])]
+      for (let n = a; n <= b && n - a < 500; n++) ids.add(n)
+    }
+  }
+  return ids.size
+}
 
 /**
  * `{ pct, label }` for one feature from what the fleet knows (its status) and what the worktree
- * says (manifest, plan, ledger — any may be null). Pure; readProgress does the file reads.
+ * says (manifest, plan, ledger — any may be null). `ws` is the feature's workspace as
+ * `{ files, list(rel), read(rel) }` (readProgress builds it from disk; null when there is none).
+ * Pure: every read goes through `ws`.
  */
-export function featureProgress({ status, manifestText = null, planText = null, ledgerText = null }) {
+export function featureProgress({ status, manifestText = null, planText = null, ledgerText = null, ws = null }) {
   if (status === 'done') return { pct: 100, label: 'merged' }
   if (manifestText == null) return { pct: 0, label: '—' }
   const mf = parseManifest(manifestText)
   const state = mf.state ?? ''
+  const files = new Set(ws?.files ?? [])
+  if (state === 'audited') {
+    // Planning: the Phases table fixes the task count first, then the task blocks are drafted —
+    // into PLAN.md by one writer, or into plan-<app>.md by one writer per app.
+    const drafts = [...files].filter((n) => /^plan-.+\.md$/.test(n)).map((n) => ws.read(n) ?? '')
+    const total = phaseTaskCount(planText) || Math.max(0, ...drafts.map(phaseTaskCount))
+    if (total) {
+      const drafted = Math.min(total, new Set([...taskIds(planText, PLAN_TASK), ...drafts.flatMap((t) => [...taskIds(t, PLAN_TASK)])]).size)
+      return { pct: Math.round(STAGE_FLOOR.audited + ((PLAN_TOP - STAGE_FLOOR.audited) * drafted) / total), label: `plan ${drafted}/${total}` }
+    }
+  }
   // The build writes `state: building` at a phase close or a stop, not at its first task — so a
-  // `planned` manifest whose ledger already has completed tasks is a build in its first phase.
+  // `planned` manifest whose ledger or workspace already shows tasks under way is a build in its first phase.
   if (state === 'building' || state === 'planned') {
     if (/^pending/.test(mf.ready ?? '')) return { pct: BUILD_TOP + 2, label: 'walk readiness' }
-    const total = taskIds(planText, /^#{2,4}\s+Task\s+(\d+)\b/gm).size
-    const done = Math.min(total, taskIds(ledgerText, /^\W*Task\s+(\d+):\s*complete\b/gm).size)
-    if (state === 'planned' && !done) return { pct: STAGE_FLOOR.planned, label: 'planned' }
+    const tasks = taskIds(planText, PLAN_TASK)
+    const total = tasks.size
+    const ticked = taskIds(ledgerText, /^\W*Task\s+(\d+):\s*complete\b/gm)
+    let share = 0
+    let done = 0
+    for (const n of tasks) {
+      if (ticked.has(n)) {
+        share += 1
+        done++
+      } else if (files.has(`task-${n}-report.md`)) share += REPORT_SHARE
+      else if (files.has(`task-${n}-brief.md`)) share += BRIEF_SHARE
+    }
+    if (state === 'planned' && !share) return { pct: STAGE_FLOOR.planned, label: 'planned' }
     if (!total) return { pct: STAGE_FLOOR.building, label: 'build' }
-    return { pct: Math.round(STAGE_FLOOR.building + ((BUILD_TOP - STAGE_FLOOR.building) * done) / total), label: `build ${done}/${total}` }
+    return { pct: Math.round(STAGE_FLOOR.building + ((BUILD_TOP - STAGE_FLOOR.building) * share) / total), label: `build ${done}/${total}` }
   }
-  if (state === 'built' && /^agent-pass|^pass/.test(mf.walk ?? '')) return { pct: 78, label: 'walked' }
-  if (state === 'verified' && isSet(mf.pr)) return { pct: 95, label: 'PR open' }
+  if (state === 'built' && /^agent-pass|^pass/.test(mf.walk ?? '')) return { pct: WALK_TOP, label: 'walked' }
+  if (state === 'built' && files.has('walk.md')) {
+    // The agent walk: rows its current round has written so far, against walk.md's numbered items.
+    const total = ((ws.read('walk.md') ?? '').match(/^E?\d+\.\s/gm) ?? []).length
+    const rounds = (ws.list?.('agent-walk') ?? []).map((n) => Number(/^round-(\d+)$/.exec(n)?.[1])).filter(Boolean)
+    const report = rounds.length ? ws.read(join('agent-walk', `round-${Math.max(...rounds)}`, 'report.md')) : null
+    const rows = ((report ?? '').match(/^\s*\|.*\|\s*\**(PASS|FAIL)\**\s*\|/gim) ?? []).length
+    if (total && report != null) return { pct: Math.round(STAGE_FLOOR.built + ((WALK_TOP - STAGE_FLOOR.built) * Math.min(rows, total)) / total), label: `walk ${Math.min(rows, total)}/${total}` }
+  }
+  if (state === 'verified' && isSet(mf.pr)) return { pct: PR_OPEN, label: 'PR open' }
   return { pct: STAGE_FLOOR[state] ?? 0, label: state || '—' }
 }
 
-/** featureProgress fed from disk: `<base>/<registry>/<feature>/{MANIFEST,PLAN}.md` and the
- *  git-ignored ledger `<base>/.builder/<feature>/progress.md`. `base` is the worktree, or the
- *  repo root before one exists. */
+const listDir = (d) => {
+  try {
+    return readdirSync(d)
+  } catch {
+    return []
+  }
+}
+const readIf = (p) => {
+  try {
+    return readFileSync(p, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+/** featureProgress fed from disk: `<base>/<registry>/<feature>/{MANIFEST,PLAN}.md`, the git-ignored
+ *  ledger `<base>/.builder/<feature>/progress.md` and the workspace beside it (one readdir; a file
+ *  is read only when its stage needs it). `base` is the worktree, or the repo root before one exists. */
 export function readProgress(base, registry, feature, status) {
-  const read = (...p) => (existsSync(join(base, ...p)) ? readFileSync(join(base, ...p), 'utf8') : null)
+  const ws = join(base, '.builder', feature)
   return featureProgress({
     status,
-    manifestText: read(registry, feature, 'MANIFEST.md'),
-    planText: read(registry, feature, 'PLAN.md'),
-    ledgerText: read('.builder', feature, 'progress.md'),
+    manifestText: readIf(join(base, registry, feature, 'MANIFEST.md')),
+    planText: readIf(join(base, registry, feature, 'PLAN.md')),
+    ledgerText: readIf(join(ws, 'progress.md')),
+    ws: { files: listDir(ws), list: (rel) => listDir(join(ws, rel)), read: (rel) => readIf(join(ws, rel)) },
   })
+}
+
+/**
+ * A fleet row's progress: read from its worktree, and remembered on the row (`lastProgress`, saved
+ * with fleet.json) — so once the worktree is gone (a parked feature's is removed when the fleet
+ * exits) the row keeps its last reading instead of falling back to the root checkout, which holds
+ * only the spec and reads 0%. A reading of nothing (the ship run removed the manifest) keeps the
+ * last one too. `root` is where a row with no worktree yet is read.
+ */
+export function rowProgress(root, registry, feature, f) {
+  const live = Boolean(f.worktree) && existsSync(f.worktree)
+  const last = f.lastProgress && typeof f.lastProgress.pct === 'number' ? f.lastProgress : null
+  if (!live && last && f.status !== 'done') return last
+  const p = readProgress(live ? f.worktree : root, registry, feature, f.status)
+  if (p.label === '—' && last) return last
+  if (live) f.lastProgress = p
+  return p
+}
+
+// ---- what stopped, and what has gone quiet ---------------------------------------------------
+//
+// The fleet runs detached: nothing in a session is told when a feature parks. These are what the
+// status line, the session brief, `--status` and fleet.out say about it.
+
+const STOPPED = new Set(['parked', 'failed'])
+const RUNNING = new Set(['building', 'walking', 'shipping'])
+
+/**
+ * The fleet's parked and failed rows as `[{ name, status, why, next }]`, by name. `why` drops a failed
+ * row's ` — see <log>` (the log path is fleet.out's and PARKED.md's to give; a line has no room).
+ */
+export function fleetStops(fleet) {
+  return Object.entries(fleet?.features ?? {})
+    .filter(([, f]) => STOPPED.has(f?.status))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, f]) => {
+      const { why, next } = parkParts(f.reason ?? '')
+      return { name, status: f.status, why: why.replace(/\s—\ssee\s\S+$/, '').trim(), next: next ?? RETRY_NEXT }
+    })
+}
+
+/**
+ * The block route() appends to fleet.out when a feature parks or fails — what stopped, why, the next
+ * step, and where the park record is (PARKED.md, committed on the feature's branch, so it outlives
+ * the worktree). `retry` names the automatic retry the fleet starts at once, when it does.
+ */
+export function parkBlock({ feature, status, reason, record = null, branch = null, log = null, retry = null, at = new Date() }) {
+  const { why, next } = parkParts(reason ?? '')
+  const stamp = `${at.toISOString().slice(0, 16).replace('T', ' ')}Z`
+  return [
+    '',
+    `[${stamp}] ⛔ ${feature} ${status}`,
+    `  why:    ${why || 'no reason recorded'}`,
+    `  next:   ${next ?? RETRY_NEXT}`,
+    ...(record ? [`  record: ${record}${branch ? ` (committed on ${branch})` : ''}`] : []),
+    ...(log && !String(reason).includes(log) ? [`  log:    ${log}`] : []),
+    ...(retry ? [`  the fleet retries it now — ${retry}`] : []),
+    '',
+  ].join('\n')
+}
+
+/** How long a running feature may go with no commit and no ledger tick before it is flagged. */
+export const STALL_MS = 45 * 60 * 1000
+
+/**
+ * The mtime (ms) of a worktree's last HEAD move — its reflog, `<gitdir>/logs/HEAD`, which every
+ * commit, reset and merge appends to — read through the `.git` file, so no git process is spawned
+ * (the status line renders every couple of seconds). null when there is none to read.
+ */
+export function headMovedMs(worktree) {
+  if (!worktree) return null
+  try {
+    const dotGit = join(worktree, '.git')
+    const st = statSync(dotGit)
+    const gitdir = st.isDirectory() ? dotGit : /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'))?.[1]?.trim()
+    if (!gitdir) return null
+    const dir = gitdir.startsWith('/') ? gitdir : join(worktree, gitdir)
+    for (const p of [join(dir, 'logs', 'HEAD'), join(dir, 'HEAD')]) {
+      try {
+        return statSync(p).mtimeMs
+      } catch {}
+    }
+  } catch {}
+  return null
+}
+
+const mtimeOf = (p) => {
+  try {
+    return statSync(p).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A running row that has gone quiet: `{ runningMs, sinceMs }` when nothing has moved for STALL_MS —
+ * not HEAD, not the ledger (`<wt>/.builder/<feature>/progress.md`), not the workspace (a brief or a
+ * report added), and the current run (`f.runStartedAt`) is older than that too. A run that keeps
+ * printing but goes round in circles outlives the idle timeout; this is what catches it. Only stats.
+ */
+export function stallOf(feature, f, now = Date.now()) {
+  if (!RUNNING.has(f?.status) || !f.worktree || !f.runStartedAt) return null
+  const started = Date.parse(f.runStartedAt)
+  if (!Number.isFinite(started)) return null
+  const ws = join(f.worktree, '.builder', feature)
+  const moved = [started, headMovedMs(f.worktree), mtimeOf(join(ws, 'progress.md')), mtimeOf(ws)].filter((t) => Number.isFinite(t))
+  const since = Math.max(...moved)
+  return now - since >= STALL_MS ? { runningMs: now - started, sinceMs: since } : null
+}
+
+/** `⚠ <feature> running 1h10m with no commit or ledger tick since 14:05` — the clock is local. */
+export function stallLine(feature, stall) {
+  const at = new Date(stall.sinceMs)
+  const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  return `⚠ ${feature} running ${duration(stall.runningMs)} with no commit or ledger tick since ${hhmm}`
 }
 
 /**
