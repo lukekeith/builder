@@ -13,8 +13,9 @@
  *                          cuts it, then the SPEC sections it implements (its app's section, §Testing,
  *                          §Decisions, §Schema & API changes for a schema task, the §Findings rows
  *                          marked `build-time risk` that name it), §Contract verbatim with whether it is
- *                          frozen, the Recipe: line resolved to a path, the four craft skills by path,
- *                          the config's §Global constraints verbatim with <TICKET> replaced — then
+ *                          frozen, the Recipe: line resolved to a path, the config's §Global
+ *                          constraints verbatim with <TICKET> replaced (the craft skills are the
+ *                          prompt's, with when to read each) — then
  *                          renders prompts/implementer.md: the task name, the app, the commit
  *                          instruction from the app's `commit:` mode (with the plan's commit subject),
  *                          the working directory, the report path, and a Context line (task i of n,
@@ -24,7 +25,7 @@
  *                          the same file): the findings verbatim, receiving-code-review first, and from
  *                          round 3 systematic-debugging; from round 4 the "you own it now" framing.
  *   implementer --final    the final review's ONE fix wave: <WS>/final-fix-brief.md (the findings — by
- *                          default from <WS>/final-review.md —, §Contract, the craft skills, the
+ *                          default from <WS>/final-review.md —, §Contract, the
  *                          constraints) and the implementer template across the in-scope apps.
  *   task-review --task N   generates the review package BASE..HEAD (the recorded BASE, never HEAD~1)
  *                          and renders prompts/task-reviewer.md with §Contract verbatim and its status.
@@ -214,7 +215,7 @@ function composeBrief(f, n, block, app) {
   parts.push(`## §Contract — ${c.status}`, '', c.body, '', c.rule, '')
   const recipe = recipeOf(block)
   if (recipe) parts.push('## Read first — the recipe', '', recipe.text, '')
-  parts.push('## The craft skills — read them by path', '', ...Object.values(CRAFT).map((s) => `- ${skillPath(s)}`), '')
+  // The craft skills are not repeated here: the implementer's prompt names each with when to read it.
   parts.push("## Global constraints (the project config's, verbatim)", '', constraints(f), '')
   return parts.join('\n')
 }
@@ -273,10 +274,6 @@ function finalFix(f, a, ws) {
     '',
     c.rule,
     '',
-    '## The craft skills — read them by path',
-    '',
-    ...Object.values(CRAFT).map((s) => `- ${skillPath(s)}`),
-    '',
     "## Global constraints (the project config's, verbatim)",
     '',
     constraints(f),
@@ -302,7 +299,6 @@ function finalFix(f, a, ws) {
     BRIEF_FILE: briefPath,
     APP: `each finding's own app (${apps.join(', ')}) — a fix stays inside the app its finding names`,
     COMMIT_INSTRUCTION: commit,
-    GLOBAL_CONSTRAINTS: constraints(f),
     REPORT_FILE: reportPath,
     ...craftValues(),
   })
@@ -344,7 +340,7 @@ function implementer(f, a, ws) {
   const tpl = promptOf(readFileSync(join(PROMPTS, 'implementer.md'), 'utf8'))
   let body = tpl.body.replaceAll('Task N:', `Task ${n}:`).replaceAll('[task name]', t.name).replaceAll('[directory]', f.root)
   body = body.replace(/\[One line on where this fits\.[^\]]*\]/, () => ctx.join('\n'))
-  body = fill(body, { BRIEF_FILE: briefPath, APP: t.app, COMMIT_INSTRUCTION: commit, GLOBAL_CONSTRAINTS: constraints(f), REPORT_FILE: reportPath, ...craftValues() })
+  body = fill(body, { BRIEF_FILE: briefPath, APP: t.app, COMMIT_INSTRUCTION: commit, REPORT_FILE: reportPath, ...craftValues() })
   const recipe = recipeOf(block)
   return {
     file: join(ws, `dispatch-implementer-task-${n}${round ? `-round-${round}` : ''}.md`),
