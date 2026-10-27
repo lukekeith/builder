@@ -4,6 +4,32 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.5.0
+
+**The wrap-up.** When a fleet lands features, the checkout it lands into is left behind: the dev DB
+without the new migrations, a server that hasn't restarted, fixtures from before, the target not
+checked out, merged branches still around. Each was a note to act on by hand — or a promise from
+the launching session to "run them whenever you want", from a session that by then was gone. Now,
+once the fleet has ended, `/builder:fleet:status` offers them as steps, in the order they stand on
+each other, in one picker: **Wrap up — all (Recommended)** · **Choose steps** · **Not now**. Nothing
+to change in `.claude/builder.md`; two optional §Walk readiness keys widen what it can run.
+
+**Added:**
+- **`wrapup.mjs plan | run <all|step…> | dismiss`** — the steps, from what is still true now: check
+  out the target (from a clean tree), apply the landed migrations then regenerate (`apply:`,
+  `regenerate:`; `pending:` asked first — an up-to-date DB settles them with nothing to run), restart,
+  reset the fixtures, smoke, and delete the branches already in the target with their worktrees
+  (tidy). A migration that may drop data, a dirty tree in the way, and any branch only
+  `/builder:tidy` can settle are held — listed, never in "all". `run` stops at the first failure,
+  logs to `.builder/fleet/logs/wrapup.log`, and clears the fleet notes its steps settled, so a
+  "the dev DB is behind" note no longer outlives the migration it names.
+- **§Walk readiness `restart:` and `fixtures:`** (optional) — what doesn't reload by itself, and the
+  dev data a walk starts from; the wrap-up runs them after a landing.
+
+**Changed:**
+- The fleet's launch message says the wrap-up is coming instead of offering to run those steps later.
+- The session brief's landing lines say `/builder:fleet:status` will offer the wrap-up.
+
 ## 5.4.1
 
 **Fixed:** a merge was as silent as a park used to be. The fleet runs detached, so when a feature

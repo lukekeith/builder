@@ -33,7 +33,7 @@ brief="builder is set up in this repo (.claude/builder.md) — the work here goe
 brief+="- New work — an idea, a change, a question about how something should work: /builder:brainstorm (small changes take its quick path). A written spec or ticket: /builder:intake.${nl}"
 brief+="- Work in flight: /builder:status shows where everything stands; /builder:resume picks one up at its next step.${nl}"
 if [ -n "$landed" ]; then
-  brief+="${nl}Landed by the fleet since /builder:fleet:status was last opened — tell the user at the start of your first reply, and that they test it (opening /builder:fleet:status marks these seen):${nl}${landed}${nl}"
+  brief+="${nl}Landed by the fleet since /builder:fleet:status was last opened — tell the user at the start of your first reply, and that they test it (opening /builder:fleet:status marks these seen and offers to wrap up — the migrations, a restart, the fixtures, the merged branches):${nl}${landed}${nl}"
 fi
 if [ -n "$parks" ]; then
   brief+="${nl}Stopped in the fleet — each waits on you (/builder:fleet:status has the table; naming one in /builder:agent retries it):${nl}${parks}${nl}"

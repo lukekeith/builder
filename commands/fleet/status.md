@@ -13,7 +13,7 @@ brief stop announcing what landed before now (`✔ <feature> merged`).
 Reply with its output **as markdown, never inside a code fence**: the heading line, then the table
 as a markdown table (the terminal renders it; fenced, it shows as raw pipes), then the `## Parked`
 list if there is one — each parked feature with its why and its `next:` step — then any notes as
-bullets. Change no cell. Then stop.
+bullets. Change no cell. Then stop — unless the fleet has ended (below), when the wrap-up follows.
 
 How to read it, when asked:
 
@@ -29,4 +29,5 @@ How to read it, when asked:
 - **A feature that landed is not a row**: it is counted in the archived line. With `--archived [N]`
   the output lists the latest N landings (20 by default) — relay it the same way.
 - **The fleet has ended** (no row in flight): reply with `.builder/fleet/STATUS.md` as markdown
-  instead, as above.
+  instead, as above — then the wrap-up, exactly as the fleet skill's §5 *Then the wrap-up* says:
+  `wrapup.mjs plan`, and when it lists steps, one picker to run them all, choose, or not now.
