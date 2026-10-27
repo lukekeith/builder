@@ -81,7 +81,7 @@ test('archived features are never rows; --status counts them in one line', () =>
   assert.deepEqual(JSON.parse(json.stdout).features.map((f) => f.feature), ['live'])
   const st = list(root, '--status')
   assert.equal(st.status, 0, st.stderr)
-  assert.match(st.stdout, /📦 2 shipped features archived · list-features\.mjs --archived lists them/)
+  assert.match(st.stdout, /📦 2 features archived · list-features\.mjs --archived lists them/)
 })
 
 test('--archived lists the archive newest first; --limit caps it', () => {
