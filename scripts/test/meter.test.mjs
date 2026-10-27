@@ -19,6 +19,11 @@ test('dispatchKind reads the descriptions dispatch.mjs renders and the words the
   assert.equal(dispatchKind('Agent walk round 1'), 'walk')
   assert.equal(dispatchKind('Verify contract + spec parity'), 'verify')
   assert.equal(dispatchKind('Explore the repo'), 'other')
+  // The name after a template's opening never decides the kind.
+  assert.equal(dispatchKind('Final review: checkout-fix'), 'final-review')
+  assert.equal(dispatchKind('Fix Task 2 round 1: re-review banner'), 'fix')
+  assert.equal(dispatchKind('Implement Task 4: final review screen'), 'implement')
+  assert.equal(dispatchKind('Review Task 6 (spec + quality)'), 'task-review')
 })
 
 test('streamMeter groups turns by dispatch, dedupes streamed chunks, and keeps the tool result facts', () => {

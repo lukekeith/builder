@@ -367,6 +367,9 @@ test('dispatch: every build dispatch names the agent it runs as — builder\'s l
   writeFileSync(join(r.root, '.claude', 'skills', 'house-cli', 'SKILL.md'), '# house cli\n')
   assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'builder:implementer')
   assert.match(readText(join(WS(r), 'task-1-brief.md')), /\.claude\/skills\/house-cli\/SKILL\.md {2}\(Recipe: house-cli — the project's companion skill; read it with the Read tool\)/)
+  // A recipe that drives an MCP server needs an agent that has one.
+  writeFileSync(join(r.root, '.claude', 'skills', 'house-cli', 'SKILL.md'), '# house cli\nLook components up with mcp__shadcn__search_items first.\n')
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'general-purpose')
 
   // agent_types opts back out.
   const cfg = join(r.root, '.claude', 'builder.md')

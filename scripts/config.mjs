@@ -193,14 +193,24 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
  */
 export function agentTypesOf(v) {
   const out = { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }
-  if (v == null || typeof v !== 'string' || !v.trim()) return out
-  const s = v.trim()
-  if (!s.includes('=')) return { implementer: s, 'implementer-skills': s, reviewer: s }
-  for (const pair of s.split(',')) {
-    const [k, t] = pair.split('=').map((x) => x.trim())
-    if (!t) continue
+  const set = (k, t) => {
+    t = String(t ?? '').trim()
+    if (!t) return
     if (k === 'implementer') Object.assign(out, { implementer: t, 'implementer-skills': t })
     else if (k === 'reviewer') out.reviewer = t
+  }
+  // The YAML map form (`agent_types:` then `  implementer: x` lines) arrives as an object.
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, t] of Object.entries(v)) set(k.trim(), t)
+    return out
+  }
+  if (v == null || typeof v !== 'string' || !v.trim()) return out
+  const s = v.trim()
+  // `implementer=x, reviewer=y` — or with `:` in place of `=`, which the map form invites.
+  if (!/^(implementer|reviewer)\s*[=:]/.test(s)) return /\s/.test(s) ? out : { implementer: s, 'implementer-skills': s, reviewer: s }
+  for (const pair of s.split(',')) {
+    const m = /^\s*(implementer|reviewer)\s*[=:]\s*(\S+)\s*$/.exec(pair)
+    if (m) set(m[1], m[2])
   }
   return out
 }

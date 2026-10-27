@@ -196,8 +196,15 @@ function recipeOf(block, root = null) {
   const ref = /REFERENCE\s*(§.*)$/.exec(name)
   if (ref) return { text: `${join(BUILDER, 'skills', 'resume', 'REFERENCE.md')} ${ref[1]}  (Recipe: ${raw})`, tiny, path: true }
   const own = root && /^[\w.-]+$/.test(name) ? join(root, '.claude', 'skills', name, 'SKILL.md') : null
-  if (own && existsSync(own)) return { text: `${own}  (Recipe: ${raw} — the project's companion skill; read it with the Read tool)`, tiny, path: true }
+  // A project skill that drives an MCP server (`mcp__<server>__<tool>`) needs an agent that has it.
+  if (own && existsSync(own)) return { text: `${own}  (Recipe: ${raw} — the project's companion skill; read it with the Read tool)`, tiny, path: true, mcp: /\bmcp__\w/.test(read(own) ?? '') }
   return { text: `${raw} — the project's companion skill (the config's §Companion skills)`, tiny, path: false }
+}
+
+/** A task whose recipe uses MCP tools: the project's own implementer when it named one, else general-purpose — builder's lean agents carry no MCP. */
+const mcpAgent = (f) => {
+  const t = agentTypeOf(f, 'implementer')
+  return t.startsWith('builder:') ? 'general-purpose' : t
 }
 
 /** The subagent_type a build dispatch runs as — the config's agent_types (builder's lean agents by default). */
@@ -354,7 +361,7 @@ function implementer(f, a, ws) {
   const recipe = recipeOf(block, f.root)
   return {
     file: join(ws, `dispatch-implementer-task-${n}${round ? `-round-${round}` : ''}.md`),
-    agentType: agentTypeOf(f, recipe && !recipe.path ? 'implementer-skills' : 'implementer'),
+    agentType: recipe?.mcp ? mcpAgent(f) : agentTypeOf(f, recipe && !recipe.path ? 'implementer-skills' : 'implementer'),
     body,
     // A fix round says so — the fleet's meter tells a fix from an implementer by this description.
     description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
