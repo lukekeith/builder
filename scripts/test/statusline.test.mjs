@@ -158,3 +158,21 @@ test('a lock, marker or job pid file older than the last boot is stale, whatever
   assert.equal(render({ cwd: root, now: NOW, bootTime: NOW - 1000 }), '')
   assert.match(render({ cwd: root, now: NOW, bootTime: NOW - 120000 }), /^builder [▓░]{10} \d+% · ⚙ fleet 0\/1/)
 })
+
+test('after the fleet exits, what it merged stays on the line until /builder:fleet:status is opened', () => {
+  const root = repo()
+  write(root, '.builder/fleet/lock', String(DEAD))
+  write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: {} }))
+  const row = (feature, at) => JSON.stringify({ feature, merged: 'abc1234', target: 'main', landedAt: new Date(at).toISOString(), walk: { rounds: [] } })
+  write(root, '.builder/fleet/archive.jsonl', [row('old', NOW - 3 * 86400000), row('pc', NOW - 3600000)].join('\n') + '\n')
+  // Never opened: the last day's landings — not the repo's whole history.
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · ✔ pc merged — /builder:fleet:status')
+  // Opened since: nothing new.
+  write(root, '.builder/fleet/seen', 'x', NOW - 60000)
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), '')
+  // Two more land after that: both named; a third folds into a count.
+  write(root, '.builder/fleet/archive.jsonl', [row('pc', NOW - 3600000), row('a', NOW - 30000), row('b', NOW - 20000)].join('\n') + '\n')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · ✔ a, b merged — /builder:fleet:status')
+  write(root, '.builder/fleet/archive.jsonl', [row('a', NOW - 30000), row('b', NOW - 20000), row('c', NOW - 10000)].join('\n') + '\n')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · ✔ 3 merged — /builder:fleet:status')
+})

@@ -122,6 +122,18 @@ test('session-start: what the fleet parked or failed is listed with why and next
   assert.doesNotMatch(text, /In flight/, 'the one in-flight feature is the parked one, said once')
 })
 
+test('session-start: what the fleet merged since /builder:fleet:status was opened is told, once opened it is not', () => {
+  const { root } = leanRepo('note-tags')
+  mkdirSync(join(root, '.builder', 'fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder', 'fleet', 'fleet.json'), JSON.stringify({ features: {} }))
+  const at = new Date(Date.now() - 3600000).toISOString()
+  writeFileSync(join(root, '.builder', 'fleet', 'archive.jsonl'), JSON.stringify({ feature: 'project-channel', merged: '4eea9a2b1', target: 'main', landedAt: at, walk: { rounds: [] } }) + '\n')
+  const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
+  assert.match(text, /Landed by the fleet since \/builder:fleet:status was last opened — tell the user at the start of your first reply, and that they test it[^\n]*:\n- ✔ project-channel merged into main at 4eea9a2b \(\d\d:\d\d\) — agent-verified, no walk, not human-tested: test it yourself\n/)
+  writeFileSync(join(root, '.builder', 'fleet', 'seen'), new Date().toISOString())
+  assert.doesNotMatch(brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext, /Landed by the fleet/)
+})
+
 test('session-start: at most five features, then a pointer to /builder:status', () => {
   const { root, folder } = leanRepo('note-tags')
   const manifest = readFileSync(join(folder, 'MANIFEST.md'), 'utf8')

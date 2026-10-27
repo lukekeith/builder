@@ -168,7 +168,9 @@ the feature parks.
 Then say, in two lines: it's running on its own and outlives this session; `/builder:fleet:status`
 shows where it stands (and the `builder` status line, if it's on), and §5's report is what
 `/builder:fleet:status` shows once every row has landed, parked or failed. Nothing waits on it here,
-so a park is told where you look instead: the status line reads `⛔ <feature>: <why>` (and keeps it
+so what happens is told where you look instead. A merge: the status line reads `✔ <feature> merged —
+/builder:fleet:status` once the fleet has exited, and the next session's brief names it with its sha
+and "test it yourself" — both until `/builder:fleet:status` is opened. A park: the status line reads `⛔ <feature>: <why>` (and keeps it
 after the fleet exits, until a new run changes the row), the next session's brief lists each parked
 or failed feature with its next step, and `.builder/fleet/fleet.out` gets a block per park — why,
 next, and its PARKED.md. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and

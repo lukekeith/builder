@@ -20,7 +20,7 @@ import { join, dirname, resolve } from 'node:path'
 import { uptime } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from './config.mjs'
-import { readProgress, rowProgress, progressBar, mergedThisRun, fleetStops, stallOf } from './fleet-core.mjs'
+import { readProgress, rowProgress, progressBar, mergedThisRun, fleetStops, stallOf, newLandings } from './fleet-core.mjs'
 import { parseManifest } from './manifest.mjs'
 
 export const FRESH_MS = 5 * 60 * 1000
@@ -114,6 +114,14 @@ export function parkItems(stops, budget) {
   return [...items.join(' · ')].length <= budget ? items : [stopCount(stops, budget)]
 }
 
+/** `✔ a merged — /builder:fleet:status` · `✔ a, b merged …` · `✔ 3 merged …` — what landed since the status was last opened. */
+export function landedItems(landed) {
+  if (!landed.length) return []
+  const names = landed.map((l) => l.feature)
+  const what = names.length <= 2 ? names.join(', ') : `${names.length}`
+  return [`✔ ${what} merged — /builder:fleet:status`]
+}
+
 function fleetItems(main, registry, bootTime, now) {
   const fleet = readJson(join(main, '.builder', 'fleet', 'fleet.json'))
   if (!fleet) return null
@@ -121,7 +129,11 @@ function fleetItems(main, registry, bootTime, now) {
   const lock = join(main, '.builder', 'fleet', 'lock')
   // The fleet has exited: its parked and failed rows still wait on someone, and fleet.json still
   // holds them — they stay on the line until a new run changes them. Nothing else from it does.
-  if (!current(lock, bootTime) || !alive(read(lock))) return stops.length ? { items: [], stops, pcts: [], names: new Set(), worktrees: [] } : null
+  // So are its landings, until /builder:fleet:status is opened: a merge happened while nobody watched.
+  if (!current(lock, bootTime) || !alive(read(lock))) {
+    const landed = newLandings(main, now)
+    return stops.length || landed.length ? { items: [], stops, landed, pcts: [], names: new Set(), worktrees: [] } : null
+  }
   const rows = Object.entries(fleet.features ?? {})
   // The whole run: what it holds plus what it already merged, each merged feature at 100%.
   const merged = mergedThisRun(fleet)
@@ -180,7 +192,8 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     const rest = [...builds.items, ...gateRoots.flatMap((r) => gateItems(r, now, bootTime))]
     const [lead, ...running] = fleet?.items ?? []
     const stops = fleet?.stops ?? []
-    if (!lead && !running.length && !rest.length && !stops.length) return ''
+    const landed = landedItems(fleet?.landed ?? [])
+    if (!lead && !running.length && !rest.length && !stops.length && !landed.length) return ''
     // One bar for everything with progress — the mean of the fleet's features and in-chat builds.
     // Gates and jobs alone have none, and get the name without a bar.
     const pcts = [...(fleet?.pcts ?? []), ...builds.pcts]
@@ -188,7 +201,7 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     // The parks get their room first, after `builder` and the fleet's count; the rest fit after them.
     const fixed = [head, ...(lead ? [lead] : [])]
     const parks = parkItems(stops, width - [...fixed.join(' · ')].length - 3)
-    return fit([...fixed, ...parks, ...running, ...rest], width)
+    return fit([...fixed, ...parks, ...landed, ...running, ...rest], width)
   } catch {
     return ''
   }

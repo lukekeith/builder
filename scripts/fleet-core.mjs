@@ -190,6 +190,53 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  *  its archive row is written — the row carries what was read from them, and they are most of the
  *  bytes (hundreds of MB across a few dozen landings). No row yet → they move with the rest.
  *  Null when done (or nothing to move); else a note. */
+// ---- landings nobody has looked at yet --------------------------------------------------------
+//
+// The fleet runs detached: when a feature merges, no session hears it — the status line went back to
+// nothing and the user came back to "idle" with no word of what landed. A landing stays "new" until
+// /builder:fleet:status is opened (fleet.mjs --status writes SEEN); the status line and the session
+// brief name every new one meanwhile.
+
+const SEEN = 'seen'
+const DAY_MS = 86400000
+
+/** When /builder:fleet:status was last opened, as epoch ms — null when it never was. */
+export function seenAt(root) {
+  try {
+    return statSync(join(fleetDir(root), SEEN)).mtimeMs
+  } catch {
+    return null
+  }
+}
+
+/** /builder:fleet:status was opened: every landing so far has been seen. */
+export function markSeen(root, now = new Date()) {
+  try {
+    mkdirSync(fleetDir(root), { recursive: true })
+    writeFileSync(join(fleetDir(root), SEEN), `${now.toISOString()}\n`)
+  } catch {}
+}
+
+/**
+ * The landings since /builder:fleet:status was last opened, oldest first: { feature, merged, target,
+ * landedAt, walked }. Never opened → the last day's, so a repo upgrading into this does not wake up
+ * to its whole history. Reads the archive's tail only — the status line calls it on every render.
+ */
+export function newLandings(root, now = Date.now(), n = 20) {
+  const since = seenAt(root) ?? now - DAY_MS
+  return tailArchive(root, n)
+    .filter((r) => r?.feature && Date.parse(r.landedAt ?? '') > since)
+    .map((r) => ({ feature: r.feature, merged: r.merged ?? null, target: r.target ?? null, landedAt: r.landedAt, walked: Boolean(r.walk?.rounds?.length) }))
+}
+
+/** One brief line: `- ✔ x merged into main at 4eea9a2 (06:29) — agent-verified, not human-tested: test it yourself`. */
+export function landingLine(l) {
+  const at = new Date(l.landedAt)
+  const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  const where = `${l.target ? ` into ${l.target}` : ''}${l.merged ? ` at ${String(l.merged).slice(0, 8)}` : ''}`
+  return `- ✔ ${l.feature} merged${where} (${hhmm}) — ${l.walked ? 'agent-walked and verified' : 'agent-verified, no walk'}, not human-tested: test it yourself`
+}
+
 /** An archive row whose runs carry the meter (5.4+): its raw .jsonl streams have been read into it. */
 const metered = (row) => Boolean(row?.timing?.some?.((t) => t?.meter))
 

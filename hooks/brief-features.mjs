@@ -7,6 +7,9 @@
  *                                          list-features.mjs --json, so the brief and /builder:status
  *                                          never disagree. A feature the fleet has stopped is left
  *                                          to --parks, which says more about it.
+ *   brief-features.mjs --landed <project>  what the fleet merged since /builder:fleet:status was last
+ *                                          opened, one line each — where, the sha, and that nobody
+ *                                          has tested it. The fleet tells no session when it lands.
  *   brief-features.mjs --parks <project>   what the fleet parked or failed, from its fleet.json, one
  *                                          line each — why, and the next step. The fleet runs
  *                                          detached and tells no session when it parks; a park its
@@ -25,7 +28,8 @@ import { fileURLToPath } from 'node:url'
 const MAX = 5
 const args = process.argv.slice(2)
 const parksMode = args.includes('--parks')
-const project = args.filter((a) => a !== '--parks')[0] || process.env.CLAUDE_PROJECT_DIR || process.cwd()
+const landedMode = args.includes('--landed')
+const project = args.filter((a) => !a.startsWith('--'))[0] || process.env.CLAUDE_PROJECT_DIR || process.cwd()
 
 /** The fleet's parked and failed rows ([] when there is no fleet, or it can't be read). */
 async function stops() {
@@ -43,7 +47,13 @@ async function stops() {
 }
 
 try {
-  if (parksMode) {
+  if (landedMode) {
+    // What merged since /builder:fleet:status was last opened — the fleet tells no session when it lands.
+    const { newLandings, landingLine } = await import('../scripts/fleet-core.mjs')
+    const { repoRoots } = await import('../scripts/statusline.mjs')
+    const lines = newLandings(repoRoots(project)?.main ?? project).map(landingLine)
+    if (lines.length) process.stdout.write(lines.join('\n'))
+  } else if (parksMode) {
     const lines = (await stops()).map((s) => `- ⛔ ${s.name} ${s.status}${s.why ? ` — ${s.why}` : ''} — next: ${s.next}`)
     if (lines.length) process.stdout.write(lines.join('\n'))
   } else {

@@ -1478,7 +1478,9 @@ test('a done row an older fleet left is archived on the next run, its logs with 
 test('--status --archived lists the latest landings', () => {
   const root = makeRepo(['a', 'b'])
   runFleet(root, ['a', 'b'], { a: HAPPY, b: HAPPY })
+  assert.ok(!existsSync(join(root, '.builder/fleet/seen')), 'a landing is new until the status is opened')
   const st = runFleet(root, ['--status'], {})
+  assert.ok(existsSync(join(root, '.builder/fleet/seen')), 'opening the status marks what landed as seen')
   assert.match(st.stdout, /^2 archived \(last: [ab], just now\) · \/builder:fleet:status --archived for the latest 20$/m)
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)

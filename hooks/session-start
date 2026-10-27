@@ -21,15 +21,20 @@ esac
 
 features=""
 parks=""
+landed=""
 if [ -n "$NODE" ]; then
   features="$("$NODE" "$HOOK_DIR/brief-features.mjs" "$PROJECT" 2>/dev/null)" || features=""
   parks="$("$NODE" "$HOOK_DIR/brief-features.mjs" --parks "$PROJECT" 2>/dev/null)" || parks=""
+  landed="$("$NODE" "$HOOK_DIR/brief-features.mjs" --landed "$PROJECT" 2>/dev/null)" || landed=""
 fi
 
 nl=$'\n'
 brief="builder is set up in this repo (.claude/builder.md) — the work here goes through its skills.${nl}"
 brief+="- New work — an idea, a change, a question about how something should work: /builder:brainstorm (small changes take its quick path). A written spec or ticket: /builder:intake.${nl}"
 brief+="- Work in flight: /builder:status shows where everything stands; /builder:resume picks one up at its next step.${nl}"
+if [ -n "$landed" ]; then
+  brief+="${nl}Landed by the fleet since /builder:fleet:status was last opened — tell the user at the start of your first reply, and that they test it (opening /builder:fleet:status marks these seen):${nl}${landed}${nl}"
+fi
 if [ -n "$parks" ]; then
   brief+="${nl}Stopped in the fleet — each waits on you (/builder:fleet:status has the table; naming one in /builder:agent retries it):${nl}${parks}${nl}"
 fi
