@@ -4,6 +4,76 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.4.0
+
+Where a fleet's tokens go, and fewer of them; parks you hear about; a bar that moves; and finished
+specs that leave. From one project's fleet runs and 35 run streams from four others: the build
+orchestrator entered its first implementer dispatch already holding 190–300k tokens of audit and plan
+reading, re-read on every turn on the most capable model; a plan writer's context grew to 400–525k;
+every subagent started at ~20k (plus the project's CLAUDE.md) before reading its brief. **Nothing to
+change in `.claude/builder.md`** — every new key is optional.
+
+**Added:**
+- **Every dispatch is measured.** Each fleet run's timing entry carries a meter read from its stream
+  as it streams — the orchestrator's turns, start, peak and summed context, and per Agent dispatch its
+  kind, task, model, agent type, turns, context and test runs. A landing's archive row sums them by
+  kind and adds cost per model, cache-creation tokens, and the final review's findings and fix rounds
+  — the before/after numbers no longer need the run logs, which are pruned. `/builder:fleet:status
+  --archived` shows cost and cost per task (the old token column was the orchestrator's thread alone).
+- **Builder's own lean agents** — `builder:implementer`, `builder:implementer-skills` and
+  `builder:reviewer`: file, shell and search tools only, no MCP servers and no skills list; the
+  project's CLAUDE.md still loads. A dispatch starts at about 4k tokens instead of about 23k.
+  `dispatch.mjs` prints the agent type; a `Recipe:` it can resolve to a path (a builder skill, a
+  REFERENCE section, the project's `.claude/skills/<name>/SKILL.md`) runs without the Skill tool. The
+  walker stays general-purpose. **`agent_types:`** opts out — `general-purpose`, or
+  `implementer=<agent>, reviewer=<agent>` for a project's own agents (an implementer that needs an MCP
+  server). Vendored copies carry `agents/`.
+- **`plan-slices.mjs --brief` and `--scan`** — the build orchestrator's view of the plan: the header
+  and each task's head (App, Phase, Recipe, Files, Interfaces), never its code; and the pre-flight
+  scan's mechanical rows (shared files, interfaces handed between tasks, Files outside the App, steps
+  naming an unlisted path).
+- **`plan_writers: per-phase`** — one plan writer per phase (a phase over six tasks split in two), so
+  no writer holds more than a few tasks' code.
+- **The audit's code map** — `<WS>/audit-digest.md`, per app the files the sweep read and what is
+  there; every plan writer reads it before opening code.
+- **`/builder:archive`** — one table of the registry's finished folders, one confirmation, one commit.
+  Each keeps only its SPEC (PROGRAM for a program) under a `SHIPPED`, `CLOSED — not walked` or
+  `DROPPED — <reason>` header in `_archive/`; PLAN, manifest, ledgers and workspaces go (`git log`
+  keeps them). A dropped feature never satisfies a program dependency; a closed one does.
+- **`condense.mjs --ship --merged <sha>`** — ships a verified feature that is already in the target
+  without a PR (merged by hand, or a PR merged before ship ran).
+
+**Changed:**
+- **A fresh orchestrator per stage.** In the fleet's build lane the run ends at the audit's and the
+  go-ahead's commits, and the fleet starts the next stage with a clean context. The run cap rises
+  12 → 14 for the two boundaries.
+- **The build reads the plan's outline, not the plan** (`--brief`), and the pre-flight scan starts
+  from `--scan`'s rows.
+- **Briefs carry §Global constraints once** (the prompts point at them) and the craft skills not at
+  all (the prompt names each with when to read it: TDD and verification up front, debugging and
+  receiving-code-review at their moment). The implementer reads its brief with the Read tool — a
+  `cat` overflowed into a persisted file and was paid for twice. A fix round's description is
+  `Fix Task N round R`.
+- **Parks are told.** The status line shows `⛔ <feature>: <why>` and keeps parked and failed rows
+  after the fleet exits (folding to `⛔ N parked — /builder:fleet:status` when short of room); the
+  session brief lists what the fleet stopped, with why and next; `fleet.out` gets a block per park or
+  failure. A run timed out twice says why — the idle timeout or the run cap.
+- **A quiet run is flagged** — a running feature with no commit, ledger tick or workspace write for 45
+  minutes gets `⚠` on the status line and a line under `/builder:fleet:status`.
+- **Progress moves per task** — 0.2 of its share when the brief is written, 0.7 at its report, all at
+  its tick — during planning by drafted tasks, and during the agent walk by rows written.
+  Walked / signed-off / verified / PR open read 85 / 87 / 92 / 96%.
+- **Finished means gone from `/builder:status`** — a manifest at `state: shipped` and a SHIPPED
+  program are done; a conversation for an archived feature is no longer listed as a draft.
+- **`/builder:tidy` ships a verified branch on its branch before merging it**, as the fleet does;
+  `merge --as-is` skips that.
+- **Logs:** a landed feature's `.jsonl` transcripts are deleted once its archive row (with the meter)
+  is written; archived logs are pruned by each file's own age at fleet start, tidy and archive.
+
+**Fixed:**
+- A parked feature whose worktree was removed at fleet exit read 0% — it keeps its last progress.
+- `--ship --into` on a human sign-off wrote an agent sign-off header.
+
 ## 5.3.0
 
 Where a fleet's time goes, and less of it lost. From one project's fleet run: about 3½ hours a
