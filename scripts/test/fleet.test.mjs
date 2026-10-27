@@ -1647,7 +1647,7 @@ test('apply_mode ask leaves a note naming the command; a drop is never run under
   const r = runFleet(ask, ['a'], { a: HAPPY })
   assertLanded(r, 'a')
   assert.ok(!existsSync(join(ask, 'applied.txt')))
-  assert.ok(r.fleet.notes.some((n) => /⚠ a: 1 new migration landed — the dev DB is behind: run/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.ok(r.fleet.notes.some((n) => /⚠ a: 1 new migration landed — the dev DB may be behind: if it lacks them, run/.test(n)), JSON.stringify(r.fleet.notes))
   const drop = readinessRepo('agent', 'DROP TABLE "a";')
   const d = runFleet(drop, ['a'], { a: HAPPY })
   assertLanded(d, 'a')

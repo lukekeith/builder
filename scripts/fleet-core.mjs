@@ -542,9 +542,12 @@ export function destructiveMigration({ path, text }) {
 /**
  * What to do about migrations a landing brought into the checkout: `files` are the new migration
  * files ({ path, text }), `readiness` is parseWalkReadiness. `apply` (apply_mode agent, additive
- * only) → the commands to run in order; otherwise a `note` naming what to run by hand.
+ * only) → the commands to run in order; otherwise a `note` naming what to run by hand. `pending` is
+ * the database's own answer when §Walk readiness has a `status:` command (exit 0 = nothing pending):
+ * false → no note, the dev DB already has them; true → it is behind; null (no status, or not asked) →
+ * git only knows the files landed, so the note says the DB *may* be behind.
  */
-export function landedMigrations({ files, readiness }) {
+export function landedMigrations({ files, readiness, pending = null }) {
   if (!files?.length) return { action: 'none' }
   const n = `${files.length} new migration${files.length === 1 ? '' : 's'}`
   const cmds = [readiness.apply, readiness.regenerate].filter(Boolean)
@@ -552,7 +555,11 @@ export function landedMigrations({ files, readiness }) {
   if (!readiness.apply) return { action: 'note', why: `${n} landed, but the config's §Walk readiness has no \`apply:\` command — apply them to the dev DB by hand` }
   const destructive = files.map((f) => [f.path, destructiveMigration(f)]).filter(([, why]) => why)
   if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.map(([p, why]) => `${p} (${why})`).join(', ')} may drop or rewrite data going forward, so nothing was applied — check it, then run ${run}` }
-  if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
+  if ((readiness.apply_mode ?? 'ask') !== 'agent') {
+    if (pending === false) return { action: 'none', why: `${n} landed; \`${readiness.status}\` says the dev DB already has them` }
+    if (pending === true) return { action: 'note', why: `${n} landed — the dev DB is behind (\`${readiness.status}\` says so): run ${run}` }
+    return { action: 'note', why: `${n} landed — the dev DB may be behind: if it lacks them, run ${run}` }
+  }
   return { action: 'apply', commands: cmds }
 }
 

@@ -1029,7 +1029,8 @@ function newMigrations(from, to) {
  */
 function migrateAfterLanding(feature, before, after) {
   const files = newMigrations(before, after)
-  const plan = landedMigrations({ files, readiness: parseWalkReadiness(CFG.body) })
+  const readiness = parseWalkReadiness(CFG.body)
+  const plan = landedMigrations({ files, readiness, pending: files.length ? devDbPending(readiness) : null })
   if (plan.action === 'none') return
   if (plan.action === 'note') return addNote(`⚠ ${feature}: ${plan.why}`)
   const log = join(DIR, 'logs', `${feature}-land.log`)
@@ -1045,6 +1046,20 @@ function migrateAfterLanding(feature, before, after) {
     }
   }
   addNote(`${feature}: applied ${files.length} new migration${files.length === 1 ? '' : 's'} to the dev DB here (${plan.commands.map((c) => `\`${c}\``).join(', then ')})`)
+}
+
+/**
+ * Ask the database, not git: §Walk readiness `status:` run here, in the checkout whose dev DB it is —
+ * exit 0 means nothing pending, anything else pending (or unknown). Null when there is no command.
+ */
+function devDbPending(readiness) {
+  if (!readiness.status) return null
+  try {
+    execSync(readiness.status, { cwd: ROOT, stdio: 'ignore', timeout: 2 * 60 * 1000 })
+    return false
+  } catch {
+    return true
+  }
 }
 
 /** A pause request parks the feature at once — before a sync, a walk env or a run. No run counted. */

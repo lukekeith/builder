@@ -621,3 +621,11 @@ test('laneOf, batched: the walk lane keeps readiness and the walk; fixes and ver
   assert.equal(laneOf({ state: 'signed-off' }), 'walk')
   assert.equal(hasOpenFixes('## Testing\n\n- [ ] x\n'), false, 'a box outside ## Fixes is not a fix')
 })
+
+test('landedMigrations asks the dev DB when a status: command says: current → no note, pending → behind, unknown → may be', () => {
+  const readiness = { apply: 'npm run db:migrate', apply_mode: 'ask', status: 'npm run db:status' }
+  const files = [{ path: 'm/1/migration.sql', text: 'ALTER TABLE "A" ADD COLUMN "b" TEXT;' }]
+  assert.equal(landedMigrations({ files, readiness, pending: false }).action, 'none')
+  assert.match(landedMigrations({ files, readiness, pending: true }).why, /the dev DB is behind \(`npm run db:status` says so\): run `npm run db:migrate`/)
+  assert.match(landedMigrations({ files, readiness }).why, /the dev DB may be behind: if it lacks them, run/)
+})
