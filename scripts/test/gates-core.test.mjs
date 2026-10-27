@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations, looksE2E } from '../gates-core.mjs'
+import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations, looksE2E, startCommand, waitCommand, killStarted } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -518,12 +518,11 @@ test('gate.mjs: in the build lane a @walk line is skipped and says verify runs i
   assert.equal(b.status, 0, b.stdout + b.stderr)
   assert.match(b.stdout, /~ echo e2e .* — @walk: needs the running walk env; verify runs it in the walk lane/)
   assert.equal(readFileSync(out, 'utf8'), 'unit\n')
-  // the walk lane does not quote the build lane's set: the @walk line has not run yet — it runs it,
-  // and quotes the unit line, green on this very tree with the same (test) env
+  // the walk lane does not quote the build lane's set: the @walk line has not run yet. The unit line
+  // runs too — a quoted line never precedes one that runs (it may be setup the later line needs)
   const w = lane('walk')
   assert.match(w.stdout, /▶ server — fast/)
-  assert.match(w.stdout, /⏩ echo unit .* — green at [0-9a-f]{7} \(.*\); nothing changed since/)
-  assert.equal(readFileSync(out, 'utf8'), 'unit\ne2e\n')
+  assert.equal(readFileSync(out, 'utf8'), 'unit\nunit\ne2e\n')
 })
 
 test('gate.mjs under the fleet runs the main checkout\'s gate lines and says when the branch changed them', () => {
@@ -620,4 +619,37 @@ test('gate.mjs starts @parallel lines together, across sets, and reports each in
   assert.ok(took < 3800, `two 2s lines in parallel took ${took}ms — one after the other is 4s or more`)
   assert.match(readFileSync(join(root, '.builder/gates/fast-server-logs/01.log'), 'utf8'), /^\$ sleep 2 && echo s1\ns1\n/)
   assert.equal(parseGates('## Quality gates\n\n### a — fast\n\n```\nx   # y @parallel\n```\n').fast.a[0].parallel, true)
+})
+
+test('a started @parallel command that dies without an exit status is red, never a hang; files are per start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-start-'))
+  const ok = startCommand('echo fine', { cwd: dir, logFile: join(dir, 'logs', '01.log') })
+  const again = startCommand('echo second', { cwd: dir, logFile: join(dir, 'logs', '01.log') })
+  assert.notEqual(ok.exitFile, again.exitFile, 'two starts never share an exit file')
+  assert.equal(waitCommand(ok).exit, 0)
+  assert.equal(waitCommand(again).output.trim(), 'second')
+  const doomed = startCommand('sleep 30', { cwd: dir, logFile: join(dir, 'logs', '02.log') })
+  process.kill(-doomed.pid, 'SIGKILL')
+  const t0 = Date.now()
+  const r = waitCommand(doomed)
+  assert.equal(r.exit, 1)
+  assert.match(r.output, /died without an exit status/)
+  assert.ok(Date.now() - t0 < 5000)
+  const left = startCommand('sleep 30', { cwd: dir, logFile: join(dir, 'logs', '03.log') })
+  killStarted()
+  assert.equal(waitCommand(left).exit, 1, 'killStarted ends what this process started')
+})
+
+test('gate.mjs never quotes a line that comes before a line that runs — it may be the later line\'s setup', () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'ran.txt')
+  const root = configured(`### server — fast\n\n\`\`\`\necho setup >> ${out}   # resets the test db\necho tests >> ${out}   # the suite @scoped apps/server/**\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  mkdirSync(join(root, 'apps/server'), { recursive: true })
+  commit(root, 'apps/server/a.ts', 'export const a = 1\n')
+  git(root, 'switch', '-q', '-c', 'feat')
+  commit(root, 'apps/server/a.ts', 'export const a = 2\n')
+  run(root, 'server')
+  commit(root, 'apps/server/a.ts', 'export const a = 3\n') // reaches the suite: it runs, so setup runs before it
+  const r = run(root, 'server')
+  assert.doesNotMatch(r.stdout, /⏩ echo setup/)
+  assert.equal(readFileSync(out, 'utf8'), 'setup\ntests\nsetup\ntests\n')
 })

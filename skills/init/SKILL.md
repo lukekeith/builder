@@ -123,9 +123,9 @@ the answer is a choice:
   - **`@parallel`** on deep or fast lines that share no database, port or build folder with the rest
     — they then start together. Ask only when two or more slow suites exist; never on two that share
     a test database;
-  - **a `status:` that exits non-zero while migrations are pending** — the fleet asks it after a
-    merge instead of guessing from git. A tool that always exits 0 gets a one-line wrapper (the
-    template's `status:` comment has two);
+  - **a `pending:` command that exits non-zero while migrations are pending** — the fleet asks it
+    after a merge instead of guessing from git. `status:` stays as it is (many tools exit 0 from it
+    either way); the template's `pending:` comment has one-liners for the common tools;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.

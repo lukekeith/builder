@@ -93,6 +93,11 @@ only to park (a plan's split) and would otherwise still raise their own pauses (
 (build §When the last phase signs: `advance.mjs … --commit walk-lane`), writes the hand-off
 (`handoff.mjs write`), and ends the run.
 
+**Under `--walk-lane`** (the fleet's walk lane when it owns the walk env) the run does only what needs
+the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
+or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away
+from the folder the env serves from. Never run a gate suite or a build in this run.
+
 **Agent mode's job is a feature merged into the target branch.** A run that stops short of that
 without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
 write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a

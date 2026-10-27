@@ -374,6 +374,9 @@ test('stagesFromCommits splits a branch history into stages, parks kept apart', 
   assert.equal(r.walkRounds, 1); assert.equal(r.parks, 1)
   assert.equal(r.endGatesAt, (1000 + 146 * 60) * 1000)
   assert.deepEqual(stagesFromCommits([]).stages, {})
+  // With the feature named, only builder's own subjects for it are marks — a task that says "aligned" is a task.
+  const anchored = stagesFromCommits([c(0, 'docs(x): x audited'), c(10, 'docs(x): plan x'), c(20, 'feat(x): keep labels right-aligned'), c(30, 'feat(x): signed off copy'), c(40, 'chore(x): x — phases closed, awaiting the walk lane')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(anchored.stages).map(([k, v]) => [k, v / 60000])), { plan: 10, build: 20, endGates: 10 })
 })
 
 test('walkFacts counts walk.md checks and each round report\'s results', () => {
@@ -516,6 +519,18 @@ test('destructiveMigration reads only the forward half, catches ORM operations, 
   assert.equal(forwardHalf('db/2.down.sql', 'x'), null)
 })
 
+test('destructiveMigration never lets through raw SQL in strings, helpers upgrade() calls, or data-changing ORM calls', () => {
+  const py = (body) => `${body}\n\ndef downgrade():\n    pass\n`
+  const d = (path, text) => destructiveMigration({ path, text })
+  assert.equal(d('v/1.py', py('def upgrade():\n    op.execute("""DELETE FROM sessions""")')), 'DELETE FROM', 'SQL in a triple-quoted string')
+  assert.equal(d('v/2.py', py('def _drop():\n    op.drop_table("x")\n\ndef upgrade():\n    _drop()')), 'drop_table', 'a helper upgrade() calls')
+  assert.equal(d('db/3.sql', '-- Down payment column\nALTER TABLE a ADD COLUMN b int;\nDELETE FROM a;\n'), 'DELETE FROM', 'a comment starting "-- Down" is not a down marker')
+  assert.equal(d('m/4.js', 'exports.up = (k) => k("a").del()\nexports.down = () => {}\n'), '.del()')
+  assert.equal(d('db/migrate/5.rb', 'class X\n  def up\n    User.delete_all\n  end\n  def down\n  end\nend\n'), 'delete_all')
+  assert.equal(d('m/6.sql', 'UPDATE users u SET x = 1;'), 'UPDATE users u SET')
+  assert.equal(d('m/7.js', 'module.exports = { up: async (q) => q.bulkDelete("a"), down: async () => {} }'), 'bulkDelete')
+})
+
 test('landedMigrations: ask, human, or no apply command → a note naming the command', () => {
   const files = [{ path: 'm/1/migration.sql', text: 'CREATE TABLE "A" ();' }]
   for (const mode of ['ask', 'human']) {
@@ -623,9 +638,11 @@ test('laneOf, batched: the walk lane keeps readiness and the walk; fixes and ver
 })
 
 test('landedMigrations asks the dev DB when a status: command says: current → no note, pending → behind, unknown → may be', () => {
-  const readiness = { apply: 'npm run db:migrate', apply_mode: 'ask', status: 'npm run db:status' }
+  const readiness = { apply: 'npm run db:migrate', apply_mode: 'ask', status: 'npm run db:status', pending: 'npm run db:pending' }
   const files = [{ path: 'm/1/migration.sql', text: 'ALTER TABLE "A" ADD COLUMN "b" TEXT;' }]
   assert.equal(landedMigrations({ files, readiness, pending: false }).action, 'none')
-  assert.match(landedMigrations({ files, readiness, pending: true }).why, /the dev DB is behind \(`npm run db:status` says so\): run `npm run db:migrate`/)
-  assert.match(landedMigrations({ files, readiness }).why, /the dev DB may be behind: if it lacks them, run/)
+  assert.match(landedMigrations({ files, readiness, pending: true }).why, /the dev DB is behind, or `npm run db:pending` couldn't reach it: run `npm run db:migrate`/)
+  const maybe = landedMigrations({ files, readiness })
+  assert.match(maybe.why, /the dev DB may be behind: if it lacks them, run/)
+  assert.equal(maybe.kind, 'maybe', 'the caller asks pending: only then')
 })

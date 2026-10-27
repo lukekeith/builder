@@ -41,12 +41,12 @@ test command, and one with `commit: manual`.
 | D4 | `/builder:fleet:status` | `commands/fleet/status.md` — a plugin command in a subfolder is the only shape that registers a two-level name (a skill's `name:` can't); `--status` still works. Vendored copies carry `commands/`. |
 | D5 | Gate quoting | Per line (`.builder/gates/lines.json`): quoted when nothing changed since its green head is the set's input, or — `@scoped` — the import graph from that head reaches none of its tests. Never `@delta`, `@known-red`, `@walk`, `<…>`, a dirty tree, `--force`, `--whole`. A monolithic command quotes only on unchanged inputs. |
 | D6 | Parallel gates | Opt-in `@parallel` per line (two suites may share a test DB); lines start together across sets. The end gates run beside the final review by default — re-run after its fix wave, quoting what it doesn't reach. |
-| D7 | Lane split | Whenever `agent_walk.start` is set. Without it the env is the human's own checkout and nothing moves. |
+| D7 | Lane split | Whenever `agent_walk.start` is set; walk-lane runs carry `--walk-lane` and end at the sign-off or at `## Fixes`. Without `start` the env is the human's own checkout and nothing moves. |
 | D8 | Untagged e2e | Under the fleet only: not run, reported unverified with the fix; `@local` opts out. |
 | D9 | Env check at launch | Default with `start`: start/smoke/stop in a throwaway worktree, beside the build lanes; the walk lane waits for it; a failure is a note. `--no-env-check`. |
 | D10 | Dead env | Default with `start` + `smoke`: smoke after every walk run / batch session; red → drop the run's doc-only commits, restart without reset, walk again once. A commit that touched code is never dropped. |
-| D11 | Dev DB behind | Ask §Walk readiness `status:` (exit 0 = current); without it, "may be behind". |
-| D12 | Destructive check | Forward half per file kind; each tool's operations; comments stripped; unknown kind held. Errs to a note. |
+| D11 | Dev DB behind | Ask a new §Walk readiness `pending:` (exit 0 = current) — not `status:`, which many tools exit 0 from either way, so existing configs keep their note; without it, "may be behind". Asked only when a note is due. |
+| D12 | Destructive check | The file minus its backward half (downgrade/down/after an exact down marker) — helpers and SQL strings stay in; each tool's operations; whole-line comments stripped; unknown kind held. Errs to a note. |
 | D13 | Plan writers | Opt-in `plan_writers: per-app`; header and Phases written first fix numbering; a cross-app interface check before the usual checks. |
 | D14 | Task size | Unchanged — overhead ~7%; folding loses blame and the red-green cycle. |
 
