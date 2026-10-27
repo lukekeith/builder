@@ -6,8 +6,9 @@ argument-hint: "[--archived [N]]"
 # `/builder:fleet:status` — where the fleet stands
 
 Resolve `<builder>` per [REFERENCE](../../skills/resume/REFERENCE.md) §The scripts, then run
-`node <builder>/scripts/fleet.mjs --status $ARGUMENTS` from the repo root. Read-only: it starts,
-stops and changes nothing.
+`node <builder>/scripts/fleet.mjs --status $ARGUMENTS` from the repo root. It starts, stops and
+changes nothing — it only notes that the status was seen, so the status line and the next session's
+brief stop announcing what landed before now (`✔ <feature> merged`).
 
 Reply with its output **as markdown, never inside a code fence**: the heading line, then the table
 as a markdown table (the terminal renders it; fenced, it shows as raw pipes), then the `## Parked`
@@ -18,8 +19,9 @@ How to read it, when asked:
 
 - **The bar covers the whole run** — every feature in it, each one this run merged counted at 100%
   (`N merged this run` in the heading) — and measures **steps, not time**: the manifest state sets a
-  floor (planned 15, built 75, verified 90, merged 100) and inside the build it climbs with the
-  plan's completed tasks (`build 5/9`). Half the bar is not half the wall-clock.
+  floor (planned 15, built 75, verified 92, merged 100); inside the build it climbs per task — a
+  share when its brief is written, more at its report, all at its tick (`build 5/9`) — and it moves
+  through the plan and the agent walk the same way. Half the bar is not half the wall-clock.
 - **`Time`** is each feature's agent time so far. **The line under the heading** gives, for the last
   five landed features, the mean **wall-clock** from start to merge — parks, restarts and queueing
   included — and where it went by stage. For "how long is left", that wall-clock mean for the stages

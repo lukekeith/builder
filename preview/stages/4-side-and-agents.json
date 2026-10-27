@@ -685,7 +685,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet:status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report. Nothing waits on it here, so a park shows where you look: `⛔ <feature>: <why>` on the status line, a line in the next session's brief, and a block in `.builder/fleet/fleet.out`.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet:status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report. Nothing waits on it here, so what happens shows where you look: a merge as `✔ <feature> merged` on the status line and in the next session's brief until you open `/builder:fleet:status`; a park as `⛔ <feature>: <why>` there too, and a block in `.builder/fleet/fleet.out`.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -693,8 +693,8 @@
         }
       ],
       "stamp": {
-        "hash": "6da5e8771195",
-        "version": "5.3.0",
+        "hash": "70e867d79e7e",
+        "version": "5.4.0",
         "date": "2026-10-27"
       }
     },
@@ -756,8 +756,8 @@
         }
       ],
       "stamp": {
-        "hash": "9571a75aa4af",
-        "version": "5.3.0",
+        "hash": "aa4289cd1a56",
+        "version": "5.4.0",
         "date": "2026-10-27"
       }
     },

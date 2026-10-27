@@ -28,7 +28,7 @@ import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
-import { rowProgress, parkBlock, stallOf, stallLine } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { parseGates } from './gates-core.mjs'
@@ -104,6 +104,8 @@ const testsOf = (feature, f) => {
 
 if (flag('--status') || flag('--archived')) {
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
+  // Opening the status is seeing what landed: the status line and the brief stop announcing it.
+  markSeen(ROOT)
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
     console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf) : 'No fleet has run in this repo yet.')

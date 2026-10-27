@@ -4,6 +4,16 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.4.1
+
+**Fixed:** a merge was as silent as a park used to be. The fleet runs detached, so when a feature
+landed overnight the status line went back to nothing and the next session said nothing either —
+"idle", with no word that it had merged. Now, once the fleet has exited, the status line reads
+`✔ <feature> merged — /builder:fleet:status` (`✔ 3 merged …` for more than two), and the session
+brief names each landing — where, its sha, and that nobody has tested it — until
+`/builder:fleet:status` is opened, which marks them seen (`.builder/fleet/seen`). A repo that never
+opened it hears of the last day's landings, not its whole history.
+
 ## 5.4.0
 
 Where a fleet's tokens go, and fewer of them; parks you hear about; a bar that moves; and finished
