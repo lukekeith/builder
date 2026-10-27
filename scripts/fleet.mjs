@@ -48,7 +48,7 @@ const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still th
 
 const argv = process.argv.slice(2)
 const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --pause <feature>   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived', '--pause'])
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived', '--pause', '--no-env-check'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -1924,7 +1924,45 @@ async function walkBatch(batch) {
   }
 }
 
+/**
+ * The walk env, proved once at launch: start and smoke in a throwaway worktree of the target (with
+ * copy and setup, as a feature's), then stop — so a config that can't bring it up says so now, not
+ * hours in at the first walk. It runs beside the build lanes; the walk lane waits for it, so the two
+ * never hold the env's ports at once. A failure is a note, never a stop: the first walk tries again
+ * with its own fix run. --no-env-check skips it.
+ */
+const ENVCHECK_WT = join(WORKTREES, '_envcheck')
+async function envPreflight() {
+  if (!AW.start || flag('--no-env-check') || process.env.FLEET_ENV_CHECK === '0') return
+  const rec = { worktree: ENVCHECK_WT }
+  let why = null
+  try {
+    mkdirSync(WORKTREES, { recursive: true })
+    tryGit(['worktree', 'prune'])
+    if (existsSync(ENVCHECK_WT)) tryGit(['worktree', 'remove', '--force', ENVCHECK_WT])
+    git(['worktree', 'add', '-f', '--detach', ENVCHECK_WT, `refs/heads/${TARGET}`])
+    copyInto(ENVCHECK_WT)
+    if (AW.setup) runSetup('_envcheck', ENVCHECK_WT)
+    const empty = Object.entries(AW.env ?? {}).filter(([, v]) => !String(v).replaceAll('{feature}', '_envcheck').trim()).map(([k]) => k)
+    if (empty.length) why = `agent_walk.env leaves ${empty.join(', ')} empty`
+    else if (!(await startWalkEnv('_envcheck', rec))) why = `start/smoke failed — see ${rec.startLog}`
+  } catch (e) {
+    why = e.message.split('\n')[0]
+  } finally {
+    await killStart(rec)
+    if (AW.stop) hook(AW.stop, ENVCHECK_WT, '_envcheck')
+    tryGit(['worktree', 'remove', '--force', ENVCHECK_WT])
+  }
+  if (why) {
+    addNote(`walk env launch check failed on ${TARGET}: ${why}. The first walk tries again and an agent looks at it; if the cause is the config (start, smoke, env), fix .claude/builder.md yourself — agents won't`)
+    console.error(`[fleet] walk env launch check failed: ${why}`)
+  } else console.log(`[fleet] walk env launch check: start and smoke pass on ${TARGET}`)
+  save()
+}
+let envCheck = Promise.resolve()
+
 async function walkLane() {
+  await envCheck
   for (;;) {
     if (closing) return
     if (walkQueue.length && BATCHED) {
@@ -1963,6 +2001,7 @@ const close = () => {
 const poll = setInterval(() => {
   if (!closing && drainInbox()) wakeAll()
 }, INBOX_POLL_MS)
+envCheck = envPreflight().catch((e) => addNote(`walk env launch check: ${e.message}`))
 do {
   closing = false
   await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])

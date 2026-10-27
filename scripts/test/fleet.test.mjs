@@ -883,6 +883,21 @@ test('with a walk env of its own, verify runs in the pool even one walk at a tim
   assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'build', 'build'])
 })
 
+test('the walk env is proved once at launch, in a throwaway worktree that is gone afterwards; a failure is a note', async () => {
+  const ok = await walkEnvRepo('s')
+  const r = runFleet(ok.root, ['s'], { s: HAPPY }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /walk env launch check: start and smoke pass on main/)
+  assert.ok(existsSync(join(ok.root, '.builder/fleet/logs/_envcheck-start.log')), 'its start output is logged')
+  assert.ok(!git(ok.root, 'worktree', 'list').includes('_envcheck'), 'the check worktree is removed')
+  const skipped = await walkEnvRepo('s')
+  runFleet(skipped.root, ['s', '--no-env-check'], { s: HAPPY }, FAST)
+  assert.equal(skipped.starts(), 1, '--no-env-check: only the walk starts the env')
+  const bad = await walkEnvRepo('s', { smoke: 'exit 1' })
+  const b = runFleet(bad.root, ['s'], { s: ['audited'] }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '800' })
+  assert.ok(b.fleet.notes.some((n) => /walk env launch check failed on main: start\/smoke failed/.test(n)), JSON.stringify(b.fleet.notes))
+})
+
 test('start is killed even when the walk parks', async () => {
   const { root, pidFile } = await walkEnvRepo('s')
   const r = runFleet(root, ['s'], { s: ['READY-PENDING', 'BLOCK:agent walk failed twice'] }, FAST)
@@ -1708,8 +1723,8 @@ test('batched walks: two features walk together — one walk branch, one env, on
   // verify (signed-off) and ship (verified) ran in the pool — build lane, no env — not in the walk lane
   assert.ok(r.calls.some((l) => /^start a build .* verified /.test(l)), r.calls.join('\n'))
   assert.ok(r.calls.some((l) => /^start b build .* verified /.test(l)), r.calls.join('\n'))
-  // the env came up once for the batch (plus none per feature)
-  assert.equal(starts(), 1, `env starts: ${starts()}`)
+  // the env came up once for the launch check and once for the batch (none per feature)
+  assert.equal(starts(), 2, `env starts: ${starts()}`)
   // the walk worktree and its branch are gone when the fleet is
   assert.equal(git(root, 'branch', '--list', 'builder/_walk'), '')
 })
@@ -1721,7 +1736,7 @@ test('batched walks: agent_walk.batch 1 walks one feature at a time, as before',
   assertLanded(r, 'a')
   assertLanded(r, 'b')
   assert.equal(r.calls.filter((l) => l.startsWith('batch ')).length, 0)
-  assert.equal(starts(), 2, 'one env per feature')
+  assert.equal(starts(), 3, 'the launch check, then one env per feature')
 })
 
 test('batched walks: a walk that finds problems sends the fixes to the pool, and the feature rejoins a later walk', async () => {
