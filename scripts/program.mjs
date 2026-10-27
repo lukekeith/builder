@@ -8,12 +8,15 @@
  * condenses the folder, and the child line can lag it. A token that is not a child may name another
  * feature or program in the registry (`glyph-library (shipped)`): met the same way. A parenthetical
  * is a note, not a dependency. A token naming nothing is unmet: a typo holds the child back rather
- * than letting it run. A dependency moved into `<registry>/_archive/` shipped — met by existence alone, before any read.
+ * than letting it run. A dependency moved into `<registry>/_archive/` is met unless its header says
+ * `✖ DROPPED` (registry.mjs archivedOutcome — one header read): a dropped feature never built what the
+ * child depends on. A `✅ CLOSED` one (merged, never walked) is met — its code is in the target, which
+ * is what a dependency waits for; the walk it skipped is a quality question, not a contract one.
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseManifest } from './manifest.mjs'
-import { features, isArchived, isShippedFolder } from './registry.mjs'
+import { features, archivedOutcome, isShippedFolder } from './registry.mjs'
 
 const read = (p) => {
   try {
@@ -93,13 +96,20 @@ export function waitsOn(root, registry, feature) {
       if (!dep) {
         // Not a child — another feature or program in the registry, or nothing at all.
         const dir = join(reg, tok)
-        if (/^[\w.-]+$/.test(tok) && isArchived(root, registry, tok)) continue
+        const ended = /^[\w.-]+$/.test(tok) ? archivedOutcome(root, registry, tok) : null
+        if (ended === 'dropped') out.push({ name: tok, state: 'dropped' })
+        if (ended) continue
         if (/^[\w.-]+$/.test(tok) && existsSync(dir)) {
           if (!isShippedFolder(dir)) out.push({ name: tok, state: folderState(dir) })
         } else out.push({ name: tok, state: 'no such child or feature' })
         continue
       }
-      if (states.get(dep) === 'shipped' || isArchived(root, registry, dep) || isShippedFolder(join(reg, dep))) continue
+      const ended = archivedOutcome(root, registry, dep)
+      if (ended === 'dropped') {
+        out.push({ name: dep, state: 'dropped' })
+        continue
+      }
+      if (states.get(dep) === 'shipped' || ended || isShippedFolder(join(reg, dep))) continue
       out.push({ name: dep, state: states.get(dep) || 'not started' })
     }
     return out
