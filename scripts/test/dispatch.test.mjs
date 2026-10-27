@@ -41,7 +41,7 @@ test('taskBlock: one task from its heading to the next Task heading, a fenced he
   assert.equal(taskBlock(plan, 3), null)
 })
 
-test('dispatch implementer: the brief (task + SPEC sections + §Contract + recipe + craft skills + constraints) and the full prompt, nothing left unfilled', () => {
+test('dispatch implementer: the brief (task + SPEC sections + §Contract + recipe + constraints) and the full prompt (+ craft skills), nothing left unfilled', () => {
   const r = leanRepo('note-tags')
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--context', 'Tasks 2 and 3 build on parse/tagsOf/line — use exactly those names.'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
@@ -63,7 +63,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
     assert.ok(p.includes(`**${sp}**`), s)
     assert.ok(existsSync(sp))
   }
-  assert.match(p, /- No dependencies\. Node's own modules only\.\n- The CLI entry stays `src\/cli\.mjs`/)
+  // The constraints close the brief, once — the prompt points at them rather than repeating them.
+  assert.doesNotMatch(p, /- No dependencies\. Node's own modules only\./)
+  assert.match(p, /Read it\s+with the Read tool, in one call — never `cat` or `sed` it/)
   assert.match(p, new RegExp(`Write your full report to ${join(WS(r), 'task-1-report.md').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:`))
 
   const brief = readText(join(WS(r), 'task-1-brief.md'))
@@ -76,8 +78,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
   assert.doesNotMatch(brief, /\| F2 \|/)
   assert.match(brief, /## §Contract — not frozen yet\n/)
   assert.match(brief, /\| `notes tags` \| notes/)
-  assert.ok(brief.includes(join(BUILDER, 'skills', 'test-driven-development', 'SKILL.md')))
-  assert.match(brief, /## Global constraints \(the project config's, verbatim\)\n\n- No dependencies/)
+  assert.ok(!brief.includes('## The craft skills') && !brief.includes(join(BUILDER, 'skills', 'systematic-debugging', 'SKILL.md')), 'the craft skills are the prompt\'s, not repeated in the brief')
+  assert.match(brief, /## Read first — the recipe\n\n.*test-driven-development/)
+  assert.match(brief, /## Global constraints \(the project config's, verbatim\)\n\n- No dependencies\. Node's own modules only\.\n- The CLI entry stays `src\/cli\.mjs`/)
   const state = JSON.parse(readText(join(WS(r), 'dispatch-state.json')))
   assert.equal(state.tasks['1'].base, git(r.root, 'rev-parse', '--short', 'HEAD'))
 })
@@ -343,4 +346,35 @@ test('dispatch walk-batch: one brief for several features — every walk script,
     assert.ok(p.includes(join(WS(r), 'agent-walk', 'round-1', 'report.md')))
   }
   assert.match(p, /An item fails in the feature whose walk script lists it/)
+})
+
+test('dispatch: every build dispatch names the agent it runs as — builder\'s lean agents, a recipe only the Skill tool reaches, the config\'s override', () => {
+  const r = leanRepo('note-tags')
+  const typeOf = (out) => /^ {2}subagent_type: (\S+)/m.exec(out.stdout)?.[1]
+  const impl = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(impl.status, 0, impl.stderr)
+  assert.equal(typeOf(impl), 'builder:implementer', 'a builder-skill recipe is read by path')
+  assert.match(impl.stdout, /subagent_type: builder:implementer — if this session has no agent of that type, general-purpose/)
+  commitTask(r)
+  assert.equal(typeOf(run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })), 'builder:reviewer')
+
+  // A companion skill the project ships is resolved to its path; one it doesn't needs the Skill tool.
+  const plan = join(r.folder, 'PLAN.md')
+  const text = readText(plan)
+  writeFileSync(plan, text.replace('Recipe: builder:test-driven-development\n', 'Recipe: house-cli\n'))
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'builder:implementer-skills')
+  mkdirSync(join(r.root, '.claude', 'skills', 'house-cli'), { recursive: true })
+  writeFileSync(join(r.root, '.claude', 'skills', 'house-cli', 'SKILL.md'), '# house cli\n')
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'builder:implementer')
+  assert.match(readText(join(WS(r), 'task-1-brief.md')), /\.claude\/skills\/house-cli\/SKILL\.md {2}\(Recipe: house-cli — the project's companion skill; read it with the Read tool\)/)
+  // A recipe that drives an MCP server needs an agent that has one.
+  writeFileSync(join(r.root, '.claude', 'skills', 'house-cli', 'SKILL.md'), '# house cli\nLook components up with mcp__shadcn__search_items first.\n')
+  assert.equal(typeOf(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })), 'general-purpose')
+
+  // agent_types opts back out.
+  const cfg = join(r.root, '.claude', 'builder.md')
+  writeFileSync(cfg, readText(cfg).replace(/^registry:/m, 'agent_types: general-purpose\nregistry:'))
+  const gp = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(typeOf(gp), 'general-purpose')
+  assert.doesNotMatch(gp.stdout, /if this session has no agent/)
 })

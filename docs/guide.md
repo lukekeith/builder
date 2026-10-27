@@ -102,7 +102,8 @@ plugins/builder/
   scripts/
     config.mjs               parses .claude/builder.md — the one thing that knows your project
     list-features.mjs        every feature and its next command; the picker's data source and /builder:status
-    registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/; --sweep archives old shipped ones
+    registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/, and how an archived one ended
+    archive.mjs              /builder:archive — finished folders into <registry>/_archive/, each kept as its SPEC under its header
     check-obligations.mjs    the cross-section gate on a SPEC.md
     gate.mjs                 runs an app's gate block or the deep set; flaky re-runs, @delta baselines,
                              and a memo that quotes a green run whose inputs haven't changed
@@ -255,7 +256,13 @@ A merged feature's worktree and branch are removed; a parked one keeps only its 
 the next step. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
 what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
 worktree, one OK for everything safe (delete what's merged, remove dead worktrees, merge what's
-verified), one question each for the rest. It never pushes and never loses uncommitted work.
+verified — shipped on its branch first, so the target gets the archived SPEC), one question each for
+the rest. It never pushes and never loses uncommitted work. **`/builder:archive`** does the same for
+the registry: one table of the folders it judges finished — shipped but never moved, verified and
+merged with no ship, merged but never walked, and (only if you say so) abandoned ones and old docs —
+and one OK moves them into `<registry>/_archive/`, each kept as its SPEC under a `SHIPPED`,
+`CLOSED — not walked` or `DROPPED — <reason>` header, in one commit. A dropped feature never satisfies
+a program dependency; a closed one does, since its code is merged.
 
 ## Live progress in the status line
 

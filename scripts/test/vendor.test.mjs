@@ -54,7 +54,7 @@ test('a fresh install copies what runs, registers it in the host, and names noth
   const r = vendor(root)
   assert.equal(r.status, 0, r.stderr + r.stdout)
   const dir = join(root, 'plugins/builder')
-  for (const f of ['skills/resume/SKILL.md', 'scripts/fleet.mjs', 'scripts/workspace', 'hooks/hooks.json', 'hooks/session-start', 'hooks/pr-lock', 'PROJECT.template.md', 'LICENSE', '.claude-plugin/plugin.json'])
+  for (const f of ['skills/resume/SKILL.md', 'scripts/fleet.mjs', 'scripts/workspace', 'hooks/hooks.json', 'hooks/session-start', 'hooks/pr-lock', 'agents/implementer.md', 'agents/reviewer.md', 'PROJECT.template.md', 'LICENSE', '.claude-plugin/plugin.json'])
     assert.ok(existsSync(join(dir, f)), f)
   for (const f of ['README.md', 'CHANGELOG.md', 'RELEASING.md', 'CONTRIBUTING.md', 'docs', 'scripts/test', 'skills/update', '.claude-plugin/marketplace.json', '.git'])
     assert.ok(!existsSync(join(dir, f)), `${f} must not be vendored`)

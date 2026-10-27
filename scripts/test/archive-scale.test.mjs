@@ -32,8 +32,11 @@ function bigRepo() {
 }
 
 const insideArchive = (paths) => paths.filter((p) => p.includes(`/${REG}/_archive/`))
+// A dependency's own archived header is read (a DROPPED one never satisfies it): one read per
+// dependency, never one per archived feature.
+const beyondDeps = (paths) => insideArchive(paths).filter((p) => !/\/_archive\/(api|f7)\/(SPEC|PROGRAM)\.md$/.test(p))
 
-test('waitsOn over a big archive reads nothing inside it', () => {
+test('waitsOn over a big archive reads nothing inside it but its dependencies\' headers', () => {
   const root = bigRepo()
   const seen = []
   const restore = spy((p) => seen.push(p))
@@ -45,10 +48,11 @@ test('waitsOn over a big archive reads nothing inside it', () => {
   }
   assert.deepEqual(deps, [])
   assert.ok(seen.some((p) => p.endsWith('big/MANIFEST.md')), 'the spy saw the program read')
-  assert.deepEqual(insideArchive(seen), [])
+  assert.deepEqual(beyondDeps(seen), [])
+  assert.ok(insideArchive(seen).length <= 4, 'one header read per dependency')
 })
 
-test('list-features --json and --status over a big archive read nothing inside it', () => {
+test('list-features --json and --status over a big archive read nothing inside it but dependency headers', () => {
   const root = bigRepo()
   for (const mode of ['--json', '--status']) {
     const out = join(root, `spy${mode}.log`)
@@ -56,7 +60,7 @@ test('list-features --json and --status over a big archive read nothing inside i
     assert.equal(r.status, 0, r.stderr)
     const seen = readFileSync(out, 'utf8').split('\n').filter(Boolean)
     assert.ok(seen.some((p) => p.endsWith('ui/MANIFEST.md')), `${mode}: the spy saw the live read`)
-    assert.deepEqual(insideArchive(seen), [], mode)
-    if (mode === '--status') assert.match(r.stdout, new RegExp(`📦 ${N + 1} shipped features archived`))
+    assert.deepEqual(beyondDeps(seen), [], mode)
+    if (mode === '--status') assert.match(r.stdout, new RegExp(`📦 ${N + 1} features archived`))
   }
 })

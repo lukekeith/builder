@@ -93,6 +93,16 @@ only to park (a plan's split) and would otherwise still raise their own pauses (
 (build §When the last phase signs: `advance.mjs … --commit walk-lane`), writes the hand-off
 (`handoff.mjs write`), and ends the run.
 
+🔴 **A fresh context per stage — under `--no-dev-env` (the fleet's build lane).** End the run, with
+its handoff, at two more commits: **the audit's** (`state: audited`) and **the go-ahead's**
+(`state: planned` with `go-ahead:` set). The fleet sees a manifest that moved and starts the next run
+on it at once, with a clean context. Everything the next stage needs is on disk — SPEC §Findings and
+§Decisions, `PLAN.md`, the manifest, the workspace — while what this run holds is the audit's and the
+plan's whole reading, which a build loop would otherwise re-read on every one of its turns: measured,
+an orchestrator entered its first implementer dispatch already holding 190–300k tokens. A stage that
+ends any other way (a park, a stop) ends as it always has. Outside the fleet — no `--no-dev-env` —
+the steps run on in one turn, as below.
+
 **Under `--walk-lane`** (the fleet's walk lane when it owns the walk env) the run does only what needs
 the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
 or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away

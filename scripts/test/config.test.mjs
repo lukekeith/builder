@@ -227,4 +227,15 @@ test('plan_writers: per-app is the opt-in; anything else is one writer', () => {
   assert.equal(cfgWith('plan_writers: per-app').planWriters, 'per-app')
   assert.equal(cfgWith('').planWriters, 'one')
   assert.equal(cfgWith('plan_writers: many').planWriters, 'one')
+  assert.equal(cfgWith('plan_writers: per-phase').planWriters, 'per-phase')
+})
+
+test('agent_types: builder\'s lean agents by default; one type for all, or per kind', () => {
+  assert.deepEqual(cfgWith('').agentTypes, { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' })
+  assert.deepEqual(cfgWith('agent_types: general-purpose').agentTypes, { implementer: 'general-purpose', 'implementer-skills': 'general-purpose', reviewer: 'general-purpose' })
+  assert.deepEqual(cfgWith('agent_types: implementer=my-impl, reviewer = my-rev').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'my-rev' })
+  assert.deepEqual(cfgWith('agent_types: implementer: my-impl, reviewer: my-rev').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'my-rev' }, 'a colon reads as =')
+  assert.deepEqual(cfgWith('agent_types:\n  implementer: my-impl\n  reviewer: general-purpose').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'general-purpose' }, 'the YAML map form')
+  assert.deepEqual(cfgWith('agent_types: not a type').agentTypes.implementer, 'builder:implementer', 'an unparseable value keeps the default rather than naming a nonexistent agent')
+  assert.deepEqual(cfgWith('agent_types: reviewer=general-purpose').agentTypes, { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'general-purpose' })
 })

@@ -5,7 +5,7 @@ Dispatched ONCE, after the last phase's tasks, **on the most capable available m
 Adapted from superpowers' `requesting-code-review` (MIT — see `LICENSE-THIRD-PARTY.md`).
 
 ```
-Subagent (general-purpose):
+Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose where it is absent):
   description: "Final review: <feature>"
   model: [MODEL — REQUIRED: the most capable available]
   prompt: |

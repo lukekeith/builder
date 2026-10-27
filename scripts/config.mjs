@@ -157,8 +157,11 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
       return (this._mergeInto ??= checkedOutBranch(root) ?? fm.base_branch ?? 'main')
     },
     buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
-    // plan_writers: per-app — /builder:plan drafts each app's task blocks in parallel (opt-in).
-    planWriters: fm.plan_writers === 'per-app' ? 'per-app' : 'one',
+    // plan_writers: per-app — /builder:plan drafts each app's task blocks in parallel; per-phase —
+    // one writer per phase, each holding a small slice of the code (both opt-in).
+    planWriters: ['per-app', 'per-phase'].includes(fm.plan_writers) ? fm.plan_writers : 'one',
+    // agent_types: which agent each build dispatch runs as (agentTypesOf) — builder's lean agents by default.
+    agentTypes: agentTypesOf(fm.agent_types),
     // An unusable value, for whoever reports it (profile.mjs --recommend, /builder:init) — never
     // warned from here: the statusline loads the config on every render, each in a new process.
     buildProfileDefaultInvalid: fm.build_profile_default == null || BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? null : String(fm.build_profile_default),
@@ -178,6 +181,38 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
+}
+
+/**
+ * `agent_types:` → the subagent_type each build dispatch kind runs as. Default: builder's own agents
+ * (agents/*.md) — file, shell and search tools, no MCP servers and no skills list, so a dispatch
+ * starts at a few thousand tokens instead of a general-purpose agent's ~20k. A project opts out:
+ * `agent_types: general-purpose` for every kind, or `implementer=<type>, reviewer=<type>` for a
+ * project's own .claude/agents/* — say, an implementer that needs an MCP server. The implementer
+ * value covers both builder implementers (with and without the Skill tool).
+ */
+export function agentTypesOf(v) {
+  const out = { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }
+  const set = (k, t) => {
+    t = String(t ?? '').trim()
+    if (!t) return
+    if (k === 'implementer') Object.assign(out, { implementer: t, 'implementer-skills': t })
+    else if (k === 'reviewer') out.reviewer = t
+  }
+  // The YAML map form (`agent_types:` then `  implementer: x` lines) arrives as an object.
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, t] of Object.entries(v)) set(k.trim(), t)
+    return out
+  }
+  if (v == null || typeof v !== 'string' || !v.trim()) return out
+  const s = v.trim()
+  // `implementer=x, reviewer=y` — or with `:` in place of `=`, which the map form invites.
+  if (!/^(implementer|reviewer)\s*[=:]/.test(s)) return /\s/.test(s) ? out : { implementer: s, 'implementer-skills': s, reviewer: s }
+  for (const pair of s.split(',')) {
+    const m = /^\s*(implementer|reviewer)\s*[=:]\s*(\S+)\s*$/.exec(pair)
+    if (m) set(m[1], m[2])
+  }
+  return out
 }
 
 /**

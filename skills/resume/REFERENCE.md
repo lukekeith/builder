@@ -91,8 +91,10 @@ Below, `<builder>/scripts/x` means that resolved path.
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
 | `docs.mjs <step>` | every doc section one step reads — the REFERENCE sections it names, its own companion files, the config — printed whole in one call (`--list` shows the map; `--prompts` adds build's four prompt templates). Read-only |
 | `advance.mjs <folder> --set k=v… [--head] [--ledger "<line>"] [--add <path>] --commit <subject\|preset>` | ONE state change: manifest keys in §MANIFEST.md's order, `head:`/`branch:`, a ledger line, and a commit of only the manifest plus the `--add` paths. Presets: `audited` · `aligned` · `plan` · `built` · `walk-lane` · `verify-ready` · `verify-incomplete` |
-| `condense.mjs <folder> --signoff agent\|human … \| --ship (--pr N \| --into <branch>)` | the SPEC surgery of §Condense — header line, §Plan cut, `git rm` PLAN.md, the archive move at ship — plus its manifest write and commit |
+| `condense.mjs <folder> --signoff agent\|human … \| --ship (--pr N \| --into <branch> \| --merged <sha>)` | the SPEC surgery of §Condense — header line, §Plan cut, `git rm` PLAN.md, the archive move at ship — plus its manifest write and commit |
+| `archive.mjs plan \| apply <feature>…` | `/builder:archive` — the finished folders still in the registry, and moving them into `<registry>/_archive/` with only their SPEC and its `SHIPPED` / `CLOSED` / `DROPPED` header |
 | `plan-slices.mjs <folder> --index --write` | SPEC §Plan's index from PLAN.md's headings, put into SPEC.md |
+| `plan-slices.mjs <folder> --brief` · `--scan` | the build orchestrator's view of the plan — the header and each task's head, never its code — and the pre-flight conflict scan's mechanical rows (build EXECUTION.md §Setup 5–6) |
 | `dispatch.mjs <kind> <folder> …` | a subagent's whole prompt — implementer, task-review, re-review, final-review, agent-walk — rendered from `skills/build/prompts/` into the workspace; the Agent call is "Read <file> and do what it says" |
 | `walk-script.mjs <folder>` | `<WS>/walk.md` from SPEC §Testing, per app, `[risk]`-tagged, with the cross-app E steps under `--agent-walk`; the orchestrator fills only its marked blocks |
 | `handoff.mjs write\|read <folder>` | the build lane's end state for the walk lane (`<WS>/handoff.md`); `read` exits 3 with `stale:` when the manifest or the code moved since |
@@ -1124,14 +1126,16 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 |---|---|
 | **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md` (and `PARKED.md` when there is one); write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
 | **agent sign-off** (AGENT-PASS in agent mode, written by `/builder:agent-walk`) | the same condense; the line is `> 🤖 AGENT SIGNED OFF <date> — <sha> · agent walk round <n> · not human-tested · evidence: …` |
-| **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch |
+| **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch. Already in the target with no ship (a manual merge, a PR merged first): the same on the target, `— merged <sha>` |
+| **archive** (`/builder:archive`, a finished folder still in the registry) | shipped → as ship; merged but never walked → `> ✅ CLOSED <date> — merged <sha>, not walked`; abandoned → `> ✖ DROPPED <date> — <reason>`; only the SPEC (PROGRAM.md) stays, and the docs it names; a folder with no SPEC moves as it is |
 
 **State detection, binding on every skill in the family:**
 
 | Signal | State | The family does |
 |---|---|---|
 | manifest `state:` spec · aligned · audited · planned · building · built | in flight | route on the manifest's `next:` line |
-| SPEC header carries `SHIPPED` | **DONE** | run no step; print the header; offer a new feature folder |
+| SPEC header carries `SHIPPED` (or manifest `state: shipped`) | **DONE** | run no step; print the header; offer a new feature folder |
+| archived, header `CLOSED` or `DROPPED` | **closed** | no step runs on it; a `DROPPED` one never satisfies a program dependency, a `CLOSED` one does (its code is in the target) |
 | header carries `SIGNED OFF`, manifest `verify: none` | signed off | verify next |
 | manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship and merge into the target branch |
 | manifest `hold:` set | parked | local-only steps until the human lifts the hold |

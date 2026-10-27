@@ -1,9 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimesSync, appendFileSync, rmSync } from 'node:fs'
+const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, STALL_MS } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -34,6 +36,17 @@ test('a timeout counts as a failure', () => {
   const d = decide({ ...base, exit: null, failures: 1, manifestText: mf('state: spec') })
   assert.equal(d.action, 'fail')
   assert.match(d.reason, /timed out twice/)
+})
+
+test('two timeouts keep their cause: the idle timeout is not the run cap', () => {
+  const idle = 'no output for 30 min (the idle timeout)'
+  const cap = 'still running after 6 h (the run timeout)'
+  const at = (killed) => decide({ ...base, exit: null, failures: 1, manifestText: mf('state: spec'), killed }).reason
+  assert.equal(at([idle, idle]), `run timed out twice — both ${idle}`)
+  assert.equal(at([idle, cap]), `run timed out twice — ${idle}, then ${cap}`)
+  assert.equal(at([null, cap]), `run timed out twice — ${cap}`)
+  assert.equal(at([]), 'run timed out twice')
+  assert.equal(decide({ ...base, exit: 3, failures: 1, manifestText: mf('state: spec'), killed: [idle] }).reason, 'run failed (exit 3) twice', 'an exit code is its own cause')
 })
 
 test('blocked parks with the reason, unquoted', () => {
@@ -147,10 +160,10 @@ test('featureProgress: each pipeline stage has a floor, the build stage scales w
   assert.deepEqual(at('audited'), { pct: 10, label: 'audited' })
   assert.deepEqual(at('planned'), { pct: 15, label: 'planned' })
   assert.deepEqual(at('built'), { pct: 75, label: 'built' })
-  assert.deepEqual(at('built', 'walk: agent-pass 2026-09-27 abc\n'), { pct: 78, label: 'walked' })
-  assert.deepEqual(at('signed-off'), { pct: 80, label: 'signed-off' })
-  assert.deepEqual(at('verified'), { pct: 90, label: 'verified' })
-  assert.deepEqual(at('verified', 'pr: #4\n'), { pct: 95, label: 'PR open' })
+  assert.deepEqual(at('built', 'walk: agent-pass 2026-09-27 abc\n'), { pct: 85, label: 'walked' })
+  assert.deepEqual(at('signed-off'), { pct: 87, label: 'signed-off' })
+  assert.deepEqual(at('verified'), { pct: 92, label: 'verified' })
+  assert.deepEqual(at('verified', 'pr: #4\n'), { pct: 96, label: 'PR open' })
   assert.deepEqual(at('shipped'), { pct: 100, label: 'shipped' })
 })
 
@@ -176,6 +189,130 @@ test('featureProgress: the fleet status wins when it is final or nothing has bee
   assert.deepEqual(featureProgress({ status: 'queued', manifestText: null }), { pct: 0, label: '—' })
   assert.deepEqual(featureProgress({ status: 'parked', manifestText: 'size: md\nstate: audited\nblocked: "x"\n' }), { pct: 10, label: 'audited' })
   assert.deepEqual(featureProgress({ status: 'failed', manifestText: 'size: md\nstate: weird\n' }), { pct: 0, label: 'weird' })
+})
+
+/** A workspace as featureProgress reads it: `files` maps a relative path to its text. */
+const wsOf = (files) => ({
+  files: [...new Set(Object.keys(files).map((p) => p.split('/')[0]))],
+  list: (rel) => [...new Set(Object.keys(files).filter((p) => p.startsWith(`${rel}/`)).map((p) => p.slice(rel.length + 1).split('/')[0]))],
+  read: (rel) => files[rel] ?? null,
+})
+
+test('featureProgress: a task moves at its brief (0.2) and its report (0.7), not only at its tick', () => {
+  const mf = 'size: md\nstate: building\nnext: x\n'
+  const ledger = '- Task 1: complete (x)\n'
+  // 4 tasks, a 55-point band: one ticked (1) + a report (0.7) + a brief (0.2) = 1.9 of 4.
+  const ws = wsOf({ 'progress.md': ledger, 'task-1-brief.md': 'b', 'task-1-report.md': 'r', 'task-2-brief.md': 'b', 'task-2-report.md': 'r', 'task-3-brief.md': 'b' })
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: PLAN, ledgerText: ledger, ws }), { pct: Math.round(15 + (55 * 1.9) / 4), label: 'build 1/4' })
+  // Still `planned` (the first phase has not closed): a brief written is a build under way.
+  const planned = 'size: md\nstate: planned\ngo-ahead: auto\nnext: x\n'
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: planned, planText: PLAN, ledgerText: null, ws: wsOf({ 'task-1-brief.md': 'b' }) }), { pct: Math.round(15 + (55 * 0.2) / 4), label: 'build 0/4' })
+})
+
+test('featureProgress: planning moves by drafted task blocks against the Phases table', () => {
+  const mf = 'size: md\nstate: audited\nnext: x\n'
+  const head = '## Phases\n\n| Phase | App | Tasks | Goal | Gates |\n|---|---|---|---|---|\n| 1 | api | 1–3 | x | y |\n| 2 | web | 4, 5 | x | y |\n\n## Notes\n'
+  assert.equal(phaseTaskCount(head), 5)
+  assert.equal(phaseTaskCount('## Phases\n\n| # | App | Goal |\n|---|---|---|\n| 1 | app | x |\n'), 0, 'no Tasks column, no count')
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: head }), { pct: 10, label: 'plan 0/5' })
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: `${head}\n### Task 1: a\n\n### Task 2: b\n` }), { pct: 12, label: 'plan 2/5' })
+  // Per-app writers draft into the workspace before the stitch.
+  const ws = wsOf({ 'plan-api.md': '### Task 1: a\n### Task 2: b\n### Task 3: c\n', 'plan-web.md': '### Task 4: d\n' })
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: mf, planText: head, ws }), { pct: 14, label: 'plan 4/5' })
+  assert.deepEqual(featureProgress({ status: 'building', manifestText: mf }), { pct: 10, label: 'audited' })
+})
+
+test('featureProgress: the agent walk moves by the rows its current round has written', () => {
+  const mf = 'size: md\nstate: built\nready: yes\nnext: x\n'
+  const walk = '# walk\n\n## web\n\nNewest first:\n\n1. a\n2. [risk] b\n3. c\n\n## Cross-app (verify E2E)\n\nE1. d\n'
+  const report = (rows) => `sha: abc\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n${rows.map((r, i) => `| ${i + 1} | web | x | ${r} | e |\n`).join('')}`
+  const ws = wsOf({ 'walk.md': walk, 'agent-walk/round-1/report.md': report(['PASS', 'FAIL', 'PASS', 'PASS']), 'agent-walk/round-2/report.md': report(['PASS', '**FAIL**']) })
+  assert.deepEqual(featureProgress({ status: 'walking', manifestText: mf, ws }), { pct: 80, label: 'walk 2/4' })
+  assert.deepEqual(featureProgress({ status: 'walking', manifestText: mf, ws: wsOf({ 'walk.md': walk }) }), { pct: 75, label: 'built' }, 'no round yet')
+})
+
+test('the bands only go up along the pipeline', () => {
+  const at = (state, extra = '', ws = null, planText = PLAN, ledgerText = null) => featureProgress({ status: 'building', manifestText: `size: md\nstate: ${state}\n${extra}next: x\n`, planText, ledgerText, ws }).pct
+  const all = '- Task 1: complete\n- Task 2: complete\n- Task 3: complete\n- Task 4: complete\n'
+  const seq = [at('spec'), at('aligned'), at('audited', '', null, null), at('audited'), at('planned'), at('building', '', null, PLAN, all), at('building', 'ready: pending x\n'), at('built'), at('built', 'walk: agent-pass x\n'), at('signed-off'), at('verified'), at('verified', 'pr: #1\n'), at('shipped')]
+  assert.deepEqual([...seq].sort((a, b) => a - b), seq, seq.join(' '))
+})
+
+test('rowProgress keeps the last reading once the worktree is gone, never the root checkout\'s 0%', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-root-'))
+  const wt = mkdtempSync(join(tmpdir(), 'fc-wt-'))
+  mkdirSync(join(root, 'docs/features/a'), { recursive: true })
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: spec\nnext: x\n')
+  mkdirSync(join(wt, 'docs/features/a'), { recursive: true })
+  writeFileSync(join(wt, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: building\nnext: x\n')
+  writeFileSync(join(wt, 'docs/features/a/PLAN.md'), PLAN)
+  mkdirSync(join(wt, '.builder/a'), { recursive: true })
+  writeFileSync(join(wt, '.builder/a/progress.md'), LEDGER)
+  const f = { status: 'building', worktree: wt }
+  assert.deepEqual(rowProgress(root, 'docs/features', 'a', f), { pct: 43, label: 'build 2/4' })
+  assert.deepEqual(f.lastProgress, { pct: 43, label: 'build 2/4' }, 'kept on the row, saved with fleet.json')
+  Object.assign(f, { status: 'parked', worktree: null })
+  assert.deepEqual(rowProgress(root, 'docs/features', 'a', f), { pct: 43, label: 'build 2/4' })
+  // A row that never had a worktree reads the root; a reading of nothing keeps the last one.
+  assert.deepEqual(rowProgress(root, 'docs/features', 'a', { status: 'queued' }), { pct: 0, label: 'spec' })
+  const shipping = { status: 'shipping', worktree: wt, lastProgress: { pct: 96, label: 'PR open' } }
+  rmSyncSafe(join(wt, 'docs/features/a/MANIFEST.md'))
+  assert.deepEqual(rowProgress(root, 'docs/features', 'a', shipping), { pct: 96, label: 'PR open' })
+})
+
+test('fleetStops lists parked and failed rows with why and next; parkBlock is what fleet.out gets', () => {
+  const fleet = { features: {
+    b: { status: 'failed', reason: 'run timed out twice — both no output for 30 min (the idle timeout) — see /l/b-02.log — next: /builder:agent to retry' },
+    a: { status: 'parked', reason: 'plan wants to split — next: /builder:revise --path docs/features/a' },
+    c: { status: 'building' },
+    d: { status: 'parked', reason: 'something with no next step' },
+  } }
+  assert.deepEqual(fleetStops(fleet), [
+    { name: 'a', status: 'parked', why: 'plan wants to split', next: '/builder:revise --path docs/features/a' },
+    { name: 'b', status: 'failed', why: 'run timed out twice — both no output for 30 min (the idle timeout)', next: '/builder:agent to retry' },
+    { name: 'd', status: 'parked', why: 'something with no next step', next: '/builder:agent — naming it again unparks it and retries' },
+  ])
+  const block = parkBlock({ feature: 'a', status: 'parked', reason: fleet.features.a.reason, record: '/wt/a/docs/features/a/PARKED.md', branch: 'builder/a', log: '/l/a-03.log', retry: 'automatic retry 1 of 2', at: new Date('2026-10-27T14:05:09Z') })
+  assert.equal(block, [
+    '',
+    '[2026-10-27 14:05Z] ⛔ a parked',
+    '  why:    plan wants to split',
+    '  next:   /builder:revise --path docs/features/a',
+    '  record: /wt/a/docs/features/a/PARKED.md (committed on builder/a)',
+    '  log:    /l/a-03.log',
+    '  the fleet retries it now — automatic retry 1 of 2',
+    '',
+  ].join('\n'))
+  assert.doesNotMatch(parkBlock({ feature: 'b', status: 'failed', reason: fleet.features.b.reason, log: '/l/b-02.log' }), /log:/, 'a log the reason names is not said twice')
+})
+
+test('stallOf flags a running row with no commit, ledger tick or workspace write for 45 minutes', () => {
+  const now = Date.parse('2026-10-27T15:00:00Z')
+  const wt = mkdtempSync(join(tmpdir(), 'fc-stall-'))
+  const gitdir = mkdtempSync(join(tmpdir(), 'fc-gitdir-'))
+  writeFileSync(join(wt, '.git'), `gitdir: ${gitdir}\n`)
+  mkdirSync(join(gitdir, 'logs'))
+  writeFileSync(join(gitdir, 'logs/HEAD'), 'x\n')
+  mkdirSync(join(wt, '.builder/a'), { recursive: true })
+  writeFileSync(join(wt, '.builder/a/progress.md'), 'x\n')
+  const touch = (p, ms) => utimesSync(p, ms / 1000, ms / 1000)
+  const t = (min) => now - min * 60 * 1000
+  touch(join(gitdir, 'logs/HEAD'), t(60))
+  touch(join(wt, '.builder/a/progress.md'), t(50))
+  touch(join(wt, '.builder/a'), t(55))
+  assert.equal(headMovedMs(wt), t(60))
+  const f = { status: 'building', worktree: wt, runStartedAt: new Date(t(90)).toISOString() }
+  const st = stallOf('a', f, now)
+  assert.deepEqual(st, { runningMs: 90 * 60 * 1000, sinceMs: t(50) })
+  const at = new Date(t(50))
+  assert.equal(stallLine('a', st), `⚠ a running 1h30m with no commit or ledger tick since ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`)
+  touch(join(wt, '.builder/a/progress.md'), t(10))
+  assert.equal(stallOf('a', f, now), null, 'a ledger tick 10 minutes ago')
+  touch(join(wt, '.builder/a/progress.md'), t(50))
+  touch(join(gitdir, 'logs/HEAD'), now - STALL_MS + 1000)
+  assert.equal(stallOf('a', f, now), null, 'a commit inside the window')
+  assert.equal(stallOf('a', { ...f, status: 'parked' }, now), null, 'only running rows')
+  assert.equal(stallOf('a', { ...f, runStartedAt: undefined }, now), null, 'no run start recorded: nothing to measure from')
 })
 
 test('progressBar renders ten cells and the percentage', () => {
@@ -252,22 +389,59 @@ test('archiveLogs moves exactly this feature’s logs — not those of a feature
   assert.equal(archiveLogs(root, 'nothing-here'), null)
 })
 
-test('pruneArchivedLogs removes archived logs older than the window; 0 keeps them', () => {
+test('pruneArchivedLogs removes archived log files older than the window, by each file\'s mtime; 0 keeps them', () => {
   const root = mkdtempSync(join(tmpdir(), 'fc-'))
   const base = join(fleetDir(root), 'logs', '_archive')
-  for (const n of ['old', 'new']) {
-    mkdirSync(join(base, n), { recursive: true })
-    writeFileSync(join(base, n, `${n}-01.log`), 'x')
-  }
+  for (const n of ['old', 'new', 'mixed']) mkdirSync(join(base, n), { recursive: true })
+  writeFileSync(join(base, 'old', 'old-01.log'), 'x')
+  writeFileSync(join(base, 'new', 'new-01.log'), 'x')
+  writeFileSync(join(base, 'mixed', 'mixed-01.log'), 'x')
+  writeFileSync(join(base, 'mixed', 'mixed-02.log'), 'x')
   const now = Date.now()
   const old = new Date(now - 3 * 86400000)
-  utimesSync(join(base, 'old'), old, old)
+  for (const p of [join(base, 'old', 'old-01.log'), join(base, 'mixed', 'mixed-01.log')]) utimesSync(p, old, old)
+  // A folder touched today still loses its old file: the folder's mtime is not the file's age.
   assert.equal(pruneArchivedLogs(root, 0, now), 0)
-  assert.ok(existsSync(join(base, 'old')))
-  assert.equal(pruneArchivedLogs(root, 1, now), 1)
-  assert.equal(existsSync(join(base, 'old')), false)
-  assert.ok(existsSync(join(base, 'new')))
+  assert.ok(existsSync(join(base, 'old', 'old-01.log')))
+  assert.equal(pruneArchivedLogs(root, 1, now), 2)
+  assert.equal(existsSync(join(base, 'old')), false, 'an emptied folder goes')
+  assert.ok(existsSync(join(base, 'new', 'new-01.log')))
+  assert.equal(existsSync(join(base, 'mixed', 'mixed-01.log')), false)
+  assert.ok(existsSync(join(base, 'mixed', 'mixed-02.log')))
   assert.equal(pruneArchivedLogs(mkdtempSync(join(tmpdir(), 'fc-')), 30, now), 0, 'no logs dir is not an error')
+})
+
+test('a landed feature\'s transcript goes once its row holds the meter — never under keep_logs 0, never from a row before the meter', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  const logs = join(fleetDir(root), 'logs')
+  mkdirSync(logs, { recursive: true })
+  const meter = { orchestrator: { turns: 1, startCtx: 1, peakCtx: 1, sumCtx: 1 }, dispatches: [] }
+  for (const n of ['a-01.log', 'a-01.jsonl', 'b-01.log', 'b-01.jsonl', 'k-01.jsonl', 'o-01.jsonl']) writeFileSync(join(logs, n), 'x')
+  appendArchive(root, { feature: 'a', merged: 'abc', timing: [{ n: 1, meter }] })
+  assert.equal(archiveLogs(root, 'a', 30), null)
+  assert.ok(existsSync(join(logs, '_archive', 'a', 'a-01.log')))
+  assert.equal(existsSync(join(logs, '_archive', 'a', 'a-01.jsonl')), false)
+  assert.equal(existsSync(join(logs, 'a-01.jsonl')), false)
+  // No row for b: its transcript is the only record, so it moves.
+  assert.equal(archiveLogs(root, 'b', 30), null)
+  assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
+  // keep_logs 0 keeps everything; a row from before the meter keeps its transcript too.
+  appendArchive(root, { feature: 'k', merged: 'k1', timing: [{ n: 1, meter }] })
+  archiveLogs(root, 'k', 0)
+  assert.ok(existsSync(join(logs, '_archive', 'k', 'k-01.jsonl')), 'keep_logs 0 keeps them forever')
+  appendArchive(root, { feature: 'o', merged: 'o1', timing: [{ n: 1 }] })
+  archiveLogs(root, 'o', 30)
+  assert.ok(existsSync(join(logs, '_archive', 'o', 'o-01.jsonl')), 'a pre-meter row: the transcript is the only per-dispatch record')
+  // Prune: a metered row's archived transcript goes (unless keep_logs 0); an unmetered one stays to its age.
+  mkdirSync(join(logs, '_archive', 'c'), { recursive: true })
+  writeFileSync(join(logs, '_archive', 'c', 'c-01.jsonl'), 'x')
+  writeFileSync(join(logs, '_archive', 'c', 'c-01.log'), 'x')
+  appendArchive(root, { feature: 'c', merged: 'def', timing: [{ n: 1, meter }] })
+  assert.equal(pruneArchivedLogs(root, 0), 0, 'keep_logs 0 keeps every file')
+  assert.equal(pruneArchivedLogs(root, 30), 2, 'c\'s and k\'s transcripts — their rows hold the meter')
+  assert.ok(existsSync(join(logs, '_archive', 'c', 'c-01.log')))
+  assert.ok(existsSync(join(logs, '_archive', 'o', 'o-01.jsonl')))
+  assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
 })
 
 test('ago', () => {
@@ -292,12 +466,12 @@ test('renderArchived lists the latest landings newest first', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const out = renderArchived([row('a'), { ...row('b', 'fff0000'), pr: '#9', landedAt: '2026-09-29T11:00:00Z' }], 412, now)
   assert.match(out, /^# builder fleet — archive: latest 2 of 412\n/)
-  assert.match(out, /\| Feature \| Tests \| Time \| Tokens \| Merged \| PR \| Landed \|/)
+  assert.match(out, /\| Feature \| Tests \| Time \| Cost \| Per task \| Merged \| PR \| Landed \|/)
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
-  assert.match(out, /\| b \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
-  assert.match(out, /\| a \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
-  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 } }], 1, now)
-  assert.match(full, /\| c \| own · touched · end \| 12m \| 2\.1M \| abc1234 \|/)
+  assert.match(out, /\| b \| — \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
+  assert.match(out, /\| a \| — \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
+  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 }, costUsd: 30, size: { tasks: 12 } }], 1, now)
+  assert.match(full, /\| c \| own · touched · end \| 12m \| \$30\.00 \| \$2\.50 \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -391,8 +565,8 @@ test('walkFacts counts walk.md checks and each round report\'s results', () => {
 })
 
 test('tokensOf reads a result event’s usage; zeros without one', () => {
-  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, costUsd: 0.1 })
-  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, costUsd: 0 })
+  assert.deepEqual(tokensOf({ usage: { input_tokens: 5, output_tokens: 2, cache_read_input_tokens: 1 }, total_cost_usd: 0.1 }), { input: 5, output: 2, cacheRead: 1, cacheCreation: 0, costUsd: 0.1, byModel: {} })
+  assert.deepEqual(tokensOf(null), { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, costUsd: 0, byModel: {} })
 })
 
 test('formatTokens: 2.1M, 340k, — when absent', () => {

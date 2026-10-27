@@ -132,7 +132,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
   assert.equal(a.timing.length, 8)
   const { start, end, ...first } = a.timing[0]
-  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} }, meter: { orchestrator: { turns: 0, startCtx: 0, peakCtx: 0, sumCtx: 0 }, dispatches: [] } })
   assert.ok(Date.parse(start) <= Date.parse(end), 'each run records its wall-clock start and end')
   // The stage timeline, read from the branch's commits before the merge deleted it.
   assert.ok(a.wallMs >= 0 && a.stages && typeof a.stages === 'object', 'wall-clock and stages recorded')
@@ -168,6 +168,9 @@ test('a blocked spec parks with its reason and the fleet exits 1', () => {
   assert.equal(r.status, 1)
   assert.equal(r.fleet.features.b.status, 'parked')
   assert.equal(r.fleet.features.b.reason, 'plan wants to split')
+  const out = readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8')
+  assert.match(out, /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z\] ⛔ b parked$/m)
+  assert.match(out, /^  why: +plan wants to split\n  next: +\/builder:agent — naming it again unparks it and retries\n  record: .*\/docs\/features\/b\/PARKED\.md \(committed on builder\/b\)$/m)
 })
 
 test('a run that changes nothing parks as no progress', () => {
@@ -197,7 +200,7 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   const t1 = assertLanded(r, 't1')
   assert.equal(t1.timing[0].turns, 3, `run 1 was not the chatty run that finished: ${JSON.stringify(t1.timing[0])}`)
   assert.equal(r.fleet.features.t2.status, 'failed')
-  assert.match(r.fleet.features.t2.reason, /timed out twice/)
+  assert.match(r.fleet.features.t2.reason, /timed out twice — both no output for \d+ s \(the idle timeout\)/, 'the cause is kept')
   // A killed run says why in its log, so an empty-looking log is never mistaken for a lost one.
   assert.match(readFileSync(join(root, '.builder/fleet/logs/t2-01.log'), 'utf8'), /\[fleet\] killed: no output for \d+ s \(the idle timeout\)/)
   assert.equal(reached(r, 't2', 'HANG'), 2, 'both silent runs started and hung, rather than dying while starting')
@@ -209,7 +212,9 @@ test('a run that keeps talking outlives the idle timeout; a silent one does not'
   assert.match(log, /· still working/)
   assert.match(log, /did audited/)
   assert.equal(log.match(/did audited/g).length, 1, 'the result repeating the last assistant text is printed once')
-  assert.match(readFileSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl'), 'utf8'), /"text":"still working"/)
+  // The raw stream of a landed feature goes once its archive row holds the meter read from it.
+  assert.ok(!existsSync(join(root, '.builder/fleet/logs/_archive/t1/t1-01.jsonl')), 'a landed feature keeps its .log, not its .jsonl')
+  assert.ok(t1.timing[0].meter.orchestrator.turns >= 1, 'the meter read the stream before it went')
 })
 
 test('a run that prints more than one result event is timed by the last', () => {
@@ -217,8 +222,10 @@ test('a run that prints more than one result event is timed by the last', () => 
   // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
-  const { start, end, ...first } = c.timing[0]
-  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  const { start, end, meter, ...first } = c.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, cacheCreation: 0, costUsd: 0.05, byModel: {} } })
+  // CHATTY's own assistant lines are the orchestrator's turns, as the meter counts them from the stream.
+  assert.ok(meter.orchestrator.turns >= 1 && Array.isArray(meter.dispatches), JSON.stringify(meter))
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -238,7 +245,9 @@ test('a hung run times out twice and fails', () => {
   const root = makeRepo(['e'])
   const r = runFleet(root, ['e'], { e: ['HANG', 'HANG'] }, { FLEET_RUN_TIMEOUT_MS: String(STUB_WINDOW_MS) })
   assert.equal(r.fleet.features.e.status, 'failed')
-  assert.match(r.fleet.features.e.reason, /timed out twice/)
+  assert.match(r.fleet.features.e.reason, /timed out twice — both still running after \d+ s \(the run timeout\)/, 'the run cap, not the idle timeout')
+  // Detached, nothing in a session hears it: fleet.out says what stopped, why and what next.
+  assert.match(readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8'), /\] ⛔ e failed\n  why: +run timed out twice — both still running after [^\n]+\n  next: +\/builder:agent to retry\n/)
   assert.equal(reached(r, 'e', 'HANG'), 2, 'both runs started and hung, rather than dying while starting')
 })
 
@@ -338,15 +347,15 @@ test('re-running resumes and retries a cleared park', () => {
 
 test('a feature parked at the run cap gets a fresh cap on the next fleet run', () => {
   const root = makeRepo(['a'])
-  const churn = Array.from({ length: 12 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
+  const churn = Array.from({ length: 14 }, (_, i) => (i % 2 ? 'planned' : 'audited'))
   const scenario = { a: [...churn, 'building', 'READY-PENDING', 'verified', 'SHIP'] }
   const first = runFleet(root, ['a'], scenario)
   assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /run cap \(12\) reached/)
+  assert.match(first.fleet.features.a.reason, /run cap \(14\) reached/)
   const second = runFleet(root, [], scenario)
   assert.equal(second.status, 0, second.stderr)
   const a = assertLanded(second, 'a')
-  assert.equal(a.runs, 16, 'lifetime runs for the table')
+  assert.equal(a.runs, 18, 'lifetime runs for the table')
   assert.equal(a.runsThisTime, 4)
 })
 
@@ -441,6 +450,9 @@ test('a parked feature keeps its branch but not its worktree; picking it again c
   assert.ok(existsSync(join(root, '.builder/kept/p/progress.md')), 'the build workspace outlives the worktree')
   assert.equal(r.fleet.features.p.status, 'parked')
   assert.equal(r.fleet.features.p.worktree, null)
+  // Its progress is the worktree's last reading, not the root checkout's spec at 0%.
+  assert.deepEqual(r.fleet.features.p.lastProgress, { pct: 10, label: 'audited' })
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /\| p \| parked \|[^\n]*10% · audited/)
   assert.equal(existsSync(`${root}-wt/p`), false, 'the worktree is removed at exit')
   assert.ok(git(root, 'branch', '--list', 'builder/p'), 'the branch holds the work')
   const r2 = runFleet(root, ['p'], { p: ['audited', 'BLOCK:later', ...HAPPY.slice(1)] }, { FLEET_KEEP_STOPPED_WORKTREES: '' })
@@ -600,6 +612,23 @@ test('--status says when the fleet process is gone with features mid-run, and ho
   // A live lock: no warning.
   writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
   assert.doesNotMatch(runFleet(root, ['--status'], {}).stdout, /fleet stopped/)
+})
+
+test('--status warns about a running feature with no commit or ledger tick for 45 minutes', () => {
+  const root = makeRepo(['b'])
+  const wt = mkdtempSync(join(tmpdir(), 'fleet-stall-'))
+  const old = (Date.now() - 50 * 60 * 1000) / 1000
+  mkdirSync(join(wt, '.builder/b'), { recursive: true })
+  writeFileSync(join(wt, '.builder/b/progress.md'), '- Task 1: dispatched\n')
+  utimesSync(join(wt, '.builder/b/progress.md'), old, old)
+  utimesSync(join(wt, '.builder/b'), old, old)
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  const row = (min) => JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 3, branch: 'builder/b', worktree: wt, runStartedAt: new Date(Date.now() - min * 60 * 1000).toISOString() } } })
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), row(80))
+  writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  assert.match(runFleet(root, ['--status'], {}).stdout, /^⚠ b running 1h20m with no commit or ledger tick since \d{2}:\d{2}$/m)
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), row(20))
+  assert.doesNotMatch(runFleet(root, ['--status'], {}).stdout, /⚠ b running/, 'a run 20 minutes old has not been quiet for 45')
 })
 
 test('--detach starts the fleet in its own session and returns at once; the fleet carries on', async () => {
@@ -1441,7 +1470,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, byKind: {}, orchestrator: { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }, costByModel: {}, quality: null, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1454,7 +1483,7 @@ test('--status --archived lists the latest landings', () => {
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
-  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| 9k \| [0-9a-f]{7,} \| — \| just now \|/)
+  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| \$0\.40 \| — \| [0-9a-f]{7,} \| — \| just now \|/)
   const none = runFleet(makeRepo(['c']), ['--status', '--archived'], {})
   assert.match(none.stdout, /No feature has landed from this fleet yet\./)
 })
@@ -1467,7 +1496,7 @@ test('archived logs older than keep_logs are pruned at fleet start', () => {
     writeFileSync(join(base, n, `${n}-01.log`), 'x')
   }
   const old = new Date(Date.now() - 3 * 86400000)
-  utimesSync(join(base, 'stale'), old, old)
+  utimesSync(join(base, 'stale', 'stale-01.log'), old, old)
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(existsSync(join(base, 'stale')), false)
