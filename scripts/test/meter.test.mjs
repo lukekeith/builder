@@ -106,3 +106,24 @@ test('fleetStops leaves out a park settled outside the fleet — folder archived
   assert.deepEqual(fleetStops(fleet, { main, registry: 'docs/features' }).map((s) => s.name), ['live', 'packed'])
   assert.equal(fleetStops(fleet).length, 4, 'without a checkout to look in, every stopped row shows')
 })
+
+test('stallOf counts a walk round\'s evidence as movement', async () => {
+  const { stallOf } = await import('../fleet-core.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync, utimesSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const wt = mkdtempSync(join(tmpdir(), 'stall-'))
+  const ws = join(wt, '.builder', 'f')
+  mkdirSync(join(ws, 'agent-walk', 'round-2'), { recursive: true })
+  const now = Date.now()
+  const old = new Date(now - 3 * 3600000)
+  utimesSync(ws, old, old)
+  utimesSync(join(ws, 'agent-walk'), old, old)
+  const row = { status: 'walking', worktree: wt, runStartedAt: old.toISOString() }
+  writeFileSync(join(ws, 'agent-walk', 'round-2', '07-cart.png'), 'x') // the walker, ten seconds ago
+  utimesSync(ws, old, old)
+  assert.equal(stallOf('f', row, now), null, 'a walk adding evidence is not quiet')
+  utimesSync(join(ws, 'agent-walk', 'round-2'), old, old)
+  const st = stallOf('f', { ...row, status: 'building' }, now)
+  assert.ok(st && st.runningMs >= 3 * 3600000 - 1000, JSON.stringify(st))
+})
