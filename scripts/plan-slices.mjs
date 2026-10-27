@@ -4,6 +4,7 @@
  *
  *   node scripts/plan-slices.mjs <folder> [--tests "<value>"] [--json]
  *   node scripts/plan-slices.mjs <folder> --index [--write]
+ *   node scripts/plan-slices.mjs <folder> --brief | --scan
  *
  * --index prints SPEC §Plan's index (REFERENCE §Plan): the pointer to PLAN.md, then one
  * `- Phase N · Task M · <name>` line per `### Task N` — the phase from the `## Phases` table (the
@@ -88,6 +89,109 @@ export function slices(planText) {
     const phase = p ? +p : null
     return { n, app: app ?? byPhase.get(phase) ?? byTask.get(n) ?? '—', phase, name, tests: countTests(lines.map((l) => l.line).join('\n')) }
   })
+}
+
+// ---- the build orchestrator's view of the plan ---------------------------------------------------
+//
+// The orchestrator coordinates; it never implements. Holding the whole PLAN.md — every task's code —
+// costs it that text on every turn of the build (one measured plan was 386KB). What it needs is the
+// header (Global Constraints, the Phases table) and each task's head: App, Phase, Recipe, Files,
+// Interfaces. --brief prints exactly that; --scan prints the pre-flight conflict scan's mechanical
+// rows from it. A task's steps and code stay in the plan, for its implementer's brief and for the
+// orchestrator to read with task-brief when a ruling needs them.
+
+const STEP = /^\s*[-*]\s+\[[ xX]\]\s/
+/** An interface's name: `parse(argv: string[])` and `parse(argv) → {…}` are both `parse`; a path or a literal is not a name. */
+const ident = (code) => {
+  const m = /^\s*(?:export\s+)?(?:const|function|class|type|interface|def)?\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/.exec(code)
+  return m && !/[/\\]/.test(code.split(/[\s(]/)[0]) ? m[1] : null
+}
+const FILE_LINE = /^\s*[-*]\s+(Create|Modify|Test|Delete|Remove|Read)\s*:\s*`([^`]+)`/i
+
+/** Each task's head (its heading up to its first `- [ ]` step), its step count, and its parsed Files and Interfaces. */
+export function taskHeads(planText) {
+  const out = []
+  let cur = null
+  let part = null
+  for (const { line, inside } of fenced(planText)) {
+    const h = inside ? null : HEADING.exec(line)
+    if (h) { cur = { n: +h[1], name: h[2].trim(), head: [line], steps: 0, files: [], consumes: [], produces: [], stepText: [], open: true }; out.push(cur); part = null; continue }
+    if (!cur) continue
+    if (!inside && /^## /.test(line)) { cur = null; continue }
+    if (!inside && STEP.test(line)) { cur.open = false; cur.steps += 1 }
+    if (cur.open) {
+      cur.head.push(line)
+      if (/^\s*\**Files:?\**:?\s*$/i.test(line)) part = 'files'
+      else if (/^\s*\**Interfaces:?\**:?\s*$/i.test(line)) part = 'interfaces'
+      const f = FILE_LINE.exec(line)
+      if (f && part === 'files') cur.files.push({ kind: f[1], path: f[2].replace(/:\d+(?:-\d+)?$/, '') })
+      // A Consumes/Produces bullet owns its own line and the sub-bullets indented under it.
+      const io = /^(\s*)[-*]\s+(Consumes|Produces)\b[^:]*:\s*(.*)$/i.exec(line)
+      if (part === 'interfaces' && io) cur.io = { key: io[2].toLowerCase(), indent: io[1].length }
+      else if (part === 'interfaces' && cur.io && !(/^\s*[-*]\s/.test(line) && /^\s*/.exec(line)[0].length > cur.io.indent)) cur.io = null
+      if (part === 'interfaces' && cur.io) cur[cur.io.key].push(...[...(io ? io[3] : line).matchAll(/`([^`]+)`/g)].map((m) => ident(m[1])).filter(Boolean))
+    } else cur.stepText.push(line)
+  }
+  return out.map(({ open, io, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
+}
+
+/** --brief: the header verbatim, then per task its head and one line of what its steps hold. */
+export function planBrief(planText) {
+  const firstTask = fenced(planText).findIndex(({ line, inside }) => !inside && HEADING.test(line))
+  const lines = String(planText).split('\n')
+  const header = (firstTask < 0 ? lines : lines.slice(0, firstTask)).join('\n').replace(/\s+$/, '')
+  const counts = new Map(slices(planText).map((x) => [x.n, x.tests]))
+  const heads = taskHeads(planText)
+  const out = [header, '', `<!-- plan-slices --brief: each task's head; its steps and code are in PLAN.md (task-brief <plan> <N> <file> cuts one) -->`]
+  for (const t of heads) out.push('', t.head, `(${plural(t.steps, 'step')} · ${plural(counts.get(t.n) ?? 0, 'test case')} in the block)`)
+  return out.join('\n') + '\n'
+}
+
+/**
+ * --scan: the pre-flight conflict scan's mechanical rows (EXECUTION.md §Setup 6) — pairs sharing a
+ * file, an interface consumed before (or with no) task producing it, a task's Files outside its
+ * App's path, and a task whose steps name a path its Files doesn't list. Every row is a question
+ * for the orchestrator to rule on, not a verdict; a task with no row was checked and is clean.
+ */
+export function planScan(planText, apps = []) {
+  const heads = taskHeads(planText)
+  const appOf = new Map(slices(planText).map((x) => [x.n, x.app]))
+  const rows = []
+  const byFile = new Map()
+  for (const t of heads) for (const f of t.files) (byFile.get(f.path) ?? byFile.set(f.path, new Set()).get(f.path)).add(t.n)
+  for (const [path, set] of byFile) if (set.size > 1) rows.push(['shared file', [...set].map((n) => `${n}`).join(', '), `\`${path}\` is in each one's Files — order and overlap`])
+  const producer = new Map()
+  for (const t of heads) for (const p of t.produces) if (!producer.has(p)) producer.set(p, t.n)
+  // What one task hands another, one row per pair: the names must be spelled the same on both sides.
+  // A name no task produces is existing code (or the audit's to have caught), not a row.
+  const pairs = new Map()
+  for (const t of heads)
+    for (const c of t.consumes) {
+      const p = producer.get(c)
+      if (p == null || p === t.n) continue
+      const k = `${p} → ${t.n}`
+      ;(pairs.get(k) ?? pairs.set(k, { p, c: t.n, names: [] }).get(k)).names.push(c)
+    }
+  for (const [k, { p, c, names }] of pairs)
+    rows.push(['interface', k, p > c ? `task ${c} consumes ${names.map((x) => `\`${x}\``).join(', ')} before task ${p} produces it` : `${names.map((x) => `\`${x}\``).join(', ')} — the same spelling in both blocks`])
+  for (const t of heads) {
+    const app = apps.find((a) => a.name === appOf.get(t.n))
+    const base = app?.path ? String(app.path).replace(/^\.\/?/, '').replace(/\/?$/, '/') : null
+    if (base && base !== '/') {
+      const out = t.files.filter((f) => !f.path.replace(/^\.\//, '').startsWith(base))
+      if (out.length) rows.push(['app boundary', `${t.n}`, `App: ${app.name} (${base}) but Files lists ${out.map((f) => `\`${f.path}\``).join(', ')}`])
+    }
+    const named = new Set([...t.stepText.matchAll(/`([\w./-]+\/[\w.-]+\.[a-z0-9]+)(?::\d+(?:-\d+)?)?`/gi)].map((m) => m[1].replace(/^\.\//, '')))
+    const listed = new Set(t.files.map((f) => f.path.replace(/^\.\//, '')))
+    const missing = [...named].filter((p) => !listed.has(p))
+    if (missing.length) rows.push(['files ↔ steps', `${t.n}`, `steps name ${missing.map((p) => `\`${p}\``).join(', ')}, not in Files`])
+    if (!t.files.length) rows.push(['files ↔ steps', `${t.n}`, 'no **Files:** list'])
+  }
+  const lines = ['| # | Check | Tasks | Finding | Ruling |', '|---|---|---|---|---|']
+  rows.forEach((r, i) => lines.push(`| ${i + 1} | ${r[0]} | ${r[1]} | ${r[2].replace(/\|/g, '\\|')} | |`))
+  const clean = heads.filter((t) => !rows.some((r) => r[1].split(/[,→\s]+/).includes(String(t.n)))).map((t) => t.n)
+  lines.push('', `${plural(rows.length, 'row')} to rule on · checked clean: ${clean.length ? `tasks ${clean.join(', ')}` : 'none'}`)
+  return lines.join('\n') + '\n'
 }
 
 /** SPEC §Plan's index for a plan in `rel` (the feature folder, relative to the repo). */
@@ -190,11 +294,17 @@ function main(argv) {
   const flag = (f) => argv.includes(f)
   const arg = (f) => argv[argv.indexOf(f) + 1]
   const folder = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--tests')
-  if (!folder) { console.error('usage: plan-slices.mjs <folder> [--tests "<value>"] [--json] | <folder> --index [--write]'); process.exit(2) }
+  if (!folder) { console.error('usage: plan-slices.mjs <folder> [--tests "<value>"] [--json] | <folder> --index [--write] | <folder> --brief | <folder> --scan'); process.exit(2) }
   const dir = resolve(folder)
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '')
   const planText = read('PLAN.md')
   if (!planText) { console.error(`builder: no PLAN.md in ${dir}`); process.exit(1) }
+  if (flag('--brief')) { console.log(planBrief(planText)); return }
+  if (flag('--scan')) {
+    const c = loadConfig(repoRoot(dir))
+    console.log(planScan(planText, c.ok ? c.apps : []))
+    return
+  }
   if (flag('--index')) {
     const root = repoRoot(dir)
     const index = planIndex(planText, relative(root, dir).split(sep).join('/'))

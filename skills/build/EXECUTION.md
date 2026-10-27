@@ -70,17 +70,26 @@ ledger file, not only in todos.**
 4. **Resume point:** the first `### Task N` in `PLAN.md` with no `Task N: complete` line in the
    ledger. Never re-dispatch a task the ledger calls complete. A task whose last ledger line is a fix
    round is mid-loop — resume the loop at the next round.
-5. **Read the plan once**, note its Global Constraints, and create a todo per task. Read the SPEC
-   too: it is the authority the plan argues from, and conflicts inside the plan resolve against it.
+5. **Read the plan's outline once — not the plan:** `node <plugin>/scripts/plan-slices.mjs <folder> --brief`
+   prints the header (Global Constraints, the `## Phases` table) and every task's head — `App:`,
+   `Phase:`, `Recipe:`, **Files**, **Interfaces** — with a count of its steps and tests. The steps
+   and their code are the implementers' (each brief carries its own block); holding all of them
+   here costs the whole plan on every turn of the build, and one measured plan was 386KB. Read one
+   task's block (`<plugin>/scripts/task-brief <folder>/PLAN.md N <WS>/task-N-brief.md`, or the brief
+   once rendered) only when a ruling needs it. Create a todo per task. Read the SPEC too: it is the
+   authority the plan argues from, and conflicts inside the plan resolve against it.
 6. **Before Task 1 only — the pre-flight conflict scan.** Its output is a **table, not a verdict**:
-   - one row for every pair of tasks sharing a file or an interface (one block's **Interfaces**
-     Produces against another's Consumes, one block's **Files** against another's);
-   - one row per task for whether its own **Files**, **Interfaces** and steps agree;
-   - 🔴 one row per task for whether its **Files stay inside its `App:`** — a task reaching into
-     another app breaks that phase's gates, which are one app's commands.
+   `node <plugin>/scripts/plan-slices.mjs <folder> --scan` prints its mechanical rows —
+   - one row for every file several tasks list, and one per pair of tasks one of which consumes an
+     interface the other produces (spelled the same? produced first?);
+   - one row per task whose steps name a path its **Files** doesn't list;
+   - 🔴 one row per task whose **Files** leave its `App:`'s path — a task reaching into another app
+     breaks that phase's gates, which are one app's commands.
 
-   "The scan is clean" without those rows is not a scan you ran. Rule on every finding with the SPEC
-   as binding authority, then write the table and each `Ruling: …` to the ledger in one call
+   The script checks what can be checked by reading; you rule on each row with the SPEC as binding
+   authority — reading the blocks a row names when the ruling needs them — and add any row your own
+   reading of the outline raises. "The scan is clean" without the script's table is not a scan you
+   ran. Write the table and each `Ruling: …` to the ledger in one call
    (`advance.mjs <folder> --ledger "<the table>" --ledger "Ruling: …"`), then dispatch Task 1. On a
    resume the table is already in the ledger — do not re-run it.
 

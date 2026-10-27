@@ -409,6 +409,8 @@ released artifact nobody can hot-fix.
    land the current phase, write the manifest, commit, and hand off with *"say go to continue here,
    or run `/clear` first, then `/builder:resume --path <folder>`"*. Prefer stopping at a clean
    boundary over running out mid-phase. A blocked task is not a stop: start the next startable one.
+   Under `--no-dev-env` the fleet's build lane also ends the run at the audit's and the go-ahead's
+   commits — a fresh context per stage (AGENT-MODE §`--agent-walk`).
 4. **One-line resume footer** naming the command that does the NEXT work — not always
    `/builder:resume`: after the build it is `/builder:signoff`, then `/builder:verify`, then the PR.
    On a hold there is no command, because the pipeline is parked on the human's call.

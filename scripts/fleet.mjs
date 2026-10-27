@@ -34,7 +34,9 @@ import { parseGates } from './gates-core.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
-const RUN_CAP = 12
+// Runs per feature per fleet run. The build lane ends a run at the audit's and the go-ahead's commits
+// (a fresh context per stage, AGENT-MODE.md), so two of these are stage boundaries, not retries.
+const RUN_CAP = 14
 // A run is killed when it goes quiet, not when it runs long: a 20-task build can take hours and
 // still be healthy. Its stream-json output is the heartbeat. The hard cap is only a backstop.
 const IDLE_TIMEOUT_MS = Number(process.env.FLEET_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
