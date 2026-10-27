@@ -518,10 +518,12 @@ test('gate.mjs: in the build lane a @walk line is skipped and says verify runs i
   assert.equal(b.status, 0, b.stdout + b.stderr)
   assert.match(b.stdout, /~ echo e2e .* — @walk: needs the running walk env; verify runs it in the walk lane/)
   assert.equal(readFileSync(out, 'utf8'), 'unit\n')
-  // the walk lane does not quote the build lane's green: the @walk line has not run yet
+  // the walk lane does not quote the build lane's set: the @walk line has not run yet — it runs it,
+  // and quotes the unit line, green on this very tree with the same (test) env
   const w = lane('walk')
   assert.match(w.stdout, /▶ server — fast/)
-  assert.equal(readFileSync(out, 'utf8'), 'unit\nunit\ne2e\n')
+  assert.match(w.stdout, /⏩ echo unit .* — green at [0-9a-f]{7} \(.*\); nothing changed since/)
+  assert.equal(readFileSync(out, 'utf8'), 'unit\ne2e\n')
 })
 
 test('gate.mjs under the fleet runs the main checkout\'s gate lines and says when the branch changed them', () => {
@@ -578,4 +580,32 @@ test('under the fleet an e2e line without @walk is not run against the dev stack
   assert.deepEqual(outside.unverified, [], 'outside the fleet nothing changes')
   assert.equal(looksE2E('vitest run'), false)
   assert.equal(parseGates('## Quality gates\n\n### Deep set\n\n```\nnpx cypress run   # the UI @local\n```\n').deep[0].local, true)
+})
+
+test('gate.mjs quotes a line whose green run still stands — a @scoped line nothing since reaches — and runs the rest', () => {
+  const root = configured('### server — fast\n\n```\ntrue   # x\n```\n\n### Deep set\n\n```\necho DEEP   # the whole-repo check\necho RAN {tests}   # the UI suite @scoped apps/web/test/**/*.spec.ts\n```\n')
+  mkdirSync(join(root, 'apps/web/src'), { recursive: true })
+  mkdirSync(join(root, 'apps/web/test'), { recursive: true })
+  mkdirSync(join(root, 'apps/server'), { recursive: true })
+  writeFileSync(join(root, 'apps/web/src/a.ts'), 'export const a = 1\n')
+  writeFileSync(join(root, 'apps/web/test/a.spec.ts'), "import { a } from '../src/a'\n")
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'code')
+  commit(root, 'apps/server/x.ts', 'export const x = 1\n') // its own commit: files changed together count as related
+  git(root, 'switch', '-q', '-c', 'feat')
+  commit(root, 'apps/web/src/a.ts', 'export const a = 2\n')
+  const first = run(root, '--deep')
+  assert.equal(first.status, 0, first.stderr)
+  assert.match(first.stdout, /✓ echo DEEP/)
+  assert.match(first.stdout, /✓ echo RAN 'apps\/web\/test\/a\.spec\.ts'/)
+  // A walk-round fix in the server: the set's memo is void, but nothing it changed reaches the UI tests.
+  commit(root, 'apps/server/x.ts', 'export const x = 2\n')
+  const second = run(root, '--deep')
+  assert.equal(second.status, 0, second.stderr)
+  assert.match(second.stdout, /✓ echo DEEP/, 'an unscoped deep line still runs: the change is its input')
+  assert.match(second.stdout, /⏩ echo RAN \{tests\} — green at [0-9a-f]{7} \(.*\); changed since: apps\/server\/x\.ts — none reaches apps\/web\/test\/\*\*\/\*\.spec\.ts/)
+  // A change that does reach it runs it; --force never quotes.
+  commit(root, 'apps/web/src/a.ts', 'export const a = 3\n')
+  assert.match(run(root, '--deep').stdout, /✓ echo RAN 'apps\/web\/test\/a\.spec\.ts'/)
+  assert.doesNotMatch(run(root, '--deep', '--force').stdout, /⏩ echo/)
 })
