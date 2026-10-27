@@ -389,22 +389,49 @@ test('archiveLogs moves exactly this feature’s logs — not those of a feature
   assert.equal(archiveLogs(root, 'nothing-here'), null)
 })
 
-test('pruneArchivedLogs removes archived logs older than the window; 0 keeps them', () => {
+test('pruneArchivedLogs removes archived log files older than the window, by each file\'s mtime; 0 keeps them', () => {
   const root = mkdtempSync(join(tmpdir(), 'fc-'))
   const base = join(fleetDir(root), 'logs', '_archive')
-  for (const n of ['old', 'new']) {
-    mkdirSync(join(base, n), { recursive: true })
-    writeFileSync(join(base, n, `${n}-01.log`), 'x')
-  }
+  for (const n of ['old', 'new', 'mixed']) mkdirSync(join(base, n), { recursive: true })
+  writeFileSync(join(base, 'old', 'old-01.log'), 'x')
+  writeFileSync(join(base, 'new', 'new-01.log'), 'x')
+  writeFileSync(join(base, 'mixed', 'mixed-01.log'), 'x')
+  writeFileSync(join(base, 'mixed', 'mixed-02.log'), 'x')
   const now = Date.now()
   const old = new Date(now - 3 * 86400000)
-  utimesSync(join(base, 'old'), old, old)
+  for (const p of [join(base, 'old', 'old-01.log'), join(base, 'mixed', 'mixed-01.log')]) utimesSync(p, old, old)
+  // A folder touched today still loses its old file: the folder's mtime is not the file's age.
   assert.equal(pruneArchivedLogs(root, 0, now), 0)
-  assert.ok(existsSync(join(base, 'old')))
-  assert.equal(pruneArchivedLogs(root, 1, now), 1)
-  assert.equal(existsSync(join(base, 'old')), false)
-  assert.ok(existsSync(join(base, 'new')))
+  assert.ok(existsSync(join(base, 'old', 'old-01.log')))
+  assert.equal(pruneArchivedLogs(root, 1, now), 2)
+  assert.equal(existsSync(join(base, 'old')), false, 'an emptied folder goes')
+  assert.ok(existsSync(join(base, 'new', 'new-01.log')))
+  assert.equal(existsSync(join(base, 'mixed', 'mixed-01.log')), false)
+  assert.ok(existsSync(join(base, 'mixed', 'mixed-02.log')))
   assert.equal(pruneArchivedLogs(mkdtempSync(join(tmpdir(), 'fc-')), 30, now), 0, 'no logs dir is not an error')
+})
+
+test('a landed feature keeps no transcript: archiveLogs deletes its .jsonl once its row is written; prune clears older ones', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  const logs = join(fleetDir(root), 'logs')
+  mkdirSync(logs, { recursive: true })
+  for (const n of ['a-01.log', 'a-01.jsonl', 'b-01.log', 'b-01.jsonl']) writeFileSync(join(logs, n), 'x')
+  appendArchive(root, { feature: 'a', merged: 'abc' })
+  assert.equal(archiveLogs(root, 'a'), null)
+  assert.ok(existsSync(join(logs, '_archive', 'a', 'a-01.log')))
+  assert.equal(existsSync(join(logs, '_archive', 'a', 'a-01.jsonl')), false)
+  assert.equal(existsSync(join(logs, 'a-01.jsonl')), false)
+  // No row for b: its transcript is the only record, so it moves.
+  assert.equal(archiveLogs(root, 'b'), null)
+  assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
+  // An older landing archived its transcript before this; once its row exists, prune takes it.
+  mkdirSync(join(logs, '_archive', 'c'), { recursive: true })
+  writeFileSync(join(logs, '_archive', 'c', 'c-01.jsonl'), 'x')
+  writeFileSync(join(logs, '_archive', 'c', 'c-01.log'), 'x')
+  appendArchive(root, { feature: 'c', merged: 'def' })
+  assert.equal(pruneArchivedLogs(root, 0), 1, 'keep_logs 0 keeps .log files, never a landed transcript')
+  assert.ok(existsSync(join(logs, '_archive', 'c', 'c-01.log')))
+  assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
 })
 
 test('ago', () => {

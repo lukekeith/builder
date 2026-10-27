@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { ARCHIVE, features, isArchived, specDir, isShippedFolder } from '../registry.mjs'
+import { ARCHIVE, features, isArchived, specDir, isShippedFolder, archivedOutcome } from '../registry.mjs'
 
 const REG = 'docs/features'
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'registry.mjs')
@@ -127,4 +127,21 @@ test('registry.mjs without --sweep is a usage error', () => {
   const r = spawnSync('node', [SCRIPT], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } })
   assert.equal(r.status, 2)
   assert.match(r.stderr, /Usage: registry\.mjs --sweep/)
+})
+
+test('archivedOutcome reads the archived header: dropped, closed, else shipped; null when not archived', () => {
+  const root = tree({
+    '_archive/s/SPEC.md': '# s — spec\n> ✅ SHIPPED 2026-09-01 — PR #1\n',
+    '_archive/c/SPEC.md': '# c — spec\n> ✅ CLOSED 2026-10-27 — merged abc, not walked\n',
+    '_archive/d/SPEC.md': '# d — spec\n> ✖ DROPPED 2026-10-27 — superseded\n',
+    '_archive/p/PROGRAM.md': '# p — program\n> ✖ DROPPED 2026-10-27 — x\n',
+    '_archive/legacy/01-notes.md': 'x',
+    'live/SPEC.md': 'x',
+  })
+  assert.equal(archivedOutcome(root, REG, 's'), 'shipped')
+  assert.equal(archivedOutcome(root, REG, 'c'), 'closed')
+  assert.equal(archivedOutcome(root, REG, 'd'), 'dropped')
+  assert.equal(archivedOutcome(root, REG, 'p'), 'dropped')
+  assert.equal(archivedOutcome(root, REG, 'legacy'), 'shipped')
+  assert.equal(archivedOutcome(root, REG, 'live'), null)
 })

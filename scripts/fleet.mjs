@@ -473,7 +473,12 @@ const landed = new Set()
 function landedOn(dep) {
   const row = fleet.features[dep]
   if (row) return row.status === 'done'
-  return landed.has(dep) || tryGit(['cat-file', '-e', `${TARGET}:${CFG.registry}/${ARCHIVE}/${dep}`]) !== null
+  if (landed.has(dep)) return true
+  // Archived on the target — unless /builder:archive dropped it: a dropped feature built nothing to wait for.
+  const at = `${TARGET}:${CFG.registry}/${ARCHIVE}/${dep}`
+  if (tryGit(['cat-file', '-e', at]) === null) return false
+  const head = (tryGit(['show', `${at}/SPEC.md`]) ?? tryGit(['show', `${at}/PROGRAM.md`]) ?? '').slice(0, 800)
+  return !/^> ✖ DROPPED/m.test(head)
 }
 const asked = requested()
 if (!asked.length && runningPid) {

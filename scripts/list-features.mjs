@@ -14,11 +14,14 @@
  *   - ANALYSIS: docs that feed a design conversation but were never driven by a pipeline. Nothing
  *     to convert — its next step is /builder:brainstorm.
  *
- * DONE = a SPEC.md header carrying `✅ SHIPPED`, or a README.md header or `**Status:**` line that
- * opens SHIPPED. A DONE feature is never offered as a pipeline target.
+ * DONE = registry.mjs isShippedFolder: a SPEC.md or PROGRAM.md header carrying `✅ SHIPPED`, a manifest
+ * at `state: shipped`, or a README.md header or `**Status:**` line that opens SHIPPED — the one rule
+ * the archive and program dependencies use too, so a folder that says it shipped never sits in
+ * --status as in progress. A DONE feature is never offered as a pipeline target; /builder:archive
+ * moves it out of the registry.
  *
- * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship. Never a row: only --archived reads
- * inside the archive, and --status counts it with one directory listing.
+ * ARCHIVED = moved into `<registry>/_archive/` by /builder:ship or /builder:archive. Never a row: only
+ * --archived reads inside the archive, and --status counts it with one directory listing.
  *
  * DRAFTS = a design conversation in progress with no registry folder yet — `.builder/<f>/brainstorm.md`
  * (scripts/brainstorm-file.mjs). Listed with their resume command; only the header is read.
@@ -34,7 +37,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { requireConfig } from './config.mjs'
-import { features, ARCHIVE } from './registry.mjs'
+import { features, ARCHIVE, isShippedFolder } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { parseTestPlan } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -171,6 +174,9 @@ const inspect = (root, name) => {
     const planText = read(join(dir, 'PLAN.md'))
     if (planText && planText.split('\n').length > PLAN_LINE_BUDGET && out.layout !== 'program')
       out.warnings.push(`PLAN.md is ${planText.split('\n').length} lines — long, but it carries code; not a blocker`)
+    // A manifest left at `state: shipped`, or a program whose PROGRAM.md header says SHIPPED, has
+    // arrived like a condensed one — only the archive move is owed, and that is /builder:archive's.
+    if (isShippedFolder(dir)) Object.assign(out, { done: true, next: 'nothing — shipped' })
     return out
   }
 
@@ -313,7 +319,10 @@ if (asArchived) {
     .map((name) => {
       const dir = join(ARCHIVE_DIR, name)
       const head = (read(join(dir, 'SPEC.md')) ?? read(join(dir, 'PROGRAM.md')) ?? '').slice(0, 800)
-      return { feature: name, shipped: grab(head, /SHIPPED\s+([\d-]+)/), pr: grab(head, /PR\s*(#\d+)/), path: `${CFG.registry}/${ARCHIVE}/${name}` }
+      // /builder:archive also closes (merged, never walked) and drops (abandoned): the date says which.
+      const ended = /> (?:✅ (CLOSED)|✖ (DROPPED))\s+([\d-]+)/.exec(head)
+      const shipped = ended ? `${ended[3]} (${(ended[1] ?? ended[2]).toLowerCase()})` : grab(head, /SHIPPED\s+([\d-]+)/)
+      return { feature: name, shipped, pr: grab(head, /PR\s*(#\d+)/), path: `${CFG.registry}/${ARCHIVE}/${name}` }
     })
     .sort((a, b) => (b.shipped ?? '').localeCompare(a.shipped ?? '') || a.feature.localeCompare(b.feature))
   const shown = all.slice(0, LIMIT)
@@ -519,8 +528,8 @@ if (asStatus) {
     console.log('\nNeeds attention:')
     for (const r of flagged) console.log(`- **${r.feature}**: ${r.problems.join('; ')}`)
   }
-  if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — \`node <builder>/scripts/registry.mjs --sweep\` archives them.`)
-  if (archivedCount) console.log(`\n📦 ${archivedCount} shipped features archived · list-features.mjs --archived lists them.`)
+  if (liveDone) console.log(`\n🔒 ${liveDone} shipped, not shown — /builder:archive moves them out of the registry.`)
+  if (archivedCount) console.log(`\n📦 ${archivedCount} features archived · list-features.mjs --archived lists them.`)
   if (NEWER) console.log(`\n${NEWER}`)
   process.exit(0)
 }
