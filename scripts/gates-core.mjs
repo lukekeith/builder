@@ -271,7 +271,7 @@ function scopeLine(g, scope) {
  * when a @scoped line ran a subset or was skipped — the set then says nothing about the whole
  * suite's time. `log` gets each line as it happens.
  */
-export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, log = () => {} }) {
+export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, quote = null, log = () => {} }) {
   const lines = []
   const say = (s) => {
     lines.push(s)
@@ -282,7 +282,17 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
   const newBaselines = {}
   const durations = {}
   const unverified = []
+  const greens = [] // lines that ran and passed — gate.mjs remembers each one's head (lines.json)
+  const quoted = []
   gates.forEach((g0, i) => {
+    // A line whose last green run still stands — nothing it covers changed since (gate.mjs decides,
+    // with the evidence it says) — is quoted, not run.
+    const q = quote?.(g0)
+    if (q) {
+      quoted.push(g0.cmd)
+      say(`⏩ ${g0.cmd} — ${q}`)
+      return
+    }
     const logFile = logDir ? join(logDir, `${String(i + 1).padStart(2, '0')}.log`) : null
     let g = g0
     if (expand && /<[^>]+>/.test(g0.cmd)) {
@@ -353,6 +363,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       return
     }
     if (r.exit === 0) {
+      greens.push(g0.cmd)
       say(`✓ ${g.cmd} (${fmt(r.ms)})`)
       return
     }
@@ -365,6 +376,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       const again = runCommand(hit.rerun || g.cmd, { cwd, env: lineEnv, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
       durations[g0.cmd] += again.ms
       if (again.exit === 0) {
+        greens.push(g0.cmd)
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
         return
       }
@@ -375,7 +387,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     red++
     say(`✗ ${g.cmd} exit ${r.exit} (${fmt(r.ms)})${logFile ? ` — ${logFile}` : ''}\n    ${tail(8)}`)
   })
-  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified }
+  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified, greens, quoted }
 }
 
 // ---- the memo ------------------------------------------------------------------------------
@@ -444,4 +456,52 @@ export function writeDurations(root, app, { total, commands }) {
   if (!existsSync(join(dir, '.gitignore'))) writeFileSync(join(dir, '.gitignore'), '*\n')
   const all = { ...readDurations(root), [app]: { total, commands, at: new Date().toISOString() } }
   writeFileSync(durationsPath(root), JSON.stringify(all, null, 2) + '\n')
+}
+
+// ---- per-line memo -------------------------------------------------------------------------
+
+/**
+ * Each gate line's last green run: `{ <cmd as written>: { head, when } }` in .builder/gates/lines.json
+ * (per worktree). A set's memo is all-or-nothing over its whole input tree, so one fix anywhere re-runs
+ * every line; this lets a line stand on its own evidence — gate.mjs quotes it when nothing it covers
+ * changed after `head`.
+ */
+export const lineMemoPath = (root) => join(root, '.builder', 'gates', 'lines.json')
+export function readLineMemo(root) {
+  try {
+    const d = JSON.parse(readFileSync(lineMemoPath(root), 'utf8'))
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch {
+    return {}
+  }
+}
+export function writeLineMemo(root, { greens = [], reds = [] }, head) {
+  const all = readLineMemo(root)
+  const when = new Date().toISOString()
+  for (const cmd of greens) all[cmd] = { head, when }
+  for (const cmd of reds) delete all[cmd]
+  mkdirSync(join(root, '.builder', 'gates'), { recursive: true })
+  if (!existsSync(join(root, '.builder', '.gitignore'))) writeFileSync(join(root, '.builder', '.gitignore'), '*\n')
+  writeFileSync(lineMemoPath(root), JSON.stringify(all, null, 2) + '\n')
+}
+
+/**
+ * Whether a line's green run at `memo.head` still stands at HEAD — the evidence as one line, or null
+ * (run it). Never for a line that judges a count (@delta), runs known debt, needs the running app
+ * (@walk) or names changed files (`<…>`); never across a rewrite (head not an ancestor) or a dirty
+ * tree. It stands when every file changed since is outside the set's inputs (`exclude`: the registry,
+ * other apps), or — for a @scoped line — when the import graph says none of them reaches its tests
+ * (`reaches(glob, since)` → scopeTests' mode). A line with neither proof runs.
+ */
+export function lineQuote(g, memo, { changedSince, exclude = [], reaches = null }) {
+  if (!memo?.head || g.delta || g.knownRed || g.walk || /<[^>]+>/.test(g.cmd)) return null
+  const changed = changedSince(memo.head)
+  if (changed == null) return null
+  const at = `green at ${memo.head.slice(0, 7)} (${memo.when})`
+  if (!changed.length) return `${at}; nothing changed since — quoted, not re-run`
+  const inside = (f) => !exclude.some((p) => { const d = p.replace(/\/+$/, ''); return f === d || f.startsWith(`${d}/`) })
+  const relevant = changed.filter(inside)
+  if (!relevant.length) return `${at}; changed since: ${fmtPaths(changed)} — none is this set's input — quoted, not re-run`
+  if (g.scope && reaches && reaches(g.scope, memo.head) === 'none') return `${at}; changed since: ${fmtPaths(relevant)} — none reaches ${g.scope} (.builder/gates/impact.md) — quoted, not re-run`
+  return null
 }
