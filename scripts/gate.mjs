@@ -186,7 +186,8 @@ for (const set of sets) {
     writeBaseline(MAIN, baseline, sha)
   }
   const secs = Math.round((Date.now() - t0) / 1000)
-  console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`} · ${sha} · ${secs}s`)
+  const unv = r.unverified?.length ? ` · ${r.unverified.length} unverified (e2e without @walk)` : ''
+  console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`}${unv} · ${sha} · ${secs}s`)
   if (!dirty) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
   // What the whole app set costs, for the test plan: only a green run of every line, whole.
   if (set.app && !TYPECHECK && r.exit === 0 && !r.partial) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
