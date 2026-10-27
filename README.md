@@ -75,6 +75,7 @@ recommendation, or pick another.
 | `/builder:resume` | Runs a feature's next step |
 | `/builder:agent` | Hands unfinished features to agents to finish and merge |
 | `/builder:fleet` | Builds several specs unattended, overnight if you like |
+| `/builder:fleet:status` | Where the fleet stands — and, once features land, where their time went |
 | `/builder:signoff` | Your verdict after testing a feature — only you can type it |
 | `/builder:revise` | Changes a feature that is already planned or part-built |
 | `/builder:tidy` | Cleans up leftover builder branches and worktrees |

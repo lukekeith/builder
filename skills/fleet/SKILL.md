@@ -5,7 +5,11 @@ description: Runs several written specs through the whole pipeline unattended, e
 
 # `/builder:fleet` — many specs, no one watching
 
-Invocation: **`/builder:fleet [--all | <feature|folder>…] [--parallel N] [--dry-run]`** · where it stands: **`/builder:fleet:status`**.
+Invocation: **`/builder:fleet [--all | <feature|folder>…] [--parallel N] [--dry-run] [--no-env-check]`** · where it stands: **`/builder:fleet:status`**.
+
+With `agent_walk.start` set, the launch proves the walk env once — start, smoke, stop in a throwaway
+worktree of the target, beside the build lanes — and says at once when the config can't bring it
+up; `--no-env-check` skips that.
 
 The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it and reports. Resolve
 `<builder>` per [REFERENCE](../resume/REFERENCE.md) §The scripts.

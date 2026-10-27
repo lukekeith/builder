@@ -4,6 +4,56 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 5.3.0
+
+Where a fleet's time goes, and less of it lost. From one project's fleet run: about 3½ hours a
+feature, a fifth of it building; the rest the plan, the end gates, the walk lane and verify — and up
+to 40 minutes a time when the walk env broke under a gate. **Nothing to change in
+`.claude/builder.md`** — every new key and tag is optional.
+
+**Added:**
+- **`/builder:fleet:status`** — where the fleet stands, as `/builder:fleet --status` showed it
+  (which still works). Its heading now gives, for the last five landings, the mean **wall-clock**
+  from start to merge — parks, restarts and queueing included — and where it went by stage: audit,
+  plan, build, final review, end gates, walk, verify, ship, merge, parked.
+- **The archive row keeps the timeline.** Each run records its start and end; each landing, its
+  stages (read from the branch's own commits before the merge deletes it), how long it waited for
+  the walk lane, its walk's size and every round's pass/fail counts (read before ship deletes the
+  workspace). A batched walk's time is charged to the features it walked.
+- **`@parallel` on a gate line** — it shares no database, port or build folder: it starts with the
+  run's other `@parallel` lines, so a deep set takes its slowest line, not the sum.
+- **`@local` on a gate line** — an e2e suite that starts its own stack runs as written under the fleet.
+- **`plan_writers: per-app`** — `/builder:plan` drafts each app's tasks in parallel against SPEC
+  §Contract, then checks every cross-app interface by name.
+- **`--no-env-check`** on `/builder:fleet` — see the launch check below.
+
+**Changed:**
+- **A gate line stands on its own evidence.** A line that passed is remembered with its commit; a
+  later run quotes it — `⏩ <cmd> — green at <sha>; changed since: … — none reaches <glob>` — when
+  nothing changed since is its input, or no change since reaches its `@scoped` tests. Verify no
+  longer re-runs every suite after a one-file walk fix. `--force` and `--whole` never quote.
+- **The end-of-build gates run beside the final review**, and again only for what its fix wave reaches.
+- **Verify and a walk's fixes leave the walk lane whenever the fleet owns a walk env**
+  (`agent_walk.start`) — one walk at a time too, not only batched. They had run beside the env, in
+  the folder it served from.
+- **The walk env is proved at launch**: start, smoke and stop once in a throwaway worktree, beside
+  the build lanes — a config that can't bring it up says so then, not hours in.
+- **A dead walk env is not a broken feature.** The fleet smokes the env after every walk run and
+  batch session: red, and a verdict that run committed is dropped, the env restarts without a reset,
+  and the walk runs again — instead of a fix round chasing an env that was down.
+- **"The dev DB is behind" asks the database.** With §Walk readiness `status:` (exit 0 = nothing
+  pending), the note after a merge is only written when it is; without it, the note says the DB
+  *may* be behind. `/builder:init` writes a wrapper for tools that always exit 0.
+
+**Fixed:**
+- **The destructive-migration check reads only the forward half** — Alembic `upgrade()`, Rails
+  `up`, Knex `up`, SQL before its down marker — so a drop in `downgrade()` no longer blocks an
+  additive migration; and it now knows each tool's own operations (`op.drop_column`,
+  `remove_column`, `dropTable`, `RemoveField`, `ALTER COLUMN … TYPE`, `UPDATE … SET`), which raw-SQL
+  matching let through. Comments don't count; an unknown file kind is held for a human.
+- **Under the fleet an e2e suite without `@walk` is not run** — its URLs fell back to the human's
+  dev stack — and is reported unverified, with the fix.
+
 ## 5.2.0
 
 The walk env and the gates stop tripping over each other. From a fleet run on a Next.js + FastAPI
