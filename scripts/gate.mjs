@@ -204,7 +204,6 @@ process.on('exit', () => {
   rmSync(RUNNING, { force: true })
   killStarted() // a @parallel line must not outlive the run that started it
 })
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130))
 
 // Each set's memo verdict, once: a quoted set runs nothing, so its @parallel lines don't start.
 for (const set of sets) {
@@ -253,7 +252,7 @@ for (const set of sets) {
   const secs = Math.round((Date.now() - t0) / 1000)
   const unv = r.unverified?.length ? ` · ${r.unverified.length} unverified (e2e without @walk)` : ''
   console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`}${unv} · ${sha} · ${secs}s`)
-  if (!dirty) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
+  if (!dirty && !r.narrowed?.length) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
   // What the whole app set costs, for the test plan: only a green run of every line, whole.
   if (set.app && !TYPECHECK && r.exit === 0 && !r.partial && !r.quoted.length) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
   if (r.exit !== 0) anyRed = true

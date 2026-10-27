@@ -485,13 +485,15 @@ const DOWN_ONLY = /\.down\.sql$|(^|\/)U\d+__[^/]*\.sql$|(^|\/)revert\//i
 const KNOWN_KINDS = /\.(sql|py|rb|js|cjs|mjs|ts|cts|mts)$/i
 
 /**
- * Whole-line comments out, so a word in a comment never reads as an operation. Strings stay: raw SQL
- * lives in them (`op.execute("""DELETE …""")`), and a word in a docstring is caught only by the
- * SQL-shaped patterns above, which a sentence doesn't match.
+ * Whole-line comments and docstrings out, so a word in prose never reads as an operation. Strings
+ * passed to a call stay: raw SQL lives in them (`op.execute("""DELETE …""")`).
  */
 const stripComments = (path, text) => {
   let t = String(text ?? '')
   if (/\.(py|rb)$/i.test(path)) t = t.replace(/^\s*#.*$/gm, '')
+  // A docstring — a triple-quoted string standing as a statement — is prose; one passed to a call
+  // (`op.execute("""DELETE …""")`, even on its own line inside the parentheses) is SQL and stays.
+  if (/\.py$/i.test(path)) t = t.replace(/("""|''')[\s\S]*?\1/g, (m, _q, at, all) => (/[(,=+]\s*$/.test(all.slice(0, at)) ? m : ''))
   if (/\.rb$/i.test(path)) t = t.replace(/^=begin[\s\S]*?^=end/gm, '')
   if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*\/\/.*$/gm, '')
   if (/\.sql$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*--.*$/gm, '')
@@ -527,7 +529,27 @@ export function forwardHalf(path, text) {
   if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) {
     const up = /exports\.up\b|export\s+(async\s+)?function\s+up\b|export\s+const\s+up\b|(public\s+)?async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(function|\()/m
     const down = /exports\.down\b|export\s+(async\s+)?function\s+down\b|export\s+const\s+down\b|(public\s+)?async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(function|\()/m
-    return cutOut(t, down, up)
+    // From `down` to the next line at its own indentation — the end of its function (a `}` or the
+    // next statement); a helper after it stays in.
+    const m = down.exec(t)
+    if (!m) return t
+    const lineStart = t.lastIndexOf('\n', m.index) + 1
+    // `down` partway along a line (`{ up: …, down: async () => {} }`): only the rest of that line goes.
+    if (t.slice(lineStart, m.index).trim()) {
+      const eol = t.indexOf('\n', m.index)
+      return t.slice(0, m.index) + (eol < 0 ? '' : t.slice(eol))
+    }
+    const ind = /^[ \t]*/.exec(t.slice(lineStart))[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const after = t.slice(m.index)
+    const nl = after.indexOf('\n')
+    if (nl < 0) return t.slice(0, lineStart)
+    const rest = after.slice(nl + 1)
+    const end = new RegExp(`^${ind}\\S`, 'm').exec(rest)
+    if (!end) return t.slice(0, lineStart)
+    // A closing `}` / `})` / `};` at that indentation ends the function itself: drop it with the body.
+    const close = /^[ \t]*[}\])][)};,]*\s*$/.exec(rest.slice(end.index).split('\n')[0])
+    const resume = end.index + (close ? rest.slice(end.index).split('\n')[0].length : 0)
+    return t.slice(0, lineStart) + rest.slice(resume)
   }
   if (/\.sql$/i.test(path)) return cutOut(t, /^--\s*(migrate:down|\+goose\s+down|\+migrate\s+down|down)\s*$/im, /^--\s*(migrate:up|\+goose\s+up|\+migrate\s+up|up)\s*$/im)
   return t
