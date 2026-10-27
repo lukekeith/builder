@@ -965,7 +965,7 @@ function archiveRow(feature, facts, thisRun = true) {
   fleet.archived = (fleet.archived ?? 0) + 1
   if (thisRun) fleet.landedThisRun = [...new Set([...(fleet.landedThisRun ?? []), feature])]
   landed.add(feature)
-  const why = archiveLogs(ROOT, feature)
+  const why = archiveLogs(ROOT, feature, AW.keepLogs)
   if (why) addNote(why)
 }
 

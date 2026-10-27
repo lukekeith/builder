@@ -411,26 +411,36 @@ test('pruneArchivedLogs removes archived log files older than the window, by eac
   assert.equal(pruneArchivedLogs(mkdtempSync(join(tmpdir(), 'fc-')), 30, now), 0, 'no logs dir is not an error')
 })
 
-test('a landed feature keeps no transcript: archiveLogs deletes its .jsonl once its row is written; prune clears older ones', () => {
+test('a landed feature\'s transcript goes once its row holds the meter — never under keep_logs 0, never from a row before the meter', () => {
   const root = mkdtempSync(join(tmpdir(), 'fc-'))
   const logs = join(fleetDir(root), 'logs')
   mkdirSync(logs, { recursive: true })
-  for (const n of ['a-01.log', 'a-01.jsonl', 'b-01.log', 'b-01.jsonl']) writeFileSync(join(logs, n), 'x')
-  appendArchive(root, { feature: 'a', merged: 'abc' })
-  assert.equal(archiveLogs(root, 'a'), null)
+  const meter = { orchestrator: { turns: 1, startCtx: 1, peakCtx: 1, sumCtx: 1 }, dispatches: [] }
+  for (const n of ['a-01.log', 'a-01.jsonl', 'b-01.log', 'b-01.jsonl', 'k-01.jsonl', 'o-01.jsonl']) writeFileSync(join(logs, n), 'x')
+  appendArchive(root, { feature: 'a', merged: 'abc', timing: [{ n: 1, meter }] })
+  assert.equal(archiveLogs(root, 'a', 30), null)
   assert.ok(existsSync(join(logs, '_archive', 'a', 'a-01.log')))
   assert.equal(existsSync(join(logs, '_archive', 'a', 'a-01.jsonl')), false)
   assert.equal(existsSync(join(logs, 'a-01.jsonl')), false)
   // No row for b: its transcript is the only record, so it moves.
-  assert.equal(archiveLogs(root, 'b'), null)
+  assert.equal(archiveLogs(root, 'b', 30), null)
   assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
-  // An older landing archived its transcript before this; once its row exists, prune takes it.
+  // keep_logs 0 keeps everything; a row from before the meter keeps its transcript too.
+  appendArchive(root, { feature: 'k', merged: 'k1', timing: [{ n: 1, meter }] })
+  archiveLogs(root, 'k', 0)
+  assert.ok(existsSync(join(logs, '_archive', 'k', 'k-01.jsonl')), 'keep_logs 0 keeps them forever')
+  appendArchive(root, { feature: 'o', merged: 'o1', timing: [{ n: 1 }] })
+  archiveLogs(root, 'o', 30)
+  assert.ok(existsSync(join(logs, '_archive', 'o', 'o-01.jsonl')), 'a pre-meter row: the transcript is the only per-dispatch record')
+  // Prune: a metered row's archived transcript goes (unless keep_logs 0); an unmetered one stays to its age.
   mkdirSync(join(logs, '_archive', 'c'), { recursive: true })
   writeFileSync(join(logs, '_archive', 'c', 'c-01.jsonl'), 'x')
   writeFileSync(join(logs, '_archive', 'c', 'c-01.log'), 'x')
-  appendArchive(root, { feature: 'c', merged: 'def' })
-  assert.equal(pruneArchivedLogs(root, 0), 1, 'keep_logs 0 keeps .log files, never a landed transcript')
+  appendArchive(root, { feature: 'c', merged: 'def', timing: [{ n: 1, meter }] })
+  assert.equal(pruneArchivedLogs(root, 0), 0, 'keep_logs 0 keeps every file')
+  assert.equal(pruneArchivedLogs(root, 30), 2, 'c\'s and k\'s transcripts — their rows hold the meter')
   assert.ok(existsSync(join(logs, '_archive', 'c', 'c-01.log')))
+  assert.ok(existsSync(join(logs, '_archive', 'o', 'o-01.jsonl')))
   assert.ok(existsSync(join(logs, '_archive', 'b', 'b-01.jsonl')))
 })
 
