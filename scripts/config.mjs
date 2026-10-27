@@ -157,6 +157,8 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
       return (this._mergeInto ??= checkedOutBranch(root) ?? fm.base_branch ?? 'main')
     },
     buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
+    // plan_writers: per-app — /builder:plan drafts each app's task blocks in parallel (opt-in).
+    planWriters: fm.plan_writers === 'per-app' ? 'per-app' : 'one',
     // An unusable value, for whoever reports it (profile.mjs --recommend, /builder:init) — never
     // warned from here: the statusline loads the config on every render, each in a new process.
     buildProfileDefaultInvalid: fm.build_profile_default == null || BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? null : String(fm.build_profile_default),

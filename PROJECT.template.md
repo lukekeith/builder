@@ -16,6 +16,7 @@ registry: docs/features
 base_branch: main
 # merge_into: develop   # where finished features merge (fleets, /builder:tidy); default base_branch.
 #                       # `current` = the branch checked out when the fleet launches (feature-branch workflows)
+# plan_writers: per-app   # /builder:plan writes each app's tasks in parallel, one writer per app, against SPEC §Contract — faster for multi-app plans; default one writer
 # build_profile_default: standard   # the test plan the go-ahead recommends: rush (least testing) · standard · thorough (most)
 
 # ─── apps ──────────────────────────────────────────────────────────────────

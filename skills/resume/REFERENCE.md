@@ -989,16 +989,26 @@ minutes — at every build end and again at every verify after a walk fix.
 **Implementers do not run the suite.** Their prompt limits them to the tests of the code they change
 plus the type-check; the phase close runs the block once, on the committed tree.
 
-**Gates and the walk env (`@walk`).** Under the fleet, the walk lane — walk readiness, the agent
-walk, `## Fixes` rounds, verify — runs with the walk env up, serving from this same worktree, and
-with `agent_walk.env` (its ports, its database) in the environment. `gate.mjs` keeps the two apart:
+**Gates and the walk env (`@walk`).** Under the fleet, the walk lane runs with the walk env up and
+with `agent_walk.env` (its ports, its database) in the environment. With a walk env of the fleet's
+own (`agent_walk.start`) the walk lane holds only readiness, the walk and the `@walk` lines — verify
+and `## Fixes` rounds run in the parallel lanes, away from the folder the env serves from, one walk
+at a time or batched; without `start`, verify and fixes stay in the walk lane. `gate.mjs` keeps the
+two apart:
 
 - **An untagged line runs with the test env** — `agent_walk.env`'s keys go back to their build-lane
   values (`worktree_env`, or unset) — so a unit or integration suite never runs against the walk
   env's database or URLs, in the walk lane exactly as in the build lane.
 - **A line marked `@walk` needs the running walk env** — an e2e suite against the app. It gets
-  `agent_walk.env`, runs in the walk lane (verify), and the build lane skips it (`~ … @walk`). Outside
-  the fleet the tag changes nothing: the line runs against whatever env is up, as before.
+  `agent_walk.env`, runs in the walk lane (right after the sign-off, into `walk-gates.md`, when the
+  fleet owns the env; else in verify), and the build lane skips it (`~ … @walk`). Outside the fleet
+  the tag changes nothing: the line runs against whatever env is up, as before.
+- **An e2e-looking line without `@walk`** (playwright, cypress, `e2e`…) is not run under the fleet —
+  its URLs would fall back to the human's dev stack — and is printed `? … unverified`; `@local` marks
+  one that starts its own stack. Outside the fleet nothing changes.
+- **The fleet smokes the env after every walk run.** Red means the env died under the run: a verdict
+  that run committed (doc-only) is dropped, the env restarts without a reset, and the walk runs
+  again — once — instead of turning a dead env into `## Fixes`.
 - **After each set in the walk lane, `gate.mjs` re-polls `agent_walk.smoke`.** When a gate broke the
   running env — a build rewriting the folder the dev server serves from (Next.js `.next`, Nuxt
   `.nuxt`, SvelteKit `.svelte-kit`) — it exits **3** and says so: write
@@ -1008,6 +1018,12 @@ with `agent_walk.env` (its ports, its database) in the environment. `gate.mjs` k
 - **Under the fleet the gate lines come from the main checkout's config** — the one the fleet reads —
   never the branch's copy: a branch can't loosen its own gates, and `gate.mjs` warns when the two
   differ.
+
+**Quoting a line.** A line that passed is remembered (`.builder/gates/lines.json`) with the commit it
+passed at. A later run quotes it — `⏩ <cmd> — green at <sha>; changed since: … — none is this set's
+input` (or `— none reaches <glob>` for a `@scoped` line, by the import graph from that commit) — and
+the quote is evidence like a run. A `@delta`, `@known-red`, `@walk` or `<…>` line, a dirty tree,
+`--force` and `--whole` never quote. **`@parallel`** lines start together across the run's sets.
 
 **Baseline drift.** A gate written as a count (`… | grep -c "error TS"   # @delta`) is judged against
 the count on the target branch, measured by `gate.mjs --baseline` — the fleet runs it at start in the
