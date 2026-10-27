@@ -201,3 +201,46 @@ test('condense --ship: a program child — its child: line reads shipped', () =>
   assert.equal(readText(join(r.root, 'docs', 'features', 'tagging', 'MANIFEST.md')), 'tier: program\nchild: note-tags — shipped\nchild: tag-colours — spec\n')
   assert.equal(git(r.root, 'status', '--short'), '')
 })
+
+test('condense --ship --merged: a feature already in the target — SHIPPED naming the merge, run on the target; refused when the sha is not there', () => {
+  const r = built({ manifest: { ticket: 'NT-7' } })
+  run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'good', '--sha', 'eee5555'], { cwd: r.root })
+  run('advance.mjs', [r.rel, '--set', 'verify=READY 2026-10-23', '--set', 'state=verified', '--commit', 'verify-ready'], { cwd: r.root })
+  // A commit on the feature branch only: not in main.
+  const branchOnly = git(r.root, 'rev-parse', '--short', 'HEAD')
+  git(r.root, 'checkout', '-q', 'main')
+  const elsewhere = run('condense.mjs', [r.rel, '--ship', '--merged', branchOnly], { cwd: r.root })
+  assert.equal(elsewhere.status, 1)
+  git(r.root, 'merge', '-q', '--no-ff', '-m', 'merge note-tags by hand', 'builder/note-tags')
+  const sha = git(r.root, 'rev-parse', '--short', 'HEAD')
+  const notThere = run('condense.mjs', [r.rel, '--ship', '--merged', 'deadbeef'], { cwd: r.root })
+  assert.equal(notThere.status, 1)
+  assert.match(notThere.stderr, /not a commit here/)
+  const ok = run('condense.mjs', [r.rel, '--ship', '--merged', sha], { cwd: r.root })
+  assert.equal(ok.status, 0, ok.stderr)
+  const arch = join(r.root, 'docs', 'features', '_archive', 'note-tags')
+  assert.equal(readText(join(arch, 'SPEC.md')).split('\n')[1], `> ✅ SHIPPED 2026-10-23 — merged ${sha} · NT-7 · signed off by Luke: "good"`)
+  assert.equal(git(r.root, 'log', '-1', '--format=%s'), `docs(NT-7): note-tags shipped — merged ${sha}`)
+  assert.equal(git(r.root, 'branch', '--show-current'), 'main')
+  assert.equal(git(r.root, 'status', '--short'), '')
+})
+
+test('condense --ship --merged: a sha in this branch but not in the target is refused, nothing touched', () => {
+  const r = built()
+  run('condense.mjs', [r.rel, '--signoff', 'agent'], { cwd: r.root })
+  run('advance.mjs', [r.rel, '--set', 'verify=READY 2026-10-23', '--commit', 'verify-ready'], { cwd: r.root })
+  const sha = git(r.root, 'rev-parse', '--short', 'HEAD')
+  const out = run('condense.mjs', [r.rel, '--ship', '--merged', sha], { cwd: r.root })
+  assert.equal(out.status, 1)
+  assert.match(out.stderr, new RegExp(`${sha} is not in main`))
+  assert.ok(existsSync(join(r.folder, 'MANIFEST.md')))
+})
+
+test('condense --ship --into: a human sign-off keeps its signer — never reads as an agent sign-off', () => {
+  const r = built()
+  run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'works', '--sha', 'eee5555'], { cwd: r.root })
+  run('advance.mjs', [r.rel, '--set', 'verify=READY 2026-10-23', '--commit', 'verify-ready'], { cwd: r.root })
+  assert.equal(run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root }).status, 0)
+  const line = readText(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md')).split('\n')[1]
+  assert.equal(line, '> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · signed off by Luke: "works"')
+})

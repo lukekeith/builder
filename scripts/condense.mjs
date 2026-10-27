@@ -5,7 +5,7 @@
  *
  *   node <builder>/scripts/condense.mjs <folder> --signoff agent [--round N] [--no-walk]
  *   node <builder>/scripts/condense.mjs <folder> --signoff human --name "<name>" --words "<words>" [--sha S] [--hold "<reason>"]
- *   node <builder>/scripts/condense.mjs <folder> --ship (--pr N | --into <branch>)
+ *   node <builder>/scripts/condense.mjs <folder> --ship (--pr N | --into <branch> | --merged <sha> [--into <branch>])
  *     … plus advance.mjs's own flags (--set, --unset, --head, --ledger, --commit, --body, --trailer, --no-commit)
  *
  * --signoff agent   agent-walk §4 AGENT-PASS, whole: the 🤖 header line under the title, the §Plan
@@ -26,7 +26,11 @@
  *                   workspace removed, a program parent's `child:` line set to shipped (its
  *                   PROGRAM.md flipped and archived when every child has shipped), `git mv` into
  *                   `<registry>/_archive/`, one commit. Refuses unless `verify: READY`; --into also
- *                   refuses until <branch> is merged into this branch.
+ *                   refuses until <branch> is merged into this branch. --merged is the form for a
+ *                   feature whose code already reached the target with no ship (a manual merge, a
+ *                   `build: here` feature, a PR merged before ship ran): `✅ SHIPPED <date> — merged
+ *                   <sha>`, written on the target, refused unless <sha> is in the target (merge_into,
+ *                   or --into) and in this branch — a header naming a merge that isn't there lies.
  *
  * What stays with the skill (judgment): whether the walk passed at all (agent-walk §3 reads the
  * report); the human's name and verbatim words, and whether this is a PASS (/builder:signoff); that
@@ -60,7 +64,7 @@ export function stripPlan(spec) {
   return [...head, ...(tail.length ? ['', ...tail] : [])].join('\n').replace(/\n*$/, '\n')
 }
 
-const SIGNOFF_LINE = /^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF|🤖 AGENT-VERIFIED|✅ SHIPPED)/
+const SIGNOFF_LINE = /^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF|🤖 AGENT-VERIFIED|✅ SHIPPED|✅ CLOSED|✖ DROPPED)/
 const HOLD_LINE = /^> 🛑 PR HELD/
 
 /** SPEC text with `lines` as the header line(s) right under the title, replacing any earlier sign-off / hold line. */
@@ -192,11 +196,12 @@ function openForShip(folderArg) {
   return { f, src, arch, moved: true, registry }
 }
 
-function ship(a) {
+export function ship(a) {
   const { f, src, arch, moved, registry } = openForShip(a._[0])
   const out = []
-  const subject = a.into ? 'docs({key}): {feature} shipped into ' + a.into : a.pr ? `docs({key}): {feature} shipped in PR #${String(a.pr).replace(/^#/, '')}` : null
-  if (!subject) throw new Error('--ship needs --pr <N> (the open PR) or --into <branch> (agent form)')
+  const merged = a.merged ? String(a.merged) : null
+  const subject = merged ? `docs({key}): {feature} shipped — merged ${merged}` : a.into ? 'docs({key}): {feature} shipped into ' + a.into : a.pr ? `docs({key}): {feature} shipped in PR #${String(a.pr).replace(/^#/, '')}` : null
+  if (!subject) throw new Error('--ship needs --pr <N> (the open PR), --into <branch> (agent form) or --merged <sha> (already in the target)')
   if (a.commit) throw new Error('--ship writes its own subject (ship §At ship) — drop --commit')
   const progDirs = programParents(f.root, registry, f.feature)
 
@@ -205,7 +210,12 @@ function ship(a) {
   if (!moved) {
     if (existsSync(arch)) throw new Error(`${posix(relative(f.root, arch))} already exists — a second folder of that name would make "has it shipped?" answer for the wrong feature. Nothing was touched.`)
     if (!resumed && !/^READY\b/.test(f.manifest.verify ?? '')) throw new Error(`verify is not READY (verify: ${f.manifest.verify ?? 'absent'}) — ship §At ship runs only on a READY feature`)
-    if (!resumed && a.into && git(f.root, ['merge-base', '--is-ancestor', a.into, 'HEAD'], { allowFail: true }) === null)
+    if (!resumed && merged) {
+      const target = a.into ?? f.cfg?.mergeInto ?? 'main'
+      if (git(f.root, ['rev-parse', '--verify', '--quiet', `${merged}^{commit}`], { allowFail: true }) === null) throw new Error(`${merged} is not a commit here — pass the sha that brought the feature into ${target}`)
+      if (git(f.root, ['merge-base', '--is-ancestor', merged, target], { allowFail: true }) === null) throw new Error(`${merged} is not in ${target} — --merged ships only a feature whose code is already in the target. Nothing was touched.`)
+      if (git(f.root, ['merge-base', '--is-ancestor', merged, 'HEAD'], { allowFail: true }) === null) throw new Error(`${merged} is not in this branch — run it on ${target}. Nothing was touched.`)
+    } else if (!resumed && a.into && git(f.root, ['merge-base', '--is-ancestor', a.into, 'HEAD'], { allowFail: true }) === null)
       throw new Error(`${a.into} is not merged into this branch — merge ${a.into} into this branch first (resume AGENT-MODE.md §Ship in agent mode)`)
 
     // 1. the header
@@ -221,15 +231,14 @@ function ship(a) {
     if (!sign) throw new Error('SPEC.md has no sign-off header line — the sign-off condense comes first')
     if (!sign.startsWith('> ✅ SHIPPED')) {
       const ticket = isSet(f.manifest.ticket) ? f.manifest.ticket : 'no ticket'
-      let shipped
-      if (a.into) {
-        const round = /agent walk round (\d+)/.exec(sign)?.[1]
-        shipped = `> ✅ SHIPPED ${today()} — merged into ${a.into} · ${ticket} · 🤖 agent signed off (${round ? `walk round ${round}` : 'no walk'}), not human-tested`
-      } else {
-        const m = /· by (.+?): "(.*)"\s*$/.exec(sign)
-        if (!m) throw new Error(`cannot read the signer and words from: ${sign}`)
-        shipped = `> ✅ SHIPPED ${today()} — PR #${String(a.pr).replace(/^#/, '')} · ${ticket} · signed off by ${m[1]}: "${m[2]}"`
-      }
+      // Who signed it carries over as it was: a human's name and words, or the agent's walk round. The
+      // PR form is only ever a human's (an agent never opens a PR); the merge forms can be either.
+      const human = /· by (.+?): "(.*)"\s*$/.exec(sign)
+      const round = /agent walk round (\d+)/.exec(sign)?.[1]
+      const by = sign.startsWith('> ✅ SIGNED OFF') && human ? `signed off by ${human[1]}: "${human[2]}"` : `🤖 agent signed off (${round ? `walk round ${round}` : 'no walk'}), not human-tested`
+      if (!merged && !a.into && !human) throw new Error(`cannot read the signer and words from: ${sign}`)
+      const where = merged ? `merged ${merged}` : a.into ? `merged into ${a.into}` : `PR #${String(a.pr).replace(/^#/, '')}`
+      const shipped = `> ✅ SHIPPED ${today()} — ${where} · ${ticket} · ${by}`
       writeAtomic(f.specPath, setHeader(spec, [shipped]))
       out.push('SPEC: header flipped to SHIPPED')
     }
@@ -312,7 +321,7 @@ const sets = (a) =>
 async function main(argv) {
   const a = parseArgs(argv, { repeat: ['set', 'unset', 'ledger', 'add', 'trailer'], bool: ['head', 'no-commit', 'no-walk', 'ship'] })
   if (!a._[0] || (!a.signoff && !a.ship)) {
-    console.error('usage: condense.mjs <folder> --signoff agent [--round N] [--no-walk] | --signoff human --name N --words W [--sha S] [--hold R] | --ship (--pr N | --into <branch>)')
+    console.error('usage: condense.mjs <folder> --signoff agent [--round N] [--no-walk] | --signoff human --name N --words W [--sha S] [--hold R] | --ship (--pr N | --into <branch> | --merged <sha> [--into <branch>])')
     return 2
   }
   sets(a)
