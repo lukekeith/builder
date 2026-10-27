@@ -48,7 +48,7 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations, readLineMemo, writeLineMemo, lineQuote } from './gates-core.mjs'
+import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations, readLineMemo, writeLineMemo, lineQuote, startCommand, gateEnv, unwalkedE2E } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
 const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --walk-only | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
@@ -190,10 +190,35 @@ const markRunning = (label) => {
 }
 process.on('exit', () => rmSync(RUNNING, { force: true }))
 
+// Each set's memo verdict, once: a quoted set runs nothing, so its @parallel lines don't start.
 for (const set of sets) {
-  const hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
+  set.hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
   const memo = readMemo(ROOT, set.key)
-  if (!flag('--force') && !dirty && memo && memo.hash === hash && memo.exit === 0) {
+  set.memo = !flag('--force') && !dirty && memo && memo.hash === set.hash && memo.exit === 0 ? memo : null
+}
+
+/**
+ * `@parallel` lines — ones that share no database, port or output folder with the rest — all start
+ * now, across every set this run will run, and each is collected in its turn. The run then takes as
+ * long as its slowest line, not the sum. Only plain lines: never a @delta count, a @scoped or `<…>`
+ * line (their command depends on what runs before), or one this run quotes or skips.
+ */
+for (const set of sets) {
+  if (set.memo) continue
+  const quote = quoteFor(set)
+  set.started = new Map()
+  set.gates.forEach((g, i) => {
+    if (!g.parallel || g.delta || g.scope || /<[^>]+>/.test(g.cmd) || unwalkedE2E(g, process.env) || quote?.(g)) return
+    const env = gateEnv(g, process.env)
+    if (env === null) return
+    set.started.set(g.cmd, startCommand(g.cmd, { cwd: ROOT, env, logFile: join(ROOT, '.builder', 'gates', `${set.key}-logs`, `${String(i + 1).padStart(2, '0')}.log`) }))
+  })
+}
+
+for (const set of sets) {
+  const hash = set.hash
+  const memo = set.memo
+  if (memo) {
     console.log(`⏩ ${set.label}: inputs unchanged since the green run at ${memo.head} (${memo.when}) — quoted, not re-run:`)
     for (const l of memo.lines) console.log(`   ${l}`)
     console.log(`gate ${set.key}: PASS (quoted) · ${sha}`)
@@ -203,7 +228,7 @@ for (const set of sets) {
   markRunning(set.label)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()
-  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: GATE_CFG.flaky, baseline, expand: set.expand, scope, quote: quoteFor(set), log: (l) => console.log(`   ${l}`) })
+  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: GATE_CFG.flaky, baseline, expand: set.expand, scope, quote: quoteFor(set), started: set.started, log: (l) => console.log(`   ${l}`) })
   if (!dirty) writeLineMemo(ROOT, { greens: r.greens, reds: set.gates.map((g) => g.cmd).filter((c) => !r.greens.includes(c) && !r.quoted.includes(c)) }, fullSha)
   if (Object.keys(r.newBaselines).length) {
     baseline = { ...baseline, ...r.newBaselines }

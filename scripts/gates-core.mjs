@@ -12,9 +12,9 @@
  * are byte-identical to the last GREEN run is quoted — with the sha and time it ran on — and a red
  * result is never quoted: red always runs again.
  */
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawnSync, execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
 
 const COMMENT = /\s{2,}#(.*)$|\s+#\s(.*)$/
@@ -35,15 +35,19 @@ const parseLine = (raw) => {
   const walk = /@walk\b/.test(note)
   // @local: an e2e-looking line that is safe to run as written under the fleet (its own stack).
   const local = /@local\b/.test(note)
+  // @parallel: the line shares nothing with the others (no database, port or output folder) — it
+  // starts with the run's other @parallel lines instead of waiting its turn.
+  const parallel = /@parallel\b/.test(note)
   return {
     cmd,
-    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk|@local/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk|@local|@parallel/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
     ...(scope && { scope }),
     ...(typecheck && { typecheck }),
     ...(walk && { walk }),
     ...(local && { local }),
+    ...(parallel && { parallel }),
   }
 }
 
@@ -204,6 +208,29 @@ export function runCommand(cmd, { cwd, env = process.env, logFile = null, timeou
   return { exit: r.status === null ? 1 : r.status, stdout: r.stdout ?? '', output, ms: Date.now() - t0 }
 }
 
+/**
+ * Start a command in the background — for `@parallel` lines, which run together — and wait for it
+ * later with waitCommand, synchronously like runCommand. Its output goes to `logFile` (or a temp
+ * file) and its exit status to `<log>.exit`.
+ */
+export function startCommand(cmd, { cwd, env = process.env, logFile }) {
+  mkdirSync(dirname(logFile), { recursive: true })
+  if (cwd) mkdirSync(join(cwd, '.builder', 'gates'), { recursive: true })
+  const exitFile = `${logFile}.exit`
+  rmSync(exitFile, { force: true })
+  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3"', 'gate', cmd, `${logFile}.out`, exitFile], { cwd, env, stdio: 'ignore', detached: true })
+  child.unref()
+  return { cmd, logFile, exitFile, t0: Date.now(), pid: child.pid }
+}
+export function waitCommand(h) {
+  spawnSync('sh', ['-c', 'while [ ! -s "$1" ]; do sleep 0.2; done', 'wait', h.exitFile])
+  const output = existsSync(`${h.logFile}.out`) ? readFileSync(`${h.logFile}.out`, 'utf8') : ''
+  const exit = Number(readFileSync(h.exitFile, 'utf8').trim())
+  writeFileSync(h.logFile, `$ ${h.cmd}\n${output}\n[exit ${exit}]\n`)
+  rmSync(`${h.logFile}.out`, { force: true })
+  return { exit: Number.isFinite(exit) ? exit : 1, stdout: output, output, ms: Date.now() - h.t0 }
+}
+
 const matcher = (pattern) => {
   try {
     return new RegExp(pattern)
@@ -271,7 +298,7 @@ function scopeLine(g, scope) {
  * when a @scoped line ran a subset or was skipped — the set then says nothing about the whole
  * suite's time. `log` gets each line as it happens.
  */
-export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, quote = null, log = () => {} }) {
+export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, quote = null, started = null, log = () => {} }) {
   const lines = []
   const say = (s) => {
     lines.push(s)
@@ -328,7 +355,8 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       say(`~ ${g0.cmd} — @walk: needs the running walk env; verify runs it in the walk lane`)
       return
     }
-    let r = runCommand(g.cmd, { cwd, env: lineEnv, logFile })
+    // A @parallel line gate.mjs already started (startCommand): wait for it here, in its turn.
+    let r = started?.has(g0.cmd) ? waitCommand(started.get(g0.cmd)) : runCommand(g.cmd, { cwd, env: lineEnv, logFile })
     durations[g0.cmd] = r.ms
     const tail = (n) => r.output.trim().split('\n').slice(-n).join('\n    ')
     if (g.delta) {
