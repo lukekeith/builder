@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations } from '../gates-core.mjs'
+import { gateEnv, parseGates, inputLines, inputsHash, isDirty, dirtyPaths, fmtPaths, mainRoot, runGateSet, readMemo, expandPlaceholders, readDurations, writeDurations, looksE2E, startCommand, waitCommand, killStarted } from '../gates-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GATE = join(HERE, '..', 'gate.mjs')
@@ -482,8 +482,12 @@ test('gate.mjs --typecheck runs only the @typecheck lines, through the same runn
   assert.match(r.stdout, /matched flaky "blip"/)
   assert.match(r.stdout, /KNOWN-RED/)
   assert.match(r.stdout, /no @typecheck line for web/)
-  assert.ok(readMemo(root, 'fast-server-typecheck'), 'its own memo')
+  // its flaky line passed only by a narrower re-run, so the set is not memoised — never quoted later
+  assert.equal(readMemo(root, 'fast-server-typecheck'), null, 'a narrower re-run proves the file, not the set')
   assert.equal(readMemo(root, 'fast-server'), null, 'never stands in for the full set')
+  writeFileSync(join(root, 'flaky.sh'), 'echo types ok\n')
+  git(root, 'commit', '-qam', 'the flake is fixed')
+  assert.ok(run(root, 'server', '--typecheck').status === 0 && readMemo(root, 'fast-server-typecheck'), 'its own memo once green on its own')
   const again = run(root, 'server', '--typecheck')
   assert.match(again.stdout, /PASS \(quoted\)/)
   const red = configured('### server — fast\n\n```\nfalse   # types @typecheck\n```\n')
@@ -518,7 +522,8 @@ test('gate.mjs: in the build lane a @walk line is skipped and says verify runs i
   assert.equal(b.status, 0, b.stdout + b.stderr)
   assert.match(b.stdout, /~ echo e2e .* — @walk: needs the running walk env; verify runs it in the walk lane/)
   assert.equal(readFileSync(out, 'utf8'), 'unit\n')
-  // the walk lane does not quote the build lane's green: the @walk line has not run yet
+  // the walk lane does not quote the build lane's set: the @walk line has not run yet. The unit line
+  // runs too — a quoted line never precedes one that runs (it may be setup the later line needs)
   const w = lane('walk')
   assert.match(w.stdout, /▶ server — fast/)
   assert.equal(readFileSync(out, 'utf8'), 'unit\nunit\ne2e\n')
@@ -559,4 +564,96 @@ test('gate.mjs --walk-only runs only the deep set\'s @walk lines; none → says 
   const n = spawnSync('node', [GATE, '--walk-only'], { cwd: none, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: none } })
   assert.equal(n.status, 0)
   assert.match(n.stdout, /no @walk line in the deep set/)
+})
+
+test('under the fleet an e2e line without @walk is not run against the dev stack: unverified, not red', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-e2e-'))
+  const gates = [
+    { cmd: 'npx playwright test', note: '', delta: false, knownRed: false },
+    { cmd: 'npm run test:e2e', note: '', delta: false, knownRed: false },
+    { cmd: 'echo cypress run', note: '', delta: false, knownRed: false, local: true },
+    { cmd: 'echo unit', note: '', delta: false, knownRed: false },
+  ]
+  const fleet = runGateSet(gates, { cwd: dir, env: { ...process.env, BUILDER_LANE: 'walk' } })
+  assert.equal(fleet.exit, 0)
+  assert.deepEqual(fleet.unverified, ['npx playwright test', 'npm run test:e2e'])
+  assert.match(fleet.lines[0], /^\? npx playwright test — an e2e suite without @walk: not run/)
+  assert.equal(fleet.partial, true)
+  const outside = runGateSet([{ cmd: 'echo playwright', note: '', delta: false, knownRed: false }], { cwd: dir, env: { ...process.env, BUILDER_LANE: '' } })
+  assert.deepEqual(outside.unverified, [], 'outside the fleet nothing changes')
+  assert.equal(looksE2E('vitest run'), false)
+  assert.equal(parseGates('## Quality gates\n\n### Deep set\n\n```\nnpx cypress run   # the UI @local\n```\n').deep[0].local, true)
+})
+
+test('gate.mjs quotes a line whose green run still stands — a @scoped line nothing since reaches — and runs the rest', () => {
+  const root = configured('### server — fast\n\n```\ntrue   # x\n```\n\n### Deep set\n\n```\necho DEEP   # the whole-repo check\necho RAN {tests}   # the UI suite @scoped apps/web/test/**/*.spec.ts\n```\n')
+  mkdirSync(join(root, 'apps/web/src'), { recursive: true })
+  mkdirSync(join(root, 'apps/web/test'), { recursive: true })
+  mkdirSync(join(root, 'apps/server'), { recursive: true })
+  writeFileSync(join(root, 'apps/web/src/a.ts'), 'export const a = 1\n')
+  writeFileSync(join(root, 'apps/web/test/a.spec.ts'), "import { a } from '../src/a'\n")
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'code')
+  commit(root, 'apps/server/x.ts', 'export const x = 1\n') // its own commit: files changed together count as related
+  git(root, 'switch', '-q', '-c', 'feat')
+  commit(root, 'apps/web/src/a.ts', 'export const a = 2\n')
+  const first = run(root, '--deep')
+  assert.equal(first.status, 0, first.stderr)
+  assert.match(first.stdout, /✓ echo DEEP/)
+  assert.match(first.stdout, /✓ echo RAN 'apps\/web\/test\/a\.spec\.ts'/)
+  // A walk-round fix in the server: the set's memo is void, but nothing it changed reaches the UI tests.
+  commit(root, 'apps/server/x.ts', 'export const x = 2\n')
+  const second = run(root, '--deep')
+  assert.equal(second.status, 0, second.stderr)
+  assert.match(second.stdout, /✓ echo DEEP/, 'an unscoped deep line still runs: the change is its input')
+  assert.match(second.stdout, /⏩ echo RAN \{tests\} — green at [0-9a-f]{7} \(.*\); changed since: apps\/server\/x\.ts — none reaches apps\/web\/test\/\*\*\/\*\.spec\.ts/)
+  // A change that does reach it runs it; --force never quotes.
+  commit(root, 'apps/web/src/a.ts', 'export const a = 3\n')
+  assert.match(run(root, '--deep').stdout, /✓ echo RAN 'apps\/web\/test\/a\.spec\.ts'/)
+  assert.doesNotMatch(run(root, '--deep', '--force').stdout, /⏩ echo/)
+})
+
+test('gate.mjs starts @parallel lines together, across sets, and reports each in its turn', () => {
+  const root = configured('### server — fast\n\n```\nsleep 2 && echo s1   # slow one @parallel\necho in-order   # sequential\n```\n\n### web — fast\n\n```\nsleep 2 && echo w1   # slow two @parallel\nexit 4   # red @parallel\n```\n')
+  const t0 = Date.now()
+  const r = run(root, 'server', 'web')
+  const took = Date.now() - t0
+  assert.equal(r.status, 1, 'a red @parallel line is red')
+  assert.match(r.stdout, /✓ sleep 2 && echo s1[\s\S]*✓ echo in-order[\s\S]*✓ sleep 2 && echo w1[\s\S]*✗ exit 4 exit 4/)
+  assert.ok(took < 3800, `two 2s lines in parallel took ${took}ms — one after the other is 4s or more`)
+  assert.match(readFileSync(join(root, '.builder/gates/fast-server-logs/01.log'), 'utf8'), /^\$ sleep 2 && echo s1\ns1\n/)
+  assert.equal(parseGates('## Quality gates\n\n### a — fast\n\n```\nx   # y @parallel\n```\n').fast.a[0].parallel, true)
+})
+
+test('a started @parallel command that dies without an exit status is red, never a hang; files are per start', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gates-start-'))
+  const ok = startCommand('echo fine', { cwd: dir, logFile: join(dir, 'logs', '01.log') })
+  const again = startCommand('echo second', { cwd: dir, logFile: join(dir, 'logs', '01.log') })
+  assert.notEqual(ok.exitFile, again.exitFile, 'two starts never share an exit file')
+  assert.equal(waitCommand(ok).exit, 0)
+  assert.equal(waitCommand(again).output.trim(), 'second')
+  const doomed = startCommand('sleep 30', { cwd: dir, logFile: join(dir, 'logs', '02.log') })
+  process.kill(doomed.pid, 'SIGKILL') // its shell dies; nothing will write the exit status
+  const t0 = Date.now()
+  const r = waitCommand(doomed)
+  assert.equal(r.exit, 1)
+  assert.match(r.output, /died without an exit status/)
+  assert.ok(Date.now() - t0 < 5000)
+  const left = startCommand('sleep 30', { cwd: dir, logFile: join(dir, 'logs', '03.log') })
+  killStarted()
+  assert.equal(waitCommand(left).exit, 1, 'killStarted ends what this process started')
+})
+
+test('gate.mjs never quotes a line that comes before a line that runs — it may be the later line\'s setup', () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'gates-out-')), 'ran.txt')
+  const root = configured(`### server — fast\n\n\`\`\`\necho setup >> ${out}   # resets the test db\necho tests >> ${out}   # the suite @scoped apps/server/**\n\`\`\`\n\n### web — fast\n\n\`\`\`\necho ok   # x\n\`\`\`\n`)
+  mkdirSync(join(root, 'apps/server'), { recursive: true })
+  commit(root, 'apps/server/a.ts', 'export const a = 1\n')
+  git(root, 'switch', '-q', '-c', 'feat')
+  commit(root, 'apps/server/a.ts', 'export const a = 2\n')
+  run(root, 'server')
+  commit(root, 'apps/server/a.ts', 'export const a = 3\n') // reaches the suite: it runs, so setup runs before it
+  const r = run(root, 'server')
+  assert.doesNotMatch(r.stdout, /⏩ echo setup/)
+  assert.equal(readFileSync(out, 'utf8'), 'setup\ntests\nsetup\ntests\n')
 })

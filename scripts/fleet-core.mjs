@@ -394,13 +394,16 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
   const count = run ? run.total : rows.length
   const lines = [`# builder fleet — ${count} feature(s): ${mergedNote}${summary || (mergedNote ? '' : 'none')}${overall ? ` · ${overall}` : ''}`]
   if (fleet.target) lines.push('', `merges into **${fleet.target}**${roots.size ? ` · worktrees under ${[...roots].join(', ')}` : ''}`)
-  if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · --status --archived for the latest 20`)
-  // The mean time per lane of the recently landed features that recorded it (builder 4.6+).
+  if (archived) lines.push('', `${archived} archived${last ? ` (last: ${last.feature}, ${ago(last.landedAt, now)})` : ''} · /builder:fleet:status --archived for the latest 20`)
+  // Recent landings: wall-clock start → merge where recorded (builder 5.3+: parks, restarts and
+  // queueing included, by stage), else the mean agent time per lane (builder 4.6+).
+  const walled = recent.filter((r) => typeof r.wallMs === 'number' && r.wallMs > 0)
   const timed = recent.filter((r) => r.lanes && Object.keys(r.lanes).length)
-  if (timed.length) {
+  if (walled.length) lines.push(`last ${walled.length} landed, mean wall-clock ${wallSummary(walled)}`)
+  else if (timed.length) {
     const sums = {}
     for (const r of timed) for (const [lane, ms] of Object.entries(r.lanes)) sums[lane] = (sums[lane] ?? 0) + ms
-    lines.push(`last ${timed.length} landed, mean per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
+    lines.push(`last ${timed.length} landed, mean agent time per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
   }
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
@@ -457,23 +460,138 @@ export function parseWalkReadiness(body) {
   return out
 }
 
-/** SQL that drops or rewrites data — never applied unattended, whatever apply_mode says. */
-const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|CONSTRAINT)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
+/**
+ * What drops or rewrites data — never applied unattended, whatever apply_mode says. Raw SQL (also
+ * inside an ORM's execute string), then each common migration tool's own operations: Alembic, Rails,
+ * Knex, Django, TypeORM/Sequelize-style query runners.
+ */
+const DESTRUCTIVE_OPS = [
+  /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|CONSTRAINT|DATABASE|MATERIALIZED\s+VIEW)\b/i,
+  /\bALTER\s+TABLE\b[^;]*\bDROP\b/i,
+  /\bALTER\s+(TABLE|INDEX|TYPE|SCHEMA|VIEW)\b[^;]*\bRENAME\b/i,
+  /\bRENAME\s+(TO|COLUMN|CONSTRAINT|TABLE)\b/i,
+  /\bALTER\s+COLUMN\b[^;]*\b(TYPE|SET\s+DATA\s+TYPE)\b/i,
+  /\bDELETE\s+FROM\b/i,
+  /\bTRUNCATE\b/i,
+  /\bUPDATE\s+["'`\w.]+(\s+(AS\s+)?\w+)?\s+SET\b/i,
+  /\b(drop_table|drop_column|drop_constraint|drop_index|rename_table|rename_column|alter_column|remove_column|remove_columns|remove_reference|remove_index|remove_timestamps|change_column|change_table|batch_alter_table|delete_all|update_all|destroy_all)\b/,
+  /\b(dropTable|dropTableIfExists|dropColumn|dropColumns|renameColumn|renameTable|dropIndex|dropForeign|removeColumn|changeColumn|bulkDelete|bulkUpdate|removeConstraint|removeIndex|deleteMany|deleteOne|updateMany|dropCollection)\b/,
+  /\.(alter|del|drop)\(\s*\)|\.(delete|update)\(/,
+  /\bdelete\(\s*\w/,
+  /\b(RemoveField|DeleteModel|RenameField|RenameModel|AlterField|RunPython|RunSQL)\b/,
+]
+/** Files that only ever run backwards: a down-only migration cannot drop anything going forward. */
+const DOWN_ONLY = /\.down\.sql$|(^|\/)U\d+__[^/]*\.sql$|(^|\/)revert\//i
+const KNOWN_KINDS = /\.(sql|py|rb|js|cjs|mjs|ts|cts|mts)$/i
+
+/**
+ * Whole-line comments and docstrings out, so a word in prose never reads as an operation. Strings
+ * passed to a call stay: raw SQL lives in them (`op.execute("""DELETE …""")`).
+ */
+const stripComments = (path, text) => {
+  let t = String(text ?? '')
+  if (/\.(py|rb)$/i.test(path)) t = t.replace(/^\s*#.*$/gm, '')
+  // A docstring — a triple-quoted string standing as a statement — is prose; one passed to a call
+  // (`op.execute("""DELETE …""")`, even on its own line inside the parentheses) is SQL and stays.
+  if (/\.py$/i.test(path)) t = t.replace(/("""|''')[\s\S]*?\1/g, (m, _q, at, all) => (/[(,=+]\s*$/.test(all.slice(0, at)) ? m : ''))
+  if (/\.rb$/i.test(path)) t = t.replace(/^=begin[\s\S]*?^=end/gm, '')
+  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*\/\/.*$/gm, '')
+  if (/\.sql$/i.test(path)) t = t.replace(/^\s*\/\*[\s\S]*?\*\//gm, '').replace(/^\s*--.*$/gm, '')
+  return t
+}
+
+/** `text` with the span from `start` up to `end` (or the end of the file) taken out. */
+const cutOut = (text, start, end) => {
+  const i = text.search(start)
+  if (i < 0) return text
+  const rest = text.slice(i + 1)
+  const j = rest.search(end)
+  return text.slice(0, i) + (j < 0 ? '' : rest.slice(j))
+}
+
+/**
+ * What `apply` runs: the file with only its backward half taken out — Alembic's `def downgrade(`
+ * body, Rails' `def down`, Knex/TypeORM's `down`, the SQL after an exact down marker
+ * (`-- migrate:down`, `-- +goose Down`, `-- +migrate Down`, a bare `-- down` line) — or null when the
+ * file only runs backwards. Everything else stays, helpers `upgrade()` calls included: when unsure,
+ * read more, not less.
+ */
+export function forwardHalf(path, text) {
+  if (DOWN_ONLY.test(path)) return null
+  const t = String(text ?? '')
+  if (/\.py$/i.test(path)) return cutOut(t, /^def downgrade\s*\(/m, /^(def |class |@)/m)
+  if (/\.rb$/i.test(path)) {
+    const m = /^([ \t]*)def down\b/m.exec(t)
+    if (!m) return t
+    const ind = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return cutOut(t, /^[ \t]*def down\b/m, new RegExp(`^${ind}(def |end\\b)`, 'm'))
+  }
+  if (/\.(js|cjs|mjs|ts|cts|mts)$/i.test(path)) {
+    const up = /exports\.up\b|export\s+(async\s+)?function\s+up\b|export\s+const\s+up\b|(public\s+)?async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(function|\()/m
+    const down = /exports\.down\b|export\s+(async\s+)?function\s+down\b|export\s+const\s+down\b|(public\s+)?async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(function|\()/m
+    // From `down` to the next line at its own indentation — the end of its function (a `}` or the
+    // next statement); a helper after it stays in.
+    const m = down.exec(t)
+    if (!m) return t
+    const lineStart = t.lastIndexOf('\n', m.index) + 1
+    // `down` partway along a line (`{ up: …, down: async () => {} }`): only the rest of that line goes.
+    if (t.slice(lineStart, m.index).trim()) {
+      const eol = t.indexOf('\n', m.index)
+      return t.slice(0, m.index) + (eol < 0 ? '' : t.slice(eol))
+    }
+    const ind = /^[ \t]*/.exec(t.slice(lineStart))[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const after = t.slice(m.index)
+    const nl = after.indexOf('\n')
+    if (nl < 0) return t.slice(0, lineStart)
+    const rest = after.slice(nl + 1)
+    const end = new RegExp(`^${ind}\\S`, 'm').exec(rest)
+    if (!end) return t.slice(0, lineStart)
+    // A closing `}` / `})` / `};` at that indentation ends the function itself: drop it with the body.
+    const close = /^[ \t]*[}\])][)};,]*\s*$/.exec(rest.slice(end.index).split('\n')[0])
+    const resume = end.index + (close ? rest.slice(end.index).split('\n')[0].length : 0)
+    return t.slice(0, lineStart) + rest.slice(resume)
+  }
+  if (/\.sql$/i.test(path)) return cutOut(t, /^--\s*(migrate:down|\+goose\s+down|\+migrate\s+down|down)\s*$/im, /^--\s*(migrate:up|\+goose\s+up|\+migrate\s+up|up)\s*$/im)
+  return t
+}
+
+/**
+ * Why a migration file is not safe to apply unattended — the operation it runs going forward, or
+ * that its kind is unknown — or null when it only adds. Errs towards a note: a false alarm costs
+ * one command run by hand; a miss costs data.
+ */
+export function destructiveMigration({ path, text }) {
+  const p = String(path ?? '')
+  if (!KNOWN_KINDS.test(p)) return 'an unrecognised migration file — checked by hand'
+  const fwd = forwardHalf(p, text)
+  if (fwd == null) return null
+  const body = stripComments(p, fwd)
+  const hit = DESTRUCTIVE_OPS.map((re) => re.exec(body)).find(Boolean)
+  return hit ? hit[0].replace(/\s+/g, ' ').trim() : null
+}
 
 /**
  * What to do about migrations a landing brought into the checkout: `files` are the new migration
  * files ({ path, text }), `readiness` is parseWalkReadiness. `apply` (apply_mode agent, additive
- * only) → the commands to run in order; otherwise a `note` naming what to run by hand.
+ * only) → the commands to run in order; otherwise a `note` naming what to run by hand. `pending` is
+ * the database's own answer when §Walk readiness has a `pending:` command (exit 0 = nothing pending —
+ * not `status:`, which many tools exit 0 from either way): false → no note, the dev DB already has
+ * them; true → behind, or the command couldn't tell; null (no command, or not asked) → git only knows
+ * the files landed, so the note says the DB *may* be behind (`kind: 'maybe'` — the caller asks then).
  */
-export function landedMigrations({ files, readiness }) {
+export function landedMigrations({ files, readiness, pending = null }) {
   if (!files?.length) return { action: 'none' }
   const n = `${files.length} new migration${files.length === 1 ? '' : 's'}`
   const cmds = [readiness.apply, readiness.regenerate].filter(Boolean)
   const run = cmds.map((c) => `\`${c}\``).join(', then ')
   if (!readiness.apply) return { action: 'note', why: `${n} landed, but the config's §Walk readiness has no \`apply:\` command — apply them to the dev DB by hand` }
-  const destructive = files.filter((f) => DESTRUCTIVE.test(f.text ?? '')).map((f) => f.path)
-  if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.join(', ')} drops or rewrites data, so it was not applied — check it, then run ${run}` }
-  if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
+  const destructive = files.map((f) => [f.path, destructiveMigration(f)]).filter(([, why]) => why)
+  if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.map(([p, why]) => `${p} (${why})`).join(', ')} may drop or rewrite data going forward, so nothing was applied — check it, then run ${run}` }
+  if ((readiness.apply_mode ?? 'ask') !== 'agent') {
+    if (pending === false) return { action: 'none', why: `${n} landed; \`${readiness.pending}\` says the dev DB already has them` }
+    if (pending === true) return { action: 'note', why: `${n} landed — the dev DB is behind, or \`${readiness.pending}\` couldn't reach it: run ${run}` }
+    return { action: 'note', kind: 'maybe', why: `${n} landed — the dev DB may be behind: if it lacks them, run ${run}` }
+  }
   return { action: 'apply', commands: cmds }
 }
 
@@ -552,4 +670,102 @@ export function initWithoutBuilder(ev) {
   if (ev?.type !== 'system' || ev.subtype !== 'init' || !Array.isArray(ev.plugins)) return null
   if (ev.plugins.some((p) => p?.name === 'builder')) return null
   return 'the session started without the builder plugin loaded (bare mode, or the plugin is disabled for this repo) — its skills and the PR lock are missing, so the run was stopped. Check `claude plugin list`, and that agent_walk.claude_args has no --bare'
+}
+
+// ---- stage timing ---------------------------------------------------------------------------
+
+/**
+ * Each pipeline step ends in a commit with a known subject (advance.mjs PRESETS and the skills'
+ * commit lines), so a feature's branch history is its timeline. Order matters: the first match wins.
+ */
+const STAGE_MARKS = [
+  ['parked', /— parked:/],
+  ['resumed', /unparked — was:|walk env restarted by the fleet/],
+  ['audit', /\b(audited|aligned)$/],
+  ['plan', /: plan [\w.-]+$|— go-ahead\b/],
+  ['finalReview', /final[- ]review/i],
+  ['endGates', /— (phases closed|built, walk readiness pending|built, awaiting the walk)\b|built here — not walked/],
+  ['walk', /agent walk round \d+|agent signed off|\bsigned off\b|re-signed|walk found \d+ problems|re-walk after verify/],
+  ['verify', /— verify (READY|INCOMPLETE)/],
+  ['ship', / shipped (into|in PR)\b|— PR #\d+ open/],
+]
+/**
+ * A subject is a stage mark only when it is builder's own for this feature — the feature named right
+ * after the colon (`docs(KEY): <feature> audited`, `docs(KEY): plan <feature>`), the fleet's own
+ * `chore(<feature>): unparked …` lines — or the final review's fix commit, which names none. A task
+ * commit (`feat(KEY): keep labels right-aligned`) is a task, whatever words it ends in.
+ */
+const markOf = (subject, feature = null) => {
+  const f = feature?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const own = !feature || new RegExp(`\\): (plan )?${f}( |$)|^chore\\(${f}\\): (unparked|walk env restarted|built here|build here)`).test(subject) || /^fix\([^)]*\): final review findings$/.test(subject)
+  return own ? (STAGE_MARKS.find(([, re]) => re.test(subject))?.[0] ?? null) : null
+}
+/** Where a plain commit (a task, a fix) falls, from the last mark before it. */
+const PHASE_AFTER = { audit: 'plan', plan: 'build', finalReview: 'finalReview', endGates: 'walk', walk: 'walk', verify: 'verify', ship: 'ship' }
+
+/**
+ * A feature branch's commits, oldest first ({ t: epoch seconds, s: subject }) → wall-clock ms per
+ * stage: audit, plan, build (the task commits), finalReview, endGates, walk (readiness, rounds,
+ * sign-off — queueing included; walkQueue below splits it), verify, ship — and `parked`, the time
+ * from a park to whatever came next, kept apart from the stage it interrupted. Also: walkRounds
+ * (failed rounds committed), parks, startedAt, endGatesAt (ms, for the walk queue), lastAt.
+ * Commits a stage didn't make leave its key out; nothing here is a guess.
+ */
+export function stagesFromCommits(commits, feature = null) {
+  const cs = (commits ?? []).filter((c) => c && Number.isFinite(c.t)).sort((a, b) => a.t - b.t)
+  const out = { stages: {}, walkRounds: 0, parks: 0, startedAt: null, endGatesAt: null, lastAt: null }
+  if (!cs.length) return out
+  const add = (k, ms) => { if (ms > 0) out.stages[k] = (out.stages[k] ?? 0) + ms }
+  let phase = 'audit'
+  let parkedSince = null
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i]
+    const mark = markOf(c.s, feature)
+    const gap = i ? (c.t - cs[i - 1].t) * 1000 : 0
+    if (parkedSince != null) add('parked', gap)
+    else if (mark && !['parked', 'resumed'].includes(mark)) add(mark, gap)
+    else if (mark !== 'resumed') add(phase, gap)
+    if (mark === 'parked') { parkedSince = c.t; out.parks++; continue }
+    parkedSince = null
+    if (mark === 'resumed') continue
+    if (mark === 'walk' && /agent walk round \d+/.test(c.s)) out.walkRounds++
+    if (mark === 'endGates' && out.endGatesAt == null) out.endGatesAt = c.t * 1000
+    if (mark) phase = PHASE_AFTER[mark] ?? phase
+  }
+  out.startedAt = cs[0].t * 1000
+  out.lastAt = cs[cs.length - 1].t * 1000
+  return out
+}
+
+/**
+ * A walk workspace's round reports (`agent-walk/round-<n>/report.md`, agent-walk SKILL §report) and
+ * walk.md → { checks, rounds: [{ n, pass, fail, unverifiable, verdict }] }. Read before /builder:ship
+ * deletes the workspace, so the archive row keeps the size of the walk.
+ */
+export function walkFacts({ walkMd = null, reports = [] } = {}) {
+  // walk.md's items are numbered lines, per app (`1. [risk] …`) and cross-app (`E1. …`), as walk-script.mjs writes them.
+  const checks = walkMd == null ? null : (walkMd.match(/^E?\d+\.\s+\S/gm) ?? []).length
+  const rounds = reports
+    .filter((r) => r && typeof r.text === 'string')
+    .map(({ n, text }) => {
+      const rows = text.split('\n').filter((l) => /^\|\s*E?\d+\s*\|/.test(l))
+      const count = (re) => rows.filter((l) => re.test(l)).length
+      return { n, pass: count(/\|\s*PASS\s*\|/), fail: count(/\|\s*FAIL\s*\|/), unverifiable: count(/\|\s*UNVERIFIABLE\s*\|/), verdict: /^verdict:\s*(PASS|PROBLEMS)/m.exec(text)?.[1] ?? null }
+    })
+    .sort((a, b) => a.n - b.n)
+  return { checks, rounds }
+}
+
+const STAGE_ORDER = ['audit', 'plan', 'build', 'finalReview', 'endGates', 'walk', 'verify', 'ship', 'merge', 'parked']
+const STAGE_LABEL = { finalReview: 'final review', endGates: 'end gates' }
+/**
+ * Archive rows with `wallMs` → `3h32m start → merge (audit 7m · plan 31m · … · parked 10m)`: the
+ * mean per feature, each stage's mean over the rows, so the parts add up to about the whole.
+ */
+export function wallSummary(rows) {
+  const n = rows.length
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / n
+  const total = mean(rows.map((r) => r.wallMs))
+  const parts = STAGE_ORDER.map((k) => [k, mean(rows.map((r) => r.stages?.[k] ?? 0))]).filter(([, ms]) => ms >= 30000)
+  return `${duration(total)} start → merge${parts.length ? ` (${parts.map(([k, ms]) => `${STAGE_LABEL[k] ?? k} ${duration(ms)}`).join(' · ')})` : ''}`
 }

@@ -145,6 +145,18 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    settles the phase list, each phase's app, its goal and its gates *before* any task is written.
 2. **Write the file** per [`PLAN-FORMAT.md`](PLAN-FORMAT.md), header and `## Phases` table first,
    then the task blocks in order.
+
+   **With `plan_writers: per-app`** in the config and two or more apps in `## Phases`, the task
+   blocks are drafted in parallel — the plan's slowest step is writing its code, and apps don't
+   share it. Write the header and `## Phases` table yourself first: they fix every task's number,
+   app and phase. Then dispatch **one writer per app, in one message** — each given PLAN-FORMAT.md,
+   the header and Phases table, its own app's SPEC section, §Contract **verbatim** (the only thing
+   apps share: names, paths, shapes), §Decisions, the config's §Global constraints and its app's
+   recipe skills — to write **only its app's task blocks**, numbered as the table says, to
+   `<WS>/plan-<app>.md`. Stitch them into PLAN.md in task-number order. Then, before step 3, the
+   **cross-app check**: every interface a consumer task consumes is named exactly as the producer
+   task that produces it names it (path, field, type, status) — a mismatch is fixed to §Contract's
+   spelling in the task that strayed. Without the key, or with one app, one writer writes it all.
 3. **The checks before anything is committed:**
    - every `### Task N` block opens with an `App:` line and a `Phase:` line matching its table row;
    - every block carries a `Recipe:` line from the config's §Companion skills — or, for work with no

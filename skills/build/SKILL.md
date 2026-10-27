@@ -295,7 +295,11 @@ Never ask.
 
 ## When the last phase signs
 
-1. **The end's gates, by `end`:**
+1. **The end's gates, by `end`** — started **in the background, beside step 2**: launch them
+   through `job.mjs` (resume's REFERENCE §The scripts), dispatch the final review, then collect the
+   job. They don't wait on each other: the review reads the diff, the gates run the code. When the
+   review's fix wave commits, run the gates again after it — the runner quotes every line nothing
+   the fix touched reaches — so "green before the walk" still means green on the last commit.
    - **`touched`, `risk` or `everything`** → the fast set of every app the build touched,
      `node <builder>/scripts/gate.mjs <app> <app>…` in one call. An app with no commit since a green
      run is quoted by the runner, not re-run — that is the point of running it this way, and the
@@ -307,7 +311,7 @@ Never ask.
 
    🔴 Red is a stop here as anywhere (§The test plan): each failure is a fix dispatch against the
    slice that caused it, then the runner again.
-2. **The final whole-branch review** — EXECUTION.md §The final whole-branch review:
+2. **The final whole-branch review**, while step 1's job runs — EXECUTION.md §The final whole-branch review:
    `node <builder>/scripts/dispatch.mjs final-review <folder>` renders
    [`prompts/final-reviewer.md`](prompts/final-reviewer.md) — on the most capable model, pointed at
    the ledger's deferred-minor and parked lines **and at §Contract**, its report written to
@@ -326,7 +330,7 @@ Never ask.
    deep set here**, where it runs in parallel with other builds instead of holding the one-at-a-time
    walk lane: `node <builder>/scripts/gate.mjs --deep <every in-scope app>` through `job.mjs`. Red
    deep gates are fix dispatches like any red phase gate. Verify will quote this run if nothing
-   changes the tree before it — and re-run it if something does. Then write the walk script (step 4,
+   changes the tree before it, and re-run only the lines a later change reaches if something does. Then write the walk script (step 4,
    so the walk lane finds it), write `state: building`,
    `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>` and commit —
    `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "dev env (fleet walk lane)"' --set "next=/builder:resume --path <folder>" --head --commit walk-lane`

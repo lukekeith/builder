@@ -48,7 +48,7 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations } from './gates-core.mjs'
+import { parseGates, inputLines, inputsHash, dirtyPaths, fmtPaths, mainRoot, runGateSet, runCommand, lastInt, readMemo, writeMemo, readBaseline, writeBaseline, writeDurations, readLineMemo, writeLineMemo, lineQuote, startCommand, killStarted, gateEnv, unwalkedE2E } from './gates-core.mjs'
 import { impactOf, scopeTests, renderImpact } from './impact.mjs'
 
 const USAGE = 'usage: gate.mjs <app>… | --all | --deep [<app>…] | --walk-only | --baseline   [--force] [--whole] [--typecheck]   (exit 0 green · 1 red · 3 the walk env broke)'
@@ -134,6 +134,41 @@ const scope = flag('--whole')
 const dirtyList = dirtyPaths(ROOT)
 const dirty = dirtyList.length > 0
 const sha = head()
+const fullSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim()
+
+/**
+ * Per line: quote a line whose last green run still stands (gates-core lineQuote) — never under
+ * --force or --whole, never on a dirty tree. What changed since is git's answer; whether it reaches
+ * a @scoped line's tests is the import graph's, measured from that line's green head.
+ */
+const LINES = readLineMemo(ROOT)
+const changedSince = (from) => {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', from, 'HEAD'], { cwd: ROOT, stdio: 'ignore' })
+    return execFileSync('git', ['diff', '--name-only', from, 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean)
+  } catch {
+    return null
+  }
+}
+const impactSince = new Map()
+const reaches = (glob, from) => {
+  if (!impactSince.has(from)) impactSince.set(from, impactOf(ROOT, { baseBranch: CFG.baseBranch, since: from }))
+  return scopeTests(impactSince.get(from), glob).mode
+}
+/**
+ * A quoted line never comes before a line that runs: an earlier line may be setup the later one needs
+ * (a reset, a migrate, a generate) — quoting it would run the later line on a state nothing prepared.
+ * So only the lines after the set's last running line can be quoted. Decided once per set.
+ */
+const quoteFor = (set) => {
+  if (flag('--force') || flag('--whole') || dirty) return null
+  if (!set.quotes) {
+    const raw = set.gates.map((g) => lineQuote(g, LINES[g.cmd], { changedSince, exclude: set.exclude, reaches }))
+    const lastRun = raw.reduce((last, q, i) => (q ? last : i), -1)
+    set.quotes = new Map(set.gates.map((g, i) => [g.cmd, i > lastRun ? raw[i] : null]))
+  }
+  return (g) => set.quotes.get(g.cmd) ?? null
+}
 const registry = CFG.registry
 let baseline = readBaseline(MAIN)
 let anyRed = false
@@ -165,12 +200,40 @@ const markRunning = (label) => {
   mkdirSync(dirname(RUNNING), { recursive: true })
   writeFileSync(RUNNING, JSON.stringify({ sets: label, pid: process.pid, startedAt: new Date().toISOString() }) + '\n')
 }
-process.on('exit', () => rmSync(RUNNING, { force: true }))
+process.on('exit', () => {
+  rmSync(RUNNING, { force: true })
+  killStarted() // a @parallel line must not outlive the run that started it
+})
+
+// Each set's memo verdict, once: a quoted set runs nothing, so its @parallel lines don't start.
+for (const set of sets) {
+  set.hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
+  const memo = readMemo(ROOT, set.key)
+  set.memo = !flag('--force') && !dirty && memo && memo.hash === set.hash && memo.exit === 0 ? memo : null
+}
+
+/**
+ * `@parallel` lines — ones that share no database, port or output folder with the rest — all start
+ * now, across every set this run will run, and each is collected in its turn. The run then takes as
+ * long as its slowest line, not the sum. Only plain lines: never a @delta count, a @scoped or `<…>`
+ * line (their command depends on what runs before), or one this run quotes or skips.
+ */
+for (const set of sets) {
+  if (set.memo) continue
+  const quote = quoteFor(set)
+  set.started = new Map()
+  set.gates.forEach((g, i) => {
+    if (!g.parallel || g.delta || g.scope || /<[^>]+>/.test(g.cmd) || unwalkedE2E(g, process.env) || quote?.(g)) return
+    const env = gateEnv(g, process.env)
+    if (env === null) return
+    set.started.set(g.cmd, startCommand(g.cmd, { cwd: ROOT, env, logFile: join(ROOT, '.builder', 'gates', `${set.key}-logs`, `${String(i + 1).padStart(2, '0')}.log`) }))
+  })
+}
 
 for (const set of sets) {
-  const hash = inputsHash(inputLines(ROOT, { exclude: set.exclude }), set.gates)
-  const memo = readMemo(ROOT, set.key)
-  if (!flag('--force') && !dirty && memo && memo.hash === hash && memo.exit === 0) {
+  const hash = set.hash
+  const memo = set.memo
+  if (memo) {
     console.log(`⏩ ${set.label}: inputs unchanged since the green run at ${memo.head} (${memo.when}) — quoted, not re-run:`)
     for (const l of memo.lines) console.log(`   ${l}`)
     console.log(`gate ${set.key}: PASS (quoted) · ${sha}`)
@@ -180,16 +243,18 @@ for (const set of sets) {
   markRunning(set.label)
   const logDir = join(ROOT, '.builder', 'gates', `${set.key}-logs`)
   const t0 = Date.now()
-  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: GATE_CFG.flaky, baseline, expand: set.expand, scope, log: (l) => console.log(`   ${l}`) })
+  const r = runGateSet(set.gates, { cwd: ROOT, env: process.env, logDir, flaky: GATE_CFG.flaky, baseline, expand: set.expand, scope, quote: quoteFor(set), started: set.started, log: (l) => console.log(`   ${l}`) })
+  if (!dirty) writeLineMemo(ROOT, { greens: r.greens, reds: set.gates.map((g) => g.cmd).filter((c) => !r.greens.includes(c) && !r.quoted.includes(c)) }, fullSha)
   if (Object.keys(r.newBaselines).length) {
     baseline = { ...baseline, ...r.newBaselines }
     writeBaseline(MAIN, baseline, sha)
   }
   const secs = Math.round((Date.now() - t0) / 1000)
-  console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`} · ${sha} · ${secs}s`)
-  if (!dirty) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
+  const unv = r.unverified?.length ? ` · ${r.unverified.length} unverified (e2e without @walk)` : ''
+  console.log(`gate ${set.key}: ${r.exit === 0 ? 'PASS' : `FAIL (${r.red} red)`}${unv} · ${sha} · ${secs}s`)
+  if (!dirty && !r.narrowed?.length) writeMemo(ROOT, set.key, { hash, head: sha, when: new Date().toISOString(), exit: r.exit, lines: r.lines })
   // What the whole app set costs, for the test plan: only a green run of every line, whole.
-  if (set.app && !TYPECHECK && r.exit === 0 && !r.partial) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
+  if (set.app && !TYPECHECK && r.exit === 0 && !r.partial && !r.quoted.length) writeDurations(ROOT, set.app, { total: Date.now() - t0, commands: r.durations })
   if (r.exit !== 0) anyRed = true
   if (walkEnvBroken(set.label)) process.exit(3)
 }

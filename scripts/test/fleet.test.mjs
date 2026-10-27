@@ -131,7 +131,12 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(a.runs, 8)
   // Every run's time and turns, from the result event the stub prints (STUB_DURATION_MS, default 1000).
   assert.equal(a.timing.length, 8)
-  assert.deepEqual(a.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  const { start, end, ...first } = a.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  assert.ok(Date.parse(start) <= Date.parse(end), 'each run records its wall-clock start and end')
+  // The stage timeline, read from the branch's commits before the merge deleted it.
+  assert.ok(a.wallMs >= 0 && a.stages && typeof a.stages === 'object', 'wall-clock and stages recorded')
+  assert.ok('walkRounds' in a && 'parks' in a)
   assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
   assert.equal(a.profile, null, 'the fixture manifest has no profile:')
@@ -212,7 +217,8 @@ test('a run that prints more than one result event is timed by the last', () => 
   // CHATTY prints its own result event (1 turn), then the stub's finish prints another (3 turns).
   const r = runFleet(root, ['c'], { c: ['CHATTY:100:audited', ...HAPPY.slice(1)] })
   const c = assertLanded(r, 'c')
-  assert.deepEqual(c.timing[0], { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
+  const { start, end, ...first } = c.timing[0]
+  assert.deepEqual(first, { n: 1, lane: 'build', ms: 1000, turns: 3, tokens: { input: 1000, output: 100, cacheRead: 500, costUsd: 0.05 } })
 })
 
 test('a run that fails twice fails, naming the log', () => {
@@ -569,7 +575,7 @@ test('--status renders the table live, with progress read from each feature', ()
   const r = runFleet(root, ['--status'], {})
   // a landed, so it is archived, not a row — but it is this run's, so the run reads 1 merged, 100%; b never joined.
   assert.match(r.stdout, /# builder fleet — 1 feature\(s\): 1 merged this run · ▓▓▓▓▓▓▓▓▓▓ 100%/)
-  assert.match(r.stdout, /^1 archived \(last: a, just now\) · --status --archived for the latest 20$/m)
+  assert.match(r.stdout, /^1 archived \(last: a, just now\) · \/builder:fleet:status --archived for the latest 20$/m)
   assert.doesNotMatch(r.stdout, /\| a \|/)
   // Progress is read at --status time, not from the saved file: edit the manifest, the table follows.
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ target: 'main', features: { b: { status: 'building', runs: 1, branch: 'builder/b', worktree: null, pr: null, reason: null } } }))
@@ -600,7 +606,7 @@ test('--detach starts the fleet in its own session and returns at once; the flee
   const root = makeRepo(['a'])
   const r = runFleet(root, ['a', '--detach'], { a: HAPPY.map((s) => `SLOW:${s}`) })
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet --status$/m)
+  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet:status$/m)
   const pid = Number(/pid (\d+)/.exec(r.stdout)[1])
   // Its own session: a process-group leader, so the shell or agent that ran the launch can end
   // without taking the fleet with it.
@@ -865,6 +871,51 @@ test('start and smoke bring up a walk env for the walk, and it is gone afterward
   const pid = Number(readFileSync(pidFile, 'utf8'))
   assert.equal(alive(pid), false, 'the start process is gone')
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/s/s-start.log')), 'start output is logged')
+})
+
+test('with a walk env of its own, verify runs in the pool even one walk at a time — never beside the env', async () => {
+  const { root } = await walkEnvRepo('s')
+  const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_WALK_BATCH: '1' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 's')
+  const lanes = r.calls.filter((l) => l.startsWith('start')).map((l) => l.split(' ')[2])
+  // readiness and the walk in the walk lane; the sign-off hands verify and ship to the pool.
+  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'build', 'build'])
+})
+
+test('the walk env is proved once at launch, in a throwaway worktree that is gone afterwards; a failure is a note', async () => {
+  const ok = await walkEnvRepo('s')
+  const r = runFleet(ok.root, ['s'], { s: HAPPY }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /walk env launch check: start and smoke pass on main/)
+  assert.ok(existsSync(join(ok.root, '.builder/fleet/logs/_envcheck-start.log')), 'its start output is logged')
+  assert.ok(!git(ok.root, 'worktree', 'list').includes('_envcheck'), 'the check worktree is removed')
+  const skipped = await walkEnvRepo('s')
+  runFleet(skipped.root, ['s', '--no-env-check'], { s: HAPPY }, FAST)
+  assert.equal(skipped.starts(), 1, '--no-env-check: only the walk starts the env')
+  const bad = await walkEnvRepo('s', { smoke: 'exit 1' })
+  const b = runFleet(bad.root, ['s'], { s: ['audited'] }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '800' })
+  assert.ok(b.fleet.notes.some((n) => /walk env launch check failed on main: start\/smoke failed/.test(n)), JSON.stringify(b.fleet.notes))
+})
+
+test('a walk run that ends with the env dead is not believed: its verdict is dropped, the env restarts, the walk runs again', async () => {
+  const port = await freePort()
+  const scratch = mkdtempSync(join(tmpdir(), 'fleet-env-'))
+  const server = join(scratch, 'server.mjs')
+  writeFileSync(server, `import { createServer } from 'node:net'\nconst s = createServer((c) => c.end()).listen(${port}, '127.0.0.1')\nprocess.on('SIGTERM', () => s.close(() => process.exit(0)))\n`)
+  const probe = join(scratch, 'smoke.mjs')
+  writeFileSync(probe, `import { connect } from 'node:net'\nconnect(${port}, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))\n`)
+  // The env is "dead" while ../env-dead exists beside the worktree; a (re)start clears it.
+  const root = makeRepo(['s'], {
+    lines: [`start: rm -f ../env-dead; echo up >> ${join(scratch, 'starts')}; exec node ${server}`, `smoke: test ! -f ../env-dead && node ${probe}`],
+    manifest: ['state: built', 'tests: slice=own end=risk review=end'],
+  })
+  const r = runFleet(root, ['s', '--no-env-check'], { s: ['TOUCH:../env-dead:FIXES', 'signed-off', 'verified', 'SHIP'] }, FAST)
+  assert.equal(r.status, 0, r.stderr)
+  const a = assertLanded(r, 's')
+  assert.ok(r.fleet.notes.some((n) => /s: the walk env stopped answering during a walk run — its verdict was dropped, the env is restarted/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.equal(readFileSync(join(scratch, 'starts'), 'utf8').trim().split('\n').length, 2, 'started, then restarted once')
+  assert.ok(a.runs >= 4)
 })
 
 test('start is killed even when the walk parks', async () => {
@@ -1390,7 +1441,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0 }, costUsd: 0, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1399,7 +1450,7 @@ test('--status --archived lists the latest landings', () => {
   const root = makeRepo(['a', 'b'])
   runFleet(root, ['a', 'b'], { a: HAPPY, b: HAPPY })
   const st = runFleet(root, ['--status'], {})
-  assert.match(st.stdout, /^2 archived \(last: [ab], just now\) · --status --archived for the latest 20$/m)
+  assert.match(st.stdout, /^2 archived \(last: [ab], just now\) · \/builder:fleet:status --archived for the latest 20$/m)
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
@@ -1596,12 +1647,12 @@ test('apply_mode ask leaves a note naming the command; a drop is never run under
   const r = runFleet(ask, ['a'], { a: HAPPY })
   assertLanded(r, 'a')
   assert.ok(!existsSync(join(ask, 'applied.txt')))
-  assert.ok(r.fleet.notes.some((n) => /⚠ a: 1 new migration landed — the dev DB is behind: run/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.ok(r.fleet.notes.some((n) => /⚠ a: 1 new migration landed — the dev DB may be behind: if it lacks them, run/.test(n)), JSON.stringify(r.fleet.notes))
   const drop = readinessRepo('agent', 'DROP TABLE "a";')
   const d = runFleet(drop, ['a'], { a: HAPPY })
   assertLanded(d, 'a')
   assert.ok(!existsSync(join(drop, 'applied.txt')))
-  assert.ok(d.fleet.notes.some((n) => /drops or rewrites data, so it was not applied/.test(n)), JSON.stringify(d.fleet.notes))
+  assert.ok(d.fleet.notes.some((n) => /may drop or rewrite data going forward, so nothing was applied/.test(n)), JSON.stringify(d.fleet.notes))
 })
 
 // ---- agents never take a feature a session is building, or one branch several features share ----
@@ -1692,8 +1743,8 @@ test('batched walks: two features walk together — one walk branch, one env, on
   // verify (signed-off) and ship (verified) ran in the pool — build lane, no env — not in the walk lane
   assert.ok(r.calls.some((l) => /^start a build .* verified /.test(l)), r.calls.join('\n'))
   assert.ok(r.calls.some((l) => /^start b build .* verified /.test(l)), r.calls.join('\n'))
-  // the env came up once for the batch (plus none per feature)
-  assert.equal(starts(), 1, `env starts: ${starts()}`)
+  // the env came up once for the launch check and once for the batch (none per feature)
+  assert.equal(starts(), 2, `env starts: ${starts()}`)
   // the walk worktree and its branch are gone when the fleet is
   assert.equal(git(root, 'branch', '--list', 'builder/_walk'), '')
 })
@@ -1705,7 +1756,7 @@ test('batched walks: agent_walk.batch 1 walks one feature at a time, as before',
   assertLanded(r, 'a')
   assertLanded(r, 'b')
   assert.equal(r.calls.filter((l) => l.startsWith('batch ')).length, 0)
-  assert.equal(starts(), 2, 'one env per feature')
+  assert.equal(starts(), 3, 'the launch check, then one env per feature')
 })
 
 test('batched walks: a walk that finds problems sends the fixes to the pool, and the feature rejoins a later walk', async () => {

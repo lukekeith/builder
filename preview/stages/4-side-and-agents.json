@@ -125,9 +125,9 @@
         }
       ],
       "stamp": {
-        "hash": "45c5b11f648f",
-        "version": "5.1.0",
-        "date": "2026-10-26"
+        "hash": "95f95c594b63",
+        "version": "5.3.0",
+        "date": "2026-10-27"
       }
     },
     {
@@ -630,9 +630,9 @@
         }
       ],
       "stamp": {
-        "hash": "7e963df41938",
-        "version": "5.1.0",
-        "date": "2026-10-26"
+        "hash": "ed5d75e814c0",
+        "version": "5.2.0",
+        "date": "2026-10-27"
       }
     },
     {
@@ -653,7 +653,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (--into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker · verify and walk fixes in the build lane, away from the walk env\n  ✓ cert-tags → builder/cert-tags\n  ✓ cert-history → builder/cert-history\n```"
         },
         {
           "role": "claude",
@@ -685,7 +685,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet --status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet --status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet --status\n~~~"
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet:status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report; nothing here is notified when it ends.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -693,9 +693,9 @@
         }
       ],
       "stamp": {
-        "hash": "f50a9ca4dd7f",
+        "hash": "896b1f2dcc31",
         "version": "5.2.0",
-        "date": "2026-10-26"
+        "date": "2026-10-27"
       }
     },
     {
@@ -720,7 +720,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again. **Add to the running fleet** drops both in its inbox, each picked up the moment a lane frees; **Not now** queues nothing."
+          "text": "```\nbuilder fleet — plan (nothing created)\n  merges into: main (merge_into) — one merge commit per finished feature; nothing is pushed\n  worktrees:   /Users/sam/code/acme-certs.fleet\n  permissions: claude --permission-mode bypassPermissions\n  build lane:  3 at a time · walk lane: up to 8 features per walk — one env, one walker · verify and walk fixes in the build lane, away from the walk env\n  adds to the running fleet (pid 48213) — each is picked up when a lane frees; its --parallel stands\n  ✓ portal-cert-list → builder/portal-cert-list\n  ⏳ portal-downloads → builder/portal-downloads, once portal-cert-list merges — unparks it — it was parked: a customer downloading a revoked certificate's PDF — the spec doesn't say whether to refuse it or stamp it REVOKED [D3]\n  ↻ cert-history — already in the running fleet (walking)\n  ↻ cert-tags — already in the running fleet (building)\n```\n\nBoth already carry a `tests:` line, so the test plan isn't asked again. **Add to the running fleet** drops both in its inbox, each picked up the moment a lane frees; **Not now** queues nothing."
         },
         {
           "role": "picker",
@@ -748,7 +748,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n  ↳ portal-cert-list — queued for the running fleet (pid 48213)\n  ↳ portal-downloads — queued for the running fleet (pid 48213)\n```\n\n~~~\n📍 fleet: 2 spec(s) added to the running fleet — next: /builder:fleet --status\n~~~"
+          "text": "```\n  ↳ portal-cert-list — queued for the running fleet (pid 48213)\n  ↳ portal-downloads — queued for the running fleet (pid 48213)\n```\n\n~~~\n📍 fleet: 2 spec(s) added to the running fleet — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -756,9 +756,9 @@
         }
       ],
       "stamp": {
-        "hash": "5e49e1b79adf",
+        "hash": "f85bbac5d800",
         "version": "5.2.0",
-        "date": "2026-10-26"
+        "date": "2026-10-27"
       }
     },
     {
@@ -766,12 +766,12 @@
       "skill": "fleet",
       "title": "Fleet: --status mid-run",
       "when": "Any time while the fleet runs.",
-      "source": "skills/fleet/SKILL.md §1. `--status`",
+      "source": "skills/fleet/SKILL.md §1. Where it stands — `/builder:fleet:status`",
       "feature": "cert-tags",
       "turns": [
         {
           "role": "user",
-          "text": "/builder:fleet --status"
+          "text": "/builder:fleet:status"
         },
         {
           "role": "tool",
@@ -779,17 +779,17 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · --status --archived for the latest 20\nlast 4 landed, mean per lane: build 52m · walk 21m\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | own · risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | own · touched · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | own · touched · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
+          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · /builder:fleet:status --archived for the latest 20\nlast 4 landed, mean wall-clock 2h58m start → merge (audit 8m · plan 27m · build 44m · final review 16m · end gates 22m · walk 31m · verify 18m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | own · risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | own · touched · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | own · touched · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
         },
         {
           "role": "note",
-          "text": "Markdown, never fenced. The bar counts steps, not time — asked how long is left, the honest answer is the lane means above, offered as an estimate."
+          "text": "Markdown, never fenced. The bar counts steps, not time — asked how long is left, the honest answer is the wall-clock means above for the stages a feature hasn't finished, offered as an estimate."
         }
       ],
       "stamp": {
-        "hash": "d524deb2d96a",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "50dede0e5e10",
+        "version": "5.2.0",
+        "date": "2026-10-27"
       }
     },
     {
@@ -802,7 +802,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "/builder:fleet --status"
+          "text": "/builder:fleet:status"
         },
         {
           "role": "tool",
@@ -810,7 +810,7 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · --status --archived for the latest 20\nlast 5 landed, mean per lane: build 1h04m · walk 22m\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**What landed** — nobody approved these runs, so here's what each merged feature built, one part at a time.\n\n**Part 1 of 3 — cert-history**\n\n- **What changes for users** — a certificate has a **History** tab on the web: every change — who, what, from what to what, when — newest first. Owners only; mobile is unchanged.\n- **What they'll see** — certificate page → *History* after *Details*: 50 changes at a time, *Load more*; non-owners don't see the tab.\n- **Added · Changed · Removed** — Added: the History tab · Changed: nothing · Removed: nothing\n- **Apps** — web only; api already served the changes.\n- **Decisions** — hidden from non-owners · 50 per page *(assumed)* · times in the viewer's timezone *(assumed)* · an event with no actor shows \"System\" *(auto)*\n- **Not included** — History on mobile; searching the history.\n\nSpec: `docs/features/_archive/cert-history/SPEC.md`\n\nA. Looks right — next part\nB. Something's wrong — say what\nReply A or B — \"go\" is A."
+          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · end gates 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**What landed** — nobody approved these runs, so here's what each merged feature built, one part at a time.\n\n**Part 1 of 3 — cert-history**\n\n- **What changes for users** — a certificate has a **History** tab on the web: every change — who, what, from what to what, when — newest first. Owners only; mobile is unchanged.\n- **What they'll see** — certificate page → *History* after *Details*: 50 changes at a time, *Load more*; non-owners don't see the tab.\n- **Added · Changed · Removed** — Added: the History tab · Changed: nothing · Removed: nothing\n- **Apps** — web only; api already served the changes.\n- **Decisions** — hidden from non-owners · 50 per page *(assumed)* · times in the viewer's timezone *(assumed)* · an event with no actor shows \"System\" *(auto)*\n- **Not included** — History on mobile; searching the history.\n\nSpec: `docs/features/_archive/cert-history/SPEC.md`\n\nA. Looks right — next part\nB. Something's wrong — say what\nReply A or B — \"go\" is A."
         },
         {
           "role": "user",
@@ -826,9 +826,9 @@
         }
       ],
       "stamp": {
-        "hash": "3df0745fa4e8",
-        "version": "4.14.8",
-        "date": "2026-10-26"
+        "hash": "d06150690237",
+        "version": "5.2.0",
+        "date": "2026-10-27"
       }
     },
     {

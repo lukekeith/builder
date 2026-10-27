@@ -12,9 +12,9 @@
  * are byte-identical to the last GREEN run is quoted — with the sha and time it ran on — and a red
  * result is never quoted: red always runs again.
  */
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawnSync, execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
 
 const COMMENT = /\s{2,}#(.*)$|\s+#\s(.*)$/
@@ -33,16 +33,35 @@ const parseLine = (raw) => {
   // @walk: the line needs the running walk env (an e2e suite) — it gets agent_walk.env and runs only
   // while the fleet's walk env is up (gateEnv below). Every other line runs with the test env.
   const walk = /@walk\b/.test(note)
+  // @local: an e2e-looking line that is safe to run as written under the fleet (its own stack).
+  const local = /@local\b/.test(note)
+  // @parallel: the line shares nothing with the others (no database, port or output folder) — it
+  // starts with the run's other @parallel lines instead of waiting its turn.
+  const parallel = /@parallel\b/.test(note)
   return {
     cmd,
-    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk/g, '').replace(/\s{2,}/g, ' ').trim(),
+    note: note.replace(/@scoped\s+\S+|@delta|@known-red|@typecheck|@walk|@local|@parallel/g, '').replace(/\s{2,}/g, ' ').trim(),
     delta: /@delta\b/.test(note),
     knownRed: /@known-red\b/.test(note),
     ...(scope && { scope }),
     ...(typecheck && { typecheck }),
     ...(walk && { walk }),
+    ...(local && { local }),
+    ...(parallel && { parallel }),
   }
 }
+
+/** A command that drives a running app: a browser e2e runner, or a script named e2e. */
+const E2E = /\b(playwright|cypress|testcafe|webdriverio|wdio|selenium|puppeteer|nightwatch)\b|(^|[\s:/_-])e2e\b/i
+export const looksE2E = (cmd) => E2E.test(cmd ?? '')
+
+/**
+ * Under the fleet, an e2e suite not tagged `@walk` has no env of its own: the walk env's values are
+ * taken from it (gateEnv), so it falls back to its own defaults — usually the human's dev stack on
+ * localhost. It is not run there: reported unverified, with the fix. `@local` says the line brings
+ * its own stack and runs as written. Outside the fleet nothing changes.
+ */
+export const unwalkedE2E = (g, env = process.env) => Boolean(env.BUILDER_LANE) && !g.walk && !g.local && looksE2E(g.cmd)
 
 /**
  * The environment one gate line runs with, from the lane the fleet says it is in (BUILDER_LANE):
@@ -189,6 +208,76 @@ export function runCommand(cmd, { cwd, env = process.env, logFile = null, timeou
   return { exit: r.status === null ? 1 : r.status, stdout: r.stdout ?? '', output, ms: Date.now() - t0 }
 }
 
+/**
+ * Start a command in the background — for `@parallel` lines, which run together — and wait for it
+ * later with waitCommand, synchronously like runCommand. Its output and exit status go to files
+ * unique to this start (pid + nonce), so a run left over from a killed gate.mjs can never answer for
+ * this one. They stay in gate.mjs's process group, so whatever stops gate.mjs — Ctrl-C, the fleet
+ * killing a run's group — stops them with it; on its own exit gate.mjs ends any still running
+ * (killStarted).
+ */
+const startedGroups = new Set()
+export function startCommand(cmd, { cwd, env = process.env, logFile }) {
+  mkdirSync(dirname(logFile), { recursive: true })
+  if (cwd) mkdirSync(join(cwd, '.builder', 'gates'), { recursive: true })
+  const tag = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const outFile = `${logFile}.${tag}.out`
+  const exitFile = `${logFile}.${tag}.exit`
+  const child = spawn('sh', ['-c', 'sh -c "$1" > "$2" 2>&1; echo $? > "$3.tmp" && mv "$3.tmp" "$3"', 'gate', cmd, outFile, exitFile], { cwd, env, stdio: 'ignore' })
+  child.on('error', () => {})
+  child.unref()
+  if (child.pid) startedGroups.add(child.pid)
+  return { cmd, logFile, outFile, exitFile, t0: Date.now(), pid: child.pid ?? null }
+}
+/** The live (non-zombie) processes in `pid`'s tree. Not `kill(pid, 0)`: waitCommand blocks the event
+ *  loop, so a dead child is never reaped and stays a zombie that kill(0) still finds. */
+const liveTree = (pid) => {
+  if (!pid) return []
+  const r = spawnSync('ps', ['-A', '-o', 'pid=,ppid=,stat='], { encoding: 'utf8' })
+  if (r.status !== 0) return null // can't tell
+  const rows = r.stdout.split('\n').map((l) => l.trim().split(/\s+/)).filter((x) => x.length >= 3).map(([p, pp, st]) => ({ p: Number(p), pp: Number(pp), st }))
+  const tree = new Set([pid])
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const x of rows) if (tree.has(x.pp) && !tree.has(x.p)) (tree.add(x.p), (grew = true))
+  }
+  return rows.filter((x) => tree.has(x.p) && !x.st.startsWith('Z')).map((x) => x.p)
+}
+const groupAlive = (pid) => {
+  const live = liveTree(pid)
+  return live == null || live.length > 0
+}
+const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+/** Wait for a started command. A group that died without writing its exit status is red, never a hang. */
+export function waitCommand(h) {
+  let gone = 0
+  for (let i = 0; !existsSync(h.exitFile); i++) {
+    // ps once a second; a group with no live member gets two seconds' grace to write its exit file
+    if (i % 5 === 4 && !groupAlive(h.pid) && ++gone > 2) break
+    nap(200)
+  }
+  startedGroups.delete(h.pid)
+  const output = existsSync(h.outFile) ? readFileSync(h.outFile, 'utf8') : ''
+  const raw = existsSync(h.exitFile) ? readFileSync(h.exitFile, 'utf8').trim() : ''
+  const exit = raw === '' ? 1 : Number(raw)
+  const note = raw === '' ? '\n[the command died without an exit status]' : ''
+  writeFileSync(h.logFile, `$ ${h.cmd}\n${output}${note}\n[exit ${raw || 'none'}]\n`)
+  rmSync(h.outFile, { force: true })
+  rmSync(h.exitFile, { force: true })
+  return { exit: Number.isFinite(exit) ? exit : 1, stdout: output, output: output + note, ms: Date.now() - h.t0 }
+}
+/** Kill every started group still running — gate.mjs calls it on exit and on a signal. */
+export function killStarted() {
+  for (const pid of startedGroups) {
+    for (const p of liveTree(pid) ?? [pid]) {
+      try {
+        process.kill(p, 'SIGKILL')
+      } catch {}
+    }
+  }
+  startedGroups.clear()
+}
+
 const matcher = (pattern) => {
   try {
     return new RegExp(pattern)
@@ -256,7 +345,7 @@ function scopeLine(g, scope) {
  * when a @scoped line ran a subset or was skipped — the set then says nothing about the whole
  * suite's time. `log` gets each line as it happens.
  */
-export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, log = () => {} }) {
+export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {}, expand = null, scope = null, quote = null, started = null, log = () => {} }) {
   const lines = []
   const say = (s) => {
     lines.push(s)
@@ -266,7 +355,19 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
   let partial = false
   const newBaselines = {}
   const durations = {}
+  const unverified = []
+  const narrowed = [] // flaky lines passed only by a narrower re-run — the set's memo can't quote them
+  const greens = [] // lines that ran and passed — gate.mjs remembers each one's head (lines.json)
+  const quoted = []
   gates.forEach((g0, i) => {
+    // A line whose last green run still stands — nothing it covers changed since (gate.mjs decides,
+    // with the evidence it says) — is quoted, not run.
+    const q = quote?.(g0)
+    if (q) {
+      quoted.push(g0.cmd)
+      say(`⏩ ${g0.cmd} — ${q}`)
+      return
+    }
     const logFile = logDir ? join(logDir, `${String(i + 1).padStart(2, '0')}.log`) : null
     let g = g0
     if (expand && /<[^>]+>/.test(g0.cmd)) {
@@ -290,13 +391,20 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       if (scoped.say) say(scoped.say)
       g = { ...g0, cmd: scoped.cmd }
     }
+    if (unwalkedE2E(g0, env)) {
+      partial = true
+      unverified.push(g0.cmd)
+      say(`? ${g0.cmd} — an e2e suite without @walk: not run, so it can't hit your dev stack — unverified. Tag it @walk to run it against the walk env (or @local if it starts its own)`)
+      return
+    }
     const lineEnv = gateEnv(g0, env)
     if (lineEnv === null) {
       partial = true
       say(`~ ${g0.cmd} — @walk: needs the running walk env; verify runs it in the walk lane`)
       return
     }
-    let r = runCommand(g.cmd, { cwd, env: lineEnv, logFile })
+    // A @parallel line gate.mjs already started (startCommand): wait for it here, in its turn.
+    let r = started?.has(g0.cmd) ? waitCommand(started.get(g0.cmd)) : runCommand(g.cmd, { cwd, env: lineEnv, logFile })
     durations[g0.cmd] = r.ms
     const tail = (n) => r.output.trim().split('\n').slice(-n).join('\n    ')
     if (g.delta) {
@@ -331,6 +439,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       return
     }
     if (r.exit === 0) {
+      greens.push(g0.cmd)
       say(`✓ ${g.cmd} (${fmt(r.ms)})`)
       return
     }
@@ -343,6 +452,8 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
       const again = runCommand(hit.rerun || g.cmd, { cwd, env: lineEnv, logFile: logFile ? logFile.replace(/\.log$/, '-rerun.log') : null })
       durations[g0.cmd] += again.ms
       if (again.exit === 0) {
+        if (!hit.rerun) greens.push(g0.cmd) // a narrower re-run proves the file, not the whole line
+        else narrowed.push(g0.cmd)
         say(`~ ${g.cmd} exit ${r.exit}, matched flaky "${hit.match}"; ${hit.rerun ? `re-ran \`${hit.rerun}\`` : 're-ran'}: passed (${fmt(r.ms + again.ms)})`)
         return
       }
@@ -353,7 +464,7 @@ export function runGateSet(gates, { cwd, env, logDir, flaky = [], baseline = {},
     red++
     say(`✗ ${g.cmd} exit ${r.exit} (${fmt(r.ms)})${logFile ? ` — ${logFile}` : ''}\n    ${tail(8)}`)
   })
-  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial }
+  return { exit: red ? 1 : 0, lines, red, newBaselines, durations, partial, unverified, greens, quoted, narrowed }
 }
 
 // ---- the memo ------------------------------------------------------------------------------
@@ -422,4 +533,52 @@ export function writeDurations(root, app, { total, commands }) {
   if (!existsSync(join(dir, '.gitignore'))) writeFileSync(join(dir, '.gitignore'), '*\n')
   const all = { ...readDurations(root), [app]: { total, commands, at: new Date().toISOString() } }
   writeFileSync(durationsPath(root), JSON.stringify(all, null, 2) + '\n')
+}
+
+// ---- per-line memo -------------------------------------------------------------------------
+
+/**
+ * Each gate line's last green run: `{ <cmd as written>: { head, when } }` in .builder/gates/lines.json
+ * (per worktree). A set's memo is all-or-nothing over its whole input tree, so one fix anywhere re-runs
+ * every line; this lets a line stand on its own evidence — gate.mjs quotes it when nothing it covers
+ * changed after `head`.
+ */
+export const lineMemoPath = (root) => join(root, '.builder', 'gates', 'lines.json')
+export function readLineMemo(root) {
+  try {
+    const d = JSON.parse(readFileSync(lineMemoPath(root), 'utf8'))
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : {}
+  } catch {
+    return {}
+  }
+}
+export function writeLineMemo(root, { greens = [], reds = [] }, head) {
+  const all = readLineMemo(root)
+  const when = new Date().toISOString()
+  for (const cmd of greens) all[cmd] = { head, when }
+  for (const cmd of reds) delete all[cmd]
+  mkdirSync(join(root, '.builder', 'gates'), { recursive: true })
+  if (!existsSync(join(root, '.builder', '.gitignore'))) writeFileSync(join(root, '.builder', '.gitignore'), '*\n')
+  writeFileSync(lineMemoPath(root), JSON.stringify(all, null, 2) + '\n')
+}
+
+/**
+ * Whether a line's green run at `memo.head` still stands at HEAD — the evidence as one line, or null
+ * (run it). Never for a line that judges a count (@delta), runs known debt, needs the running app
+ * (@walk) or names changed files (`<…>`); never across a rewrite (head not an ancestor) or a dirty
+ * tree. It stands when every file changed since is outside the set's inputs (`exclude`: the registry,
+ * other apps), or — for a @scoped line — when the import graph says none of them reaches its tests
+ * (`reaches(glob, since)` → scopeTests' mode). A line with neither proof runs.
+ */
+export function lineQuote(g, memo, { changedSince, exclude = [], reaches = null }) {
+  if (!memo?.head || g.delta || g.knownRed || g.walk || /<[^>]+>/.test(g.cmd)) return null
+  const changed = changedSince(memo.head)
+  if (changed == null) return null
+  const at = `green at ${memo.head.slice(0, 7)} (${memo.when})`
+  if (!changed.length) return `${at}; nothing changed since — quoted, not re-run`
+  const inside = (f) => !exclude.some((p) => { const d = p.replace(/\/+$/, ''); return f === d || f.startsWith(`${d}/`) })
+  const relevant = changed.filter(inside)
+  if (!relevant.length) return `${at}; changed since: ${fmtPaths(changed)} — none is this set's input — quoted, not re-run`
+  if (g.scope && reaches && reaches(g.scope, memo.head) === 'none') return `${at}; changed since: ${fmtPaths(relevant)} — none reaches ${g.scope} (.builder/gates/impact.md) — quoted, not re-run`
+  return null
 }

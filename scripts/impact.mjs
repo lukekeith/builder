@@ -331,8 +331,9 @@ function importGraph(root, files) {
  * file in the impact's core (changed, or reading a changed schema field) to why; `reach(f)` says
  * how f imports into it, or null.
  */
-export function impactOf(root, { baseBranch }) {
-  const base = git(['merge-base', `refs/heads/${baseBranch}`, 'HEAD'], root).trim()
+export function impactOf(root, { baseBranch, since = null }) {
+  // `since`: a commit — what changed after it (gate.mjs quoting a line green there), not the branch.
+  const base = since ?? git(['merge-base', `refs/heads/${baseBranch}`, 'HEAD'], root).trim()
   const changed = git(['diff', '--name-only', base], root).split('\n').filter(Boolean)
   const files = new Set(git(['ls-files'], root).split('\n').filter(Boolean))
   const code = [...files].filter((f) => CODE.test(f))

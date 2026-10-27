@@ -222,3 +222,9 @@ test('hasAgentWalk reads another branch\'s config text', () => {
   assert.equal(hasAgentWalk(`---\nproject: t\n${APPS}\n---\n`), false)
   assert.equal(hasAgentWalk(`---\nproject: t\n${APPS}\nagent_walk:\n  driver: none\n  claude_args: --x\n---\n`), true)
 })
+
+test('plan_writers: per-app is the opt-in; anything else is one writer', () => {
+  assert.equal(cfgWith('plan_writers: per-app').planWriters, 'per-app')
+  assert.equal(cfgWith('').planWriters, 'one')
+  assert.equal(cfgWith('plan_writers: many').planWriters, 'one')
+})
