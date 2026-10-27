@@ -27,16 +27,18 @@ between Bash calls. **The deep set's verdict is written here and nowhere else** 
 lane may have run the deep block already, and `gate.mjs` quotes that run when the tree is unchanged
 (REFERENCE §Quality gates).
 
-**`@walk` lines and the walk env.** Under the fleet, verify runs in the walk lane with the walk env
-up: a deep line marked `@walk` (an e2e suite) runs against it with `agent_walk.env`; every other
-line runs with the test env — never the walk env's database (REFERENCE §Quality gates — the
-mechanism, *Gates and the walk env*). An e2e suite with no `@walk` runs against whatever its own
-config points at, which under the fleet is not this feature's env: say so in the verdict rather than
-reading its failures as the feature's, and name `@walk` as the fix. **`gate.mjs` exit 3** — the walk
-env stopped answering after a set — is not a red gate: write the restart line and end the run.
-**Under `--no-dev-env`** (a batched fleet's parallel lanes) there is no env here and verify never
-drives the app. The `@walk` lines ran once for the walk batch: `<WS>/walk-gates.md` holds that run —
-the walk branch's sha, the batch's features, the exit and the output. Exit 0 on code no fix has
+**`@walk` lines and the walk env.** Without a walk env of the fleet's own (no `agent_walk.start`),
+verify runs in the walk lane: a deep line marked `@walk` (an e2e suite) runs with `agent_walk.env`;
+every other line runs with the test env — never the walk env's database (REFERENCE §Quality gates —
+the mechanism, *Gates and the walk env*). Under the fleet an e2e-looking line **without** `@walk`
+(or `@local`) is not run at all — it would hit the human's dev stack — and the runner prints it
+`? … unverified`: carry it into the verdict as unverified, never as green or red, and name `@walk`
+as the fix. **`gate.mjs` exit 3** — the walk env stopped answering after a set — is not a red gate:
+write the restart line and end the run.
+**Under `--no-dev-env`** (the fleet's parallel lanes — wherever `agent_walk.start` is set, one walk at
+a time or batched) there is no env here and verify never drives the app. The `@walk` lines ran once
+while the env was up, right after the sign-off: `<WS>/walk-gates.md` holds that run — the sha, the
+features walked, the exit and the output. Exit 0 on code no fix has
 changed since → quote it as item 3's `@walk` evidence. A red run: judge from the output whether a
 failing test is this feature's (it exercises what this diff changed) — this feature's → a `## Fixes`
 row; another feature's → say so, and it is not this feature's to hold. Anything that needs the app
@@ -143,7 +145,9 @@ a visual diff, and a renamed element changes what the walk does.
    config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself. A set the runner
    **quotes** — its inputs byte-identical to a green run it recorded, at a sha it names — counts as
    run: that is REFERENCE §Quality gates' rule, and the quoted line with its sha is the evidence the
-   verdict cites. A `@scoped` deep line runs only the tests this branch can reach
+   verdict cites. So does a **quoted line** (`⏩ <cmd> — green at <sha> (…); changed since: … — none
+   is this set's input` or `— none reaches <glob>`): the build's end gates ran it green and nothing
+   since reaches it — cite that line as it stands. Only a fix that reaches a line re-runs it. A `@scoped` deep line runs only the tests this branch can reach
    (REFERENCE §Quality gates — the mechanism): cite `.builder/gates/impact.md` for which ran and why,
    and name the other features it pulled in. Never run the config's commands by hand beside it,
    never widen a scoped run "to be safe" (`--whole` is for when the impact report is plainly wrong,
