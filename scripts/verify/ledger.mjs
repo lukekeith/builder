@@ -8,7 +8,7 @@
  * appended by the service (readers skip a partial last line).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
 export const FLAKE_CLEAR = 20
@@ -44,7 +44,8 @@ export function openLedger(root) {
     known: join(dir, 'known-failures.json'),
     flakes: join(dir, 'flakes.json'),
     req: (id) => join(dir, 'requests', `${id}.json`),
-    lines: (sha, name) => join(dir, 'lines', sha, `${name}.txt`),
+    // v2: lines from the whole output (ec15caf). Sets cached before were built from a 20,000-character tail and are not trusted.
+    lines: (sha, name) => join(dir, 'lines-v2', sha, `${name}.txt`),
   }
 
   const requests = (filter = () => true) =>
@@ -138,7 +139,7 @@ export function openLedger(root) {
       return existsSync(p) ? new Set(readFileSync(p, 'utf8').split('\n').filter(Boolean)) : null
     },
     writeLines(sha, name, lines) {
-      mkdirSync(join(dir, 'lines', sha), { recursive: true })
+      mkdirSync(dirname(P.lines(sha, name)), { recursive: true })
       writeAtomic(P.lines(sha, name), [...lines].join('\n') + '\n')
     },
   }
