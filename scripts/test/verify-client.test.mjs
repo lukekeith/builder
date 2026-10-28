@@ -269,3 +269,17 @@ test('a service sent SIGTERM drops its lock and exits', async () => {
   process.kill(pid, 'SIGTERM')
   assert.ok(await until(() => !existsSync(join(root, '.builder', 'verify', 'serve.pid'))), 'serve.pid removed')
 })
+
+test('the service starts with a scrubbed env: a walk-env key or DATABASE_URL in the starting client never reaches a test run', () => {
+  const { root, wt } = repo()
+  const out = join(root, '..', `${root.split('/').pop()}-env.txt`)
+  writeFileSync(join(root, '.claude', 'builder.md'), `---\nproject: X\nbase_branch: main\napps:\n  - name: a\n    path: .\nagent_walk:\n  env: WALK_SECRET=walk\n  worktree_env: WT_SECRET=wt\nverify:\n  workers: 1\n  checks:\n    ok: { run: "printenv WALK_SECRET WT_SECRET DATABASE_URL CLAUDE_PROJECT_DIR > '${out}'; true", tiers: [commit, phase, merge] }\n---\n`)
+  git(root, 'commit', '-qam', 'config')
+  git(wt, 'merge', '-q', 'main')
+  const env = { ...process.env, BUILDER_VERIFY_IDLE_MS: '500', WALK_SECRET: 'leak', WT_SECRET: 'leak', DATABASE_URL: 'postgres://leak', CLAUDE_PROJECT_DIR: '/leak' }
+  const r = spawnSync('node', [CLIENT, 'request', wt, 'HEAD', '--tier', 'commit'], { cwd: wt, encoding: 'utf8', env })
+  assert.equal(r.status, 0, r.stderr)
+  const w = cli(wt, 'wait', r.stdout.trim(), '--max', '60')
+  assert.equal(w.status, 0, w.stdout + w.stderr)
+  assert.equal(readFileSync(out, 'utf8'), '')
+})
