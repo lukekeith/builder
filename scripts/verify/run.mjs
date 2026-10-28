@@ -131,7 +131,10 @@ async function judgeRequest(req, ctx, tmp) {
     rmSync(report, { force: true })
     const lease = await ctx.lease(suite.needs, { template: templateFor(suite.needs, where), cwd })
     try {
-      const cmd = adapter.command({ suite, files: files === 'all' ? null : fromCwd(suite.cwd, files), grep, report })
+      // A junit command's {files} is the project's own runner: it may take them as regexes (playwright),
+      // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
+      const whole = suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, lazyTracked(suite, where).list()) : null
+      const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, report })
       const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
       if (!existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
