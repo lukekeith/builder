@@ -7,13 +7,17 @@
  *
  *   node scripts/bench-replay.mjs <repo> --verify <verify block file> --control <builder main checkout>
  *        [--features a,b] [--setup "<cmd>"] [--env KEY=VAL]… [--out <dir>]
- *        [--timeout-min 60] [--max-wait-min 60] [--keep]
+ *        [--before "<cmd>"] [--timeout-min 60] [--max-wait-min 60] [--keep]
  *
  * <repo> is read, never written: everything happens in a clone under $TMPDIR. --verify holds the
  * repo's `verify:` block (from scripts/verify/migrate.mjs, reviewed); --env points both sides at a
  * scratch database, never a dev one. --out defaults to a fresh dir under $TMPDIR and may not be inside
  * <repo>. Every child process is bounded (--timeout-min; a request's whole wait --max-wait-min); a
  * feature that errors is recorded in REPORT.md and the run goes on. Scratch clones are removed unless --keep.
+ * --before runs in the scratch clone after each control point's checkout (and the post-merge one), before the gate,
+ * with the gates' env: it stands for the migrations an implementer ran during the original build to keep the
+ * control's test database on the branch's schema. Its time is not blocking (recorded as beforeMs, and as
+ * "control prep (untimed)" in REPORT.md); a non-zero exit records that point as unrun and skips its gate.
  */
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -31,7 +35,7 @@ const repo = resolve(argv[0] ?? '')
 const verifyFile = opt('--verify')
 const controlRoot = opt('--control')
 if (!argv[0] || !verifyFile || !controlRoot) {
-  console.error('usage: bench-replay.mjs <repo> --verify <file> --control <builder main checkout> [--features a,b] [--setup "<cmd>"] [--env KEY=VAL]… [--out <dir>]')
+  console.error('usage: bench-replay.mjs <repo> --verify <file> --control <builder main checkout> [--features a,b] [--setup "<cmd>"] [--env KEY=VAL]… [--before "<cmd>"] [--out <dir>]')
   process.exit(2)
 }
 const env = { ...process.env, ...Object.fromEntries(many('--env').map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)])), BUILDER_VERIFY_IDLE_MS: '5000' }
@@ -98,8 +102,19 @@ function replay(row, dir) {
     control.blockingMs += s.ms
   }
   const gate = (label, sha, args) => {
+    let beforeMs
+    if (opt('--before')) {
+      const b = timed('/bin/bash', ['-c', opt('--before')], clone)
+      beforeMs = b.ms
+      control.prepMs = (control.prepMs ?? 0) + b.ms
+      if (b.status !== 0) {
+        control.runs.push({ label, sha: sha.slice(0, 7), ms: 0, beforeMs, status: null, unrun: `--before exited ${b.status}: ${b.out.trim().split('\n').pop()}` })
+        control.unrun++
+        return
+      }
+    }
     const r = timed(process.execPath, [join(controlRoot, 'scripts', 'gate.mjs'), ...args, '--force'], clone)
-    control.runs.push({ label, sha: sha.slice(0, 7), ms: r.ms, status: r.status })
+    control.runs.push({ label, sha: sha.slice(0, 7), ms: r.ms, ...(beforeMs === undefined ? {} : { beforeMs }), status: r.status })
     if (r.status === 0 || r.status === 1) control.blockingMs += r.ms
     else control.unrun++
     if (r.status === 1) control.reds++
@@ -161,5 +176,7 @@ for (const row of rows) {
   writeFileSync(join(out, `${row.feature}.json`), JSON.stringify(result, null, 2) + '\n')
   results.push(result)
 }
-writeFileSync(join(out, 'REPORT.md'), `# Gate replay — ${new Date().toISOString().slice(0, 10)}\n\n${summarize(results)}\n`)
+const prepMs = results.reduce((n, r) => n + (r.control?.prepMs ?? 0), 0)
+const prepFooter = opt('--before') ? `\ncontrol prep (untimed): ${Math.round(prepMs / 60000)}m\n` : ''
+writeFileSync(join(out, 'REPORT.md'), `# Gate replay — ${new Date().toISOString().slice(0, 10)}\n\n${summarize(results)}\n${prepFooter}`)
 console.log(`report: ${join(out, 'REPORT.md')}`)
