@@ -129,29 +129,41 @@ Recipe: <the companion skill to read FIRST, or the REFERENCE section that govern
 **Interfaces:**
 - Consumes: <what this task uses from earlier tasks — each name in backticks, its parameters and
   return type in words>
-- Produces: `parseTags` — takes the raw tag string, returns the list of normalised tags. <Names in
+- Produces: `parseTags` — takes the raw tag string, returns the list of normalised tags; `saveTags`
+  — takes a list of tags, returns the response (status and body). <Names in
   backticks, types in words, no code. A task's implementer sees only their own block; this is how they
   learn the names neighbouring tasks use, and the scan pairs names by their backticks.>
 
 **Behaviour:**
 - <one rule per line, each citing the decision behind it> (D<n>)
-- both assignees set → 422 (D6)
+- tags are trimmed and lower-cased; duplicates collapse to one (D3)
+- more than 10 tags → 422 "at most 10 tags" (D6)
 
 **Pattern:** (optional)
 - `path/to/similar.ts:40` — <what to follow>
 
 **Tests:**
-- `test name` — <what it proves> (Behaviour line it covers)
+- `parseTags collapses duplicates after normalising` — " Work, work " gives one tag (D3)
 
 ```ts
-it('test name', () => {
-  expect(fn(input)).toEqual(expected)
+it('parseTags collapses duplicates after normalising', () => {
+  expect(parseTags(' Work, work ')).toEqual(['work'])
+})
+```
+
+- `saving 11 tags is refused` — the eleventh tag gets 422 with the spec's message (D6)
+
+```ts
+it('saving 11 tags is refused', async () => {
+  const res = await saveTags(Array.from({ length: 11 }, (_, i) => `t${i}`))
+  expect(res.status).toBe(422)
+  expect(res.body.error).toBe('at most 10 tags')
 })
 ```
 
 - [ ] **Step 1: Write the listed tests** — in `tests/exact/path/to/test.ts`
-- [ ] **Step 2: Run `<command>`, watch them fail** — FAIL, "fn is not defined"
-- [ ] **Step 3: Implement `fn` in `exact/path/to/file.ts` to the Behaviour**
+- [ ] **Step 2: Run `<command>`, watch them fail** — FAIL, "parseTags is not defined"
+- [ ] **Step 3: Implement `parseTags` and `saveTags` in `exact/path/to/file.ts` to the Behaviour**
 - [ ] **Step 4: Run `<command>`, watch them pass** — PASS
 - [ ] **Step 5: Commit** — `feat(<TICKET>): <subject>`
 ````
