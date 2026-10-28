@@ -1,7 +1,7 @@
 // scripts/test/verify-run.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, existsSync } from 'node:fs'
 import { getEventListeners } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -244,4 +244,24 @@ test('a suite with no files glob resolves by the one tracked file with that name
 test('a same-named file outside the suite\'s glob does not win over the one inside it', async () => {
   const v = await junitRun(['x.spec.ts', 'tests/visual/x.spec.ts'], { files: 'tests/**/*.spec.ts' })
   assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+/** A committed repo holding empty `files`. */
+function gitRepo(files) {
+  const dir = project({})
+  for (const f of files) {
+    mkdirSync(join(dir, f, '..'), { recursive: true })
+    writeFileSync(join(dir, f), '')
+  }
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['add', '.'], { cwd: dir })
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], { cwd: dir })
+  return dir
+}
+
+test('a junit suite at the merge tier gets its matching tracked files in {files}, not the glob', async () => {
+  const dir = gitRepo(['apps/web/test/e2e/a.spec.ts', 'apps/web/test/e2e/sub/b.spec.ts', 'apps/web/test/other.ts'])
+  const e2e = { name: 'e2e', runner: 'junit', cwd: 'apps/web', files: 'test/e2e/**/*.spec.ts', command: `echo {files} > seen.txt; printf '<testsuites/>' > r.xml`, report: 'r.xml', needs: [], tiers: ['merge'] }
+  await runRequest(req({ tier: 'merge' }), ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } }))
+  assert.equal(readFileSync(join(dir, 'apps/web/seen.txt'), 'utf8').trim(), 'test/e2e/a.spec.ts test/e2e/sub/b.spec.ts')
 })
