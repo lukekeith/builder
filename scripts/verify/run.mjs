@@ -191,7 +191,7 @@ async function judgeRequest(req, ctx, tmp) {
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, report })
       const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
-      if (r.timedOut || !existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
+      if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
       const tracked = lazyTracked(suite, where)
@@ -291,7 +291,8 @@ async function judgeRequest(req, ctx, tmp) {
     verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null }
     if (files !== 'all' && !files.length) continue
     let res = await runSuite(s, files)
-    if (!res.results && !signal?.aborted) res = await runSuite(s, files)
+    // A missing report is retried once in a fresh lease; a timeout is not — it would only double the wait.
+    if (!res.results && !res.timedOut && !signal?.aborted) res = await runSuite(s, files)
     if (signal?.aborted) break
     if (!res.results) {
       verdict.broken.push({ suite: s.name, reason: res.reason })

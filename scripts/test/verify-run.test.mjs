@@ -315,11 +315,13 @@ test('a file with only some tests recorded is reused only from a complete record
   const dir = gitRepo(['t/a.spec.ts'])
   const xml = `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="one" time="0.1"/></testsuite></testsuites>' > r.xml; sleep 5`
   const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
-  const ctx = ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 500, db: null } })
+  let runs = 0
+  const ctx = ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 500, db: null }, lease: async () => (runs++, { env: {}, release() {} }) })
   const v = await runRequest(req(), ctx)
   assert.equal(v.status, 'env-broken')
-  assert.match(v.broken[0].reason, /timed out/)
+  assert.match(v.broken[0].reason, /timed out after/)
   assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+  assert.equal(runs, 1, 'a timeout is not retried')
 })
 
 test('a cancelled request records no results', async () => {
