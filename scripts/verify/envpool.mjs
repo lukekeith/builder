@@ -19,12 +19,28 @@ export const freePort = () =>
     })
   })
 
+/** `text` with the url's password replaced by *** wherever the url (or the bare password) appears. */
+export function redact(url, text) {
+  let u
+  try {
+    u = new URL(url)
+  } catch {
+    return text
+  }
+  if (!u.password) return text
+  const pw = decodeURIComponent(u.password)
+  const shown = new URL(url)
+  shown.password = '***'
+  return text.split(url).join(shown.toString()).split(u.password).join('***').split(pw).join('***')
+}
+
 export const psql = (url, sql) => {
   try {
     return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   } catch (e) {
-    // psql says why on stderr; the default message is only "Command failed".
-    throw new Error(`${e.message}${e.stderr ? `\n${String(e.stderr).trim()}` : ''}`)
+    // psql says why on stderr; the default message is only "Command failed". Both can carry the
+    // url, and a verdict's reason is printed and stored — so the password never goes with it.
+    throw new Error(redact(url, `${e.message}${e.stderr ? `\n${String(e.stderr).trim()}` : ''}`))
   }
 }
 

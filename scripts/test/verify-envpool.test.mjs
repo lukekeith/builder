@@ -118,3 +118,23 @@ test('dropOrphans leaves the clones and template builds of a live process alone 
   assert.deepEqual(pool.dropOrphans().sort(), ['app_vt_7_1', 'app_vt_tpl_abc_b_7'])
   assert.deepEqual([...f.dbs].sort(), ['app_vt_42_1', 'app_vt_tpl_abc', 'app_vt_tpl_abc_b_42'])
 })
+
+test('a psql failure never puts the connection password in its message', async () => {
+  const { mkdtempSync, writeFileSync, chmodSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { psql } = await import('../verify/envpool.mjs')
+  const bin = mkdtempSync(join(tmpdir(), 'vpsql-'))
+  writeFileSync(join(bin, 'psql'), '#!/bin/sh\necho "could not connect: $1" >&2\nexit 2\n')
+  chmodSync(join(bin, 'psql'), 0o755)
+  const path = process.env.PATH
+  process.env.PATH = `${bin}:${path}`
+  try {
+    assert.throws(
+      () => psql('postgres://app:s3cret-pw@localhost:5432/app', 'SELECT 1'),
+      (e) => !/s3cret-pw/.test(e.message) && /app:\*\*\*@localhost/.test(e.message),
+    )
+  } finally {
+    process.env.PATH = path
+  }
+})
