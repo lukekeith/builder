@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { spawn } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import { git } from '../verify/git.mjs'
 import { openLedger } from '../verify/ledger.mjs'
 import { serve, takeLock } from '../verify/serve.mjs'
@@ -91,6 +93,7 @@ test('a cancelled request stops with a cancelled verdict', async () => {
   await serve(root, opts({ verify: slow }))
   assert.ok(Date.now() - t0 < 4000)
   assert.equal(l.getRequest(r.id).state, 'cancelled')
+  assert.equal(l.getRequest(r.id).verdict.status, 'cancelled')
 })
 
 test('no verify: block at all → green and marked untested; a broken block → env-broken', async () => {
@@ -117,4 +120,116 @@ test('one service per repo: a live lock refuses a second', () => {
   assert.equal(takeLock(root), false)
   writeFileSync(join(root, '.builder', 'verify', 'serve.pid'), '999999')
   assert.equal(takeLock(root), true)
+})
+
+test('a queued survivor cancelled by its client: the request folded into it is requeued and runs', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: git(root, 'rev-parse', 'feat~1'), tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  l.saveRequest({ ...l.getRequest(a.id), state: 'folded', foldedInto: b.id })
+  l.saveRequest({ ...l.getRequest(b.id), state: 'cancelled', foldedFrom: [a.id] })
+  await serve(root, opts())
+  const ra = l.getRequest(a.id)
+  assert.equal(ra.state, 'done')
+  assert.equal(ra.verdict.status, 'green')
+  assert.equal(ra.verdict.request, a.id)
+  assert.equal(l.getRequest(b.id).verdict.status, 'cancelled')
+})
+
+test('a running survivor cancelled: the request folded into it is requeued and runs on its own sha', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  // Slow only where b.txt exists (the survivor's sha), quick at the folded one's.
+  const slow = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'if [ -f b.txt ]; then sleep 5; fi' }] }
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: git(root, 'rev-parse', 'feat~1'), tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  setTimeout(() => l.saveRequest({ ...l.getRequest(b.id), state: 'cancelled' }), 400)
+  const t0 = Date.now()
+  await serve(root, opts({ verify: slow }))
+  assert.ok(Date.now() - t0 < 4000)
+  assert.equal(l.getRequest(b.id).verdict.status, 'cancelled')
+  assert.deepEqual(l.getRequest(b.id).verdict.broken, [])
+  const ra = l.getRequest(a.id)
+  assert.equal(ra.state, 'done')
+  assert.equal(ra.verdict.request, a.id)
+  assert.equal(ra.verdict.status, 'green')
+})
+
+test('a broken verify: block finishes folded requests too', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\napps:\n  - name: a\n    path: .\nverify:\n  suites:\n    u: { runner: mocha }\n---\n')
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: git(root, 'rev-parse', 'feat~1'), tier: 'commit', target: 'main', state: 'folded', foldedInto: b.id })
+  await serve(root, { idleMs: 300, tickMs: 50 })
+  assert.equal(l.getRequest(a.id).state, 'done')
+  assert.equal(l.getRequest(a.id).verdict.status, 'env-broken')
+})
+
+test('a cancel that raced a service write still gets a cancelled verdict', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main', state: 'cancelled' })
+  await serve(root, opts())
+  assert.equal(l.getRequest(r.id).verdict.status, 'cancelled')
+})
+
+test('a merge that conflicts is a conflict verdict naming the files; main does not move', async () => {
+  const { root } = repo()
+  git(root, 'checkout', '-q', 'feat')
+  writeFileSync(join(root, 'a.txt'), 'feat\n')
+  git(root, 'commit', '-qam', 'a on feat')
+  const tip = git(root, 'rev-parse', 'HEAD')
+  git(root, 'checkout', '-q', 'main')
+  writeFileSync(join(root, 'a.txt'), 'main\n')
+  git(root, 'commit', '-qam', 'a on main')
+  const old = git(root, 'rev-parse', 'main')
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: tip, tier: 'merge', target: 'main' })
+  await serve(root, opts())
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'conflict')
+  assert.deepEqual(v.files, ['a.txt'])
+  assert.equal(git(root, 'rev-parse', 'main'), old)
+})
+
+test('a target branch that does not exist is env-broken and says so', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'nope' })
+  await serve(root, opts())
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'env-broken')
+  assert.equal(v.broken[0].reason, 'target branch "nope" does not exist')
+})
+
+test('the lock: an empty, fresh serve.pid counts as held', () => {
+  const { root } = repo()
+  openLedger(root)
+  writeFileSync(join(root, '.builder', 'verify', 'serve.pid'), '')
+  assert.equal(takeLock(root), false)
+})
+
+test('the lock: two processes racing for it — exactly one wins', async () => {
+  const { root } = repo()
+  openLedger(root)
+  const go = Date.now() + 600
+  const mod = pathToFileURL(join(import.meta.dirname, '..', 'verify', 'serve.mjs')).href
+  // The child holds on after taking it, so its pid is still alive while the parent tries.
+  const src = `import { takeLock } from ${JSON.stringify(mod)}; while (Date.now() < ${go}) {} ; console.log(takeLock(${JSON.stringify(root)})); setTimeout(() => {}, 1500)`
+  const child = spawn(process.execPath, ['--input-type=module', '-e', src], { stdio: ['ignore', 'pipe', 'inherit'] })
+  const theirs = new Promise((res) => {
+    let out = ''
+    child.stdout.on('data', (d) => {
+      out += d
+      if (out.includes('\n')) res(out.trim() === 'true')
+    })
+  })
+  while (Date.now() < go) {}
+  const mine = takeLock(root)
+  const childWon = await theirs
+  child.kill()
+  assert.equal([mine, childWon].filter(Boolean).length, 1)
 })
