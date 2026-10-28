@@ -179,6 +179,13 @@ const needOf = (n, where) => {
   throw new Error(`${where}: can't read need ${JSON.stringify(n)}`)
 }
 
+/** A capacity: a positive whole number — zero would queue every run that needs it forever. */
+const capacity = (v, dflt, where) => {
+  const n = v ?? dflt
+  if (!Number.isInteger(n) || n < 1) throw new Error(`${where} must be a positive integer (it is ${JSON.stringify(v)})`)
+  return n
+}
+
 export function normalizeVerify(raw) {
   const r = raw ?? {}
   const suites = Object.entries(r.suites ?? {}).map(([name, s]) => {
@@ -211,7 +218,7 @@ export function normalizeVerify(raw) {
     return { name, run: String(c.run), cwd: c.cwd ?? '.', compare, match: c.match ?? null, tiers: tiersOf(c.tiers, ['phase', 'merge'], where), needs: list(c.needs).map((n) => needOf(n, where)) }
   })
   if (!suites.length && !checks.length) throw new Error('verify: declares no suites and no checks')
-  const db = r.db ? { kind: r.db.kind ?? 'postgres', url: r.db.url, env: list(r.db.env ?? 'DATABASE_URL'), inputs: list(r.db.inputs), prepare: r.db.prepare ?? null, max: r.db.max ?? 4 } : null
+  const db = r.db ? { kind: r.db.kind ?? 'postgres', url: r.db.url, env: list(r.db.env ?? 'DATABASE_URL'), inputs: list(r.db.inputs), prepare: r.db.prepare ?? null, max: capacity(r.db.max, 4, 'verify.db.max') } : null
   if (db && (db.kind !== 'postgres' || !db.url)) throw new Error('verify.db: kind postgres with a url')
   const all = [...suites, ...checks]
   if (all.some((x) => x.needs.some((n) => n.kind === 'db')) && !db) throw new Error('verify: a suite needs db but verify.db is not set')
@@ -220,15 +227,15 @@ export function normalizeVerify(raw) {
   if (hooks.length && !r.env?.lease) {
     throw new Error(`verify: a suite needs ${hooks.map((h) => `"${h}"`).join(', ')} — not db, walk-env, simulator or { ports: [...] }, so it is a hook resource, and verify.env.lease is not set`)
   }
-  const workers = r.workers ?? 2
+  const workers = capacity(r.workers, 2, 'verify.workers')
   return {
     workers,
     timeoutMs: durationMs(r.timeout, 15 * 60000),
     setup: r.setup ?? null,
     setupInputs: list(r.setup_inputs ?? ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'composer.lock', 'Podfile.lock']),
     db,
-    simulator: r.simulator ? { base: String(r.simulator.base), max: r.simulator.max ?? 2 } : null,
-    env: r.env ? { lease: r.env.lease ?? null, release: r.env.release ?? null, max: r.env.max ?? workers } : null,
+    simulator: r.simulator ? { base: String(r.simulator.base), max: capacity(r.simulator.max, 2, 'verify.simulator.max') } : null,
+    env: r.env ? { lease: r.env.lease ?? null, release: r.env.release ?? null, max: capacity(r.env.max, workers, 'verify.env.max') } : null,
     suites,
     checks,
   }
