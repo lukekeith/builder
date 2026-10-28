@@ -41,3 +41,7 @@ test('fails here and on the target: debt; fails only here: regression', async ()
   assert.deepEqual(c.calls, ['here', 'target'])
   assert.deepEqual(await classify(f, ctx({ rerunOnTarget: async () => 'missing' })), { kind: 'regression' })
 })
+
+test('the re-run on the target could not run: broken, never a regression', async () => {
+  assert.deepEqual(await classify(f, ctx({ rerunOnTarget: async () => 'broken' })), { kind: 'broken' })
+})

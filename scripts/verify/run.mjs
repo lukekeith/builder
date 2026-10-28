@@ -1,0 +1,221 @@
+// scripts/verify/run.mjs
+/**
+ * One request, in one checkout → its verdict (spec §The flow, §Judging a failure). Checks first,
+ * then each suite's selected files (all of them at the merge tier); every failing test is judged by
+ * classify(); a run with no report is retried once in a fresh lease and is env-broken after that.
+ */
+import { existsSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
+import { join, posix } from 'node:path'
+import { spawn } from 'node:child_process'
+import { ADAPTERS } from './adapters.mjs'
+import { classify } from './classify.mjs'
+import { fromCwd } from './select.mjs'
+import { inputsHash } from './envpool.mjs'
+
+export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = null } = {}) {
+  return new Promise((resolve) => {
+    // An already-aborted signal never fires 'abort': a cancelled run starts nothing more.
+    if (signal?.aborted) return resolve({ code: 1, timedOut: false, out: 'cancelled' })
+    // A `node --test` child that inherits NODE_TEST_CONTEXT from a parent running under `node --test`
+    // reports to that parent instead of writing its own report — so the child never sees it.
+    const childEnv = { ...env }
+    delete childEnv.NODE_TEST_CONTEXT
+    const p = spawn('/bin/bash', ['-c', cmd], { cwd, env: childEnv, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    const add = (b) => {
+      out = (out + b).slice(-20000)
+    }
+    p.stdout.on('data', add)
+    p.stderr.on('data', add)
+    let timedOut = false
+    const kill = () => {
+      try {
+        process.kill(-p.pid, 'SIGKILL')
+      } catch {}
+    }
+    const t = timeoutMs ? setTimeout(() => ((timedOut = true), kill()), timeoutMs) : null
+    signal?.addEventListener('abort', kill, { once: true })
+    p.on('close', (code) => {
+      if (t) clearTimeout(t)
+      resolve({ code: code ?? 1, timedOut, out })
+    })
+  })
+}
+
+export const testId = (suite, r) => `${suite}::${r.file}::${r.name}`
+
+export async function bisect(regs, commits, { atCommit, statusAt }) {
+  for (const g of regs) g.introducedBy = null
+  for (const sha of commits) {
+    const open = regs.filter((g) => !g.introducedBy)
+    if (!open.length) break
+    await atCommit(sha)
+    for (const g of open) if ((await statusAt(g)) === 'fail') g.introducedBy = sha
+  }
+  for (const g of regs) g.introducedBy ??= commits.at(-1)
+}
+
+const linesOf = (out, match) => {
+  const re = match ? new RegExp(match) : null
+  return new Set(
+    out
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && (!re || re.test(l))),
+  )
+}
+
+export async function runRequest(req, ctx) {
+  const { verify, pool, ledger, checkout, signal } = ctx
+  const t0 = Date.now()
+  const verdict = { request: req.id, branch: req.branch, sha: req.sha, tier: req.tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0 }
+  const rows = []
+  const tmp = join(ledger.dir, 'reports', req.id)
+  mkdirSync(tmp, { recursive: true })
+  let n = 0
+  const known = ledger.known(req.target).ids
+  const owns = req.changed ?? []
+  const branchOwns = (file) => Boolean(file) && owns.some((c) => c === file || c.endsWith(`/${file}`) || file.endsWith(`/${c}`))
+  const env = (lease) => ({ ...process.env, ...(ctx.baseEnv ?? {}), ...lease.env })
+  const templateFor = (needs, where) => (needs.some((x) => x.kind === 'db') ? pool.ensureTemplate(where, inputsHash(where, verify.db.inputs)) : null)
+
+  const runSuite = async (suite, files, { where = checkout, grep = null } = {}) => {
+    const adapter = ADAPTERS[suite.runner]
+    const cwd = join(where, suite.cwd)
+    const report = adapter.reportPath ? adapter.reportPath(suite, cwd) : join(tmp, `${++n}-${suite.name}.out`)
+    rmSync(report, { force: true })
+    const lease = await ctx.lease(suite.needs, { template: templateFor(suite.needs, where), cwd })
+    try {
+      const cmd = adapter.command({ suite, files: files === 'all' ? null : fromCwd(suite.cwd, files), grep, report })
+      const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      if (!existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
+      const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
+      if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
+      return { results: results.map((x) => ({ ...x, file: suite.cwd === '.' ? x.file : posix.join(suite.cwd, x.file) })) }
+    } finally {
+      lease.release()
+    }
+  }
+  const statusIn = (res, f) => (res.results ? res.results.find((x) => x.file === f.file && x.name === f.name)?.status ?? 'missing' : 'broken')
+  const rerun = async (suite, f, where) => statusIn(await runSuite(suite, [f.file], { where, grep: f.name }), f)
+
+  const runCheck = async (c, where) => {
+    const cwd = join(where, c.cwd)
+    const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
+    try {
+      return await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+    } finally {
+      lease.release()
+    }
+  }
+  const targetLines = async (c) => {
+    const cached = ledger.readLines(ctx.targetSha, c.name)
+    if (cached) return cached
+    const s = linesOf((await runCheck(c, await ctx.targetCheckout())).out, c.match)
+    ledger.writeLines(ctx.targetSha, c.name, s)
+    return s
+  }
+  const checkFails = async (c, where) => {
+    const r = await runCheck(c, where)
+    if (r.timedOut) return { fail: true, msg: `timed out after ${Math.round(verify.timeoutMs / 60000)}m` }
+    if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500) }
+    const theirs = await targetLines(c)
+    const fresh = [...linesOf(r.out, c.match)].filter((l) => !theirs.has(l))
+    return { fail: fresh.length > 0, msg: fresh.slice(0, 30).join('\n') }
+  }
+
+  const record = (f, k, suiteName) => {
+    if (k.kind === 'known') verdict.known.push(f.id)
+    else if (k.kind === 'flake') {
+      verdict.flakes.push(f.id)
+      if (!k.listed) ledger.recordFlip(f.id)
+    } else if (k.kind === 'debt') {
+      verdict.debt.push(f.id)
+      ledger.addKnown(req.target, [f.id])
+    } else if (k.kind === 'broken') verdict.broken.push({ suite: suiteName, reason: `the re-run on the target could not run: ${f.id}` })
+    else verdict.regressions.push({ suite: suiteName, id: f.id, file: f.file, name: f.name, msg: f.msg, ...(k.note && { note: k.note }), introducedBy: null })
+  }
+  const judge = (f, rerunHere, rerunOnTarget) => classify(f, { known, isFlaky: ledger.isFlaky, branchOwns, rerunHere, rerunOnTarget })
+
+  // 1. Checks.
+  const checksRun = new Map()
+  for (const c of verify.checks.filter((x) => x.tiers.includes(req.tier))) {
+    if (signal?.aborted) break
+    const r = await checkFails(c, checkout)
+    if (signal?.aborted) break
+    const id = `check::${c.name}`
+    rows.push({ id, status: r.fail ? 'fail' : 'pass' })
+    if (!r.fail) continue
+    checksRun.set(id, c)
+    const f = { id, file: null, name: c.name, msg: r.msg }
+    record(
+      f,
+      await judge(
+        f,
+        async () => ((await checkFails(c, checkout)).fail ? 'fail' : 'pass'),
+        async () => (c.compare === 'lines' ? 'pass' : (await checkFails(c, await ctx.targetCheckout())).fail ? 'fail' : 'pass'),
+      ),
+      'check',
+    )
+  }
+
+  // 2. Suites.
+  const suites = verify.suites.filter((s) => s.tiers.includes(req.tier))
+  const sel = req.tier === 'merge' ? Object.fromEntries(suites.map((s) => [s.name, { files: 'all', why: 'merge tier: the whole suite' }])) : ctx.select(checkout, req.base, suites)
+  const prior = req.tier === 'phase' ? ledger.resultsAt(req.sha) : new Map()
+  const suiteOf = new Map(suites.map((s) => [s.name, s]))
+  for (const s of suites) {
+    if (signal?.aborted) break
+    let { files, why } = sel[s.name]
+    if (Array.isArray(files) && prior.size) {
+      const greenFile = (file) => {
+        const mine = [...prior].filter(([id]) => id.startsWith(`${s.name}::${file}::`))
+        return mine.length > 0 && mine.every(([, st]) => st === 'pass' || st === 'skip')
+      }
+      const keep = files.filter((f) => !greenFile(f))
+      verdict.reused += files.length - keep.length
+      files = keep
+    }
+    verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null }
+    if (files !== 'all' && !files.length) continue
+    let res = await runSuite(s, files)
+    if (!res.results && !signal?.aborted) res = await runSuite(s, files)
+    if (signal?.aborted) break
+    if (!res.results) {
+      verdict.broken.push({ suite: s.name, reason: res.reason })
+      continue
+    }
+    for (const r of res.results) {
+      const id = testId(s.name, r)
+      rows.push({ id, status: r.status, ms: r.ms })
+      if (r.status !== 'fail') continue
+      const f = { id, file: r.file, name: r.name, msg: r.msg }
+      record(
+        f,
+        await judge(
+          f,
+          (x) => rerun(s, x, checkout),
+          async (x) => rerun(s, x, await ctx.targetCheckout()),
+        ),
+        s.name,
+      )
+    }
+  }
+
+  // 3. The ledger, then which commit broke what.
+  ledger.appendResults(rows.map((r) => ({ run: req.id, sha: req.sha, tier: req.tier, ...r })))
+  const passed = rows.filter((r) => r.status === 'pass').map((r) => r.id)
+  ledger.recordClean(passed)
+  if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
+  if (verdict.regressions.length && (req.commits?.length ?? 0) > 1 && !signal?.aborted) {
+    await bisect(verdict.regressions, req.commits, {
+      atCommit: ctx.atCommit,
+      statusAt: async (g) => (g.suite === 'check' ? ((await checkFails(checksRun.get(g.id), checkout)).fail ? 'fail' : 'pass') : rerun(suiteOf.get(g.suite), g, checkout)),
+    })
+  } else for (const g of verdict.regressions) g.introducedBy = req.commits?.at(-1) ?? req.sha
+  rmSync(tmp, { recursive: true, force: true })
+
+  verdict.status = signal?.aborted ? 'cancelled' : verdict.regressions.length ? 'red' : verdict.broken.length ? 'env-broken' : 'green'
+  verdict.ms = Date.now() - t0
+  return verdict
+}
