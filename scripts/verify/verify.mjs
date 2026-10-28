@@ -4,25 +4,27 @@
  * verify — the verifier's client (docs/specs/2026-10-27-verifier-design.md). Builds, skills and the
  * fleet call this; it writes requests, starts the service when none runs, and reads verdicts.
  *
- *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--since <sha>] [--message <m>] [--tree]
+ *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
+ *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved)
  *   verify.mjs verdict <branch> [<sha>] [--json]
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
  *   verify.mjs cancel <request>
  *   verify.mjs status [--json]
  *   (each takes --in <worktree>, default the cwd; the ledger is the main checkout's)
  *
- * Exit: 0 green · 1 red · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 75 pending.
+ * Exit: 0 green · 1 red · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 7 target moved (release) · 75 pending.
  */
 import { spawn } from 'node:child_process'
 import { openSync, closeSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { git, tryGit, mainRoot } from './git.mjs'
+import { land } from './checkouts.mjs'
 import { openLedger, verifyDir } from './ledger.mjs'
 import { loadConfig } from '../config.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
-const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--since <sha>] [--message <text>] [--tree] | verdict <branch> [<sha>] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
+const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | verdict <branch> [<sha>] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
 const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelled: 6 }
 export const exitFor = (status) => EXIT[status] ?? 75
 
@@ -47,6 +49,7 @@ export function summarize(v) {
   for (const b of v.broken) lines.push(`  ⚠ ${b.suite}: ${b.reason}`)
   if (v.files?.length) lines.push(`  conflict in: ${v.files.join(', ')}`)
   if (v.landed) lines.push(`  landed: ${v.landed.slice(0, 7)}`)
+  if (v.held) lines.push(`  held: tested ${String(v.merged).slice(0, 7)} — verify.mjs release lands it`)
   const sel = Object.entries(v.selection ?? {}).map(([s, x]) => `${s} ${x.files === 'all' ? 'all' : x.files === 0 ? 'none' : plural(x.files, 'file')}`)
   if (sel.length) lines.push(`  selection: ${sel.join(', ')}`)
   return lines.join('\n')
@@ -99,7 +102,7 @@ async function main() {
     const sha = flag('--tree') ? tryGit(wt, 'stash', 'create') || git(wt, 'rev-parse', 'HEAD') : git(wt, 'rev-parse', shaArg)
     const cfg = loadConfig(root)
     const target = opt('--target') ?? (cfg.ok ? cfg.mergeInto : 'main')
-    const req = ledger.newRequest({ worktree: wt, branch, sha, tier, target, ...(opt('--since') && { since: git(wt, 'rev-parse', opt('--since')) }), ...(opt('--message') && { message: opt('--message') }) })
+    const req = ledger.newRequest({ worktree: wt, branch, sha, tier, target, ...(flag('--hold') && tier === 'merge' && { hold: true }), ...(opt('--since') && { since: git(wt, 'rev-parse', opt('--since')) }), ...(opt('--message') && { message: opt('--message') }) })
     ensureService(root)
     console.log(req.id)
     return
@@ -132,6 +135,22 @@ async function main() {
       }
       await new Promise((res) => setTimeout(res, 1000))
     }
+  }
+  if (cmd === 'release') {
+    const [, id] = positional
+    const r = id && ledger.getRequest(id)
+    const v = r?.verdict
+    if (!r || r.tier !== 'merge' || r.state !== 'done' || v?.status !== 'green' || !v.held) die(`${id}: not a held green merge — nothing to release`)
+    const l = land(root, r.target, v.merged, v.targetSha)
+    if (!l.ok) {
+      console.log(`${id}: target moved — request the merge again (${l.reason})`)
+      process.exit(7)
+    }
+    // Re-read: only the verdict's own fields change, and a concurrent writer's other fields stand.
+    const cur = ledger.getRequest(id) ?? r
+    ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false, landed: v.merged } })
+    console.log(`landed ${v.merged.slice(0, 7)} on ${r.target}`)
+    return
   }
   if (cmd === 'cancel') {
     const [, id] = positional

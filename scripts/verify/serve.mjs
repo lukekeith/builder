@@ -209,7 +209,11 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
     if (untested) verdict.untested = true
     if (req.tier === 'merge') {
       verdict.merged = sha
-      if (verdict.status === 'green') {
+      // The target tip this merge was tested on: a later `release` lands against exactly it.
+      verdict.targetSha = targetSha
+      // A held merge (its walk runs beside it) records what it tested and leaves the target alone.
+      if (verdict.status === 'green' && req.hold) verdict.held = true
+      else if (verdict.status === 'green') {
         const l = land(root, req.target, sha, targetSha)
         if (!l.ok) return { requeue: true, reason: l.reason }
         verdict.landed = sha
