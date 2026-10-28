@@ -1,11 +1,11 @@
 // scripts/test/bench-replay.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git } from '../verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside } from '../bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry } from '../bench-replay-core.mjs'
 
 const apps = [{ name: 'server', path: 'server' }, { name: 'web', path: 'web' }]
 
@@ -93,4 +93,28 @@ test('with no phase mapped to an app, the end gates run every configured app and
     ['server web', 'end gates (no app touched: all apps)'],
     ['--deep server web', 'verify deep (no app touched: all apps)'],
   ])
+})
+
+test('carry: the learned known failures and flakes move to the next clone; per-run files do not', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'carry-')))
+  const one = join(tmp, 'one')
+  mkdirSync(join(one, 'requests'), { recursive: true })
+  writeFileSync(join(one, 'known-failures.json'), JSON.stringify({ 'replay-target': { sha: 'x', ids: ['s::a::1', 's::a::2'] } }))
+  writeFileSync(join(one, 'flakes.json'), JSON.stringify({ 's::b::3': { flips: 1, cleanStreak: 0 } }))
+  writeFileSync(join(one, 'results.jsonl'), '{}\n')
+  writeFileSync(join(one, 'requests', 'r.json'), '{}')
+  const carry = join(tmp, 'carry')
+  saveCarry(one, carry)
+  assert.equal(existsSync(join(carry, 'results.jsonl')), false)
+  assert.equal(existsSync(join(carry, 'requests')), false)
+  const two = join(tmp, 'two')
+  assert.equal(seedCarry(carry, two), 3)
+  assert.deepEqual(JSON.parse(readFileSync(join(two, 'known-failures.json'), 'utf8'))['replay-target'].ids, ['s::a::1', 's::a::2'])
+  assert.equal(existsSync(join(two, 'results.jsonl')), false)
+})
+
+test('carry: nothing learned yet seeds nothing', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'carry-')))
+  saveCarry(join(tmp, 'none'), join(tmp, 'carry'))
+  assert.equal(seedCarry(join(tmp, 'carry'), join(tmp, 'two')), 0)
 })

@@ -7,13 +7,15 @@
  *
  *   node scripts/bench-replay.mjs <repo> --verify <verify block file> --control <builder main checkout>
  *        [--features a,b] [--setup "<cmd>"] [--env KEY=VAL]… [--out <dir>]
- *        [--before "<cmd>"] [--timeout-min 60] [--max-wait-min 60] [--keep]
+ *        [--before "<cmd>"] [--timeout-min 60] [--max-wait-min 60] [--keep] [--no-carry]
  *
  * <repo> is read, never written: everything happens in a clone under $TMPDIR. --verify holds the
  * repo's `verify:` block (from scripts/verify/migrate.mjs, reviewed); --env points both sides at a
  * scratch database, never a dev one. --out defaults to a fresh dir under $TMPDIR and may not be inside
  * <repo>. Every child process is bounded (--timeout-min; a request's whole wait --max-wait-min); a
  * feature that errors is recorded in REPORT.md and the run goes on. Scratch clones are removed unless --keep.
+ * Each feature's verifier starts with what the earlier ones learned (the target's known failures and the flake
+ * list, copied via <out>/carry/) as the repo's persistent .builder/verify/ would hold them; --no-carry starts each empty.
  * --before runs in the scratch clone after each control point's checkout (and the post-merge one), before the gate,
  * with the gates' env: it stands for the migrations an implementer ran during the original build to keep the
  * control's test database on the branch's schema. Its time is not blocking (recorded as beforeMs, and as
@@ -25,7 +27,8 @@ import { join, resolve } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { git } from './verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside } from './bench-replay-core.mjs'
+import { verifyDir } from './verify/ledger.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry } from './bench-replay-core.mjs'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const argv = process.argv.slice(2)
@@ -134,7 +137,10 @@ function replay(row, dir) {
   writeFileSync(join(clone, '.claude', 'builder.md'), cfgText.replace(/\n---\n/, `\n${block}\n---\n`))
   const wt = join(dir, 'wt')
   git(clone, 'worktree', 'add', '-q', '-b', 'replay', wt, range.base)
-  const treatment = { requests: [], blockingMs: 0, backgroundMs: 0, regressions: 0, flakes: 0, known: 0, debt: 0, broken: 0, errors: 0 }
+  const carryDir = join(out, 'carry')
+  // Features run in archive order; 'replay-target' is the same branch name in every clone, so its known list applies as is.
+  const carriedIn = argv.includes('--no-carry') ? 0 : seedCarry(carryDir, verifyDir(clone))
+  const treatment = { carriedIn, requests: [], blockingMs: 0, backgroundMs: 0, regressions: 0, flakes: 0, known: 0, debt: 0, broken: 0, errors: 0 }
   const note = (tier, r) => {
     if (tier === 'commit') treatment.backgroundMs += r.ms
     else treatment.blockingMs += r.ms
@@ -158,6 +164,7 @@ function replay(row, dir) {
     if (ends.has(i)) note('phase', requestAndWait(wt, 'phase'))
   })
   note('merge', requestAndWait(wt, 'merge', ['--hold']))
+  if (!argv.includes('--no-carry')) saveCarry(verifyDir(clone), carryDir)
   return { feature: row.feature, commits: range.commits.length, phases: bounds.length, control, treatment }
 }
 
