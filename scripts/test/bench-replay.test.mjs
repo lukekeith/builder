@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpa
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git } from '../verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry } from '../bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry, verdictOf } from '../bench-replay-core.mjs'
 
 const apps = [{ name: 'server', path: 'server' }, { name: 'web', path: 'web' }]
 
@@ -117,4 +117,12 @@ test('carry: nothing learned yet seeds nothing', () => {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'carry-')))
   saveCarry(join(tmp, 'none'), join(tmp, 'carry'))
   assert.equal(seedCarry(join(tmp, 'carry'), join(tmp, 'two')), 0)
+})
+
+test('verdictOf: a verdict longer than any output tail still parses, past a pending line before it', () => {
+  const v = { status: 'green', known: Array.from({ length: 200 }, (_, i) => `server::apps/server/test/t${i}.test.ts::a long test name ${i}`) }
+  const stdout = `pending: commit running abc\n${JSON.stringify(v, null, 2)}\n`
+  assert.ok(stdout.length > 4000)
+  assert.deepEqual(verdictOf(stdout), v)
+  assert.equal(verdictOf('no json here'), null)
 })

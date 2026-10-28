@@ -85,6 +85,17 @@ export function seedCarry(carryDir, verifyDir) {
   return n
 }
 
+/** The verdict `verify wait --json` printed: the JSON object after any `pending:` lines, from the WHOLE stdout (a verdict outgrows any tail kept for errors). null when there is none. */
+export function verdictOf(stdout) {
+  const at = String(stdout ?? '').search(/^\{/m)
+  if (at < 0) return null
+  try {
+    return JSON.parse(stdout.slice(at))
+  } catch {
+    return null
+  }
+}
+
 const m = (ms) => `${Math.round(ms / 60000)}m`
 export function summarize(all) {
   const errored = all.filter((r) => r.error)
