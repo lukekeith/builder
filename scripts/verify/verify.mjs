@@ -6,6 +6,7 @@
  *
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
  *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused)
+ *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
  *   verify.mjs verdict <branch> [<sha>] [--json]
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
  *   verify.mjs cancel <request>
@@ -19,12 +20,12 @@ import { openSync, closeSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { git, tryGit, mainRoot } from './git.mjs'
-import { land } from './checkouts.mjs'
+import { land, ensureCheckout, mergedCheckout } from './checkouts.mjs'
 import { openLedger, verifyDir } from './ledger.mjs'
 import { loadConfig } from '../config.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
-const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | verdict <branch> [<sha>] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
+const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
 const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelled: 6 }
 export const exitFor = (status) => EXIT[status] ?? 75
 
@@ -86,6 +87,39 @@ function show(req, json) {
   process.exit(exitFor(v.status))
 }
 
+/** The request, if it is a held green merge; else exit 2. */
+function heldGreen(ledger, id) {
+  const r = id && ledger.getRequest(id)
+  const v = r?.verdict
+  if (!r || r.tier !== 'merge' || r.state !== 'done' || v?.status !== 'green' || !v.held) die(`${id}: not a held green merge — nothing to release`)
+  return r
+}
+
+/** What it tested is no longer what would land: not held any more, so the next request runs anew. Exits 7. */
+function unhold(ledger, r, reason) {
+  // Re-read: only the verdict's own fields change, and a concurrent writer's other fields stand.
+  const cur = ledger.getRequest(r.id) ?? r
+  ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false } })
+  console.log(`${r.id}: target moved — request the merge again (${reason})`)
+  process.exit(7)
+}
+
+/** Fast-forward the target to `tested` against the tip the merge tier ran on, and record it on the verdict. */
+function landHeld(root, ledger, r, tested, extra = {}) {
+  const v = r.verdict
+  const l = land(root, r.target, tested, v.targetSha)
+  if (!l.ok) {
+    // The target still where it was tested: git refused the fast-forward (work in the way), not a move.
+    if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) === v.targetSha) {
+      console.log(`${r.id}: ${r.target} refused the fast-forward (${l.reason.replace(/\s+/g, ' ')}) — uncommitted changes there?`)
+      process.exit(1)
+    }
+    unhold(ledger, r, l.reason)
+  }
+  const cur = ledger.getRequest(r.id) ?? r
+  ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false, landed: tested, ...extra } })
+}
+
 async function main() {
   const [cmd] = positional
   if (!cmd || flag('--help')) die(USAGE)
@@ -138,26 +172,35 @@ async function main() {
   }
   if (cmd === 'release') {
     const [, id] = positional
-    const r = id && ledger.getRequest(id)
-    const v = r?.verdict
-    if (!r || r.tier !== 'merge' || r.state !== 'done' || v?.status !== 'green' || !v.held) die(`${id}: not a held green merge — nothing to release`)
-    const l = land(root, r.target, v.merged, v.targetSha)
-    if (!l.ok) {
-      // The target still where it was tested: git refused the fast-forward (work in the way), not a move.
-      if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) === v.targetSha) {
-        console.log(`${id}: ${r.target} refused the fast-forward (${l.reason.replace(/\s+/g, ' ')}) — uncommitted changes there?`)
-        process.exit(1)
-      }
-      // What it tested is no longer what would land: it is not held any more, so the next request runs anew.
-      const cur = ledger.getRequest(id) ?? r
-      ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false } })
-      console.log(`${id}: target moved — request the merge again (${l.reason})`)
-      process.exit(7)
+    const r = heldGreen(ledger, id)
+    landHeld(root, ledger, r, r.verdict.merged)
+    console.log(`landed ${r.verdict.merged.slice(0, 7)} on ${r.target}`)
+    return
+  }
+  if (cmd === 'carry') {
+    // A held green merge whose branch has since gained only registry commits (walk results, the
+    // manifest, the SPEC, the ship's archive move): those can't change what the tests saw, so the
+    // result carries — land the branch tip merged onto the same target tip, without a second run.
+    const [, id] = positional
+    const r = heldGreen(ledger, id)
+    const v = r.verdict
+    const cfg = loadConfig(root)
+    const registry = `${String(cfg.ok ? cfg.registry : 'docs/features').replace(/\/+$/, '')}/`
+    const docsOnly = (from, to) => (tryGit(root, 'diff', '--name-only', from, to) ?? '\0').split('\n').filter(Boolean).every((f) => f.startsWith(registry))
+    const head = tryGit(root, 'rev-parse', `refs/heads/${r.branch}`)
+    if (!head || tryGit(root, 'merge-base', '--is-ancestor', r.sha, head) === null || !docsOnly(r.sha, head)) {
+      console.log(`${id}: code changed since the tested sha — request the merge again`)
+      process.exit(2)
     }
-    // Re-read: only the verdict's own fields change, and a concurrent writer's other fields stand.
-    const cur = ledger.getRequest(id) ?? r
-    ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false, landed: v.merged } })
-    console.log(`landed ${v.merged.slice(0, 7)} on ${r.target}`)
+    if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) !== v.targetSha) unhold(ledger, r, `${r.target} moved since the merge tier ran`)
+    const m = mergedCheckout(ensureCheckout(root, 'carry'), v.targetSha, head, r.message ?? `Merge ${r.branch} into ${r.target}`)
+    if (m.conflict || !docsOnly(v.merged, m.sha)) {
+      console.log(`${id}: code changed since the tested sha — request the merge again${m.conflict ? ` (conflict in ${m.files.join(', ')})` : ''}`)
+      process.exit(2)
+    }
+    landHeld(root, ledger, r, m.sha, { carried: head })
+    const n = Number(tryGit(root, 'rev-list', '--count', `${r.sha}..${head}`) ?? 0)
+    console.log(`landed ${m.sha.slice(0, 7)} on ${r.target} (carried ${n} doc commit${n === 1 ? '' : 's'})`)
     return
   }
   if (cmd === 'cancel') {

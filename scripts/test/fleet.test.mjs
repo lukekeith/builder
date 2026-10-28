@@ -172,7 +172,7 @@ const withVerify = (root, block) => {
 }
 const RED_CHECK = 'verify:\n  workers: 1\n  checks:\n    no-red: { run: "! git ls-files | grep -q /RED$", tiers: [merge] }'
 
-test('the verifier lands it: a held merge tier requested at walk start, released after the ship', () => {
+test('the verifier lands it: the one held merge tier requested at walk start carries the ship commit', () => {
   const root = makeRepo(['a'])
   withVerify(root, RED_CHECK)
   const r = runFleet(root, ['a'], { a: HAPPY }, { BUILDER_VERIFY_IDLE_MS: '1000' })
@@ -181,14 +181,17 @@ test('the verifier lands it: a held merge tier requested at walk start, released
   assert.match(git(root, 'log', '-1', '--format=%s'), /^merge\(a\): agent-verified, not human-tested$/)
   const reqs = readdirSync(join(root, '.builder/verify/requests')).map((n) => JSON.parse(readFileSync(join(root, '.builder/verify/requests', n), 'utf8')))
   const merge = reqs.filter((q) => q.tier === 'merge')
-  assert.ok(merge.length >= 1)
-  assert.ok(merge.some((q) => q.verdict?.landed === git(root, 'rev-parse', 'main')))
+  assert.equal(merge.length, 1, 'one merge-tier run: sign-off, verify and the ship only touch the registry')
+  assert.equal(merge[0].verdict.landed, git(root, 'rev-parse', 'main'))
+  assert.ok(merge[0].verdict.carried, 'landed by carry, not a second run')
+  assert.match(git(root, 'log', '--format=%s', 'main'), /^stub: a SHIP$/m, 'main carries the ship commit')
 })
 
 test('a merge tier that goes red at landing parks, naming the failing check', () => {
   const root = makeRepo(['a'])
   withVerify(root, RED_CHECK)
-  const steps = HAPPY.map((s) => (s === 'verified' ? 'TOUCH:docs/features/a/RED:verified' : s))
+  // Code (outside the registry) committed after the walk-start run: that result can't carry.
+  const steps = HAPPY.map((s) => (s === 'verified' ? 'COMMIT:app/RED:verified' : s))
   const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
   assert.equal(r.status, 1)
   assert.equal(r.fleet.features.a.status, 'parked')
