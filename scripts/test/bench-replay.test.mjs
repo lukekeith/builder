@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git } from '../verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, summarize, isInside } from '../bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside } from '../bench-replay-core.mjs'
 
 const apps = [{ name: 'server', path: 'server' }, { name: 'web', path: 'web' }]
 
@@ -77,4 +77,20 @@ test('isInside: the repo itself and anything under it, not a sibling with the sa
   assert.equal(isInside('/r/app', '/r/app'), true)
   assert.equal(isInside('/r/app', '/r/app/.builder/bench'), true)
   assert.equal(isInside('/r/app', '/r/app-bench'), false)
+})
+
+test('app paths with a trailing slash or ./ still map files to their app', () => {
+  assert.deepEqual(['apps/server/', './apps/web', '.', './', ''].map(normPath), ['apps/server', 'apps/web', '.', '.', '.'])
+  const slashed = [{ name: 'server', path: 'apps/server/' }, { name: 'web', path: './apps/web/' }]
+  const cs = [{ sha: 'a', files: ['apps/server/x.ts'] }, { sha: 'b', files: ['apps/web/y.tsx'] }]
+  assert.deepEqual(phaseBoundaries(cs, slashed, 'docs/features'), [{ index: 0, app: 'server' }, { index: 1, app: 'web' }])
+})
+
+test('with no phase mapped to an app, the end gates run every configured app and say why', () => {
+  assert.deepEqual(touchedApps([], apps), ['server', 'web'])
+  const pts = controlPoints([], ['a'], apps)
+  assert.deepEqual(pts.map((p) => [p.args.join(' '), p.label]), [
+    ['server web', 'end gates (no app touched: all apps)'],
+    ['--deep server web', 'verify deep (no app touched: all apps)'],
+  ])
 })

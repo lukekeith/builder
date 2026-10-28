@@ -12,7 +12,10 @@ export function featureRange(repo, merged) {
   return { base, tip, commits }
 }
 
-const appOf = (file, apps) => apps.filter((a) => a.path && a.path !== '.' && (file === a.path || file.startsWith(`${a.path}/`))).sort((x, y) => y.path.length - x.path.length)[0]?.name ?? apps.find((a) => a.path === '.')?.name ?? null
+/** An app path as the config may spell it: `apps/server/`, `./apps/server`, `.` and `./` (the root) all normalise to a bare relative path, '.' for the root. */
+export const normPath = (p) => String(p ?? '').trim().replace(/^(\.\/)+/, '').replace(/\/+$/, '') || '.'
+
+const appOf = (file, apps) => apps.map((a) => ({ name: a.name, path: normPath(a.path) })).filter((a) => a.path !== '.' && (file === a.path || file.startsWith(`${a.path}/`))).sort((x, y) => y.path.length - x.path.length)[0]?.name ?? apps.find((a) => normPath(a.path) === '.')?.name ?? null
 
 export function phaseBoundaries(commits, apps, registry) {
   const out = []
@@ -36,10 +39,18 @@ export function phaseBoundaries(commits, apps, registry) {
 
 export function controlPoints(boundaries, shas, apps) {
   const pts = boundaries.map((b) => ({ sha: shas[b.index], args: [b.app], label: `phase ${b.app}` }))
-  const touched = [...new Set(boundaries.map((b) => b.app))].sort((a, b) => apps.findIndex((x) => x.name === a) - apps.findIndex((x) => x.name === b))
+  const touched = touchedApps(boundaries, apps)
   const tip = shas.at(-1)
-  pts.push({ sha: tip, args: touched, label: 'end gates' }, { sha: tip, args: ['--deep', ...touched], label: 'verify deep' })
+  // No phase mapped to an app: an app-less gate.mjs call measures nothing (it exits 2), so gate every app the config lists, and say so in the label.
+  const note = boundaries.length ? '' : ' (no app touched: all apps)'
+  pts.push({ sha: tip, args: touched, label: `end gates${note}` }, { sha: tip, args: ['--deep', ...touched], label: `verify deep${note}` })
   return pts
+}
+
+/** The apps the old gates run for at the end: those the phases touched, else every app the config lists. */
+export function touchedApps(boundaries, apps) {
+  const t = [...new Set(boundaries.map((b) => b.app))].sort((a, b) => apps.findIndex((x) => x.name === a) - apps.findIndex((x) => x.name === b))
+  return t.length ? t : apps.map((a) => a.name)
 }
 
 /** True when `child` is `parent` or under it — the replay never writes inside the repo it reads. */

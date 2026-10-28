@@ -25,7 +25,7 @@ import { join, resolve } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { git } from './verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, summarize, isInside } from './bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside } from './bench-replay-core.mjs'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const argv = process.argv.slice(2)
@@ -87,7 +87,7 @@ function replay(row, dir) {
   git(clone, 'checkout', '-q', '--detach', range.base)
   git(clone, 'branch', 'replay-target', range.base)
   const cfgText = git(clone, 'show', `${range.base}:.claude/builder.md`)
-  const apps = [...cfgText.matchAll(/^\s*-\s*name:\s*(\S+)\s*\n\s*path:\s*(\S+)/gm)].map((m) => ({ name: m[1], path: m[2] }))
+  const apps = [...cfgText.matchAll(/^\s*-\s*name:\s*(\S+)\s*\n\s*path:\s*(\S+)/gm)].map((m) => ({ name: m[1], path: normPath(m[2]) }))
   const registry = /^registry:\s*(\S+)/m.exec(cfgText)?.[1] ?? 'docs/features'
   const commits = range.commits.map((sha) => ({ sha, files: git(clone, 'diff-tree', '--no-commit-id', '--name-only', '-r', sha).split('\n').filter(Boolean) }))
   const bounds = phaseBoundaries(commits, apps, registry)
@@ -114,7 +114,8 @@ function replay(row, dir) {
       }
     }
     const r = timed(process.execPath, [join(controlRoot, 'scripts', 'gate.mjs'), ...args, '--force'], clone)
-    control.runs.push({ label, sha: sha.slice(0, 7), ms: r.ms, ...(beforeMs === undefined ? {} : { beforeMs }), status: r.status })
+    // Output kept for red and unrun points only: the clone is gone by the time anyone asks why.
+    control.runs.push({ label, sha: sha.slice(0, 7), ms: r.ms, ...(beforeMs === undefined ? {} : { beforeMs }), status: r.status, ...(r.status === 0 ? {} : { out: r.out.slice(-1500) }) })
     if (r.status === 0 || r.status === 1) control.blockingMs += r.ms
     else control.unrun++
     if (r.status === 1) control.reds++
@@ -125,7 +126,7 @@ function replay(row, dir) {
   }
   git(clone, 'checkout', '-q', '--detach', '--force', range.base)
   git(clone, 'merge', '-q', '--no-ff', '-m', 'replay merge', range.tip)
-  gate('post-merge', git(clone, 'rev-parse', 'HEAD'), [...new Set(bounds.map((b) => b.app))])
+  gate('post-merge', git(clone, 'rev-parse', 'HEAD'), touchedApps(bounds, apps))
 
   // Treatment: the verifier, fed the same commits.
   git(clone, 'checkout', '-q', '--detach', '--force', range.base)
@@ -143,7 +144,7 @@ function replay(row, dir) {
       treatment.requests.push({ tier, ms: r.ms, error: r.error })
       return
     }
-    treatment.requests.push({ tier, sha: String(v.sha).slice(0, 7), ms: r.ms, status: v.status, regressions: v.regressions.map((g) => g.id), flakes: v.flakes, known: v.known, debt: v.debt })
+    treatment.requests.push({ tier, sha: String(v.sha).slice(0, 7), ms: r.ms, status: v.status, broken: v.broken, regressions: v.regressions.map((g) => ({ id: g.id, msg: String(g.msg ?? '').slice(0, 300), introducedBy: g.introducedBy })), flakes: v.flakes, known: v.known, debt: v.debt })
     treatment.regressions += v.regressions.length
     treatment.flakes += v.flakes.length
     treatment.known += v.known.length
