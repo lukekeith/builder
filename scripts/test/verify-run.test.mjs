@@ -426,3 +426,25 @@ test('a batch that produces no report: every failure in it is broken, not a regr
   assert.equal(w.regressions.length, 0)
   assert.equal(w.broken.length, 2)
 })
+
+test('runShell with lines: every matching line of the WHOLE output, not just the tail', async () => {
+  const r = await runShell(`for i in $(seq 1 3000); do echo "  ✗ finding number $i in a long line of lint output"; done; echo tail-line`, { cwd: tmpdir(), lines: '✗' })
+  assert.ok(r.out.length <= 20000)
+  assert.equal(r.lines.size, 3000)
+  assert.ok(r.lines.has('✗ finding number 1 in a long line of lint output'))
+  assert.ok(!r.lines.has('tail-line'))
+})
+
+test('a lines check with more output than the tail keeps is judged on all of it: the same findings on both sides are not a regression', async () => {
+  const co = project({})
+  const target = project({})
+  const many = Array.from({ length: 3000 }, (_, i) => `  inherited finding ${i} with enough text to pass twenty thousand characters ✗`).join('\n') + '\n'
+  writeFileSync(join(co, 'lint.txt'), many + '  shorter branch tail ✗\n')
+  writeFileSync(join(target, 'lint.txt'), many + '  shorter branch tail ✗\n  and one more line only the target prints, which shifts its tail ✗\n')
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'lint', run: 'cat lint.txt', cwd: '.', compare: 'lines', match: '✗', tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.deepEqual(v.regressions, [])
+  assert.equal(v.status, 'green')
+})

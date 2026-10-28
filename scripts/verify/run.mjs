@@ -14,21 +14,43 @@ import { inputsHash } from './envpool.mjs'
 import { globToRegExp } from '../impact.mjs'
 import { tryGit } from './git.mjs'
 
-export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = null } = {}) {
+/**
+ * `lines` (a regex source, '' for every line): also collect each complete output line that matches,
+ * trimmed, over the WHOLE output — `out` keeps only a tail, and a `compare: lines` check judged on
+ * two tails reads a shifted window as new lines (seen: a 128 KB lint report).
+ */
+export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = null, lines = null } = {}) {
   return new Promise((resolve) => {
     // An already-aborted signal never fires 'abort': a cancelled run starts nothing more.
-    if (signal?.aborted) return resolve({ code: 1, timedOut: false, out: 'cancelled' })
+    if (signal?.aborted) return resolve({ code: 1, timedOut: false, out: 'cancelled', ...(lines !== null && { lines: new Set() }) })
     // A `node --test` child that inherits NODE_TEST_CONTEXT from a parent running under `node --test`
     // reports to that parent instead of writing its own report — so the child never sees it.
     const childEnv = { ...env }
     delete childEnv.NODE_TEST_CONTEXT
     const p = spawn('/bin/bash', ['-c', cmd], { cwd, env: childEnv, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
-    const add = (b) => {
-      out = (out + b).slice(-20000)
+    const re = lines === null ? null : lines ? new RegExp(lines) : /./
+    const found = new Set()
+    // Per stream: a line split across two chunks is joined before it is matched.
+    const stream = () => {
+      let part = ''
+      return {
+        add(b) {
+          out = (out + b).slice(-20000)
+          if (!re) return
+          const ls = (part + b).split('\n')
+          part = ls.pop()
+          for (const l of ls) if (l.trim() && re.test(l.trim())) found.add(l.trim())
+        },
+        end() {
+          if (re && part.trim() && re.test(part.trim())) found.add(part.trim())
+        },
+      }
     }
-    p.stdout.on('data', add)
-    p.stderr.on('data', add)
+    const so = stream()
+    const se = stream()
+    p.stdout.on('data', (b) => so.add(b))
+    p.stderr.on('data', (b) => se.add(b))
     let timedOut = false
     const kill = () => {
       try {
@@ -42,7 +64,9 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
       // A long-lived signal outlives many runs: a listener left behind would pile up and SIGKILL a
       // process group id the OS has since handed to someone else.
       signal?.removeEventListener('abort', kill)
-      resolve({ code: code ?? 1, timedOut, out })
+      so.end()
+      se.end()
+      resolve({ code: code ?? 1, timedOut, out, ...(re && { lines: found }) })
     })
   })
 }
@@ -239,7 +263,7 @@ async function judgeRequest(req, ctx, tmp) {
     const cwd = join(where, c.cwd)
     const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
     try {
-      return await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      return await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
     } finally {
       lease.release()
     }
@@ -251,7 +275,7 @@ async function judgeRequest(req, ctx, tmp) {
     // A target run cut short is not the target's output: caching it would make every later run
     // against this sha a false red. Not cached, and the check is broken this time.
     if (r.timedOut || r.aborted || signal?.aborted) return null
-    const s = linesOf(r.out, c.match)
+    const s = r.lines ?? linesOf(r.out, c.match)
     ledger.writeLines(ctx.targetSha, c.name, s)
     return s
   }
@@ -261,7 +285,7 @@ async function judgeRequest(req, ctx, tmp) {
     if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500) }
     const theirs = await targetLines(c)
     if (!theirs) return { fail: false, broken: `the run on the target ${signal?.aborted ? 'was cancelled' : `timed out after ${Math.round(verify.timeoutMs / 60000)}m`}`, msg: '' }
-    const fresh = [...linesOf(r.out, c.match)].filter((l) => !theirs.has(l))
+    const fresh = [...(r.lines ?? linesOf(r.out, c.match))].filter((l) => !theirs.has(l))
     return { fail: fresh.length > 0, msg: fresh.slice(0, 30).join('\n') }
   }
 
