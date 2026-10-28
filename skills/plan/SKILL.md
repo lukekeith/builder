@@ -13,7 +13,7 @@ erroring on it**.
 prints all three — and cite them rather than restate them:
 [`PLAN-FORMAT.md`](PLAN-FORMAT.md) (the shape of the file this step writes) · REFERENCE (§Sizes for
 the phase counts · §Contract and the contract freeze, which the phase ORDER exists to protect ·
-§MANIFEST.md · §Branch and ticket) · **`.claude/builder.md`** (§Quality gates for every `Gates` cell,
+§MANIFEST.md · §Branch and ticket) · **`.claude/builder.md`** (§Verification — the phase tier runs on each phase's app,
 §Global constraints for the plan's header block, §Companion skills for every `Recipe:` line).
 
 Input: `<folder>/SPEC.md` + `MANIFEST.md`. Output: `<folder>/PLAN.md`, the §Plan index appended to
@@ -50,15 +50,13 @@ reads it at the go-ahead, a reviewer sees it in the PR, and the sign-off condens
 
 **Its shape is [`PLAN-FORMAT.md`](PLAN-FORMAT.md)** — write what that file specifies, reading it
 there. In short: the header (Goal · Architecture · Tech Stack · Spec) · `## Global Constraints`
-copied verbatim from the config · the `## Phases` table (`Phase · App · Tasks · Goal · Gates`) ·
+copied verbatim from the config · the `## Phases` table (`Phase · App · Tasks · Goal`) ·
 then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, **Files**, **Interfaces** and
 bite-sized `- [ ]` steps with the actual code, the run command and the commit.
 
 - **Task numbering runs across the whole plan** — `task-brief` keys on the literal `Task N` heading.
 - **Every task names the recipe skill to read FIRST** on its `Recipe:` line (the config's §Companion
   skills) **and ships the tests that belong to it**. Tests are never a later task or phase.
-- **The `Gates` cell is that phase's app's fast set** from the config — never another app's, never the
-  deep set, never the cross-app walk.
 - **A phase must fit one session.** Above that, split it.
 
 ## 🔴 One app per phase, the producer before its consumers
@@ -66,9 +64,8 @@ bite-sized `- [ ]` steps with the actual code, the run command and the commit.
 **The binding rule of this pipeline's phase derivation.** A phase names exactly one app on every
 task's `App:` line and in the table's `App` column. Two reasons, both load-bearing:
 
-1. **Each app's gates are different commands.** A phase touching two apps cannot be gated — one app's
-   typecheck says nothing about the other's. A phase whose gates cannot close is a phase that closes
-   on a feeling.
+1. **The verifier waits on one app per phase.** A phase touching two apps makes its wait cover
+   neither cleanly — one app's tests say nothing about the other's.
 2. **The contract freezes when the producer's phase verifies.** Consumers built against a moving
    contract are how one of them ships broken — and where the config marks an app
    `released_artifact: true`, that one cannot be hot-fixed.
@@ -81,7 +78,7 @@ The order that follows, from the config's `apps:` roles:
 | 2 | **producer** | produces the contract; nothing consumes it yet. 🔴 **Its close is the freeze** — record `contract: frozen <date>` on the manifest at that phase close |
 | 3 | **consumers** | code against the frozen contract, **parallelizable when they don't import each other**. Order them by risk: a `released_artifact` consumer first, since its findings are the expensive ones |
 | 4 | **tools** | read the consumers, so they come after them |
-| 5 | **the cross-app E2E walk (LAST)** | 🔴 authored here and run only by `/builder:verify`. Never an E2E task or gate in an earlier phase |
+| 5 | **the cross-app E2E walk (LAST)** | 🔴 authored here and walked by the agent walk; any e2e suite runs in the merge tier. Never an E2E task in an earlier phase |
 
 A single-app feature has one or two phases and none of this bites. It bites on every feature that
 doesn't.
@@ -119,11 +116,10 @@ that is correct — a four-app `md` sitting at 5 phases is not oversized, it is 
 heading at any level**: any heading between two task blocks is swept into the earlier task's brief.
 
 **A one-task phase for a tiny change is the most expensive shape a plan can take.** A phase costs a
-brief and a fresh implementer whatever its size, and a review and a gate run wherever the test plan
-closes phases on them; measured on a real build under per-task review and phase-close gates, three
-consecutive phases of one small task each (a tool description, a rule line, a guard) cost as much as
-a phase of five real tasks. Before accepting one: fold the change into a task of the
-same app that already exists, or — when the app has no other phase — write it as one task whose
+brief and a fresh implementer whatever its size, a review wherever the test plan closes phases on
+one, and one phase-tier wait; three consecutive phases of one small task each (a tool description, a
+rule line, a guard) cost as much as a phase of five real tasks. Before accepting one: fold the change
+into a task of the same app that already exists, or — when the app has no other phase — write it as one task whose
 steps are exactly the edit and its test, and note `tiny` on its `Recipe:` line so the build picks the
 cheapest reviewer tier. Never fold across an app boundary to avoid a phase.
 
@@ -142,7 +138,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
 ## Writing the plan
 
 1. **Derive the phases** from the SPEC in the app order above, merged and split to the dials. This
-   settles the phase list, each phase's app, its goal and its gates *before* any task is written.
+   settles the phase list, each phase's app and its goal *before* any task is written.
 2. **Write the file** per [`PLAN-FORMAT.md`](PLAN-FORMAT.md), header and `## Phases` table first,
    then the task blocks in order.
 
@@ -174,7 +170,6 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    - every `### Task N` block opens with an `App:` line and a `Phase:` line matching its table row;
    - every block carries a `Recipe:` line from the config's §Companion skills — or, for work with no
      recipe skill, the REFERENCE section that governs it;
-   - every `## Phases` row's `Gates` cell is **that row's app's** fast set from the config;
    - 🔴 **verify the one-app rule mechanically**: no task block's `Files` list crosses two of the
      config's app paths. A task that does is split in two, one per app, and the phases re-derived;
    - the tests a task owes are in **that** task — its steps, its commit — not a later one;
@@ -229,20 +224,19 @@ see what it builds, not only how it is sliced.
 **1. The slices** — section 9 of the review. Run `node <builder>/scripts/plan-slices.mjs <folder>` — with `--tests "<value>"`
 when the manifest already carries `tests:` (chosen ahead, §Picking the test plan ahead) — and present
 its output **verbatim**: the feature, its slices and apps, where it lands, one line per task grouped by
-app with the tests it adds, then the test plan's two lines — what runs, and what it costs in runs and,
-when the gate runner has timed the suites, minutes. Never redraw it as a table, re-total it or add a
-column. The `## Phases` table stays in `PLAN.md` for the build; the human sees slices. Under the
+app with the tests it adds, then the test plan's two lines — what it is, and how many reviews it
+costs. Never redraw it as a table, re-total it or add a column. The `## Phases` table stays in `PLAN.md` for the build; the human sees slices. Under the
 block, one line each for what rides along: the slices carrying a `build-time risk`, **which slice
 freezes the contract**, anything deferred with a decider, and the path to read the plan at. When
 `node <builder>/scripts/profile.mjs --recommend <folder>` returns `signals` (a breaking schema change, a
-released consumer… raised the end to the risky parts), say its `reason` in one line — unless the
+released consumer… raised the walk to the risky parts), say its `reason` in one line — unless the
 block already does.
 
 **2. The ways on** — CONVERSATION §Ways on, plain chat:
 
 ```
 A. Build it with this plan (recommended) — <what A starts, below>
-B. Change the test plan — how much to test per slice, at the end, and when to review
+B. Change the test plan — how much an agent walks, and when to review
 C. Keep planning — nothing is built; say what to change
 Reply A, B or C — "go" is A.
 ```
@@ -251,29 +245,22 @@ A's description: no `agent_walk:` block → `build it now, in this session`; wit
 in its own worktree and land it on <target>`, the target being the one **Land on?** below would
 recommend. A reply naming another branch with A ("A, onto develop") lands it there.
 
-**3. B → one AskUserQuestion, three questions** (four with an `agent_walk:` block: **Land on?** last),
+**3. B → one AskUserQuestion, two questions** (three with an `agent_walk:` block: **Land on?** last),
 briefed first in chat per REFERENCE §Before a picker — each option explained with its cost, and why
 the recommended plan is first.
 Each option's description **leads with what it costs for this plan**: run
 `node <builder>/scripts/profile.mjs --cost <folder> --tests "<value>"` for each option — its own lever
-set, the other two held where they stand — → `{ ownRuns, suiteRuns, reviews, walk, minutes }`, and
-lead with the counts (`12 quick runs + 3 suite runs`, `4 reviews`), then `≈ N min` when `minutes` is
-not `null`. Then what it runs, in the words below. The recommendation's option is first, with
-` (Recommended)` on its label; the rest keep this order.
+set, the other held where it stands — → `{ slices, apps, phases, reviews, walk }`, and lead with
+the count (`4 reviews`, or `one review`). Then what it does, in the words below. The
+recommendation's option is first, with ` (Recommended)` on its label; the rest keep this order.
 
-- **Testing while building — after each slice:** **Its own tests** — the tests that slice adds, and
-  the type-check (`slice=own`) · **Its own, plus the app's suite when the app's slices are done**
-  (`own+app`) · **The app's suite after every slice** — slowest; `@scoped` lines still narrow it
-  (`full`) · **None while building** — tests are still written; they run at the end (`none`).
-- **Testing at the end — once every slice is built:** **The touched apps' suites, once** — every
-  touched app's fast set, the tests §Testing names, released-consumer parity (`end=touched`) · **Plus
-  an agent tries the risky parts** — the `[risk]` walk items in the running app, and `@scoped` deep
-  lines (`risk`) · **Everything** — the deep set, the cross-app E2E, the full walk (`everything`) ·
-  **Nothing — I'll test it** — the type-check only; the verdict says nothing was tested (`none`). On a
-  feature with a released consumer or a breaking schema change, `none`'s description adds `⚠ This feature has
-  a <signal>: nothing tests it before it lands.` It warns; it never refuses.
-- **Review:** **Once at the end** — one whole-branch review (`review=end`) · **Once per app** — after
-  each app's slices (`app`) · **After every slice** (`slice`).
+- **Agent walk:** **None** — the merge tier runs every suite on the merged result; nobody drives the
+  app (`walk=none`) · **The risky parts** — an agent walks the `[risk]` items and the cross-app
+  steps in the running app (`risk`) · **All of it** — the whole walk script (`full`). On a feature
+  with a released consumer or a breaking schema change, `none`'s description adds `⚠ This feature
+  has a <signal>: no agent walks it before it lands.` It warns; it never refuses.
+- **Review:** **Once at the end** — one whole-branch review (`review=end`) · **Once per app** —
+  after each app's slices (`app`) · **After every slice** (`slice`).
 - **Land on?** (`agent_walk:` set) — the recommendation is **the branch checked out here** when it
   is not `base_branch` and not a `builder/*` branch: the human is working on it, and it is where the
   spec — and often the config — was committed. Otherwise `<merge_into> (Recommended)` (the same
@@ -282,28 +269,27 @@ not `null`. Then what it runs, in the words below. The recommendation's option i
   whose `.claude/builder.md` has no `agent_walk:` block is refused by the fleet's dry run — relay its
   fix, never launch around it.
 
-**The floors are not options** and are never offered off: the type-check of every touched app before
-the work lands, and the final whole-branch review. The human walk is not a lever either — an in-chat
+**The floor is not an option** — the final whole-branch review runs under every plan, and the
+verifier runs every test whatever the plan says. The human walk is not a lever either — an in-chat
 build keeps the 🔒 walk before a PR whatever the test plan.
 
-The tool's *Other* on any of the three testing questions is the rest of the levers: one more
-AskUserQuestion — `models` (`default` · `economy` · `strong`), `persist` (`default` · `low`),
+The tool's *Other* on either question is the rest of the levers: one more AskUserQuestion — `models` (`default` · `economy` · `strong`), `persist` (`default` · `low`),
 `unruled` (`recommend` · `park`), each pre-filled from `profile.mjs --levers <folder>`. A value typed
 into *Other* that names one of the question's own options counts as that option. **With an
-`agent_walk:` block, and `end` set to `risk` or `everything` through B** → **Walk it yourself before
-it lands?** in that same follow-up call (or alone): **No (Recommended)** · **Yes** → `walk=you` (the
+`agent_walk:` block, and `walk` set to `risk` or `full` through B** → **Walk it yourself before
+it lands?** in that same follow-up call (or alone): **No (Recommended)** · **Yes** → `human=yes` (the
 fleet parks it for your walk after the agent's, and lands it after your `/builder:signoff`).
 
 Then run `plan-slices.mjs <folder> --tests "<the new value>"` again and present **only its test-plan
 lines**, with the same A/B/C — A now reads *Build it with this plan*, and "go" is still A.
 
 **4. A → record it.** The manifest gets `go-ahead: <name YYYY-MM-DD>` and
-`tests: slice=<v> end=<v> review=<v>`, plus any `models=`, `persist=`, `unruled=` or `walk=you` pair
-that is not its default — the recommendation taken unchanged is still written. `<test plan>` below is
-its label, the three values `·`-joined (`own · touched · end`, ` · you` with `walk=you`).
+`tests: walk=<v> review=<v>`, plus any `models=`, `persist=`, `unruled=` or `human=yes` pair that is
+not its default — the recommendation taken unchanged is still written. `<test plan>` below is its
+label, the two values `·`-joined (`none · end`, ` · you` with `human=yes`).
 
 One call records it — `node <builder>/scripts/advance.mjs <folder> --set "go-ahead=<name YYYY-MM-DD>"
---set "tests=slice=<v> end=<v> review=<v>[ …]" [--set target=<branch>] --head --commit
+--set "tests=walk=<v> review=<v>[ …]" [--set target=<branch>] --head --commit
 "chore({key}): {feature} — go-ahead (<test plan>)"`:
 
 - **No `agent_walk:` block** → commit `chore(<ticket-or-feature>): <feature> — go-ahead (<test plan>)`,
@@ -347,16 +333,13 @@ manifest has neither `tests:` nor an old `profile:`**:
 
 1. **One AskUserQuestion, one question per pick** (up to four picks per call): `Test plan for
    "<feature>"?` — **The recommended plan (Recommended)**, described by `profile.mjs --recommend <folder>`'s
-   three values (`own · touched · end`) and, when it has `signals`, its `reason` · **Change it**. A pick with `PLAN.md` gets its slice
+   two values (`none · end`) and, when it has `signals`, its `reason` · **Change it**. A pick with `PLAN.md` gets its slice
    table (`plan-slices.mjs <folder>`) printed above the call.
 2. **Change it** → that pick's B questions (§The go-ahead step 3), one call per pick, *Other* and the
    *Walk it yourself* follow-up as written there. A pick with no `PLAN.md` has no slices to count, so
-   `--cost` has nothing to say: each option leads with its place in the ladder instead — per slice:
-   own `quick — one small run per slice`, own+app `+ one suite run per app`, full `slowest — a suite
-   run per slice`, none `fastest — the type-check only`; at the end: touched `one suite run per app`,
-   risk `+ an agent walks the risky parts`, everything `slowest — deep set, cross-app E2E, full walk`,
-   none `fastest — the type-check only`; review: end `one review`, app `one per app`, slice `one per
-   slice`.
+   `--cost` has nothing to say: each option leads with its place in the ladder instead — agent walk: none `no agent walk`, risk
+   `+ an agent walks the risky parts`, full `slowest — the whole walk`; review: end `one review`, app
+   `one per app`, slice `one per slice`.
 3. **Land on?** once for the run (one target per run), in the first call.
 
 Write `tests:` and `target:` to each pick's manifest — never `go-ahead:`, which the plan still records

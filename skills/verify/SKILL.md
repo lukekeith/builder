@@ -78,9 +78,9 @@ to discover; the merge tier runs beside the walk, so neither waits on the other.
 Request the merge tier on the new HEAD; it runs everything on the merged result, so there is nothing
 to scope by hand.
 
-🔴 **The cross-app E2E walk is NOT automatically part of a re-verify.** A feature's FIRST verify
-always runs it (checklist 10). A re-verify runs it only when the diff can change what a consumer
-does — classify the diff, say which class you chose, and quote the earlier run when you skip it:
+🔴 **The cross-app E2E walk is NOT automatically part of a re-verify.** A feature's first verify
+reads it from the walk (checklist 10). A re-verify walks it again only when the diff can change
+what a consumer does — classify the diff, say which class you chose, and quote the earlier run when you skip it:
 
 | The diff touches | The cross-app walk on re-verify |
 |---|---|
@@ -141,10 +141,11 @@ a visual diff, and a renamed element changes what the walk does.
    `B#` owed row is backed by a committed test or a captured state, not by a walk that saw it once.
 9. **Whatever the config's §Verification names beyond the verifier** — a check described in prose that
    has no suite or check in the `verify:` block. Run it here and quote it.
-10. **The cross-app walk** — the agent walk's `## Cross-app (verify E2E)` rows (quoted when the code
-    is unchanged since the walk), and any e2e suite's result in the merge tier. Can't bring the stack
-    up → **BLOCKED-on-environment**, never READY. Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
-    SCOPED, and quote the earlier run when the diff didn't earn a new one.
+10. **The cross-app walk** — its evidence is the agent walk's `## Cross-app (verify E2E)` rows and
+    any e2e suite's result in the merge tier; there is no separate live cross-app pass. Quote the
+    walk's `E` rows when the code is unchanged since the walk (the diff since its sha touches only the
+    registry). On a re-verify, whether a leg is walked again follows §A re-verify is SCOPED — quote
+    the earlier run when the diff didn't earn a new one.
     **One app in scope:** there is no cross-app walk to run — the feature's walk script *was* the
     verification script (`walk-script.mjs`), so the agent walk's report covers this item exactly as
     `E` rows would: its rows for the round the sign-off header names, every in-scope row `PASS` (a
@@ -156,9 +157,11 @@ a visual diff, and a renamed element changes what the walk does.
     round walked. Every `E<k>` row `PASS` with evidence, and no code changed since —
     `git diff --quiet <walk sha> -- . ':!<registry>'` exits 0, which also counts uncommitted edits —
     → item 10 is **covered by the agent walk**: cite the report path and the sha, marked quoted. A
-    report with no `sha:` line can't be tied to code → item 10 as written. Any `E` row missing or not `PASS`,
-    or code changed since → run **only those steps** live (all of them when code changed), as above.
-    No such section (built before builder 4.6) → item 10 as written. A human walk never covers it.
+    report with no `sha:` line can't be tied to code → treat it as code changed since. Any `E` row
+    missing or not `PASS`, or code changed since → **only those steps** are walked again (all of them
+    when code changed) — under `--no-dev-env` that is a re-walk (AGENT-MODE.md §Batched walks), never
+    a run here. No such section (built before builder 4.6) → the merge tier's e2e suites are the
+    evidence. A human walk never covers it.
 11. **Spec-parity spot-check** (`opus` judgment, not grep) — trace the spec's 3–4 most load-bearing
     behaviours (permission gates, tenancy scoping, state rules, offline behaviour, routing) in the
     shipped code with `file:line`. This catches a feature that passes every suite while doing something

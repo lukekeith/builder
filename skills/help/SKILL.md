@@ -68,7 +68,7 @@ ever goes up.
 
 ```
 spec → audit (once) → open questions → plan → go-ahead → build (one app at a time)
-     → tested → verify (the one deep check) → merged, or a PR after your sign-off
+     → tested → verify (reads the merge tier) → merged, or a PR after your sign-off
 ```
 
 **Who tests it.** After you approve the spec the hand-off offers:
@@ -89,17 +89,15 @@ re-check. An app marked `commit: manual` is never committed by an agent.
 
 The plan is shown as numbered slices, grouped by app, each with the tests it adds, and a test plan
 with what it costs. "go" takes the recommended one; *Change the test plan* asks:
-- **Testing per slice** — its own tests (recommended) · plus the app's suite when its slices are
-  done · the app's suite after every slice · none while building.
-- **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the
-  risky parts · everything · nothing — you test it.
+- **Agent walk** — none: the merge tier runs every suite on the merged result (recommended) · the
+  risky parts in the running app · all of it.
 - **Review** — once at the end (recommended) · once per app · after every slice.
 
-With the end set to the risky parts or everything, it also asks **Walk it yourself before it
+With the walk set to the risky parts or all of it, it also asks **Walk it yourself before it
 lands?** — yes parks the agent build for your walk and lands it after your sign-off. A breaking
-schema change, a migration or a released consumer raises the recommended end, and says why. **Two
-floors hold under every plan:** a type-check of every touched app before the work lands, and one
-final whole-branch review.
+schema change, a migration or a released consumer raises the recommended walk, and says why. **The
+floor** — the final whole-branch review — holds under every plan (the `floors` that
+`profile.mjs --levers` prints), and every test runs in the verifier whatever the plan says.
 
 ## Resuming
 

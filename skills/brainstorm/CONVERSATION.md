@@ -317,8 +317,8 @@ the size: one spec → lg; two or more → xl, its children those slices.
   3. **Implement in the main context.** Read the named recipe skills FIRST (the config's §Companion
      skills); TDD where behaviour changes; that app's §House rules and §Environment landmines.
      🔴 **In an app the config marks `commit: manual`, stage and stop** — that commit is the human's.
-  4. **Fast gates** — the subset for that app that the diff can turn red, said out loud (the config's
-     §Quality gates). Report a delta where the config asks for one, never a green exit.
+  4. **The phase tier** — `verify.mjs request <worktree> HEAD --tier phase`, then `verify.mjs wait
+     <id>`; report its verdict line.
   5. **The human's look at the running app** for anything visual — after REFERENCE §Walk readiness.
      Say what has and has not been human-checked; the PR lock holds in chat form.
   6. Set `status: handed-off` and end: `📍 <the work>: <shipped | awaiting your look at the app> — next: <the command>`.

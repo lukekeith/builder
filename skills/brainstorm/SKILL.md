@@ -18,7 +18,7 @@ confirm, size, steering. Read it now, in one call with what else the conversatio
 names (REFERENCE §Sizes · §The classifier · §The review · §Walk readiness) and `.claude/builder.md`.
 **Do not load REFERENCE wholesale** — the spec formats belong to `/builder:spec` (under `--auto`,
 §Spec under `--auto` reads them through `docs.mjs spec-auto`). From the config: the apps and the
-house-rule sources, and for the small path its companion skills, gates, landmines and `commit:` mode.
+house-rule sources, and for the small path its companion skills, the verifier, landmines and `commit:` mode.
 
 **`--ticket <id>`** (REFERENCE §Flags) → write `ticket: <id>` into the record's header; check that
 the current branch name carries the key and warn once if it does not; and read the dossier when the
@@ -174,7 +174,7 @@ takes the last letter; never a second question.
 A reply in the user's own words is a correction ("the badge on the owner view, not the list"):
 revise the proposal and offer the list again. **Picking a Build entry is the small path's one approval** (CONVERSATION §Size and the
 small path, step 2) — there is no second one. Then steps 3–6 of the small path run: recipe skills,
-TDD where behaviour changes, `commit: manual` respected, the fast gates, the human's look for
+TDD where behaviour changes, `commit: manual` respected, the phase tier green, the human's look for
 anything visual, and the closing footer.
 
 **Brainstorm it first** → §Intent step 4 onward, unchanged, with nothing lost: the grounding stands.

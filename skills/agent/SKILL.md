@@ -14,10 +14,12 @@ say why in one line and stop; never fall back to the picker.
 
 The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it promises holds here: a
 worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
-sign-off** in place of yours, then verify, the ship commit and a **merge into
-the `merge_into` branch (default `base_branch`; `current` for the branch you have checked out; `--into` for one run)** — one merge commit per feature, so the whole batch lands in one place for you to test — then its worktree and branch are removed — and
+sign-off** in place of yours, then verify and the ship commit, and the verifier's **merge queue lands
+it on the `merge_into` branch** (default `base_branch`; `current` for the branch you have checked
+out; `--into` for one run) — one merge commit per feature, tested exactly as it lands, so the whole
+batch lands in one place for you to test — then its worktree and branch are removed — and
 nothing that waits on a question. "Done" means **merged**. A feature parks only when its spec leaves
-a product decision open (or the config reserves a step to you) — a merge conflict, a red gate or a
+a product decision open (or the config reserves a step to you) — a merge conflict, a red verdict or a
 failed walk is work the agents do, not a reason to stop. Nothing is
 pushed. Every record says the feature was agent-verified, not human-tested. Resolve `<builder>` per
 [REFERENCE](../resume/REFERENCE.md) §The scripts.
@@ -86,9 +88,9 @@ One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the 
 description that says **what the agents would actually do**, in plain words:
 - **spec … planned** — `not built yet · agents audit, plan, build, test and merge it`.
 - **building** — `part-built (<what's done>) · agents build the rest, test and merge it`.
-- **built, not walked** — `built in a session, not tested yet · agents only walk it, verify and
-  merge it` (`build: here` → `built here by you, not tested yet · …`).
-- **signed-off / verified** — `tested · agents only verify and merge it`.
+- **built, not walked** — `built in a session, not tested yet · agents walk it, verify and
+  land it` (`build: here` → `built here by you, not tested yet · …`).
+- **signed-off / verified** — `tested · agents verify and land it`.
 - **parked** — `parked — <why, cut to fit> · picking it unparks and retries`.
 **Order:** features not built yet first, then part-built, then built — so new work leads. **More
 than four offerable** → the first four in that order (most recently touched within each), and say in
@@ -108,7 +110,7 @@ folder: switch branches, or just `/builder:resume` it here). If no pick survives
 the test plan asked ahead — `/builder:plan` §Picking the test plan ahead (the slice table per pick
 when `PLAN.md` exists, the questions in plain words when it doesn't, **Land on?** once, the
 *Walk it yourself before it lands?* follow-up). Write and commit `tests:` and `target:`, then dry-run
-with `--into <target>`. These are the levers that decide how much the agents test and when they
+with `--into <target>`. These are the levers that decide how much the agents walk and when they
 review; never skip them because the run is unattended. Under `--auto`, take each recommendation and
 say so in one line. A pick with an old `profile:` line and no `tests:` already has a plan —
 `profile.mjs` maps it — and is not asked again.

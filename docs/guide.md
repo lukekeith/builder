@@ -20,7 +20,7 @@ claude plugin install builder@claude-builder     # user scope: every repo on thi
 /builder:init
 ```
 
-`/builder:init` reads the workspace layout, the gate commands, the CI workflow and `git log`, asks
+`/builder:init` reads the workspace layout, the test suites, the CI workflow and `git log`, asks
 only what it cannot tell (app roles, commit mode), and proves the result parses. Commit the file it
 writes. `--update` fills the gaps in an existing config.
 
@@ -90,7 +90,7 @@ the pipeline does next — `test-driven-development`, `systematic-debugging`, `r
 and `verification-before-completion`. They are invocable on their own (`/builder:<name>`), handed to
 every implementer **by path**, and cited at the points where they bite: the plan's steps are written
 in the TDD cycle, a fix round that stops converging gets the debugging skill, a review finding is
-read through the review skill, and every gate claim answers to the verification skill's iron law —
+read through the review skill, and every claim that something passes answers to the verification skill's iron law —
 *no completion claim without fresh verification evidence.*
 
 ## What lives where
@@ -105,8 +105,8 @@ plugins/builder/
     registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/, and how an archived one ended
     archive.mjs              /builder:archive — finished folders into <registry>/_archive/, each kept as its SPEC under its header
     check-obligations.mjs    the cross-section gate on a SPEC.md
-    gate.mjs                 runs an app's gate block or the deep set; flaky re-runs, @delta baselines,
-                             and a memo that quotes a green run whose inputs haven't changed
+    verify/                  the verifier — a background test service: commit, phase and merge tiers,
+                             each run in a clean checkout with its own database; the merge queue
     workspace                the git-ignored per-feature scratch directory (--remove at ship)
     task-brief               extracts one task's text for its implementer
     review-package           the diff a reviewer reads in one call
@@ -156,15 +156,13 @@ recorded as `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed and 
 
 **To test it yourself instead**, either pick **In this session** on a hand-off before the build (it
 builds in your session and stops for your walk and `/builder:signoff`), or at the go-ahead choose
-*Change the test plan*, set the end to the risky parts or everything, and answer **Yes** to *Walk it
+*Change the test plan*, set the agent walk to the risky parts or all of it, and answer **Yes** to *Walk it
 yourself before it lands?*.
 
-**The walk env and your gates.** While agents walk a feature, its walk env (`agent_walk.start`)
-serves from the feature's worktree. Mark a deep-set line `@walk` when it needs that running app (an
-e2e suite): it runs in verify against the walk env with `agent_walk.env`, and every other gate runs
-with the test env, never the walk env's database. When a gate takes the walk env down — a
-`next build` rewriting the `.next` folder `next dev` serves — the fleet restarts it without a reset;
-give the walk env its own output folder to stop it happening (`/builder:init --update` offers it).
+**The walk env and the verifier.** While agents walk a feature, its walk env (`agent_walk.start`)
+serves from the feature's worktree. Tests never touch it: the verifier runs every suite — e2e
+included — in a clean checkout of its own, with its own database cloned from a template and its own
+ports, so the walk env's database and the app the agent is walking stay out of the test runs.
 Agents never change `.claude/builder.md`: a fix that needs it parks for you with the diff.
 
 **Walks are batched.** With `agent_walk.start` set, the walk lane takes every feature waiting to
@@ -182,30 +180,31 @@ Several specs at once, or work in flight, can be handed over directly:
 ```
 
 Or build it yourself, without the ceremony: pick **In this session** on the handoff (or `/builder:resume --path <folder> --here`).
-The audit and plan still run; then the session works the plan task by task, test first, with each app's fast gates,
-and stops at `built`. No fleet, no reviewer agents, no walk lock, and `/builder:resume` can finish it later.
+The audit and plan still run; then the session works the plan task by task, test first, with the phase tier at each
+phase close, and stops at `built`. No fleet, no reviewer agents, no walk lock, and `/builder:resume` can finish it later.
 
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
 at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
 per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it
-verifies, ships, and **merges it into the `merge_into` branch** (default `base_branch`, or `--into` for one
-run) — one merge commit per feature, its worktree and branch removed — so a batch of five specs lands as five merges on one branch for you to
+verifies, ships, and the verifier's **merge queue lands it on the `merge_into` branch** (default
+`base_branch`, or `--into` for one run) — one merge commit per feature, tested exactly as it lands,
+its worktree and branch removed — so a batch of five specs lands as five merges on one branch for you to
 test. Nothing is pushed and no PR is opened. Every feature ends **merged**. Merge conflicts, red
-gates, failed agent walks and a walk env that won't start are work the agents do, not reasons to
+verdicts, failed agent walks and a walk env that won't start are work the agents do, not reasons to
 stop; a feature **parks** only when its spec leaves a product decision open, or on a step you reserve
-to yourself (a `commit: manual` app, a `hold:`, your uncommitted change in the way of the merge). Nothing waits on a question, and nothing runs in the background of a headless run:
-long gates go through `scripts/job.mjs`, and a run is killed only after 30 minutes of silence.
+to yourself (a `commit: manual` app, a `hold:`, your uncommitted change in the way of the merge). Nothing waits on a question: tests run in the verifier; a build waits only at phase close, and a
+run is killed only after 30 minutes of silence.
 
 With an `agent_walk:` block, **the plan's go-ahead hands every feature to agents.** Every go-ahead —
 in chat or for agents — shows the plan as numbered slices, one per task, grouped by app, with what
-each one tests, and the **test plan** with what it costs: test runs, and minutes once the gates have
-been timed. "go" takes the recommended plan; *Change the test plan* asks three questions, recorded as
-`tests:` on the manifest:
+each one tests, and the **test plan** with what it costs in reviews. Every test runs in the verifier whatever the
+plan says — the commit tier beside the build, the phase tier at each phase close, every suite on the
+merged result before it lands — so "go" takes the recommended plan; *Change the test plan* asks two
+questions, recorded as `tests:` on the manifest:
 
 | Question | Options (recommended first) |
 |---|---|
-| **Testing per slice** | its own tests · plus the app's suite when its slices are done · the app's suite after every slice · none while building |
-| **Testing at the end** | the touched apps' suites once · plus an agent tries the risky parts · everything: deep set, cross-app E2E, the full agent walk · nothing — you test it |
+| **Agent walk** | none — the merge tier runs every suite on the merged result · the risky parts in the running app · all of it: the whole walk script |
 | **Review** | once at the end · once per app · after every slice |
 
 **Measuring it.** `/builder:benchmark` runs one small feature (a notes CLI gaining tags) through
@@ -215,11 +214,11 @@ unattended, and writes
 and whether the feature passes acceptance tests the agent never saw. Configs run one at a time;
 nothing in your Claude home changes. `/builder:benchmark --status` while it runs.
 
-The recommended plan is the fast one; a breaking schema change, a migration or a released consumer raises only the end, and
-says why. *Other* reaches the rest (models, persistence, open choices), and an agent build that tests
-the risky parts or everything can add your own walk before it lands. Landing is always the local
-merge; PR + CI landing is deferred, since the fleet never pushes. **The floors hold under every
-plan:** a type-check of every touched app before the work lands, and the final whole-branch review.
+The recommended plan is the fast one; a breaking schema change, a migration or a released consumer raises only the walk, and
+says why. *Other* reaches the rest (models, persistence, open choices), and an agent build that walks
+the risky parts or all of it can add your own walk before it lands. Landing is always the local
+merge; PR + CI landing is deferred, since the fleet never pushes. **The floor holds under every
+plan:** the final whole-branch review (the `floors` that `profile.mjs --levers` prints).
 An old `profile:` line on a manifest is still read, and `build_profile_default` in the config still
 sets the project's default plan.
 
@@ -239,11 +238,12 @@ never see `env`, so parallel builds stay off the walk env. **`worktree_env`** re
 
 Every worktree is merged up to the branch the fleet runs from before each build run and before its
 walk env starts, so features integrate as they land rather than all at ship; `sync` (an install plus
-the test-DB migration) runs after a merge that brought new commits. Gate blocks run through
-`scripts/gate.mjs`, which re-runs the config's known flakes once, judges `@delta` counts against the
-base branch, and quotes a green run whose inputs have not changed instead of re-running it — the
-measured reason a typical feature spent 60% of its wall-clock in tests was the same suite running
-about fourteen times.
+the test-DB migration) runs after a merge that brought new commits. Tests run in the
+verifier (`scripts/verify/`): the commit tier runs beside the build on what each commit can reach,
+the phase tier is the build's one wait, and the merge tier runs every suite on the feature merged
+onto the target, lists a failure that also fails on the target as known rather than red, and lists
+a flake automatically — the measured reason a typical feature spent 60% of its wall-clock in tests
+was the same suite running about fourteen times.
 
 ## Nothing left behind
 
@@ -269,10 +269,10 @@ a program dependency; a closed one does, since its code is merged.
 `/builder:statusline` adds builder's progress to the end of your Claude Code status line while
 builder is working — one bar for everything running, then what each part is doing:
 
-    Opus 5.5 │ my-app ██░░░░░░░░ 21% │ builder ▓▓▓▓▓░░░░░ 52% · ⚙ fleet 2/4 · cover-sheet build 4/9 · gate deep set ⏱ 3m
+    Opus 5.5 │ my-app ██░░░░░░░░ 21% │ builder ▓▓▓▓▓░░░░░ 52% · ⚙ fleet 2/4 · cover-sheet build 4/9 · verify merge builder/notes ⏱ 3m
 
 It shows a running fleet, a build in the chat (while its ledger has moved in the last five minutes)
-and running gates and jobs, refreshes every two seconds, and reads `builder ░░░░░░░░░░ idle` when
+and the verifier's running requests, refreshes every two seconds, and reads `builder ░░░░░░░░░░ idle` when
 nothing runs. A plugin
 can't set the status line itself, so the skill writes the `statusLine` key of your user settings: it
 points at a small launcher in `<config>/builder/` that runs your previous status line first and finds
