@@ -47,6 +47,9 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
         },
       }
     }
+    // Decoded per stream, so a multi-byte character split across two chunks stays one character.
+    p.stdout.setEncoding('utf8')
+    p.stderr.setEncoding('utf8')
     const so = stream()
     const se = stream()
     p.stdout.on('data', (b) => so.add(b))

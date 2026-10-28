@@ -448,3 +448,9 @@ test('a lines check with more output than the tail keeps is judged on all of it:
   assert.deepEqual(v.regressions, [])
   assert.equal(v.status, 'green')
 })
+
+test('runShell with lines: a multi-byte character split across output chunks is matched whole', async () => {
+  // 65,535 bytes, then ✗ (3 bytes): a 64 KB pipe chunk ends inside it.
+  const r = await runShell(`node -e 'process.stdout.write("x".repeat(65535) + "✗ done\\n")'`, { cwd: tmpdir(), lines: '✗ done' })
+  assert.equal(r.lines.size, 1)
+})
