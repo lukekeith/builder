@@ -288,8 +288,8 @@ said differently:
   `target` / `destination`, a junit suite's `command` / `report`, a check's `match` (which output
   lines count for `compare: lines`), and `env.max`. No `verify:` block at all → runs are green and
   marked `untested`, as a config with no gate blocks was.
-- **Phase-tier reuse is by sha**: a test file whose every test already passed at this exact commit
-  is not re-run.
+- **Phase-tier reuse is by unchanged inputs**: a selected test file is not re-run when all its tests
+  passed at this commit, or at an earlier commit of the phase's range that nothing since reaches per the selector's import graph.
 - **node:test reports through builder's own reporter** (`scripts/verify/node-reporter.mjs`), since
   Node's JUnit reporter doesn't say which file a test lives in.
 - **The end-to-end test uses its own fixture**, not `bench/fixtures/notes-hub`: the benchmark

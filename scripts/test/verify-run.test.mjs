@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { openLedger } from '../verify/ledger.mjs'
 import { runRequest, runShell, bisect } from '../verify/run.mjs'
+import { selectSuites } from '../verify/select.mjs'
 
 const T = (body) => `import { test } from 'node:test'\nimport assert from 'node:assert'\n${body}\n`
 function project(files) {
@@ -264,4 +265,53 @@ test('a junit suite at the merge tier gets its matching tracked files in {files}
   const e2e = { name: 'e2e', runner: 'junit', cwd: 'apps/web', files: 'test/e2e/**/*.spec.ts', command: `echo {files} > seen.txt; printf '<testsuites/>' > r.xml`, report: 'r.xml', needs: [], tiers: ['merge'] }
   await runRequest(req({ tier: 'merge' }), ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } }))
   assert.equal(readFileSync(join(dir, 'apps/web/seen.txt'), 'utf8').trim(), 'test/e2e/a.spec.ts test/e2e/sub/b.spec.ts')
+})
+
+/** A repo with unit tests a (alone) and b (imports lib.mjs); c1 touches a, c2 touches lib.mjs. Returns the shas. */
+function history() {
+  const dir = project({ 'lib.mjs': 'export const x = 1\n', 'test/a.test.mjs': T(`test('ok', () => {})`), 'test/b.test.mjs': T(`import '../lib.mjs'\ntest('ok', () => {})`) })
+  const g = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, encoding: 'utf8' }).trim()
+  const commit = (f, body) => (writeFileSync(join(dir, f), body), g('add', '.'), g('commit', '-qm', f), g('rev-parse', 'HEAD'))
+  g('init', '-q')
+  g('add', '.')
+  g('commit', '-qm', 'c0')
+  const c0 = g('rev-parse', 'HEAD')
+  const c1 = commit('test/a.test.mjs', T(`test('ok', () => {})\n// edited`))
+  const c2 = commit('lib.mjs', 'export const x = 2\n')
+  return { dir, g, c0, c1, c2 }
+}
+const idsRun = (ctx) => readFileSync(join(ctx.ledger.dir, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.run === 'p').map((r) => r.id)
+const phaseCtx = (dir) => ctxFor(dir, dir, { select: selectSuites })
+const green = (sha, files) => files.map((f) => ({ run: 'x', sha, tier: 'commit', id: `unit::${f}::ok`, status: 'pass' }))
+
+test('phase tier reuses a file that passed at an earlier branch commit and nothing since reaches', async () => {
+  const { dir, c0, c1, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c1, c2] }), ctx)
+  assert.equal(v.status, 'green')
+  assert.equal(v.reused, 1) // a: lib.mjs changed after c1 and a does not import it
+  assert.deepEqual(idsRun(ctx), ['unit::test/b.test.mjs::ok']) // b: reached by the change since c1
+})
+
+test('phase tier re-runs a file whose pass predates a change that reaches it', async () => {
+  const { dir, c0, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c0, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c2] }), ctx)
+  assert.equal(v.reused, 0) // a was edited and b imports the edited lib, both after c0
+})
+
+test('a pass recorded at a commit that is not an ancestor of the request is never used', async () => {
+  const { dir, g, c0, c2 } = history()
+  g('checkout', '-q', '-b', 'other', c0)
+  writeFileSync(join(dir, 'unrelated.txt'), 'x')
+  g('add', '.')
+  g('commit', '-qm', 'side')
+  const side = g('rev-parse', 'HEAD')
+  g('checkout', '-q', c2)
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(side, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c2] }), ctx)
+  assert.equal(v.reused, 0)
 })

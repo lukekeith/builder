@@ -67,9 +67,10 @@ export function openLedger(root) {
     appendResults(rows) {
       if (rows.length) appendFileSync(P.results, rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
     },
-    resultsAt(sha) {
-      const m = new Map()
-      if (!existsSync(P.results)) return m
+    /** Test id → latest status, for each of `shas`, read in one pass (the file only grows). */
+    resultsAtAll(shas) {
+      const by = new Map([...shas].map((s) => [s, new Map()]))
+      if (!existsSync(P.results)) return by
       for (const l of readFileSync(P.results, 'utf8').split('\n')) {
         if (!l) continue
         let r
@@ -78,9 +79,12 @@ export function openLedger(root) {
         } catch {
           continue // a line another process is still appending
         }
-        if (r.sha === sha) m.set(r.id, r.status)
+        by.get(r.sha)?.set(r.id, r.status)
       }
-      return m
+      return by
+    },
+    resultsAt(sha) {
+      return this.resultsAtAll([sha]).get(sha)
     },
     known(target) {
       const k = readJson(P.known, {})[target]

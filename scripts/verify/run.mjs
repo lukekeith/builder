@@ -70,6 +70,50 @@ function lazyTracked(suite, where) {
   }
 }
 
+/**
+ * (suite, file) → whether the phase tier may skip it. Candidates are the request's commit, then each
+ * commit of base..sha newest first, then base: only ancestors, so a pass on another branch or the
+ * target's merge checkout never counts. The newest candidate where all of the file's tests passed
+ * (or skipped) is the one judged: a change since it that reaches the file, or that the graph can't
+ * place (a 'whole' selection), means a re-run.
+ */
+function phaseReuse(req, ctx, suites) {
+  const { ledger, checkout } = ctx
+  const range = (tryGit(checkout, 'rev-list', `${req.base}..${req.sha}`) ?? '').split('\n').filter(Boolean)
+  const chain = [...new Set([req.sha, ...range, req.base].filter(Boolean))]
+  const passes = ledger.resultsAtAll(chain)
+  const index = new Map() // sha → "suite::file" → every test of it passed or skipped
+  for (const [sha, byId] of passes) {
+    const m = new Map()
+    for (const [id, st] of byId) {
+      const k = id.split('::').slice(0, 2).join('::')
+      m.set(k, (m.get(k) ?? true) && (st === 'pass' || st === 'skip'))
+    }
+    index.set(sha, m)
+  }
+  const reach = new Map() // commit → what changed since it can reach, per suite
+  const reachedSince = (c) => {
+    if (!reach.has(c)) {
+      try {
+        reach.set(c, ctx.select(checkout, c, suites))
+      } catch {
+        reach.set(c, null)
+      }
+    }
+    return reach.get(c)
+  }
+  const at = new Map() // "suite::file" → the commit judged, memoised
+  return (suite, file) => {
+    const key = `${suite.name}::${file}`
+    if (!at.has(key)) at.set(key, chain.find((c) => index.get(c)?.get(key)) ?? null)
+    const c = at.get(key)
+    if (!c) return false
+    if (c === req.sha) return true
+    const files = reachedSince(c)?.[suite.name]?.files
+    return Array.isArray(files) && !files.includes(file)
+  }
+}
+
 export const testId = (suite, r) => `${suite}::${r.file}::${r.name}`
 
 /** Walks the range oldest first; ends with the checkout back at the range's last commit. */
@@ -220,17 +264,16 @@ async function judgeRequest(req, ctx, tmp) {
   // 2. Suites.
   const suites = verify.suites.filter((s) => s.tiers.includes(req.tier))
   const sel = req.tier === 'merge' ? Object.fromEntries(suites.map((s) => [s.name, { files: 'all', why: 'merge tier: the whole suite' }])) : ctx.select(checkout, req.base, suites)
-  const prior = req.tier === 'phase' ? ledger.resultsAt(req.sha) : new Map()
   const suiteOf = new Map(suites.map((s) => [s.name, s]))
+  // Phase tier: a selected file is not re-run when every test in it passed at this commit, or at an
+  // earlier commit of the range it covers that nothing since reaches (spec §Phase tier). The ledger
+  // is read once, and the import graph once per distinct commit, never once per file.
+  const reuse = req.tier === 'phase' ? phaseReuse(req, ctx, suites) : null
   for (const s of suites) {
     if (signal?.aborted) break
     let { files, why } = sel[s.name]
-    if (Array.isArray(files) && prior.size) {
-      const greenFile = (file) => {
-        const mine = [...prior].filter(([id]) => id.startsWith(`${s.name}::${file}::`))
-        return mine.length > 0 && mine.every(([, st]) => st === 'pass' || st === 'skip')
-      }
-      const keep = files.filter((f) => !greenFile(f))
+    if (Array.isArray(files) && reuse) {
+      const keep = files.filter((f) => !reuse(s, f))
       verdict.reused += files.length - keep.length
       files = keep
     }
