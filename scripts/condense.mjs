@@ -16,7 +16,7 @@
  *                   newest `<WS>/agent-walk/round-N/report.md` whose verdict is PASS, its sha that
  *                   report's `sha:` line — or, when the manifest already says `walk: agent-pass …`,
  *                   that line's date and sha (agent-walk's precondition table). --no-walk is the
- *                   `end=none|touched` sign-off at HEAD, with no walker.
+ *                   `walk=none` sign-off at HEAD, with no walker.
  * --signoff human   ship §At sign-off: `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"` (+ the
  *                   `🛑 PR HELD` line when --hold or the manifest's `hold:` is set), the §Plan cut,
  *                   the `git rm`. The manifest's PASS row is /builder:signoff's — pass it as --set;
@@ -129,10 +129,10 @@ function signoffAgent(f, a) {
   const prior = /^agent-pass\s+(\S+)\s+(\S+)/.exec(f.manifest.walk ?? '')
   let header, walk
   if (a['no-walk']) {
-    const end = parseTestPlan(f.manifest).levers.end
+    const walkLever = parseTestPlan(f.manifest).levers.walk
     const sha = prior?.[2] ?? shortHead(f.root)
     const date = prior?.[1] ?? today()
-    header = `> 🤖 AGENT SIGNED OFF — no walk (tests: end=${end}) — not human-tested · ${date} — ${sha}`
+    header = `> 🤖 AGENT SIGNED OFF — no walk (tests: walk=${walkLever}) — not human-tested · ${date} — ${sha}`
     walk = `agent-pass ${date} ${sha}`
   } else {
     const round = passingRound(ws, a.round)

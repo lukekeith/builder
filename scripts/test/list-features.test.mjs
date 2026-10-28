@@ -192,13 +192,13 @@ test('a feature with a go-ahead (or a tests: line written ahead) reports its tes
     f: 'state: audited\ntests: slice=own end=risk review=app walk=you',
     g: 'state: planned\ngo-ahead: x\nprofile: rush\ntests: slice=own end=everything review=end',
   })
-  assert.equal(rows.a.tests, 'own · touched · end')
-  assert.equal(rows.b.tests, 'own+app · everything · slice', 'neither line: the thorough mapping')
+  assert.equal(rows.a.tests, 'none · end')
+  assert.equal(rows.b.tests, 'full · slice', 'neither line: the thorough mapping')
   assert.equal(rows.c.tests, null)
-  assert.equal(rows.d.tests, 'own+app · everything · slice')
-  assert.equal(rows.e.tests, 'own+app · touched · end')
-  assert.equal(rows.f.tests, 'own · risk · app · you', 'written ahead by /builder:agent')
-  assert.equal(rows.g.tests, 'own · everything · end', 'tests: wins over profile:')
+  assert.equal(rows.d.tests, 'full · slice')
+  assert.equal(rows.e.tests, 'none · end')
+  assert.equal(rows.f.tests, 'risk · app · you', 'written ahead by /builder:agent')
+  assert.equal(rows.g.tests, 'full · end', 'tests: wins over profile:')
   assert.equal('profile' in rows.a, false)
 })
 
@@ -207,9 +207,9 @@ test('--status shows each feature\'s Tests, and a dash before a go-ahead', () =>
   const st = list(root, '--status')
   assert.equal(st.status, 0, st.stderr)
   assert.match(st.stdout, /\| Feature \| Tests \|/)
-  assert.match(st.stdout, /\| \*\*a\*\* \| own · touched · end \|/)
+  assert.match(st.stdout, /\| \*\*a\*\* \| none · end \|/)
   assert.match(st.stdout, /\| \*\*b\*\* \| — \|/)
-  assert.match(st.stdout, /\| \*\*c\*\* \| own\+app · touched · end \|/)
+  assert.match(st.stdout, /\| \*\*c\*\* \| none · end \|/)
 })
 
 test('a feature the fleet landed elsewhere says to merge its target, not its manifest step', () => {

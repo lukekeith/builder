@@ -87,12 +87,12 @@ test('condense --signoff agent: walk: agent-pass already set keeps ITS sha, not 
   assert.match(readText(join(r.folder, 'SPEC.md')), /SIGNED OFF 2026-10-22 — ddd4444 · agent walk round 1/)
 })
 
-test('condense --signoff agent --no-walk: end=none/touched — the no-walk header at HEAD', () => {
-  const r = built({ rounds: [], manifest: { tests: 'slice=own end=touched review=end' } })
+test('condense --signoff agent --no-walk: walk=none — the no-walk header at HEAD', () => {
+  const r = built({ rounds: [], manifest: { tests: 'walk=none review=end' } })
   const head = git(r.root, 'rev-parse', '--short', 'HEAD')
   const out = run('condense.mjs', [r.rel, '--signoff', 'agent', '--no-walk'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  assert.equal(readText(join(r.folder, 'SPEC.md')).split('\n')[1], `> 🤖 AGENT SIGNED OFF — no walk (tests: end=touched) — not human-tested · 2026-10-23 — ${head}`)
+  assert.equal(readText(join(r.folder, 'SPEC.md')).split('\n')[1], `> 🤖 AGENT SIGNED OFF — no walk (tests: walk=none) — not human-tested · 2026-10-23 — ${head}`)
   assert.match(readText(join(r.folder, 'MANIFEST.md')), new RegExp(`^walk: agent-pass 2026-10-23 ${head}$`, 'm'))
 })
 

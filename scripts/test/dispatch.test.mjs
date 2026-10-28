@@ -95,17 +95,16 @@ test('dispatch implementer: a build-time risk row naming the task rides into its
   assert.doesNotMatch(readText(join(WS(r), 'task-1-brief.md')), /F2 \| build-time risk/)
 })
 
-test('dispatch implementer: frozen contract, commit: manual and slice=none each change the prompt the way build says', () => {
+test('dispatch implementer: frozen contract, and commit: manual each change the prompt the way build says', () => {
   const r = leanRepo('note-tags')
   const mf = join(r.folder, 'MANIFEST.md')
-  writeFileSync(mf, readText(mf).replace('contract: none', 'contract: frozen 2026-10-23').replace('tests: slice=own', 'tests: slice=none'))
+  writeFileSync(mf, readText(mf).replace('contract: none', 'contract: frozen 2026-10-23'))
   const cfg = join(r.root, '.claude', 'builder.md')
   writeFileSync(cfg, readText(cfg).replace('commit: auto', 'commit: manual'))
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '3'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
   const p = readText(pathFrom(out.stdout))
   assert.match(p, /4\. 🔴 `git add` your work and STOP — stage it and propose the commit message in your report\. Do NOT run `git commit`:\n?\s*a commit in this app is the human's to approve\. Propose: `feat\(note-tags\): show tags and the tags command`\./)
-  assert.match(p, /tests: slice=none — write the tests your block names; run only the type-check; they run at the end\./)
   assert.match(readText(join(WS(r), 'task-3-brief.md')), /## §Contract — FROZEN 2026-10-23\n[\s\S]*the shape is fixed: a mismatch is reported, never worked around/)
 })
 
@@ -257,8 +256,10 @@ test('dispatch final-review: merge-base..HEAD package, the ledger\'s deferred an
   assert.match(out.stdout, /model: the most capable available/)
 })
 
-test('dispatch agent-walk: round N+1, end=risk scope, the driver verbatim, the report contract', () => {
+test('dispatch agent-walk: round N+1, walk=risk scope, the driver verbatim, the report contract', () => {
   const r = leanRepo('note-tags')
+  const mf = join(r.folder, 'MANIFEST.md')
+  writeFileSync(mf, readText(mf).replace('tests: slice=own end=risk review=end', 'tests: walk=risk review=end'))
   const ws = WS(r)
   mkdirSync(join(ws, 'agent-walk', 'round-1'), { recursive: true })
   writeFileSync(join(ws, 'agent-walk', 'round-1', 'report.md'), 'sha: abc\n')
@@ -270,6 +271,8 @@ test('dispatch agent-walk: round N+1, end=risk scope, the driver verbatim, the r
   assert.ok(p.includes(`Read in full: ${join(ws, 'walk.md')}`))
   assert.match(p, /the CLI itself — run `node src\/cli\.mjs …` with Bash against a scratch NOTES_FILE and read what it prints/)
   assert.match(p, /every `\[risk\]` item and every step of the `## Cross-app \(verify E2E\)` section/)
+  assert.match(p, /\(tests: walk=risk\)/)
+  assert.match(p, /Run no tests — no test suite, no build\./)
   assert.ok(p.includes(join(ws, 'agent-walk', 'round-2') + '/'))
   assert.match(p, /first line `sha: <HEAD at walk start>`/)
   assert.match(p, /`verdict: PASS` or `verdict: PROBLEMS \(<k>\)`/)
@@ -278,7 +281,7 @@ test('dispatch agent-walk: round N+1, end=risk scope, the driver verbatim, the r
   assert.match(out.stdout, /description: Agent walk round 2/)
 })
 
-test('dispatch agent-walk: round 3+ names systematic-debugging for what failed last round; no driver → UNVERIFIABLE rule; end=touched refused', () => {
+test('dispatch agent-walk: round 3+ names systematic-debugging for what failed last round; no driver → UNVERIFIABLE rule; walk=none refused', () => {
   const r = leanRepo('note-tags')
   const ws = WS(r)
   writeFileSync(join(r.root, '.claude', 'builder.md'), readText(join(r.root, '.claude', 'builder.md')).replace(/^  driver: .*\n/m, ''))
@@ -293,10 +296,10 @@ test('dispatch agent-walk: round 3+ names systematic-debugging for what failed l
   assert.doesNotMatch(p, /- 4 · notes · show/)
   assert.match(p, /there is no UI driver: exercise each item through its endpoints, the server log and the database, and mark any item that can only be checked by looking at the screen `UNVERIFIABLE`/)
   const mf = join(r.folder, 'MANIFEST.md')
-  writeFileSync(mf, readText(mf).replace('end=risk', 'end=touched'))
+  writeFileSync(mf, readText(mf).replace('tests: slice=own end=risk review=end', 'tests: walk=none review=end'))
   const out = run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root })
   assert.equal(out.status, 1)
-  assert.match(out.stderr, /no walker under end=touched/)
+  assert.match(out.stderr, /no walker under walk=none/)
 })
 
 test('dispatch: usage and unknown kinds', () => {

@@ -248,7 +248,7 @@ export const DRIVERS = {
  */
 export const MATRIX = [
   { config: 'builder', pipeline: 'builder', tests: null },
-  { config: 'builder-everything', pipeline: 'builder', tests: 'slice=own+app end=everything review=slice' },
+  { config: 'builder-everything', pipeline: 'builder', tests: 'walk=full review=slice' },
   { config: 'superpowers', pipeline: 'superpowers', tests: null },
   { config: 'gsd', pipeline: 'gsd', tests: null },
   { config: 'baseline', pipeline: 'baseline', tests: null },
