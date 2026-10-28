@@ -99,8 +99,8 @@ ledger file, not only in todos.**
 
 Use the least powerful model that can handle each role.
 
-- **Mechanical implementation** (1–2 files, the block carries the complete code): the cheapest tier —
-  it is transcription plus testing.
+- **Mechanical implementation** (1–2 files, the block pins the signatures, the values and the tests, and
+  leaves no algorithm open): the cheapest tier — the body is determined by what the block pins.
 - **Integration and judgment** (multi-file coordination, a permission path, state plus its mutations):
   a standard model.
 - **Architecture and design, and the final whole-branch review:** the most capable available.

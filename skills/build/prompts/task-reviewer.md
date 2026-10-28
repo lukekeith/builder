@@ -31,9 +31,9 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     when the code is otherwise clean. Judge the diff against this, not against
     the implementer's description of it.
 
-    The plan gives signatures, Interfaces and tests, not bodies. Judge the
-    diff against the task's Interfaces and tests, not against a body the plan
-    no longer carries.
+    Where the plan gives a signature rather than a body, judge the body
+    against the task's Interfaces and tests, in addition to the frozen
+    contract above.
 
     ## What the implementer claims they built
 
