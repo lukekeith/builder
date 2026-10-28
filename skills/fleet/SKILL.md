@@ -20,7 +20,9 @@ is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the verifier's **merge
 queue** lands it on the branch checked out here — the whole suite on the feature merged onto it, then
 a fast-forward to exactly that tested merge commit (`merge(<feature>): agent-verified, not
-human-tested`) — and the fleet removes its worktree and `builder/` branch. **Migrations
+human-tested`). That merge-tier run is requested, held, when the walk starts and runs beside it; one
+that goes red at landing (the target moved after verify read it green) parks the feature naming the
+failing tests, and the fleet retries it. Then the fleet removes its worktree and `builder/` branch. **Migrations
 that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge
 into the branch checked out here the fleet runs the config's §Walk readiness `apply:` then
 `regenerate:` in this checkout when `apply_mode: agent` and every new migration is additive; under
@@ -54,8 +56,12 @@ The merge tier merges the target in itself; a conflict goes to an agent in the f
 and a target that moved during the run is tested again. When a merge into the worktree brings new
 commits, `agent_walk.sync` runs in the worktree — the install and the test-DB migration a merged-in
 package or migration needs (without it, a walk env once failed on a package the merge had just added).
-**Builds run in parallel safely**: tests run in the verifier, each in its own database cloned from a
-template (`verify.db`), never in a build lane. `parallel: 3` is the default.
+**Builds run in parallel safely when each worktree has its own test database.** The verifier runs the
+suites, each run in its own database cloned from a template (`verify.db`) — but an implementer still
+runs its own task's tests in its worktree, and a fix round re-runs them, so database-backed tests
+there need `agent_walk.worktree_env` (`TEST_DATABASE_URL=…_{feature}`, say), which reaches every run
+and `setup` in a worktree with `{feature}` filled in. With it, `parallel: 3` (the default); without
+it, use `parallel: 1`.
 
 **A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
 entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree
@@ -90,7 +96,7 @@ REFERENCE §Before a picker), **Land on?**
 once for the run, the *Walk it yourself before it lands?* follow-up. Write and commit `tests:` and
 `target:`; the target becomes the run's `--into`. A spec already carrying `tests:` — or an old
 `profile:` line, which `profile.mjs` maps — isn't asked again. These choices set how much the agents
-test and when they review, so they are asked even though the run is unattended.
+walk and when they review, so they are asked even though the run is unattended.
 
 Then, above the question, **one line per spec** — REFERENCE §The review at this point: what changes
 for users, in plain words from its SPEC §Idea, and its test plan:

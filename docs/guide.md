@@ -232,9 +232,11 @@ stops it after, and never restarts it mid-walk. `copy` brings along untracked fi
 certs) a fresh worktree wouldn't have, `setup` runs once per new worktree, and `env` reaches the walk
 lane — its headless `claude` runs and the `reset`/`start`/`smoke`/`stop` hooks — with `{feature}`
 filled in so each worktree's walk env can have its own port and database. Build-lane runs and `setup`
-never see `env`, so parallel builds stay off the walk env. **`worktree_env`** reaches every run and
-`setup` in a worktree with `{feature}` filled in — a `TEST_DATABASE_URL` per worktree is what makes
-`parallel: 3` safe when the test suites would otherwise share one database.
+never see `env`, so parallel builds stay off the walk env. The verifier runs the
+suites, each run in its own database cloned from a template — but an implementer still runs its own
+task's tests in its worktree, and a fix round re-runs them. **`worktree_env`** reaches every run and
+`setup` in a worktree with `{feature}` filled in — a `TEST_DATABASE_URL=…_{feature}` per worktree is
+what makes `parallel` above 1 safe for those database-backed tests; without it, use `parallel: 1`.
 
 Every worktree is merged up to the branch the fleet runs from before each build run and before its
 walk env starts, so features integrate as they land rather than all at ship; `sync` (an install plus
