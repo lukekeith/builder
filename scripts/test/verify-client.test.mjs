@@ -87,3 +87,26 @@ test('cancel never overwrites a finished request and cancels a queued one at onc
   assert.equal(ledger.getRequest(q.id).state, 'cancelled')
   assert.equal(ledger.getRequest(q.id).verdict.status, 'cancelled')
 })
+
+test('wait rejects a --max that is not a positive number', () => {
+  const { wt } = repo()
+  assert.equal(cli(wt, 'wait', 'whatever', '--max', 'abc').status, 2)
+  assert.equal(cli(wt, 'wait', 'whatever', '--max', '0').status, 2)
+})
+
+test('wait on a cancelled request with no verdict starts the service, which answers it (exit 6)', () => {
+  const { root, wt } = repo()
+  const ledger = openLedger(root)
+  const q = ledger.newRequest({ worktree: wt, branch: 'c', sha: 'x', tier: 'commit', target: 'main' })
+  ledger.saveRequest({ ...q, state: 'cancelled' })
+  const w = cli(wt, 'wait', q.id, '--max', '20')
+  assert.equal(w.status, 6, w.stdout + w.stderr)
+})
+
+test('cancel on a finished request reports its real state', () => {
+  const { root, wt } = repo()
+  const ledger = openLedger(root)
+  const d = ledger.newRequest({ worktree: wt, branch: 'd', sha: 'x', tier: 'commit', target: 'main' })
+  ledger.saveRequest({ ...d, state: 'done', verdict: { status: 'green' } })
+  assert.match(cli(wt, 'cancel', d.id).stdout, /already done \(green\)/)
+})
