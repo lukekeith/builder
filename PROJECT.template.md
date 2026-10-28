@@ -20,7 +20,7 @@ base_branch: main
 #                         # per-phase — one writer per phase (6+ tasks split), each holding a small slice of the code: lower peak context on big plans
 # agent_types: general-purpose   # what build's implementers and reviewers run as; default builder's lean agents (no MCP, no skills list).
 #                                # `implementer=<agent>, reviewer=<agent>` names your own .claude/agents/* — e.g. an implementer that needs an MCP server
-# build_profile_default: standard   # the test plan the go-ahead recommends: rush (least testing) · standard · thorough (most)
+# build_profile_default: standard   # the test plan the go-ahead recommends: rush (no agent walk) · standard · thorough (an agent walks all of it)
 
 # ─── apps ──────────────────────────────────────────────────────────────────
 # The deployable/buildable units of this repo. A single-app repo lists ONE.
@@ -73,13 +73,13 @@ agent_walk:
   driver: <how the agent drives the UI — e.g. "the Playwright MCP tools (mcp__playwright__*)">
   claude_args: --permission-mode bypassPermissions   # headless runs can't ask; this lets them act in their worktree
   # worktrees: ../myrepo.fleet     # default: a sibling of the repo named <repo>.fleet
-  # parallel: 3                    # build-lane concurrency; use 1 if the tests share one database
+  # parallel: 3                    # build-lane concurrency — tests run in the verifier, each in its own database, so builds never share one
   # keep_logs: 30                  # days a merged feature's run logs stay under .builder/fleet/logs/_archive/; 0 keeps them forever
   # auto_unpark: 2                 # times one fleet run unparks a feature on its own and has an agent dig into the park record; a human-step park always waits for you; 0 turns it off
   # batch: 8                      # with start set: how many features one walk takes at once — one walk branch, one env, one walker by screen; 1 walks them one at a time
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
-  # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — give each worktree its own TEST database and `parallel` builds stop colliding
-  # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in; a failure parks the feature and is retried on the next fleet run
+  # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — isolates the build lanes' own tool runs (dev servers, codegen) per worktree; the verifier isolates tests itself (`verify.db`)
+  # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in — for the build lanes' own tools (the verifier prepares test databases itself); a failure parks the feature and is retried on the next fleet run
   # sync: npm ci && npm run db:migrate:test   # runs in a worktree right after the fleet merges the target in WITH new commits — the install and test-DB migration a merged-in package or migration needs; a failure parks the feature
   # env: PORT=4001 DATABASE_URL="postgres://localhost/myrepo_{feature}"   # KEY=VALUE pairs (quotes allowed), {feature} filled in; the walk lane only — its claude -p runs and reset/start/smoke/stop — never build-lane runs or setup, and never CLAUDE_PROJECT_DIR
   # reset, start, smoke and stop run with env. Give the walk env ports and a database of its own that
@@ -92,84 +92,31 @@ agent_walk:
   # smoke: curl -sf localhost:4001/health   # polled every 2s for up to 5min; start with no smoke just waits 10s and proceeds
   # stop: <command>                # stop what the walk env needs stopped after each walk — never a service your own dev env shares
 
-# ─── flaky gates (optional) ────────────────────────────────────────────────
-# A test that fails under the whole suite and passes alone. When a gate fails and
-# its output matches `match` (a regex), scripts/gate.mjs re-runs `rerun` once —
-# the narrow command that proves the file alone — or the same gate when there is
-# no `rerun`, and passes the gate on a green re-run. Omit the block if none.
-# flaky:
-#   - match: intake\.test\.ts
-#     rerun: node --test apps/server/test/intake.test.ts
+# ─── verify (the verifier: tests beside the build, everything on the merged result) ───
+verify:
+  workers: 2
+  # setup: npm ci                       # runs in each test checkout when its lockfiles change
+  # db: { kind: postgres, url: "postgres://localhost/myrepo", env: [TEST_DATABASE_URL], inputs: "prisma/**", prepare: "npm run db:migrate:test", max: 4 }
+  suites:
+    unit: { runner: vitest, files: "src/**/*.test.ts" }     # per-test results → selected per commit, whole at merge
+  checks:
+    typecheck: { run: "npx tsc --noEmit", tiers: [commit, phase, merge] }
+    # lint: { run: "npx eslint . -f unix", compare: lines }  # fails only on a finding the target doesn't print
 ---
 
 # <Your Project> — builder config
 
 One paragraph: what this repo is, and how its units relate.
 
-## Quality gates
+## Verification
 
-The literal commands, per app, run by `scripts/gate.mjs` — never pasted by an
-agent. **The fast set runs at every phase close** — a phase touches ONE app, so
-its gates are one block below. **The deep set is only what the fast sets do NOT
-cover** (an e2e suite, a whole-repo check): every in-scope app's fast set runs
-beside it in `/builder:verify`, so a fast command repeated here runs twice.
-
-The runner quotes a set whose inputs (the app's path, shared code, the commands)
-are byte-identical to its last green run, so a gate is not re-run for an app
-nothing has touched. Markers go at the end of a line's comment:
-
-- `@known-red` — red for inherited debt on the base branch; run and reported,
-  never counted against a feature. Say what makes it red.
-- `@delta` — the command prints a number (a type-error count, say) that must not
-  exceed the base branch's, measured by `gate.mjs --baseline` (the fleet does
-  this at start). No count is typed into this file to go stale.
-- `@scoped <glob>` — run only the tests in `<glob>` this branch can reach: what
-  it changed, code reading a schema field it changed, and everything that
-  imports or loads either (`scripts/impact.mjs`). Put `{tests}` where the file
-  list goes; a line without it runs whole when the branch reaches its glob at
-  all, and is skipped when it doesn't. A change the graph can't see past (a
-  file beside the tests nothing loads, a runner config, a lockfile) runs the
-  whole suite. An e2e suite that takes minutes should always be scoped.
-- `@typecheck` — the line type-checks the app. It is the floor the test plan
-  keeps when nothing else runs: `gate.mjs <app> --typecheck` runs only these
-  lines, and an app with none marked leaves it to each task's own type-check.
-  Combines with the others (`… @delta @typecheck`).
-- `@walk` — the line needs the running app (an e2e suite against a URL). Under
-  the fleet it runs in verify against the walk env, with `agent_walk.env`, and
-  the build lane skips it; every untagged line runs with the test env, never
-  the walk env's database. Outside the fleet it changes nothing. Under the
-  fleet an e2e-looking line (playwright, cypress, `e2e`…) without `@walk` is
-  not run at all — it would hit your dev stack — and is reported unverified.
-- `@local` — an e2e line that starts its own stack and is safe to run as
-  written under the fleet (no `@walk` needed).
-- `@parallel` — the line shares no database, port or output folder with the
-  others: it starts with every other `@parallel` line in the run instead of
-  waiting its turn, so a run takes its slowest line, not the sum. Leave it off
-  any two suites that share a test database.
-
-A line that passed is remembered with the commit it passed at. A later run
-quotes it — evidence, not a re-run — when nothing changed since is its input,
-or, for a `@scoped` line, when the import graph says no change since reaches
-its tests. `--force` and `--whole` never quote.
-
-🔴 **Never put a wrapper in the deep set that re-runs the fast sets** — a
-`gate:all` that re-runs the typecheck, the unit suites and the e2e suite again
-multiplies the slowest step of every feature. List the checks only the deep set
-makes, one per line, each `@scoped` to what it proves.
-
-### <app> — fast
-
-```
-<command>          # what it proves
-<command> 2>&1 | grep -c "error TS"   # type errors, must not grow @delta
-```
-
-### Deep set (verify only)
-
-```
-npx playwright test {tests}   # the UI suite, the tests this branch reaches @scoped e2e/**/*.spec.ts @walk
-<command>          # what it proves, and why the fast sets don't @scoped <the paths it covers>
-```
+Tests are run by the verifier (`scripts/verify/`), from the `verify:` block above — never by an
+agent pasting commands. It runs each commit's affected tests in the background as the build goes,
+waits only at phase boundaries, and runs every suite and check on the feature merged onto the
+target before it lands. A test that fails on the target too is known debt and never blocks a
+feature; one that fails then passes on the same commit goes on the flake list automatically.
+Write here, in prose, anything a suite needs that the block can't say (a service to start, a
+fixture to seed).
 
 ## Walk readiness
 
@@ -198,7 +145,7 @@ Write each bullet as ONE long line — it survives the paste whole that way. Kee
 it to what an implementer who has never seen this repo would get wrong.
 
 - **Your task touches ONE app.** Its `App:` line says which. Do not edit another app "while you are in there".
-- **Run the tests for the code you change and the type-check, not the app's whole suite** — the phase close runs the gate block once, on the committed tree. Run every command in the foreground. **Never kill a process you did not start in this task, and never `pkill`/`killall` by pattern**: other worktrees share this machine and their suites look like yours; wrap a command that may hang in `timeout`.
+- **Run the tests for the code you change and the type-check, not the app's whole suite** — the verifier runs the rest on every commit, in the background. Run every command in the foreground. **Never kill a process you did not start in this task, and never `pkill`/`killall` by pattern**: other worktrees share this machine and their suites look like yours; wrap a command that may hang in `timeout`.
 - <one line per binding rule: layering, validation, auth, styling, test policy…>
 - Commits: **exactly one commit for this task** — code and tests together — `<type>(<TICKET>): <subject>`. If review sends you back, each fix round is its own commit. **Never `git commit --amend`.**
 - Never create a branch, a worktree or a ticket. Never open a PR.

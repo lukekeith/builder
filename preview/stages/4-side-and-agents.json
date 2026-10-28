@@ -20,7 +20,7 @@
         },
         {
           "role": "claude",
-          "text": "Read the repo. Here's what it already told me:\n\n- **project** `acme-certs` (root package.json) · **base** `main` (origin/HEAD) · **registry** `docs/features` (template default — no feature folder yet)\n- **apps** from `pnpm-workspace.yaml`: `api` (apps/api — Fastify + Prisma), `web` (apps/web — React + Vite), `mobile` (apps/mobile — React Native, `released_artifact: true`: it ships through the stores)\n- **fast gates** from each package.json: `pnpm -F api test` · `pnpm -F api typecheck` · `pnpm -F web test` · `pnpm -F web lint`\n- **walk readiness** from Prisma: `pnpm -F api prisma migrate status` / `deploy` / `generate`; dev start `pnpm dev`\n- **ticket keys** like `ACME-207` in branch names and commit subjects → Jira\n- no design resolver → prototype mode stays off\n\nOne thing to know before the agent questions: with agent mode on, **\"go\" at a build hands the feature to agents** — they build it, an agent tries it in the running app, and it is merged into `main` on this machine marked *not human-tested*. Nothing is pushed and no PR is opened. To test a feature yourself, pick **In this session** on its hand-off.\n\nA few things only you can answer. Two in plain words:\n\n1. **Known-red gates** — do any of the four gates above fail on `main` today?\n2. **Flaky tests** — any test file that fails in the whole suite but passes alone?\n\nThe rest in the picker, my recommendation first on each.",
+          "text": "Read the repo. Here's what it already told me:\n\n- **project** `acme-certs` (root package.json) · **base** `main` (origin/HEAD) · **registry** `docs/features` (template default — no feature folder yet)\n- **apps** from `pnpm-workspace.yaml`: `api` (apps/api — Fastify + Prisma), `web` (apps/web — React + Vite), `mobile` (apps/mobile — React Native, `released_artifact: true`: it ships through the stores)\n- **test suites and checks** from each package.json: vitest suites for `api` and `web`, checks `pnpm -F api typecheck` and `pnpm -F web lint` — written as the `verify:` block\n- **walk readiness** from Prisma: `pnpm -F api prisma migrate status` / `deploy` / `generate`; dev start `pnpm dev`\n- **ticket keys** like `ACME-207` in branch names and commit subjects → Jira\n- no design resolver → prototype mode stays off\n\nOne thing to know before the agent questions: with agent mode on, **\"go\" at a build hands the feature to agents** — they build it, an agent tries it in the running app, and it is merged into `main` on this machine marked *not human-tested*. Nothing is pushed and no PR is opened. To test a feature yourself, pick **In this session** on its hand-off.\n\nA few things only you can answer. One in plain words:\n\n1. **Which suites need a database, ports, a simulator or the running dev env?** Known failures and flaky tests I won't ask about — the verifier learns both.\n\nThe rest in the picker, my recommendation first on each.",
           "inferred": true
         },
         {
@@ -117,17 +117,17 @@
         },
         {
           "role": "note",
-          "text": "Asked in one message: the two free-text questions in chat, the choices as AskUserQuestion (the tool takes up to four per call)."
+          "text": "Asked in one message: the free-text question in chat, the choices as AskUserQuestion (the tool takes up to four per call)."
         },
         {
           "role": "user",
-          "text": "None red, no flaky ones. Roles yes, mobile manual, ask, Playwright MCP, Jira."
+          "text": "Only api's suite needs a database. Roles yes, mobile manual, ask, Playwright MCP, Jira."
         }
       ],
       "stamp": {
-        "hash": "95f95c594b63",
-        "version": "5.3.0",
-        "date": "2026-10-27"
+        "hash": "353beda9506a",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
