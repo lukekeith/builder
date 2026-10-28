@@ -1,7 +1,7 @@
 // scripts/test/verify-serve.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, utimesSync, statSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, utimesSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -330,4 +330,28 @@ test('a request on the target itself (branch === target, no --since) selects wha
   const v = l.getRequest(r.id).verdict
   assert.equal(v.status, 'green', JSON.stringify(v))
   assert.equal(v.selection.u.files, 1, JSON.stringify(v.selection))
+})
+
+test('a service whose lock was taken over stops: running requests go back to queued, the new owner\'s pid stays', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const slow = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'sleep 30' }] }
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const other = spawn('sleep', ['30'])
+  try {
+    const done = serve(root, opts({ idleMs: 60000, verify: slow }))
+    for (let i = 0; i < 100 && l.getRequest(r.id).state !== 'running'; i++) await new Promise((x) => setTimeout(x, 50))
+    assert.equal(l.getRequest(r.id).state, 'running')
+    const p = join(root, '.builder', 'verify', 'serve.pid')
+    writeFileSync(p, String(other.pid))
+    const t0 = Date.now()
+    assert.equal(await done, 'superseded')
+    assert.ok(Date.now() - t0 < 10000)
+    const after = l.getRequest(r.id)
+    assert.equal(after.state, 'queued')
+    assert.equal(after.verdict, undefined)
+    assert.equal(readFileSync(p, 'utf8'), String(other.pid))
+  } finally {
+    other.kill()
+  }
 })

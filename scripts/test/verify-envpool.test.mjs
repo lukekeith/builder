@@ -138,3 +138,14 @@ test('a psql failure never puts the connection password in its message', async (
     process.env.PATH = path
   }
 })
+
+test('psql missing from PATH says verify.db needs it', async () => {
+  const { psql } = await import('../verify/envpool.mjs')
+  const saved = process.env.PATH
+  process.env.PATH = '/nonexistent-dir'
+  try {
+    assert.throws(() => psql('postgres://localhost/x', 'select 1'), /^Error: verify\.db needs the psql command on PATH$/)
+  } finally {
+    process.env.PATH = saved
+  }
+})
