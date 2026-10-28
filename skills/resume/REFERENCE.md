@@ -952,7 +952,7 @@ database and no `psql`.
 | Tier | Requested by | What runs | Who waits |
 |---|---|---|---|
 | **commit** | build, after each task's commit — `verify.mjs request <worktree> HEAD --tier commit` | the checks marked `commit`, and the tests the commits since the branch's last green can reach | nobody; read with `verify.mjs verdict <branch>` before each dispatch |
-| **phase** | build, at each phase close — `--tier phase`, then `verify.mjs wait <id>` | the tests the branch can reach, reusing what already passed at this commit, and the `phase` checks | the build — its one wait |
+| **phase** | build, at each phase close — `--tier phase`, then `verify.mjs wait <id>` | the tests the branch can reach, reusing what already passed at this commit or at an earlier one of the range that nothing since reaches, and the `phase` checks | the build — its one wait |
 | **merge** | the fleet when the walk starts (held), or verify — `--tier merge` | every suite whole and every check, on the target merged with the branch | landing; the walk runs beside it |
 
 **A verdict** names its sha and request, and lists **regressions** (fails here, passes on the
