@@ -638,7 +638,6 @@ test('landedRow reads the whole archive and returns the last row for a feature',
 import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts, destructiveMigration, forwardHalf } from '../fleet-core.mjs'
 
 const BODY = [
-  '## Quality gates', '', '```', 'x: y', '```', '',
   '## Walk readiness', '', '```',
   'migrations: packages/db/prisma/migrations',
   'status:     npx prisma migrate status   # against the DEV db',

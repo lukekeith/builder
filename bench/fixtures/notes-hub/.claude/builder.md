@@ -22,6 +22,14 @@ agent_walk:
   start: npm start --prefix apps/server
   smoke: curl -sf localhost:$PORT/health
   stop: lsof -ti tcp:$PORT -sTCP:LISTEN | xargs kill 2>/dev/null; exit 0
+verify:
+  workers: 2
+  suites:
+    server: { runner: node-test, app: server, cwd: apps/server, files: "test/*.test.mjs" }
+    cli: { runner: node-test, app: cli, cwd: apps/cli, files: "test/*.test.mjs" }
+  checks:
+    server-parses: { run: "npm run check --prefix apps/server", tiers: [commit, phase, merge] }
+    cli-parses: { run: "npm run check --prefix apps/cli", tiers: [commit, phase, merge] }
 ---
 
 # notes-hub — builder config
@@ -31,29 +39,11 @@ Two apps in one repo, Node's own modules only. `server` (`apps/server`) is a sma
 command line over a local JSON file; anything it learns to do against the server it does through
 that contract, so it is the consumer. `test-support/` holds the one helper both suites share.
 
-## Quality gates
+## Verification
 
 Both suites are slow on purpose: every test file waits `SLOW_TESTS_MS` (default 4000 ms) before it
-runs, and the files run one at a time — about 16 s per app. Run single test files while you work.
-
-### server — fast
-
-```
-npm run check --prefix apps/server   # every source file parses @typecheck
-npm test --prefix apps/server        # the API's own tests, every route end to end
-```
-
-### cli — fast
-
-```
-npm run check --prefix apps/cli      # every source file parses @typecheck
-npm test --prefix apps/cli           # the CLI's own tests, every command end to end
-```
-
-### Deep set (verify only)
-
-```
-```
+runs, and the files run one at a time — about 16 s per app. The verifier runs both suites and the
+two parse checks from the `verify:` block above; run single test files while you work.
 
 ## Walk readiness
 

@@ -14,6 +14,10 @@ agent_walk:
   parallel: 1
   keep_logs: 0
   auto_unpark: 0
+verify:
+  workers: 2
+  suites:
+    notes: { runner: node-test, files: "test/*.test.mjs" }
 ---
 
 # notes — builder config
@@ -21,18 +25,9 @@ agent_walk:
 A single-app repo: one Node CLI (`src/cli.mjs`) over one JSON store (`src/store.mjs`), tested with
 Node's own test runner. There is no server and no UI; a feature is walked by running the CLI.
 
-## Quality gates
+## Verification
 
-### notes — fast
-
-```
-npm test          # the CLI's own tests, every command end to end
-```
-
-### Deep set (verify only)
-
-```
-```
+The verifier runs the CLI's own tests (`npm test`, every command end to end) from the `verify:` block above.
 
 ## Walk readiness
 

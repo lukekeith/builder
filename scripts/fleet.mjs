@@ -159,7 +159,7 @@ const WORKTREES = AW.worktrees ? resolve(ROOT, AW.worktrees) : join(dirname(ROOT
 const BATCH = Number(process.env.FLEET_WALK_BATCH) || AW.batch
 const BATCHED = Boolean(AW.start) && BATCH > 1
 // With a walk env of the fleet's own (agent_walk.start), the walk lane holds only what needs it —
-// readiness, the walk, the @walk gates. Verify and a walk's fixes run in the parallel pool, away
+// readiness and the walk. Verify and a walk's fixes run in the parallel pool, away
 // from the folder the env serves from, whatever the batch size: a build there rewrote a running
 // dev server's output. Without `start` the env is the human's own checkout, and nothing moves.
 const SPLIT = Boolean(AW.start)
