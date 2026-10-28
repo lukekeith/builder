@@ -124,8 +124,8 @@ against the code for that one contract and nothing else.
   <folder>/PLAN.md] --commit "docs({key}): {feature} — revised: <the change>"`; a docs-only edit
   with no manifest change is the same call without `--set`. After a crash, re-run the same command —
   it finishes what's missing or says `already applied` (REFERENCE §The scripts).
-- **Gate the revision at its own size, not the feature's.** A moved button takes that app's fast
-  gates — and a look at the running app if it's visual. It does **not** re-run the cross-app walk, and
+- **Gate the revision at its own size, not the feature's.** A moved button needs the phase tier on
+  HEAD — and a look at the running app if it's visual. It does **not** re-run the cross-app walk, and
   it does not re-run `/builder:verify` wholesale: the feature was already verified, and a tweak that
   cannot change what a consumer does has nothing new to prove. The walk comes back only when the diff
   touches a §Contract row, an auth path, a load/save/delete path, a notification payload or a routing

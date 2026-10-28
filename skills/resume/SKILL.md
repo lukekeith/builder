@@ -50,12 +50,11 @@ design → (align) → audit → [decisions] → plan → [go-ahead] → build �
               ↑ prototype mode only     one app per phase, the producer before its consumers ↑
 ```
 
-**Why the walk precedes verify:** the deep pass needs every in-scope app up at once — the most
-expensive thing the pipeline runs — and a human spots in seconds what it takes the deep pass twenty
-minutes to discover. So the expensive pass runs once, on a build they have already accepted.
+**Why the walk precedes the verdict:** a human spots in seconds what a suite takes minutes to
+discover; the merge tier runs beside the walk, and verify reads both.
 
-**Why one app per phase:** each app's gates are different commands, so a two-app phase cannot be
-gated; and consumers built against an unverified contract are how one of them ships broken
+**Why one app per phase:** the phase tier waits on one app, so a two-app phase's wait covers
+neither cleanly; and consumers built against an unverified contract are how one of them ships broken
 (REFERENCE §Contract and the contract freeze).
 
 ## Step 1 — Detect state
@@ -101,7 +100,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | The manifest says | Next |
 |---|---|
 | SPEC header `✅ SHIPPED`, or a README header opening `SHIPPED` | ⛔ **DONE — run no step.** Print the header line; follow-on work is a new feature: `/builder:brainstorm <the new thing>` |
-| `blocked:` reads `waiting for your walk …` (test plan `walk=you`: the agent walk passed) | your walk, in the fleet's worktree `<wt>` — the row's `worktree` in `.builder/fleet/fleet.json`, kept for you when the fleet ends (gone → `git worktree add <wt> <the row's branch>` first): 1. start `<wt>`'s walk env — `agent_walk.start` run in `<wt>` with `agent_walk.env` ({feature} filled in), as the walk lane does; 2. print `<wt>`'s `walk.md` (`cd <wt> && <builder>/scripts/workspace <feature>`); 3. 🔒 stop, giving the exact command to type: `/builder:signoff --path <wt>/<registry>/<feature>` (the absolute path) — it reads, writes and commits in `<wt>`, and its migration-status check runs with that same `agent_walk.env`; 4. whatever its verdict, `/builder:signoff` hands it back with `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) — run it yourself when it didn't — on PASS the fleet verifies and lands it; on PROBLEMS the agents work the `## Fixes`, re-walk, and park again for your walk. Never unpark it any other way — `/builder:agent` doesn't either. Under `--agent-walk`, end the run |
+| `blocked:` reads `waiting for your walk …` (test plan `human=yes`: the agent walk passed) | your walk, in the fleet's worktree `<wt>` — the row's `worktree` in `.builder/fleet/fleet.json`, kept for you when the fleet ends (gone → `git worktree add <wt> <the row's branch>` first): 1. start `<wt>`'s walk env — `agent_walk.start` run in `<wt>` with `agent_walk.env` ({feature} filled in), as the walk lane does; 2. print `<wt>`'s `walk.md` (`cd <wt> && <builder>/scripts/workspace <feature>`); 3. 🔒 stop, giving the exact command to type: `/builder:signoff --path <wt>/<registry>/<feature>` (the absolute path) — it reads, writes and commits in `<wt>`, and its migration-status check runs with that same `agent_walk.env`; 4. whatever its verdict, `/builder:signoff` hands it back with `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) — run it yourself when it didn't — on PASS the fleet verifies and lands it; on PROBLEMS the agents work the `## Fixes`, re-walk, and park again for your walk. Never unpark it any other way — `/builder:agent` doesn't either. Under `--agent-walk`, end the run |
 | `blocked:` set (anything but `none`) | ⛔ **parked.** Show why and the recommended next step — from `<folder>/PARKED.md` when there is one (*What is stuck*, *Recommended next step*, and the last *History* line), else the line split per REFERENCE §How a park reads. Then **offer to unpark**, one AskUserQuestion: **Unpark and dig in (Recommended)** — set `blocked: none`, append `unparked by <you> YYYY-MM-DD` to the record's History, commit `chore(<feature>): unparked — was: <the line>` (`advance.mjs <folder> --set blocked=none --add <folder>/PARKED.md --commit "chore({feature}): unparked — was: <the line>"`), then start from *Where to dig* with [`systematic-debugging`](../systematic-debugging/SKILL.md) before anything else, and carry on to the manifest's step; or **Leave it parked**. A `kind: human-step` park recommends its human step instead. Under `--agent-walk`, end the run: the fleet reads the line, and retries it itself |
 | **no manifest, and build state on disk** (phase docs, a `STATUS.md`) | §Converting a folder from an earlier pipeline — the one action offered |
 | **no manifest, no build state** | not a feature yet — analysis that feeds a design conversation. Hand to `/builder:brainstorm --path <folder> <what you want built>` |
@@ -117,7 +116,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: planned` **and** `go-ahead: none` **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | `/builder:plan --path <folder>` — its go-ahead picks the test plan and launches the fleet (plan §The go-ahead); never a hand build |
 | `state: planned` **and** `go-ahead: none` | §The go-ahead |
 | `state: planned` with a go-ahead, or `state: building`, **and** the manifest carries `target:` or an old `profile:` (an agent go-ahead writes `target:`; `tests:` alone is an in-chat go-ahead, built by the rows below) **and** the config has an `agent_walk:` block, **not** under `--agent-walk` | agents build it: `/builder:agent --path <folder>` — it relaunches the fleet on the manifest's `target:`, or says it is already running. A fleet row parked `waiting for your walk …` is the walk row above, never this one. Neither key (a 4.8 go-ahead) → the hand-build rows below, as before |
-| `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — the walk lane. **First `node <builder>/scripts/handoff.mjs read <folder>`**: `trust: ok` → it prints the build lane's hand-off (state, sha, gates, open items, this config's readiness facts, the route with its exact `advance.mjs` call) and the walk-lane docs (REFERENCE §Walk readiness, build §When the last phase signs) — follow its route. **`stale: …` (exit 3)** — no hand-off, or the code or the manifest moved since — → derive it as before: `node <builder>/scripts/docs.mjs walk-lane`, run REFERENCE §Walk readiness, then the build's walk script (`walk-script.mjs`, when `walk.md` is missing) and `state: built`. The manifest always wins over the hand-off. Don't re-run the final review |
+| `state: building` **and** `ready: pending` | every phase is closed and only §Walk readiness is left — the walk lane. **First `node <builder>/scripts/handoff.mjs read <folder>`**: `trust: ok` → it prints the build lane's hand-off (state, sha, verdicts, open items, this config's readiness facts, the route with its exact `advance.mjs` call) and the walk-lane docs (REFERENCE §Walk readiness, build §When the last phase signs) — follow its route. **`stale: …` (exit 3)** — no hand-off, or the code or the manifest moved since — → derive it as before: `node <builder>/scripts/docs.mjs walk-lane`, run REFERENCE §Walk readiness, then the build's walk script (`walk-script.mjs`, when `walk.md` is missing) and `state: built`. The manifest always wins over the hand-off. Don't re-run the final review |
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
 | `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk. **Under `--agent-walk`:** `/builder:agent-walk --path <folder>` instead |
@@ -127,7 +126,7 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `verify: READY` **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
 | `verify: READY`, `hold: none`, `pr: none` | §Ship — under `--agent-walk`, §Ship in agent mode |
 | `verify: READY` **and** `walk: agent-pass …` **under `--agent-walk`**, whatever `pr:` says | §Ship in agent mode |
-| `hold:` set | 🛑 **parked** — local gates only. Nothing pushes; the hold is the human's to lift |
+| `hold:` set | 🛑 **parked** — the verifier still runs; nothing lands. Nothing pushes; the hold is the human's to lift |
 | `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name **and** the manifest has an `agent-walk:` line (`on` or `off` — it was agent-walked) | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. **Not yet** → fall through to the next row that fits. Never under `--agent-walk` |
 | `walk: agent-pass …`, not under `--agent-walk` | agent-signed-off, not human-tested. Say so, and offer the two ways on: the fleet finishes it (`/builder:fleet <feature>` — ship, and the merge into its target branch), or the human tests it and types `/builder:signoff --path <folder> <their words>`, which hands it back to them |
 | `pr: #N` open, `walk:` carries a human name, SPEC header not yet `SHIPPED` | `/builder:ship --path <folder>` **on the open PR**, then watch CI. Merging is the user's call |
@@ -149,8 +148,9 @@ A legacy folder whose status is SHIPPED is not converted: `git mv` it into `<reg
 
 🔴 **Two things that recipe insists on, because getting them wrong is expensive:** do not rewrite or
 delete the existing docs, and **do not translate a prior pipeline's "verified" into a sign-off**.
-The walk here comes *before* the deep pass, so a pre-walk verdict is not one of ours — write
-`walk: none`, say plainly in the SPEC that nobody has exercised it, and let the human spend the gate.
+The walk here comes *before* the merge tier's verdict is read, so a pre-walk verdict is not one of
+ours — write `walk: none`, say plainly in the SPEC that nobody has exercised it, and let the human
+spend the gate.
 
 Present the conversion, take one explicit approval — it changes how the folder is driven from now on
 — then re-enter Step 1 on the converted folder in the same turn.
@@ -193,10 +193,8 @@ touches neither the SPEC header nor the PR lock.
 
 ## 🔒 The walk (before the deep pass)
 
-1. **Fast gates only, for the apps the build touched** — `node <builder>/scripts/gate.mjs <app>…`
-   (REFERENCE §Quality gates) — ⛔ not the cross-app walk, not the full deep set. The build ran them
-   at the last phase close; the runner re-runs an app a commit since then can have turned red and
-   quotes the rest.
+1. **The phase tier is green on HEAD** — `verify.mjs verdict <branch> HEAD` (REFERENCE §The verifier);
+   none or older → request `--tier phase` and wait. ⛔ not the merge tier — that runs beside the walk.
 1b. 🔴 **Walk readiness** — REFERENCE §Walk readiness, whenever the manifest's `ready:` is not
    `yes` at the current HEAD, or anything since could have left the dev environment behind (a new
    migration, a restart-class change). Pending → hand off the one step that's left; ⛔ **never print
@@ -248,15 +246,15 @@ Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --pa
 Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>)`) end with REFERENCE
 §Walk readiness again, then `/builder:agent-walk --path <folder>` — never a human re-walk request.
 **Under `--no-dev-env`** — a batched fleet works a walk's fixes in its parallel lanes, with no env —
-they end with the touched apps' fast gates green and each row ticked, then `ready: pending "dev env
+they end with the phase tier green on HEAD and each row ticked, then `ready: pending "dev env
 (fleet walk lane)"` and the run ends (`advance.mjs <folder> --set 'ready=pending "dev env (fleet walk
 lane)"' --head --commit walk-lane`): the next walk batch does readiness and the re-walk, which covers
 only what the fix changed.
 Under `--agent-walk`, the re-walk after a verify INCOMPLETE is the scoped re-verify's cross-app walk
 leg for the surface the fix changed — no human is asked, and no new agent-walk round is started.
 
-Tasks from a **target sync** (§Ship in agent mode, rows tagged `(target sync)`) end with those apps'
-fast gates green, one commit per fix, and §Ship in agent mode again.
+Rows from the **merge tier** (tagged `(merge tier, <sha>)` — it merges the target itself) are worked
+the same way, then verify again (§Ship in agent mode).
 
 ## Programs (`tier: program`)
 
@@ -382,7 +380,7 @@ first (`git switch <branch>`) if the tree is clean; otherwise stop and name the 
 
 **No `/builder:*` skill may open, reopen, or push toward a PR until the human has personally
 exercised the finished feature in the running app and said, in their own words, that it works.**
-A green gate run or a code review is evidence for the human — never their sign-off. In doubt = you
+A green verdict or a code review is evidence for the human — never their sign-off. In doubt = you
 don't have it: ask. "It works" and "open the PR" are two different permissions — a sign-off can carry
 `🛑 PR HELD`.
 

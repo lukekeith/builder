@@ -22,17 +22,17 @@ so agent mode can take the feature to merged with every record saying it is not 
 
 **The test plan.** Read the levers: `node <builder>/scripts/profile.mjs --levers <folder>` (an old
 `profile:` line with no `tests:` is mapped by it). The floors in its `floors` hold whatever the
-levers say. `end` sets how much is walked:
+levers say. `walk` sets how much is walked:
 
-- **`end=none`** or **`end=touched`** → no walk, no walker. After the precondition table passes, go
-  straight to §4 **AGENT-PASS**'s sign-off at HEAD, the header line
-  `> 🤖 AGENT SIGNED OFF — no walk (tests: end=<none|touched>) — not human-tested · YYYY-MM-DD — <sha>`
+- **`walk=none`** → no walk, no walker. After the precondition table passes, go straight to §4
+  **AGENT-PASS**'s sign-off at HEAD, the header line
+  `> 🤖 AGENT SIGNED OFF — no walk (tests: walk=none) — not human-tested · YYYY-MM-DD — <sha>`
   — `node <builder>/scripts/condense.mjs <folder> --signoff agent --no-walk`.
-- **`end=risk`** → walk only the `[risk]` items and the `## Cross-app (verify E2E)` section.
+- **`walk=risk`** → walk only the `[risk]` items and the `## Cross-app (verify E2E)` section.
   Neither present → no walker: AGENT-PASS with `0 items in scope` in the verdict and the hand-off.
-- **`end=everything`** → the walk as written.
-- **`walk=you`** → walk what `end` says. On AGENT-PASS, instead of the sign-off, park:
-  `blocked: "waiting for your walk — next: /builder:resume --path <folder>"` (§4).
+- **`walk=full`** → the walk as written.
+- **`human=yes`** → walk what `walk` says, then park it for your walk: on AGENT-PASS, instead of
+  the sign-off, `blocked: "waiting for your walk — next: /builder:resume --path <folder>"` (§4).
 - **`persist=low`** → park after 1 failed round, not 5 (§1).
 
 ## Precondition — read `<folder>/MANIFEST.md`
@@ -98,7 +98,7 @@ never the build's context: the agent that built it does not grade it.
   item that can only be checked by looking at the screen `UNVERIFIABLE`";
 - the config's §Environment landmines, verbatim;
 - the output directory `<WS>/agent-walk/round-<n>/`;
-- the rules: work **every** item — under `end=risk`, every `[risk]` item and the cross-app
+- the rules: work **every** item — under `walk=risk`, every `[risk]` item and the cross-app
   section, and say so — **walking by screen**: the items grouped by the screen or component they
   exercise, each screen reached once with every item on it checked in order (one session, one
   launch; a fresh start only when an item needs one); after round 1, only what the fix could change
@@ -112,15 +112,15 @@ never the build's context: the agent that built it does not grade it.
 - the `## Cross-app (verify E2E)` section of `walk.md`, when present, is walked like every other
   item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes
   these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.
-- 🔴 **the walker runs no gates** — no test suite, no build, no `gate.mjs`. It judges the running
-  app; gates belong to the fix rounds and verify. A build run here rewrites what the walk env's dev
-  server serves from this worktree and takes the env down mid-walk.
+- 🔴 **the walker runs no tests** — no test suite, no build. It judges the running app; tests are
+  the verifier's, which runs the merge tier beside this walk. A build run here rewrites what the
+  walk env's dev server serves from this worktree and takes the env down mid-walk.
 
 ## 3. Judge the report
 
 Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
-- Every `walk.md` item in scope (under `end=risk`, the `[risk]` and `E` items) present and `PASS` — a
+- Every `walk.md` item in scope (under `walk=risk`, the `[risk]` and `E` items) present and `PASS` — a
   `PASS (carried from round <n> @ <sha>)` row counts, its evidence the earlier round's —
   `UNVERIFIABLE` allowed only when there is no driver, and each one listed — → **AGENT-PASS**.
 - Any `FAIL`, an item of `walk.md` missing from the report (count it `FAIL — not walked`), or any
@@ -141,7 +141,7 @@ it runs. What it writes:
   (it replaces an older `> 🤖 AGENT-VERIFIED …` line if there is one).
 - Commit all of it: `docs(<ticket-or-feature>): <feature> agent signed off (not human-tested)`.
 
-**AGENT-PASS under `walk=you`** — no sign-off, no condense. Manifest: `walk:` stays
+**AGENT-PASS under `human=yes`** — no sign-off, no condense. Manifest: `walk:` stays
 `none`; `blocked: "waiting for your walk — next: /builder:resume --path <folder>"`; `<folder>/PARKED.md`
 with `kind: human-step` (REFERENCE §The park record) citing the passing round. Commit:
 `chore(<ticket-or-feature>): <feature> — agent walk round <n> passed, waiting for your walk` — write
@@ -177,8 +177,8 @@ batch is in the running app. Do, in order:
    workspace (the build lane wrote it; missing → `node <builder>/scripts/walk-script.mjs <folder>`);
    move it on: `node <builder>/scripts/advance.mjs <folder> --set state=built --set "ready=yes
    <YYYY-MM-DD> <its HEAD>" --set "next=/builder:agent-walk --path <folder>" --head --commit built`.
-3. **Per feature, the precondition table and §The test plan** — a feature whose `end` is `none` or
-   `touched` signs off `--no-walk` now (§The test plan); a paused one (§1, *Between rounds*) parks as
+3. **Per feature, the precondition table and §The test plan** — a feature whose `walk` is `none` signs
+   off `--no-walk` now (§The test plan); a paused one (§1, *Between rounds*) parks as
    revising; a feature whose rounds are spent parks (§1). The rest are walked.
 4. **One walker for all of them** — `node <builder>/scripts/dispatch.mjs walk-batch <folder>…` (run
    here; the folders being walked) writes one brief: every walk script, each feature's scope and
@@ -199,7 +199,7 @@ The walk worktree and its branch are the fleet's scratch: never commit there, ne
 
 The verdict, the round, the counts (pass · fail · unverifiable), and where the evidence is. No
 review here — this runs headless and nobody reads it (REFERENCE §The review, under `--agent-walk`);
-the fleet's report (fleet §5) and, under `walk=you`, your walk (resume §🔒 The walk) show the full
+the fleet's report (fleet §5) and, under `human=yes`, your walk (resume §🔒 The walk) show the full
 review of what was built. Then:
 
 ~~~

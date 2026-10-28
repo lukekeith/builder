@@ -53,8 +53,8 @@ record nothing.
    **PROBLEMS** or **PARTIAL** instead. A walk of an app that wasn't running this build didn't test
    this build. (The human confirming a device-only `pending` step they did themselves clears it.)
 
-2. **Report preconditions honestly, never silently:** manifest `head:` vs `git rev-parse HEAD` (were
-   the gates fresh on what they tested?); `git status --porcelain` (uncommitted changes — 🔴 **a
+2. **Report preconditions honestly, never silently:** manifest `head:` vs `git rev-parse HEAD` (is
+   the verifier's latest verdict for this HEAD?); `git status --porcelain` (uncommitted changes — 🔴 **a
    phase in an app the config marks `commit: manual` often ends with its commits staged and
    unapproved, and that is expected**, but it means the tree is dirty and the walk covered a build
    that is not committed: say so); anything new or least-exercised the walk may not have hit. **None
@@ -78,7 +78,7 @@ record nothing.
 
 ## A fleet worktree
 
-The feature is parked `waiting for your walk` (test plan `walk=you`), and the fleet's worktree
+The feature is parked `waiting for your walk` (test plan `human=yes`), and the fleet's worktree
 `<worktree>` holds the live copy — the main checkout's is stale. 🔴 **Everything happens there:**
 read and write `<worktree>/<registry>/<feature>/`, the walk script from
 `cd <worktree> && <builder>/scripts/workspace <feature>`, every git command as `git -C <worktree> …`,
@@ -201,7 +201,7 @@ description, and the SPEC header carries it from then on.
 
 | Outcome | Footer |
 |---|---|
-| PASS | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: signed off + condensed — what next?`, then REFERENCE §The two-way footer's signed-off row: `1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed` · `2. Step by step — carry on here (next: verify — every app's gates fresh, then the PR), pausing for you before the PR opens` (Step by step runs `/builder:verify --path <folder>`) · `Reply 1 or 2 — "go" is 1.` Without an `agent_walk:` block only Step by step is left, so the single line: `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
+| PASS | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: signed off + condensed — what next?`, then REFERENCE §The two-way footer's signed-off row: `1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed` · `2. Step by step — carry on here (next: verify — the merge tier on HEAD, then the PR), pausing for you before the PR opens` (Step by step runs `/builder:verify --path <folder>`) · `Reply 1 or 2 — "go" is 1.` Without an `agent_walk:` block only Step by step is left, so the single line: `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
 | PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder> · or say go` |
 | PROBLEMS / PARTIAL | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: <n> fixes owed — what next?`, then REFERENCE §The two-way footer's fixes-owed row: `1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed` · `2. Step by step — fix them here one at a time, then re-walk what they touched` (Step by step runs `/builder:resume --path <folder>`) · `Reply 1 or 2 — "go" is 1.` |
 

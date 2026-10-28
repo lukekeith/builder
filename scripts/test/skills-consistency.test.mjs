@@ -238,9 +238,20 @@ test('agent mode: build writes the E steps, agent-walk reports them, verify quot
   assert.match(read('skills/init/SKILL.md'), /test-results\//)
 })
 
-test('6.0 agent mode: verify reads the verifier\'s verdict; the walker runs no tests', { todo: 'Task 18' }, () => {
+test('6.0 agent mode: verify reads the verifier\'s verdict; the walker runs no tests', () => {
   assert.match(read('skills/verify/SKILL.md'), /verify\.mjs verdict/)
   assert.match(read('skills/agent-walk/SKILL.md'), /the walker runs no tests/)
+})
+
+test('6.0: verify reads the merge tier; REFERENCE explains the verifier; nothing names gate.mjs', () => {
+  const verify = read('skills/verify/SKILL.md')
+  const ref = read('skills/resume/REFERENCE.md')
+  assert.match(verify, /verify\.mjs verdict <branch> HEAD/)
+  assert.match(verify, /READY = the merge tier green on HEAD \+ the walk passed/)
+  assert.match(ref, /^## The verifier$/m)
+  for (const f of ['skills/verify/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/AGENT-MODE.md', 'skills/resume/REFERENCE.md', 'skills/agent-walk/SKILL.md', 'skills/signoff/SKILL.md', 'skills/revise/SKILL.md']) {
+    assert.doesNotMatch(read(f), /gate\.mjs|job\.mjs|@delta|@scoped|@walk\b|flaky:|--baseline/, f)
+  }
 })
 
 test('the fleet launches detached, never as a session background task', () => {
@@ -362,7 +373,7 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   }
 })
 
-test('6.0 levers: agent-walk names walk · human', { todo: 'Task 18' }, () => {
+test('6.0 levers: agent-walk names walk · human', () => {
   const walk = read('skills/agent-walk/SKILL.md')
   for (const v of ['walk=none', 'walk=risk', 'walk=full', 'human=yes']) assert.ok(walk.includes(`\`${v}\``), `agent-walk names ${v}`)
   assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(tests: walk=none\) — not human-tested/)

@@ -19,7 +19,7 @@ test('docs build: EXECUTION.md, the REFERENCE sections build names, the config �
   const s = out.stdout
   assert.match(s, /^# builder docs: build — \d+ sections, \d+ KB/)
   assert.match(s, /--- skills\/resume\/REFERENCE\.md §SPEC\.md \(lines \d+–\d+\) — includes §Contract and the contract freeze\n/)
-  for (const h of ['skills/build/EXECUTION.md', 'REFERENCE.md §PLAN.md', 'REFERENCE.md §MANIFEST.md', 'REFERENCE.md §Branch and ticket', 'REFERENCE.md §Quality gates — the mechanism', 'REFERENCE.md §Walk readiness', 'REFERENCE.md §The craft skills', '.claude/builder.md'])
+  for (const h of ['skills/build/EXECUTION.md', 'REFERENCE.md §PLAN.md', 'REFERENCE.md §MANIFEST.md', 'REFERENCE.md §Branch and ticket', 'REFERENCE.md §The verifier', 'REFERENCE.md §Walk readiness', 'REFERENCE.md §The craft skills', '.claude/builder.md'])
     assert.ok(s.includes(`--- ${h}`) || s.includes(`/${h}`), h)
   assert.match(s, /\n## Walk readiness\n/)
   assert.match(s, /\n# The execution engine — the task loop/)
