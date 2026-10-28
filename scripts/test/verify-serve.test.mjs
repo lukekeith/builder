@@ -1,7 +1,7 @@
 // scripts/test/verify-serve.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, utimesSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -222,6 +222,31 @@ test('a target branch that does not exist is env-broken and says so', async () =
   const v = l.getRequest(r.id).verdict
   assert.equal(v.status, 'env-broken')
   assert.equal(v.broken[0].reason, 'target branch "nope" does not exist')
+})
+
+test('the lock: a live pid whose serve.pid has not been touched for over 60 s is a dead holder (pid reuse)', () => {
+  const { root } = repo()
+  openLedger(root)
+  const p = join(root, '.builder', 'verify', 'serve.pid')
+  writeFileSync(p, String(process.ppid))
+  const old = new Date(Date.now() - 120000)
+  utimesSync(p, old, old)
+  assert.equal(takeLock(root), true)
+})
+
+test('the service touches serve.pid while it runs, so a long run never looks stale', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const slow = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'sleep 1.5' }] }
+  l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const p = join(root, '.builder', 'verify', 'serve.pid')
+  const done = serve(root, opts({ verify: slow, heartbeatMs: 100 }))
+  await new Promise((r) => setTimeout(r, 200))
+  const old = new Date(Date.now() - 120000)
+  utimesSync(p, old, old)
+  await new Promise((r) => setTimeout(r, 600))
+  assert.ok(Date.now() - statSync(p).mtimeMs < 5000, 'touched again since')
+  await done
 })
 
 test('the lock: an empty, fresh serve.pid counts as held', () => {

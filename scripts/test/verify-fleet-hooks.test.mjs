@@ -68,3 +68,15 @@ test('awaitVerdict on a request with no file returns null instead of waiting for
   const { root } = repo()
   assert.equal(await awaitVerdict(root, 'no-such-request', { pollMs: 50 }), null)
 })
+
+test('awaitVerdict gives up after maxMs (null — the caller parks) when no service ever answers', async () => {
+  const { root, wt } = repo()
+  const { openLedger } = await import('../verify/ledger.mjs')
+  const l = openLedger(root)
+  // A live, fresh lock (this process) so no service starts and the request stays queued.
+  writeFileSync(join(root, '.builder', 'verify', 'serve.pid'), String(process.pid))
+  const r = l.newRequest({ worktree: wt, branch: 'builder/f', sha: git(wt, 'rev-parse', 'HEAD'), tier: 'merge', target: 'main' })
+  const t0 = Date.now()
+  assert.equal(await awaitVerdict(root, r.id, { pollMs: 50, maxMs: 300 }), null)
+  assert.ok(Date.now() - t0 < 2000)
+})

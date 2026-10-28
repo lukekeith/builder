@@ -39,7 +39,9 @@ const withDb = (url, name) => {
   return u.toString()
 }
 
-export function createPool(verify, { sh = shell, psql: pg = psql, ports = freePort } = {}) {
+export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = freePort } = {}) {
+  // Every project command is bounded by verify.timeout: a hung hook must not hang the service.
+  const sh = (cmd, o) => run(cmd, { timeout: verify.timeoutMs, ...o })
   const used = { db: 0, simulator: 0, 'walk-env': 0, hook: 0 }
   const cap = { db: verify.db?.max ?? 0, simulator: verify.simulator?.max ?? 0, 'walk-env': 1, hook: verify.env?.max ?? verify.workers }
   const counted = (needs) => needs.map((n) => n.kind).filter((k) => k in used)

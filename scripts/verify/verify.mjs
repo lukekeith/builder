@@ -16,12 +16,13 @@
  * Exit: 0 green · 1 red (release: the checkout refused the fast-forward) · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 7 target moved (release) · 75 pending.
  */
 import { spawn } from 'node:child_process'
-import { openSync, closeSync, readFileSync } from 'node:fs'
+import { openSync, closeSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { git, tryGit, mainRoot } from './git.mjs'
 import { land, ensureCheckout, mergedCheckout } from './checkouts.mjs'
 import { openLedger, verifyDir } from './ledger.mjs'
+import { serviceAlive } from './serve.mjs'
 import { loadConfig } from '../config.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
@@ -69,14 +70,11 @@ const die = (m) => {
 }
 
 export function ensureService(root) {
-  try {
-    const pid = Number(readFileSync(join(verifyDir(root), 'serve.pid'), 'utf8'))
-    process.kill(pid, 0)
-    return
-  } catch {}
+  // A live pid with a stale heartbeat is not a service: the pid was reused after it died.
+  if (serviceAlive(root)) return
   const log = openSync(join(verifyDir(root), 'serve.log'), 'a')
   const idle = process.env.BUILDER_VERIFY_IDLE_MS
-  spawn(process.execPath, ['-e', `import(${JSON.stringify(SERVE)}).then((m) => m.serve(${JSON.stringify(root)}${idle ? `, { idleMs: ${Number(idle)} }` : ''})).then(() => process.exit(0))`], { detached: true, stdio: ['ignore', log, log] }).unref()
+  spawn(process.execPath, ['-e', `import(${JSON.stringify(SERVE)}).then((m) => m.runService(${JSON.stringify(root)}${idle ? `, { idleMs: ${Number(idle)} }` : ''}))`], { detached: true, stdio: ['ignore', log, log] }).unref()
   closeSync(log)
 }
 
