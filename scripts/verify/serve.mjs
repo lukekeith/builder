@@ -9,7 +9,8 @@
  *
  *   node scripts/verify/serve.mjs <main checkout>     (started by verify.mjs; never by hand)
  */
-import { openSync, closeSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,23 +37,60 @@ const alive = (pid) => {
   }
 }
 
-/** The pid lock: true when this process holds it (taken now, or already ours). */
+/**
+ * The pid lock: true when this process holds it (taken now, or already ours). The pid is written
+ * to a temp file first and hard-linked into place, so serve.pid is never empty and two takers
+ * can't both create it. A dead holder's file is moved aside (not unlinked) and checked, so a
+ * reclaimer never deletes a lock another reclaimer has just taken.
+ */
 export function takeLock(root) {
   const p = join(verifyDir(root), 'serve.pid')
-  for (let i = 0; i < 2; i++) {
+  const uniq = () => `${p}.${process.pid}.${randomBytes(4).toString('hex')}`
+  for (let i = 0; i < 5; i++) {
+    const tmp = uniq()
+    writeFileSync(tmp, String(process.pid))
     try {
-      const fd = openSync(p, 'wx')
-      writeFileSync(fd, String(process.pid))
-      closeSync(fd)
+      linkSync(tmp, p)
       return true
-    } catch {
-      const pid = Number(readFileSync(p, 'utf8'))
-      if (pid === process.pid) return true
-      if (pid && alive(pid)) return false
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e
+    } finally {
       try {
-        unlinkSync(p)
+        unlinkSync(tmp)
       } catch {}
     }
+    let text
+    let mtime
+    try {
+      text = readFileSync(p, 'utf8')
+      mtime = statSync(p).mtimeMs
+    } catch {
+      continue // released between the link and the read: try again
+    }
+    const pid = /^\d+$/.test(text.trim()) ? Number(text.trim()) : 0
+    if (pid === process.pid) return true
+    if (pid && alive(pid)) return false
+    // Unreadable but fresh: a holder from an older build may still be writing it.
+    if (!pid && Date.now() - mtime < 5000) return false
+    const aside = uniq()
+    try {
+      renameSync(p, aside)
+    } catch {
+      continue // another reclaimer moved it first
+    }
+    let moved = null
+    try {
+      moved = readFileSync(aside, 'utf8')
+    } catch {}
+    // Not the dead holder's file: someone took the lock between our read and the rename — put it back.
+    if (moved !== text) {
+      try {
+        linkSync(aside, p)
+      } catch {}
+    }
+    try {
+      unlinkSync(aside)
+    } catch {}
   }
   return false
 }
@@ -78,7 +116,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
       v = { workers: 1, timeoutMs: 15 * 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, suites: [], checks: [] }
       untested = true
     } else if (!r.ok) {
-      for (const q of ledger.requests((x) => x.state === 'queued' || x.state === 'running')) ledger.saveRequest({ ...q, state: 'done', doneAt: new Date().toISOString(), verdict: empty(q, 'env-broken', { broken: [{ suite: '-', reason: r.reason }] }) })
+      for (const q of ledger.requests((x) => x.state === 'queued' || x.state === 'running' || x.state === 'folded')) ledger.saveRequest({ ...q, state: 'done', doneAt: new Date().toISOString(), verdict: empty(q, 'env-broken', { broken: [{ suite: '-', reason: r.reason }] }) })
       dropLock(root)
       return 'idle'
     } else v = r.verify
@@ -99,7 +137,9 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
     const cur = ledger.getRequest(req.id) ?? req
     // A merge that already landed is not undone by a late cancel, so its verdict stands.
     if (cur.state === 'cancelled' && !verdict.landed) {
-      ledger.saveRequest({ ...cur, doneAt: new Date().toISOString(), verdict: { ...verdict, status: 'cancelled' } })
+      // Requests folded into it are put back by the next tick's sweep: their owners did not cancel.
+      const v2 = verdict.requeue ? empty(req, 'cancelled') : { ...verdict, status: 'cancelled', broken: (verdict.broken ?? []).filter((b) => b.reason !== 'cancelled') }
+      ledger.saveRequest({ ...cur, doneAt: new Date().toISOString(), verdict: v2 })
       return
     }
     if (verdict.requeue) {
@@ -111,12 +151,13 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
     ledger.saveRequest(done)
     for (const id of req.foldedFrom ?? []) {
       const f = ledger.getRequest(id)
-      if (f) ledger.saveRequest({ ...f, state: 'done', doneAt: done.doneAt, verdict: done.verdict })
+      if (f?.state === 'folded') ledger.saveRequest({ ...f, state: 'done', doneAt: done.doneAt, verdict: done.verdict })
     }
   }
 
   const execute = async (req, slot, signal) => {
     if (!commitExists(root, req.sha)) return empty(req, 'gone')
+    if (tryGit(root, 'rev-parse', '--verify', '-q', `refs/heads/${req.target}`) === null) return empty(req, 'env-broken', { broken: [{ suite: '-', reason: `target branch "${req.target}" does not exist` }] })
     const targetSha = git(root, 'rev-parse', `refs/heads/${req.target}`)
     const checkout = ensureCheckout(root, slot)
     let sha = req.sha
@@ -185,7 +226,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
     const abort = new AbortController()
     running.set(r.id, { req: r, abort })
     execute(r, slot, abort.signal)
-      .catch((e) => empty(r, 'env-broken', { broken: [{ suite: '-', reason: String(e.message ?? e).slice(0, 1000) }] }))
+      .catch((e) => abort.signal.aborted ? empty(r, 'cancelled') : empty(r, 'env-broken', { broken: [{ suite: '-', reason: String(e.message ?? e).slice(0, 1000) }] }))
       .then((verdict) => finish(r, verdict))
       .finally(() => {
         running.delete(r.id)
@@ -193,15 +234,40 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
       })
   }
 
+  // Each tick: a cancel nobody answered (never started, or one that raced a service write) gets
+  // its verdict; a folded request whose survivor was cancelled goes back to the queue on its own
+  // sha (its owner did not cancel), and one whose survivor is done takes the survivor's verdict.
+  const sweep = () => {
+    const now = new Date().toISOString()
+    for (const r of ledger.requests((x) => x.state === 'cancelled' && !x.verdict && !running.has(x.id))) ledger.saveRequest({ ...r, doneAt: now, verdict: empty(r, 'cancelled') })
+    for (const f of ledger.requests((x) => x.state === 'folded')) {
+      let end = ledger.getRequest(f.foldedInto)
+      const seen = new Set([f.id])
+      while (end?.state === 'folded' && !seen.has(end.id)) {
+        seen.add(end.id)
+        end = ledger.getRequest(end.foldedInto)
+      }
+      if (!end || end.state === 'cancelled' || end.state === 'folded') ledger.saveRequest({ ...f, state: 'queued', foldedInto: undefined, foldedFrom: undefined, commits: undefined })
+      else if (end.state === 'done' && end.verdict) ledger.saveRequest({ ...f, state: 'done', doneAt: end.doneAt ?? now, verdict: end.verdict })
+    }
+  }
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
   try {
     for (;;) {
       for (const [id, h] of running) if (ledger.getRequest(id)?.state === 'cancelled') h.abort.abort()
+      sweep()
       const { keep, folded } = fold(ledger.requests((x) => x.state === 'queued'))
       for (const f of folded) {
         const r = ledger.getRequest(f.id)
-        if (r) ledger.saveRequest({ ...r, state: 'folded', foldedInto: f.into })
+        if (r?.state === 'queued') ledger.saveRequest({ ...r, state: 'folded', foldedInto: f.into })
       }
-      for (const r of keep) if (r.foldedFrom) ledger.saveRequest(r)
+      // Re-read, and write only what fold changed, so a client's cancel since the listing stands.
+      for (const r of keep) {
+        if (!r.foldedFrom) continue
+        const cur = ledger.getRequest(r.id)
+        if (cur?.state === 'queued' && !(same(cur.foldedFrom, r.foldedFrom) && same(cur.commits, r.commits))) ledger.saveRequest({ ...cur, foldedFrom: r.foldedFrom, commits: r.commits })
+      }
       while (slots.length) {
         const next = pickNext(
           keep.filter((r) => !running.has(r.id)),
