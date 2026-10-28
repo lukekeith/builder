@@ -101,3 +101,23 @@ test('phpunit: leaf is regex-escaped; grep without files filters on the leaf alo
   assert.match(none, /--filter 'testBar'/)
   assert.doesNotMatch(none, /undefined/)
 })
+
+test('grep as a list of name paths: one run for several tests, per runner', () => {
+  const grep = ['a > one (x)', 'b › two']
+  const files = ['t/a.test.ts', 't/b.test.ts']
+  const nt = ADAPTERS['node-test'].command({ suite: suite(), files, grep, report: '/r' })
+  assert.match(nt, /--test-name-pattern='one \\\(x\\\)' --test-name-pattern='two'/)
+  assert.match(ADAPTERS.vitest.command({ suite: suite({ runner: 'vitest' }), files, grep, report: '/r' }), / -t 'one \\\(x\\\)\|two' /)
+  assert.match(ADAPTERS.jest.command({ suite: suite({ runner: 'jest' }), files, grep, report: '/r' }), / -t 'one \\\(x\\\)\|two' /)
+  assert.match(ADAPTERS.playwright.command({ suite: suite({ runner: 'playwright' }), files, grep, report: '/r' }), /--grep 'one \\\(x\\\)\|two'/)
+  assert.match(ADAPTERS.junit.command({ suite: suite({ runner: 'junit', command: 'run {files} --grep {grep}' }), files, grep, report: 'x' }), /--grep 'one \\\(x\\\)\|two'$/)
+  const php = ADAPTERS.phpunit.command({ suite: suite({ runner: 'phpunit' }), files: ['tests/FooTest.php', 'tests/BarTest.php'], grep: ['testA', 'testB'], report: '/r' })
+  assert.match(php, /--filter '\(FooTest\|BarTest\)::\(testA\|testB\)'/)
+  const xc = ADAPTERS.xcodebuild.command({ suite: suite({ runner: 'xcodebuild', scheme: 'App', target: 'AppTests', destination: 'd' }), files: ['A.swift', 'B.swift'], grep: ['testA()', 'testB()'], pairs: [{ file: 'A.swift', name: 'testA()' }, { file: 'B.swift', name: 'testB()' }], report: '/r.json' })
+  assert.match(xc, /-only-testing:'AppTests\/A\/testA' -only-testing:'AppTests\/B\/testB'/)
+  assert.doesNotMatch(xc, /A\/testB|B\/testA/)
+})
+
+test('a single-string grep still works alongside lists', () => {
+  assert.match(ADAPTERS.vitest.command({ suite: suite({ runner: 'vitest' }), files: ['a.ts'], grep: 'x > y', report: '/r' }), / -t 'y' /)
+})

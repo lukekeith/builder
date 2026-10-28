@@ -180,7 +180,7 @@ Each failing test, in this order:
 5. **Still failing → run it on the target's tip.** It fails there too → newly found debt, added to
    known failures. Otherwise → **regression**, the only outcome that dispatches a fix.
 
-At most one single-test run per step; never a suite re-run.
+At most one run per suite per step, of just that suite's failing tests together; never a whole-suite re-run.
 
 ### The ledgers (`.builder/verify/`, git-ignored)
 
@@ -294,3 +294,6 @@ said differently:
   Node's JUnit reporter doesn't say which file a test lives in.
 - **The end-to-end test uses its own fixture**, not `bench/fixtures/notes-hub`: the benchmark
   scores notes-hub's tests, and planting a flaky one there would change every bench run.
+- **Judging re-runs are batched.** One run per suite per question, of just its failing tests (their
+  files and one name filter matching them all), not one run per failing test: N pre-existing
+  failures cost two extra runs, not 2N. Known and listed-flaky failures still trigger none.
