@@ -105,3 +105,15 @@ test('handoff read: no handoff → exit 3, saying what to do instead', () => {
   assert.match(out.stdout, /^stale: no handoff\.md/m)
   assert.equal(run('handoff.mjs', ['nope', r.rel], { cwd: r.root }).status, 2)
 })
+
+test('handoff write: a corrupt request file and a verdict missing its arrays do not blank or crash the verifier lines', () => {
+  const r = walkReady()
+  const d = join(r.root, '.builder', 'verify', 'requests')
+  writeFileSync(join(d, 'junk.json'), '{ half')
+  writeFileSync(join(d, 'p1.json'), JSON.stringify({ id: 'p1', state: 'done', tier: 'phase', branch: 'builder/note-tags', verdict: { status: 'red', sha: r.head } }))
+  const out = run('handoff.mjs', ['write', r.rel], { cwd: r.root })
+  assert.equal(out.status, 0, out.stderr)
+  const h = readText(join(WS(r), 'handoff.md'))
+  assert.match(h, /^- commit: GREEN at /m)
+  assert.match(h, /^- phase: RED at .* 0 regression\(s\), 0 flake\(s\), 0 known$/m)
+}) 

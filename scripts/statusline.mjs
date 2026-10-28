@@ -167,12 +167,14 @@ function buildItems(main, registry, now, skip) {
 }
 
 /** One `verify <tier> <branch> ⏱ <elapsed>` per request the verifier is running right now. */
-export function verifyItems(main, now) {
+export function verifyItems(main, now, bootTime = 0) {
   const dir = join(main, '.builder', 'verify', 'requests')
   return list(dir)
     .filter((f) => f.endsWith('.json'))
-    .map((f) => readJson(join(dir, f)))
-    .filter((r) => r?.state === 'running' && r.startedAt && alive(r.pid))
+    .map((f) => ({ r: readJson(join(dir, f)), f }))
+    // A request file older than the last boot names a pid that is gone, whatever has it now.
+    .filter(({ r, f }) => r?.state === 'running' && typeof r.startedAt === 'string' && Number.isFinite(Date.parse(r.startedAt)) && current(join(dir, f), bootTime) && alive(r.pid))
+    .map(({ r }) => r)
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
     .map((r) => `verify ${r.tier} ${r.branch} ⏱ ${elapsed(now - Date.parse(r.startedAt))}`)
 }
@@ -185,7 +187,7 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     if (!cfg.ok) return ''
     const fleet = fleetItems(roots.main, cfg.registry, bootTime, now)
     const builds = buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set())
-    const rest = [...builds.items, ...verifyItems(roots.main, now)]
+    const rest = [...builds.items, ...verifyItems(roots.main, now, bootTime)]
     const [lead, ...running] = fleet?.items ?? []
     const stops = fleet?.stops ?? []
     const landed = landedItems(fleet?.landed ?? [])
