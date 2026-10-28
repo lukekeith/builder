@@ -7,7 +7,7 @@
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
  *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused)
  *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
- *   verify.mjs verdict <branch> [<sha>] [--json]
+ *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (75 → one `pending: <tier> <state> <id>` line per request, an id to wait on)
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
  *   verify.mjs cancel <request>
  *   verify.mjs status [--json]
@@ -25,7 +25,7 @@ import { openLedger, verifyDir } from './ledger.mjs'
 import { loadConfig } from '../config.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
-const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
+const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--tier commit|phase|merge] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
 const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelled: 6 }
 export const exitFor = (status) => EXIT[status] ?? 75
 
@@ -144,11 +144,17 @@ async function main() {
   if (cmd === 'verdict') {
     const [, branch, sha] = positional
     if (!branch) die(USAGE)
+    const tier = opt('--tier')
+    if (tier != null && !['commit', 'phase', 'merge'].includes(tier)) die(USAGE)
+    // A tier filter keeps a newer phase-tier green from answering a question about the merge tier.
+    const mine = (r) => r.branch === branch && (!tier || r.tier === tier)
     const full = sha ? tryGit(here, 'rev-parse', sha) ?? sha : null
-    const done = ledger.requests((r) => r.branch === branch && r.state === 'done' && r.verdict && (!full || r.sha === full)).at(-1)
+    const done = ledger.requests((r) => mine(r) && r.state === 'done' && r.verdict && (!full || r.sha === full)).at(-1)
     if (done) show(done, flag('--json'))
-    const pending = ledger.requests((r) => r.branch === branch && ['queued', 'running', 'folded'].includes(r.state))
+    const pending = ledger.requests((r) => mine(r) && ['queued', 'running', 'folded'].includes(r.state))
     console.log(pending.length ? `verify ${branch}: pending (${pending.map((r) => `${r.tier} ${r.state}`).join(', ')})` : `verify ${branch}: no verdict`)
+    // One line per pending request, so a caller has an id to `wait` on.
+    for (const r of pending) console.log(`pending: ${r.tier} ${r.state} ${r.id}`)
     process.exit(pending.length ? 75 : 5)
   }
   if (cmd === 'wait') {

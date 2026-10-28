@@ -956,19 +956,24 @@ target — the only thing that dispatches a fix, each with the commit that intro
 **flakes** (failed, then passed on the same commit — listed automatically unless the branch owns
 the test), **known** failures (fail on the target too) and **newly found debt**. **Env-broken** —
 no report, a failed lease — is never red and never a fix. Exit codes: 0 green · 1 red · 3
-env-broken · 4 conflict · 5 none · 6 cancelled · 7 target moved · 75 still running (call again).
-`verify.mjs verdict <branch> [<sha>]` reads the latest *finished* verdict (exit 75 when only
-unfinished ones exist, 5 when there are none); `verify.mjs wait <id>` blocks up to 9 minutes per
-call (Bash timeout 600000).
+env-broken · 4 conflict · 5 none · 6 cancelled · 7 target moved · 75 still running (call again) ·
+2 usage (and `carry` when code changed). `verify.mjs verdict <branch> [<sha>] [--tier <t>]` reads
+the latest *finished* verdict — of that tier, with `--tier`, so a newer phase green never answers
+for the merge tier — and exits 75 when only unfinished ones exist, printing a `pending: <tier>
+<state> <id>` line for each (an id to wait on), or 5 when there are none. `verify.mjs wait <id>`
+blocks up to 9 minutes per call (Bash timeout 600000).
 
-**Fresh** means the verdict's sha is HEAD. A green verdict for an older sha says nothing about
-HEAD; a remembered result is not a verdict.
+**Fresh** means the verdict's sha is HEAD — or, for a merge-tier verdict, the commits since it
+touch only the registry: `git diff --quiet <its sha> HEAD -- . ':!<registry>'` exits 0, the rule
+`carry` lands by. Otherwise a green verdict for an older sha says nothing about HEAD; a remembered
+result is not a verdict.
 
 **The merge tier lands.** Green on a held request → `verify.mjs release <id>` fast-forwards the
-target to exactly the merge commit it tested (one `--no-ff` merge commit per feature). When the
-only commits since the tested sha touch the registry — the sign-off, verify and ship records —
-`verify.mjs carry <id>` lands the held green merge with those commits on top, without a second
-run. A target that moved since (exit 7), or any other commit since → request again. One merge per
+target to exactly the merge commit it tested (one `--no-ff` merge commit per feature); exit 1 when
+the checkout refused the fast-forward. When the only commits since the tested sha touch the
+registry — the sign-off, verify and ship records — `verify.mjs carry <id>` lands a new merge of the
+branch tip onto the same target tip it tested, without a second run; code changed since → exit 2.
+A target that moved since (exit 7), or code changed → request again. One merge per
 target runs at a time; `verify.mjs cancel <id>` drops a request.
 
 **Each run is isolated**: a clean checkout of the requested commit (never the agent's worktree),

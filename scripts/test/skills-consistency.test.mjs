@@ -246,7 +246,11 @@ test('6.0 agent mode: verify reads the verifier\'s verdict; the walker runs no t
 test('6.0: verify reads the merge tier; REFERENCE explains the verifier; nothing names gate.mjs', () => {
   const verify = read('skills/verify/SKILL.md')
   const ref = read('skills/resume/REFERENCE.md')
-  assert.match(verify, /verify\.mjs verdict <branch> HEAD/)
+  assert.match(verify, /verify\.mjs verdict <branch>\s+--tier merge/)
+  assert.match(verify, /`verify merge <sha> <branch>: …`/)
+  assert.match(verify, /git diff --quiet <its sha> HEAD -- \. ':!<registry>'/)
+  assert.match(ref, /git diff --quiet <its sha> HEAD -- \. ':!<registry>'/)
+  assert.match(verify, /Under `--no-dev-env`[\s\S]{0,200}never drives the\s+app/)
   assert.match(verify, /READY = the merge tier green on HEAD \+ the walk passed/)
   assert.match(ref, /^## The verifier$/m)
   for (const f of ['skills/verify/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/AGENT-MODE.md', 'skills/resume/REFERENCE.md', 'skills/agent-walk/SKILL.md', 'skills/signoff/SKILL.md', 'skills/revise/SKILL.md']) {
