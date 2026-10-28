@@ -39,9 +39,9 @@
         }
       ],
       "stamp": {
-        "hash": "42242eed5e91",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "d03d2aa3a44e",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -70,7 +70,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(pnpm -F web test -- CertStatusBadge && pnpm -F web lint)"
+          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs HEAD --tier phase) — lq5m2c7d-9e04ab · Bash(node <builder>/scripts/verify/verify.mjs wait lq5m2c7d-9e04ab) — verify phase 4d8e1f2 overdue-badge: GREEN · 1 flake · 2 known · 74s"
         },
         {
           "role": "tool",
@@ -78,18 +78,18 @@
         },
         {
           "role": "claude",
-          "text": "Read the recipe skill first: `/acme-web-ui` (tones come from the `Badge` component — no raw colours).\n\n**Changed:** `CertStatusBadge` — the `overdue` case now uses `tone=\"danger\"` (apps/web/src/certificates/CertStatusBadge.tsx:14). No behaviour changed, so no new test; the badge's existing snapshot was updated.\n\n**Fast gates for web** (the ones this diff can turn red):\n- `pnpm -F web test` — 412 passed (1 snapshot updated, 0 new failures)\n- `pnpm -F web lint` — 0 problems, same as before\napi and mobile aren't touched, so their gates weren't run.\n\n**Ready for your look:** no migrations on this branch, nothing to regenerate, and the Vite dev server hot-reloads. I loaded `/certificates?status=overdue`: 200, no console errors, and the overdue badges render with the danger tone. Committed `fix(web): overdue badge uses the danger tone` (web is `commit: auto`).\n\nChecked by me: the gates and the page loading. **Not human-checked yet:** whether the red reads right next to the Revoked badge — that's your look.\n\n📍 overdue-badge: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running) and check the badge",
+          "text": "Read the recipe skill first: `/acme-web-ui` (tones come from the `Badge` component — no raw colours).\n\n**Changed:** `CertStatusBadge` — the `overdue` case now uses `tone=\"danger\"` (apps/web/src/certificates/CertStatusBadge.tsx:14). No behaviour changed, so no new test; the badge's existing snapshot was updated.\n\n**The phase tier:** GREEN at `4d8e1f2` (request `lq5m2c7d-9e04ab`) — `verify phase 4d8e1f2 overdue-badge: GREEN · 1 flake · 2 known · 74s`. The verifier ran what this diff can reach (web's suite and lint, snapshot updated); the flake and the 2 known failures were already on the list and are not this change's.\n\n**Ready for your look:** no migrations on this branch, nothing to regenerate, and the Vite dev server hot-reloads. I loaded `/certificates?status=overdue`: 200, no console errors, and the overdue badges render with the danger tone. Committed `fix(web): overdue badge uses the danger tone` (web is `commit: auto`).\n\nChecked by me: the verdict and the page loading. **Not human-checked yet:** whether the red reads right next to the Revoked badge — that's your look.\n\n📍 overdue-badge: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running) and check the badge",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "Picking a Build entry is the only approval: steps 3–6 of the small path run straight away (recipe skill, TDD where behaviour changes, the fast gates said out loud, the human's look, the closing 📍 footer). In an app marked commit: manual (mobile) it would stage and stop instead of committing."
+          "text": "Picking a Build entry is the only approval: steps 3–6 of the small path run straight away (recipe skill, TDD where behaviour changes, the phase tier's verdict said out loud, the human's look, the closing 📍 footer). In an app marked commit: manual (mobile) it would stage and stop instead of committing."
         }
       ],
       "stamp": {
-        "hash": "632597ca3c0b",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "86f2aafc1958",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -135,8 +135,8 @@
       ],
       "stamp": {
         "hash": "fbdf4ac46ab3",
-        "version": "4.14.0",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -163,8 +163,8 @@
       ],
       "stamp": {
         "hash": "b7d23f1f2f80",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -205,8 +205,8 @@
       ],
       "stamp": {
         "hash": "0283c6e983ad",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -250,8 +250,8 @@
       ],
       "stamp": {
         "hash": "d4290d68cb23",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -280,8 +280,8 @@
       ],
       "stamp": {
         "hash": "5c68eeff28e8",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -310,16 +310,16 @@
         }
       ],
       "stamp": {
-        "hash": "104ccc4b1ae2",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "ae2db0ce0d05",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
       "id": "small-path-build",
       "skill": "brainstorm",
       "title": "Build and the done footer",
-      "when": "After the one approval: recipe skills, TDD, the fast gates said out loud, readiness for the human's look, the closing footer.",
+      "when": "After the one approval: recipe skills, TDD, the phase tier's verdict said out loud, readiness for the human's look, the closing footer.",
       "source": "skills/brainstorm/CONVERSATION.md §Size and the small path",
       "sources": [
         "skills/resume/REFERENCE.md §Walk readiness"
@@ -344,22 +344,22 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(pnpm -F web test && pnpm -F web lint)"
+          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs HEAD --tier phase) — lq5m3h1a-7c52de · Bash(node <builder>/scripts/verify/verify.mjs wait lq5m3h1a-7c52de) — verify phase 9b3a6c0 export-in-toolbar: GREEN · 1 known · 96s"
         },
         {
           "role": "claude",
-          "text": "Read `/acme-web-ui` and `/acme-web-data` first.\n\n**Built, test first:** two tests in `ExportButton.test.tsx` — the export request carries the active `q` / `status`, and carries none with no filter on — failed, then passed once `ExportButton` read `useCertificateFilters()` and `exportCertificates()` forwarded the params. The button moved from the `CertificatesPage` header into `ListToolbar`'s `actions` slot.\n\n**Fast gates for web** (what this diff can turn red):\n- `pnpm -F web test` — 414 passed (+2 new), 0 failures\n- `pnpm -F web lint` — 0 problems\napi isn't changed, so its gates weren't run.\n\n**Ready for your look:** no migrations on this branch; nothing to regenerate; Vite hot-reloads. I loaded `/certificates?status=overdue`, pressed Export: `GET /certificates/export?status=overdue` → 200, a 7-row CSV matching the 7 overdue rows; no console errors, no server errors. Committed `feat(web): Export in the list toolbar, filtered rows only` (web is `commit: auto`).\n\nChecked by me: gates, the request and the CSV's row count. **Not human-checked yet:** how the toolbar looks and wraps with the button in it — at full width and on a narrow window.\n\n📍 export-in-toolbar: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running), press Export in the toolbar, and narrow the window",
+          "text": "Read `/acme-web-ui` and `/acme-web-data` first.\n\n**Built, test first:** two tests in `ExportButton.test.tsx` — the export request carries the active `q` / `status`, and carries none with no filter on — failed, then passed once `ExportButton` read `useCertificateFilters()` and `exportCertificates()` forwarded the params. The button moved from the `CertificatesPage` header into `ListToolbar`'s `actions` slot.\n\n**The phase tier:** GREEN at `9b3a6c0` (request `lq5m3h1a-7c52de`) — `verify phase 9b3a6c0 export-in-toolbar: GREEN · 1 known · 96s`, with the 2 new tests among what it ran. api isn't changed, so the verifier selected none of its suite.\n\n**Ready for your look:** no migrations on this branch; nothing to regenerate; Vite hot-reloads. I loaded `/certificates?status=overdue`, pressed Export: `GET /certificates/export?status=overdue` → 200, a 7-row CSV matching the 7 overdue rows; no console errors, no server errors. Committed `feat(web): Export in the list toolbar, filtered rows only` (web is `commit: auto`).\n\nChecked by me: the verdict, the request and the CSV's row count. **Not human-checked yet:** how the toolbar looks and wraps with the button in it — at full width and on a narrow window.\n\n📍 export-in-toolbar: awaiting your look at the app — next: open http://localhost:5173/certificates?status=overdue (`pnpm -F web dev` if it isn't running), press Export in the toolbar, and narrow the window",
           "inferred": true
         },
         {
           "role": "note",
-          "text": "The record is set to status: handed-off. Green gates aren't a walkable app: readiness (migrations, regenerate, smoke) runs before the human is asked to look."
+          "text": "The record is set to status: handed-off. A green verdict isn't a walkable app: readiness (migrations, regenerate, smoke) runs before the human is asked to look."
         }
       ],
       "stamp": {
-        "hash": "380e31d95f1b",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "hash": "d07bec28a4a8",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -389,8 +389,8 @@
       ],
       "stamp": {
         "hash": "4e5ba447acb1",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -428,8 +428,8 @@
       ],
       "stamp": {
         "hash": "1bbc99553659",
-        "version": "4.12.2",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -471,8 +471,8 @@
       ],
       "stamp": {
         "hash": "378f04700991",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -495,8 +495,8 @@
       ],
       "stamp": {
         "hash": "ec9b14f35494",
-        "version": "4.14.0",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       },
       "sources": [
         "skills/brainstorm/CONVERSATION.md §Discovery recon",
@@ -538,8 +538,8 @@
       ],
       "stamp": {
         "hash": "b1bb2786e961",
-        "version": "4.14.0",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -589,8 +589,8 @@
       ],
       "stamp": {
         "hash": "eaba1e37e143",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -619,9 +619,9 @@
         }
       ],
       "stamp": {
-        "hash": "62ae76c12496",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "59834fc5df5f",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -673,9 +673,9 @@
         }
       ],
       "stamp": {
-        "hash": "b0c127b971e2",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "0d70626d4435",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -732,9 +732,9 @@
         }
       ],
       "stamp": {
-        "hash": "62ae76c12496",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "59834fc5df5f",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     }
   ]

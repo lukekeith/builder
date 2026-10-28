@@ -143,13 +143,13 @@
         },
         {
           "role": "claude",
-          "text": "```\n✅ .claude/builder.md written for acme-certs\n   apps: api (producer, auto) · web (consumer, auto) · mobile (consumer, manual)\n   base: main · registry: docs/features · ticket: jira · design: off\n   inferred, check these: mobile released_artifact: true · web's deep set `pnpm -F web exec playwright test {tests}` from ci.yml · dev start `pnpm dev`\n   agent mode: on — agent_walk with the Playwright MCP driver, a walk env on its own ports and database\n   tracked test output: none\n📍 next: /builder:brainstorm <what you want built>\n```\n\nIt belongs in git so the whole team runs the same pipeline — I've left the commit to you. When you want agents to build unattended, `/builder:init --update` adds the `agent_walk:` block."
+          "text": "```\n✅ .claude/builder.md written for acme-certs\n   apps: api (producer, auto) · web (consumer, auto) · mobile (consumer, manual)\n   base: main · registry: docs/features · ticket: jira · design: off\n   inferred, check these: mobile released_artifact: true · web's e2e check `pnpm -F web e2e` from ci.yml · dev start `pnpm dev`\n   agent mode: on — agent_walk with the Playwright MCP driver, a walk env on its own ports and database\n   tracked test output: none\n📍 next: /builder:brainstorm <what you want built>\n```\n\nIt belongs in git so the whole team runs the same pipeline — I've left the commit to you. When you want agents to build unattended, `/builder:init --update` adds the `agent_walk:` block."
         }
       ],
       "stamp": {
         "hash": "8bfc43b8943f",
-        "version": "4.14.7",
-        "date": "2026-10-25"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -185,8 +185,8 @@
       ],
       "stamp": {
         "hash": "f430d177bc51",
-        "version": "4.14.0",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -242,8 +242,8 @@
       ],
       "stamp": {
         "hash": "2afbb1bbb6be",
-        "version": "4.14.1",
-        "date": "2026-10-24"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -293,8 +293,8 @@
       ],
       "stamp": {
         "hash": "c03e4c665d92",
-        "version": "4.12.1",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -347,9 +347,9 @@
         }
       ],
       "stamp": {
-        "hash": "afc1af825caa",
-        "version": "5.0.0",
-        "date": "2026-10-26"
+        "hash": "b8a9ff3180cf",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -372,17 +372,17 @@
         },
         {
           "role": "claude",
-          "text": "**acme-certs** — 4 in progress, most recent first\n\n| # | Feature | Tests | What it is | Last done | Next step | Updated | Pick it up |\n|---|---|---|---|---|---|---|---|\n| 1 | **bulk-renew** | — | — | sized lg — spec not written | Write the spec | 25m ago | `/builder:spec --path docs/features/bulk-renew` |\n| 2 | **cert-tags** | — | Let owners tag certificates and filter the list by tag | Plan written | Approve the plan, then build | 3 hours ago | `/builder:resume --path docs/features/cert-tags` |\n| 3 | **cert-history** | — | Show a certificate's change history | Audit done | Settle open decisions, then plan | 1 day ago | `/builder:resume --path docs/features/cert-history` |\n| 4 | **customer-portal** | — | Customer portal | 1/3 children shipped | Continue child portal-cert-list (building) | 2 days ago | `/builder:resume --path docs/features/customer-portal` |\n\n📦 4 features archived · list-features.mjs --archived lists them.\n\nrepo: 1 merged branch to delete → /builder:tidy"
+          "text": "**acme-certs** — 4 in progress, most recent first\n\n| # | Feature | Tests | What it is | Last done | Next step | Updated | Pick it up |\n|---|---|---|---|---|---|---|---|\n| 1 | **bulk-renew** | — | — | sized lg — spec not written | Write the spec | 25m ago | `/builder:spec --path docs/features/bulk-renew` |\n| 2 | **cert-tags** | risk · end | Let owners tag certificates and filter the list by tag | Plan written, go-ahead given | Build it | 3 hours ago | `/builder:resume --path docs/features/cert-tags` |\n| 3 | **cert-history** | — | Show a certificate's change history | Audit done | Settle open decisions, then plan | 1 day ago | `/builder:resume --path docs/features/cert-history` |\n| 4 | **customer-portal** | — | Customer portal | 1/3 children shipped | Continue child portal-cert-list (building) | 2 days ago | `/builder:resume --path docs/features/customer-portal` |\n\n📦 4 features archived · list-features.mjs --archived lists them.\n\nrepo: 1 merged branch to delete → /builder:tidy"
         },
         {
           "role": "note",
-          "text": "Printed verbatim — no extra line here, since nothing is held or flagged. Replying with a feature's name runs that row's command. The Tests column is the test plan the go-ahead recorded, short (own · touched · end), `—` until there is one."
+          "text": "Printed verbatim — no extra line here, since nothing is held or flagged. Replying with a feature's name runs that row's command. The Tests column is the test plan the go-ahead recorded, short (`risk · end`, `none · end`: agent walk · review; `· you` when you walk it after the agents), `—` until there is one."
         }
       ],
       "stamp": {
-        "hash": "db78c68d84e1",
-        "version": "5.3.0",
-        "date": "2026-10-27"
+        "hash": "743a3654690a",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -435,9 +435,9 @@
         }
       ],
       "stamp": {
-        "hash": "34ad8e8e599a",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "hash": "73833914da85",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -458,7 +458,7 @@
         },
         {
           "role": "claude",
-          "text": "cert-tags is planned — its slices:\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end\n  12 quick test runs + 3 suite runs\n```\n\ncert-history isn't planned yet, so there are no slices to show for it.\n\nNext, the test plan for each and where they land — this sets how much the agents test before anything merges.\n\n**Your options, per feature:**\n- **The recommended plan (Recommended)** — cert-tags: own · risk · end (each slice its own tests; the suites once at the end and an agent tries the risky parts; one review). cert-history: own · touched · end (its own tests; the web suite once; one review). The fast plan, raised only where the feature carries risk.\n- **Change it** — choose testing per slice, at the end, and when to review yourself; three more questions for that feature.\n\n**Land on? — your options:**\n- **main (Recommended)** — merge_into, where finished features merge. Other takes any other branch name.\n\n**Why The recommended plan:** cert-tags adds a migration and spans 3 apps, so its end is raised to an agent trying the risky parts; cert-history is web-only with no migration, so the touched suite once is enough. You give up a slower build that catches breaks earlier.",
+          "text": "cert-tags is planned — its slices:\n\n```\ncert-tags — 12 slices in 3 apps · lands on main\n\napi     1  Tag and CertificateTag models + migration  +3 tests\n        2  Tag create / rename / delete endpoints     +6 tests\n        3  ?tag= filter on GET /certificates          +4 tests\n        4  Contract: tags on the certificate payload  +2 tests\nweb     5  Tag chips on the certificate row           +2 tests\n        6  Tag picker on the certificate form                —\n        7  Tag filter in the certificate list         +3 tests\n        8  Tags settings page                         +2 tests\n        9  Rename and delete from settings             +1 test\nmobile 10  Tag store and API client                   +2 tests\n       11  Tag filter sheet                           +3 tests\n       12  Tag chips on the certificate card          +2 tests\n\nTest plan (recommended): tests run beside the build, everything on the merged result · an agent walks the risky parts · one review at the end\n  one review\n```\n\ncert-history isn't planned yet, so there are no slices to show for it.\n\nNext, the test plan for each and where they land — this sets how much an agent walks and when it is reviewed before anything merges. Every test runs either way: the verifier tests each commit and everything on the merged result.\n\n**Your options, per feature:**\n- **The recommended plan (Recommended)** — cert-tags: risk · end (an agent walks the risky parts; one review). cert-history: none · end (no agent walk; one review). The plain plan, raised only where the feature carries risk.\n- **Change it** — choose how much an agent walks and when to review yourself; two more questions for that feature.\n\n**Land on? — your options:**\n- **main (Recommended)** — merge_into, where finished features merge. Other takes any other branch name.\n\n**Why The recommended plan:** cert-tags adds a migration and spans 3 apps, so an agent walks its risky parts; cert-history is web-only with no migration, so the merge tier's suites on the merged result are enough. You give up an agent trying cert-history in the running app.",
           "inferred": true
         },
         {
@@ -469,11 +469,11 @@
           "options": [
             {
               "label": "The recommended plan (Recommended)",
-              "description": "own · risk · end — each slice runs its own tests; at the end the suites once and an agent tries the risky parts; one review at the end. end raised to risk: migration, 3 apps."
+              "description": "risk · end — an agent walks the risky parts; one review at the end. Walk raised to risk: migration, 3 apps."
             },
             {
               "label": "Change it",
-              "description": "Choose testing per slice, at the end, and when to review yourself."
+              "description": "Choose how much an agent walks, and when to review, yourself."
             }
           ]
         },
@@ -485,11 +485,11 @@
           "options": [
             {
               "label": "The recommended plan (Recommended)",
-              "description": "own · touched · end — each slice runs its own tests; the web suite once at the end; one review at the end."
+              "description": "none · end — no agent walk; one review at the end."
             },
             {
               "label": "Change it",
-              "description": "Choose testing per slice, at the end, and when to review yourself."
+              "description": "Choose how much an agent walks, and when to review, yourself."
             }
           ]
         },
@@ -516,53 +516,25 @@
         {
           "role": "claude",
           "inferred": true,
-          "text": "cert-history's test plan, one lever at a time. It has no PLAN.md yet, so each option says where it sits on the ladder rather than a count.\n\n**Testing while building — your options:**\n- **Its own tests (Recommended)** — quick: one small run per slice, the tests that slice adds and the type-check.\n- **Its own, plus the app's suite when the app's slices are done** — adds one suite run per app, once its slices are done.\n- **The app's suite after every slice** — slowest: a suite run per slice; catches a break where it happened.\n- **None while building** — fastest: the type-check only; tests are written but run at the end.\n\n**Testing at the end — your options:**\n- **The touched apps' suites, once (Recommended)** — one suite run per app: the fast set, the tests §Testing names, released-consumer parity.\n- **Plus an agent tries the risky parts** — adds an agent walking the [risk] items in the running app.\n- **Everything** — slowest: the deep set, the cross-app E2E, the full walk.\n- **Nothing — I'll test it** — fastest: the type-check only; the verdict says nothing was tested.\n\n**Review — your options:**\n- **Once at the end (Recommended)** — one whole-branch review.\n- **Once per app** — one after each app's slices.\n- **After every slice** — one per slice.\n\n**Why the recommended levers:** cert-history touches only web and adds no migration, so its own tests per slice and the web suite once cover it. You give up an agent trying it in the running app."
+          "text": "cert-history's test plan, one choice at a time. It has no PLAN.md yet, so each option says where it sits on the ladder rather than a count. Tests are not a choice: the verifier runs them all.\n\n**Agent walk — your options:**\n- **None (Recommended)** — no agent walk: the merge tier runs every suite on the merged result; nobody drives the app.\n- **The risky parts** — + an agent walks the risky parts: the [risk] items and the cross-app steps, in the running app.\n- **All of it** — slowest: the whole walk script.\n\n**Review — your options:**\n- **Once at the end (Recommended)** — one review: one whole-branch review.\n- **Once per app** — one per app, after each app's slices.\n- **After every slice** — one per slice.\n\n**Why the recommended plan:** cert-history touches only web and adds no migration, so the verifier's merge tier covers it. You give up an agent trying it in the running app."
         },
         {
           "role": "picker",
-          "question": "Testing while building — after each slice:",
-          "header": "Per slice",
+          "question": "Agent walk — before it lands:",
+          "header": "Agent walk",
           "multiSelect": false,
           "options": [
             {
-              "label": "Its own tests (Recommended)",
-              "description": "quick — one small run per slice — the tests that slice adds, and the type-check."
+              "label": "None (Recommended)",
+              "description": "no agent walk — the merge tier runs every suite on the merged result; nobody drives the app."
             },
             {
-              "label": "Its own, plus the app's suite when the app's slices are done",
-              "description": "+ one suite run per app — and the app's suite once its slices are done."
+              "label": "The risky parts",
+              "description": "+ an agent walks the risky parts — the [risk] items and the cross-app steps, in the running app."
             },
             {
-              "label": "The app's suite after every slice",
-              "description": "slowest — a suite run per slice — @scoped lines still narrow it."
-            },
-            {
-              "label": "None while building",
-              "description": "fastest — the type-check only — tests are still written; they run at the end."
-            }
-          ]
-        },
-        {
-          "role": "picker",
-          "question": "Testing at the end — once every slice is built:",
-          "header": "At the end",
-          "multiSelect": false,
-          "options": [
-            {
-              "label": "The touched apps' suites, once (Recommended)",
-              "description": "one suite run per app — every touched app's fast set, the tests §Testing names, released-consumer parity."
-            },
-            {
-              "label": "Plus an agent tries the risky parts",
-              "description": "+ an agent walks the risky parts — the [risk] walk items in the running app, and @scoped deep lines."
-            },
-            {
-              "label": "Everything",
-              "description": "slowest — deep set, cross-app E2E, full walk."
-            },
-            {
-              "label": "Nothing — I'll test it",
-              "description": "fastest — the type-check only; the verdict says nothing was tested."
+              "label": "All of it",
+              "description": "slowest — the whole walk script, in the running app."
             }
           ]
         },
@@ -588,11 +560,11 @@
         },
         {
           "role": "note",
-          "text": "cert-history's \"Change it\": its B questions in one call. It has no PLAN.md, so profile.mjs --cost has nothing to count — each option leads with its place in the ladder instead."
+          "text": "cert-history's \"Change it\": its two B questions in one call. It has no PLAN.md, so profile.mjs --cost has nothing to count — each option leads with its place in the ladder instead."
         },
         {
           "role": "user",
-          "text": "Its own tests · Plus an agent tries the risky parts · Once at the end"
+          "text": "The risky parts · Once at the end"
         },
         {
           "role": "claude",
@@ -622,7 +594,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"tests=slice=own end=risk review=end\" --set target=main --commit \"chore({feature}): test plan own · risk · end → main\") · Bash(node <builder>/scripts/advance.mjs docs/features/cert-history … --commit \"chore({feature}): test plan own · risk · end → main\")"
+          "text": "⏺ Bash(node <builder>/scripts/advance.mjs docs/features/cert-tags --set \"tests=walk=risk review=end\" --set target=main --commit \"chore({feature}): test plan risk · end → main\") · Bash(node <builder>/scripts/advance.mjs docs/features/cert-history --set \"tests=walk=risk review=end\" … --commit \"chore({feature}): test plan risk · end → main\")"
         },
         {
           "role": "note",
@@ -630,9 +602,9 @@
         }
       ],
       "stamp": {
-        "hash": "ed5d75e814c0",
-        "version": "5.2.0",
-        "date": "2026-10-27"
+        "hash": "4797c1088a5a",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -657,7 +629,7 @@
         },
         {
           "role": "claude",
-          "text": "What the agents will build:\n\n```\ncert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · risk · end\ncert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end\n```\n\n**Start the fleet** launches it detached — builds in parallel, walks one at a time, each merged into main when done; **Not now** starts nothing and keeps the test plans and targets for next time."
+          "text": "What the agents will build:\n\n```\ncert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests risk · end\ncert-history  — owners see every change made to a certificate, newest first (web) · tests none · end\n```\n\n**Start the fleet** launches it detached — builds in parallel, walks one at a time, each landed on main by the verifier's merge queue when done; **Not now** starts nothing and keeps the test plans and targets for next time."
         },
         {
           "role": "picker",
@@ -693,9 +665,9 @@
         }
       ],
       "stamp": {
-        "hash": "3b4f216bf998",
-        "version": "5.4.1",
-        "date": "2026-10-27"
+        "hash": "cce5c345374d",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -756,9 +728,9 @@
         }
       ],
       "stamp": {
-        "hash": "b25c289fbaa0",
-        "version": "5.4.1",
-        "date": "2026-10-27"
+        "hash": "bed646b0dacd",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -779,7 +751,7 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · /builder:fleet:status --archived for the latest 20\nlast 4 landed, mean wall-clock 2h58m start → merge (audit 8m · plan 27m · build 44m · final review 16m · end gates 22m · walk 31m · verify 18m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | own · risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | own · touched · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | own · touched · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
+          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · /builder:fleet:status --archived for the latest 20\nlast 4 landed, mean wall-clock 2h58m start → merge (audit 8m · plan 27m · build 44m · final review 16m · end gates 22m · walk 31m · verify 18m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | none · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | none · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | none · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
         },
         {
           "role": "note",
@@ -788,8 +760,8 @@
       ],
       "stamp": {
         "hash": "50dede0e5e10",
-        "version": "5.2.0",
-        "date": "2026-10-27"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -810,7 +782,7 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · end gates 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | own · risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**Wrap-up** — what this checkout needs before you test what landed. Run now, here, it takes these, in this order:\n\n1. **migrate** — apply the migration cert-history brought to the dev DB, then regenerate (`pnpm -F api prisma migrate deploy`, then `pnpm -F api prisma generate`)\n2. **restart** — restart the dev server, so it runs what landed (`docker restart acme-api`)\n3. **fixtures** — reset the dev fixtures (`pnpm -F api fixtures:reset`)\n4. **smoke** — check the dev server answers (`curl -sf localhost:4000/health`)\n\nHeld — not in \"all\": the `builder/cert-tags` worktree — it's parked, and only `/builder:tidy` settles it.\n\n**Why all four:** each is what you'd otherwise do by hand before testing, in the order they stand on each other, and nothing in them can drop data."
+          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · end gates 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**Wrap-up** — what this checkout needs before you test what landed. Run now, here, it takes these, in this order:\n\n1. **migrate** — apply the migration cert-history brought to the dev DB, then regenerate (`pnpm -F api prisma migrate deploy`, then `pnpm -F api prisma generate`)\n2. **restart** — restart the dev server, so it runs what landed (`docker restart acme-api`)\n3. **fixtures** — reset the dev fixtures (`pnpm -F api fixtures:reset`)\n4. **smoke** — check the dev server answers (`curl -sf localhost:4000/health`)\n\nHeld — not in \"all\": the `builder/cert-tags` worktree — it's parked, and only `/builder:tidy` settles it.\n\n**Why all four:** each is what you'd otherwise do by hand before testing, in the order they stand on each other, and nothing in them can drop data."
         },
         {
           "role": "picker",
@@ -850,17 +822,17 @@
         },
         {
           "role": "claude",
-          "text": "**Part 2 of 3 — portal-cert-list** …\n\n*(Part 3 of 3 — portal-downloads — follows the same way.)*\n\n**Lessons the agents proposed** — one, from portal-downloads: *the api suite needs the `acme-pg` container running — `docker start acme-pg` before `pnpm -F api test`* (it cost a red gate twice). Pick the ones to add to §Standing traps in `.claude/builder.md`; the rest stay in their specs.\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
+          "text": "**Part 2 of 3 — portal-cert-list** …\n\n*(Part 3 of 3 — portal-downloads — follows the same way.)*\n\n**Lessons the agents proposed** — one, from portal-downloads: *the api suite needs the `acme-pg` container running — `docker start acme-pg` before `pnpm -F api test`* (it cost a red verdict twice). Pick the ones to add to §Standing traps in `.claude/builder.md`; the rest stay in their specs.\n\n~~~\n📍 fleet: 3 merged into main · 1 parked · 0 failed — next: test main; settle the parked ones, then /builder:fleet again\n~~~"
         },
         {
           "role": "note",
-          "text": "The table and its notes are STATUS.md verbatim; the bullets after them are the skill's brief relay of done and parked. Then the review of what landed (REFERENCE §The review, fleet §5): the run asked nothing, so this is where the human sees each merged feature — the full review from its archived SPEC.md, rulings the run took marked (auto), one part per turn. B on a merged feature is new work (/builder:brainstorm) or git revert -m 1 <merge>. A parked feature gets no review — it didn't land. The footer ends the last part. Then the lessons the agents proposed (ship §At ship writes each as a lesson row in its SPEC; they never edit the config): one multi-select, and the picked ones are appended to §Standing traps."
+          "text": "The table and its notes are STATUS.md verbatim; the bullets after them are the skill's brief relay of done and parked. Then the review of what landed (REFERENCE §The review, fleet §5): the run asked nothing, so this is where the human sees each merged feature — the full review from its archived SPEC.md, rulings the run took marked (auto), one part per turn. Each feature landed through the verifier's merge queue — tested exactly as it merged. B on a merged feature is new work (/builder:brainstorm) or git revert -m 1 <merge>. A parked feature gets no review — it didn't land. The footer ends the last part. Then the lessons the agents proposed (ship §At ship writes each as a lesson row in its SPEC; they never edit the config): one multi-select, and the picked ones are appended to §Standing traps."
         }
       ],
       "stamp": {
-        "hash": "059b1cc41ac6",
-        "version": "5.4.1",
-        "date": "2026-10-27"
+        "hash": "6dc3d17ff418",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -922,8 +894,8 @@
       ],
       "stamp": {
         "hash": "26f08fb631db",
-        "version": "5.3.0",
-        "date": "2026-10-27"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -993,8 +965,8 @@
       ],
       "stamp": {
         "hash": "be3e7166a946",
-        "version": "5.4.0",
-        "date": "2026-10-27"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -1026,8 +998,8 @@
       ],
       "stamp": {
         "hash": "0efdec9cb925",
-        "version": "4.11.3",
-        "date": "2026-10-23"
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -1056,7 +1028,7 @@
         },
         {
           "role": "claude",
-          "text": "# `/builder:*` — how builder works\n\n## In one paragraph\n\nYou say what you want with `/builder:brainstorm`. It looks up what your words refer to in the code,\nexplains how that part works today, asks only what is still open, and — once you agree on what to\nbuild — sizes it. A small change is built right there in the chat. A bigger one gets a written spec\nyou approve; it is checked against the code once, planned, built one app at a time, tested, and\nmerged. By default agents build and test it and merge it on your machine, marked *not human-tested*;\nyou can test it yourself instead, and then nothing becomes a PR until you sign off.\n\n## Setup\n\nEverything builder knows about your project lives in one file, **`.claude/builder.md`**: your apps,\ntheir test commands, your house rules. `/builder:init` writes it from what the repo contains and\nasks only what it can't tell; `/builder:init --update` fills gaps in an existing one. If a step says\nit can't find the config, that file is what's missing. Nothing else needs installing.\n\n## Which command do I run?\n\n| You want to… | Run |\n|---|---|\n| **Start anything** — explore an idea, ask for a change, think something through | `/builder:brainstorm <what you want>` |\n| **Build from a spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code and asks only about what's contradicted or missing |\n| **See everything in progress** | `/builder:status` — one table, with the next step for each |\n| **Pick up where you left off** | `/builder:resume` — no argument lists everything in flight |\n| **Hand unfinished work to agents** | `/builder:agent` — tick features from a list; agents finish each and merge it. Every hand-off where agents could take over offers it as **1. Agent**, except the plan go-ahead, which launches agents itself |\n| **Build several specs while you're away** | `/builder:fleet <features…>` |\n| **Build it yourself in this session** | pick **In this session** on a hand-off before the build (or `/builder:resume --path <folder> --here`) — it is planned and built here, then stops for you to try it |\n| **Record that you tried it and it works** | `/builder:signoff --path <folder> <your words>` — only you can type it; `--hold \"<reason>\"` means \"works, don't push yet\" |\n| **Change a feature that's already planned or part-built** | `/builder:revise --path <folder> <the change>` |\n| **Clean up leftover branches and worktrees** | `/builder:tidy` |\n| **Clear finished specs out of the way** | `/builder:archive` — shipped, merged and abandoned folders move into `_archive/`, each kept as its SPEC |\n| **Build from a finished design** | `/builder:check --<design.flag> <ref>` to see if it's ready, then `/builder:intake --<design.flag> <ref>` — the flag's name comes from your config |\n| **Update builder, or see which one you're on** | `/builder:update` · `/builder:version` (a copy inside the repo updates with `/builder:vendor`) |\n| **Watch it run** | `/builder:statusline` — a live builder progress bar; `--off` removes it |\n\nThe steps `/builder:resume` runs for you can also be run by hand, each with `--path <folder>`:\n`/builder:spec`, `/builder:audit`, `/builder:plan`, `/builder:build`, `/builder:verify`,\n`/builder:ship`. Flags come first and the free text after them is the request.\n\n## What happens to a feature\n\n**Size.** Decided once you agree on what to build, with the reason; you can override it, and it only\never goes up.\n- **xs / sm** — stays inside existing code and one app, including a new command or endpoint only\n  that app uses. Designed and built in the chat; nothing is written under `docs/`.\n- **md / lg** — adds a model, a schema field, a permission or a screen, an endpoint another app\n  calls, or crosses from one app into another. Gets `SPEC.md` and a ~12-line `MANIFEST.md`.\n- **xl** — split into several features under one `PROGRAM.md`.\n- \"Can we…?\" is answered as a question, not turned into a feature.\n\n**Order (md and lg):**\n\n```\nspec → audit (once) → open questions → plan → go-ahead → build (one app at a time)\n     → tested → verify (the one deep check) → merged, or a PR after your sign-off\n```\n\n**Who tests it.** After you approve the spec the hand-off offers:\n1. **Agent** — \"go\" picks it. Agents plan, build, try it in the running app, verify, and merge it\n   into your main branch on your machine (`merge_into` picks another), recorded as\n   `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed; no PR.\n2. **Step by step** — the same, pausing for you at the open questions and the plan's go-ahead.\n3. **In this session** — built here, then 🔒 it stops for **your walk**: you try it in the running\n   app and type `/builder:signoff`. Only then come verify and **one PR for the whole feature**. A\n   plugin hook blocks `gh pr create` until you have signed off.\n\n**Several apps in one repo.** Each app gets its own phase, the one that provides an API before the\nones that use it, and each phase runs that app's own tests. The shared contract between apps freezes\nonce the providing app's phase passes; only `/builder:revise` reopens it, and it names every app to\nre-check. An app marked `commit: manual` is never committed by an agent.\n\n## The go-ahead and the test plan\n\nThe plan is shown as numbered slices, grouped by app, each with the tests it adds, and a test plan\nwith what it costs. \"go\" takes the recommended one; *Change the test plan* asks:\n- **Testing per slice** — its own tests (recommended) · plus the app's suite when its slices are\n  done · the app's suite after every slice · none while building.\n- **Testing at the end** — the touched apps' suites once (recommended) · plus an agent tries the\n  risky parts · everything · nothing — you test it.\n- **Review** — once at the end (recommended) · once per app · after every slice.\n\nWith the end set to the risky parts or everything, it also asks **Walk it yourself before it\nlands?** — yes parks the agent build for your walk and lands it after your sign-off. A breaking\nschema change, a migration or a released consumer raises the recommended end, and says why. **Two\nfloors hold under every plan:** a type-check of every touched app before the work lands, and one\nfinal whole-branch review.\n\n## Resuming\n\nEach feature's `MANIFEST.md` says where it stands and what's next, and every step ends with:\n\n```\n📍 <feature>: <state> — next: <what happens next>\n```\n\nReply **go** to continue, or pick a numbered option where there's more than one way on — \"go\" picks\n1. After a `/clear`, `/builder:resume` (or just ask to continue). A few things wait for you on\npurpose: your walk and sign-off, a step only you can do, a hold, and opening the PR, which asks\nonce. \"go, but …\" is a change, not a go.\n\n## Words you'll see\n\n**spec** `SPEC.md`, what and why, kept after it ships · **manifest** `MANIFEST.md`, where it stands ·\n**plan** `PLAN.md`, the build step by step · **walk** trying it yourself in the running app ·\n**sign-off** your verdict after the walk · **verify** the final full check · **park** stopped for\na decision only you can make, with what and why.\n\n## FAQ\n\n- **Where are the files?** `<registry>/<feature>/` — `SPEC.md`, `MANIFEST.md`, `PLAN.md`. When it\n  ships, the folder shrinks to its `SPEC.md` and moves to `<registry>/_archive/`; git keeps the rest.\n- **The audit found problems.** Normal — they become fixes in the spec. It runs once; anything still\n  uncertain is carried into the build as a named risk.\n- **My walk found problems.** They go in the spec's `## Fixes` list, each naming its app; they're\n  fixed, you try again, and sign off.\n- **A small change after the build?** Just fix the code. `/builder:revise` is for a change that\n  unbuilt work depends on.\n- **Does it need other plugins, update my tickets, deploy, or write my design system?** No. It\n  never creates a ticket, pushes, or deploys.\n- **What are its hooks?** Two, silent outside a repo with `.claude/builder.md`: a short brief at\n  session start, and the PR lock. The guide (`docs/guide.md` in the plugin's repo) says how to turn\n  them off.\n- **How work is done.** Four skills set it, and every implementer gets them:\n  `/builder:test-driven-development`, `/builder:systematic-debugging`,\n  `/builder:receiving-code-review`, `/builder:verification-before-completion` — *no claim that\n  something works without fresh evidence.*"
+          "text": "# `/builder:*` — how builder works\n\n## In one paragraph\n\nYou say what you want with `/builder:brainstorm`. It looks up what your words refer to in the code,\nexplains how that part works today, asks only what is still open, and — once you agree on what to\nbuild — sizes it. A small change is built right there in the chat. A bigger one gets a written spec\nyou approve; it is checked against the code once, planned, built one app at a time, tested, and\nmerged. By default agents build and test it and merge it on your machine, marked *not human-tested*;\nyou can test it yourself instead, and then nothing becomes a PR until you sign off.\n\n## Setup\n\nEverything builder knows about your project lives in one file, **`.claude/builder.md`**: your apps,\ntheir test commands, your house rules. `/builder:init` writes it from what the repo contains and\nasks only what it can't tell; `/builder:init --update` fills gaps in an existing one. If a step says\nit can't find the config, that file is what's missing. Nothing else needs installing.\n\n## Which command do I run?\n\n| You want to… | Run |\n|---|---|\n| **Start anything** — explore an idea, ask for a change, think something through | `/builder:brainstorm <what you want>` |\n| **Build from a spec, brief or ticket someone already wrote** | `/builder:intake <file · ticket · pasted doc>` — checks every claim against the code and asks only about what's contradicted or missing |\n| **See everything in progress** | `/builder:status` — one table, with the next step for each |\n| **Pick up where you left off** | `/builder:resume` — no argument lists everything in flight |\n| **Hand unfinished work to agents** | `/builder:agent` — tick features from a list; agents finish each and merge it. Every hand-off where agents could take over offers it as **1. Agent**, except the plan go-ahead, which launches agents itself |\n| **Build several specs while you're away** | `/builder:fleet <features…>` |\n| **Build it yourself in this session** | pick **In this session** on a hand-off before the build (or `/builder:resume --path <folder> --here`) — it is planned and built here, then stops for you to try it |\n| **Record that you tried it and it works** | `/builder:signoff --path <folder> <your words>` — only you can type it; `--hold \"<reason>\"` means \"works, don't push yet\" |\n| **Change a feature that's already planned or part-built** | `/builder:revise --path <folder> <the change>` |\n| **Clean up leftover branches and worktrees** | `/builder:tidy` |\n| **Clear finished specs out of the way** | `/builder:archive` — shipped, merged and abandoned folders move into `_archive/`, each kept as its SPEC |\n| **Build from a finished design** | `/builder:check --<design.flag> <ref>` to see if it's ready, then `/builder:intake --<design.flag> <ref>` — the flag's name comes from your config |\n| **Update builder, or see which one you're on** | `/builder:update` · `/builder:version` (a copy inside the repo updates with `/builder:vendor`) |\n| **Watch it run** | `/builder:statusline` — a live builder progress bar; `--off` removes it |\n\nThe steps `/builder:resume` runs for you can also be run by hand, each with `--path <folder>`:\n`/builder:spec`, `/builder:audit`, `/builder:plan`, `/builder:build`, `/builder:verify`,\n`/builder:ship`. Flags come first and the free text after them is the request.\n\n## What happens to a feature\n\n**Size.** Decided once you agree on what to build, with the reason; you can override it, and it only\never goes up.\n- **xs / sm** — stays inside existing code and one app, including a new command or endpoint only\n  that app uses. Designed and built in the chat; nothing is written under `docs/`.\n- **md / lg** — adds a model, a schema field, a permission or a screen, an endpoint another app\n  calls, or crosses from one app into another. Gets `SPEC.md` and a ~12-line `MANIFEST.md`.\n- **xl** — split into several features under one `PROGRAM.md`.\n- \"Can we…?\" is answered as a question, not turned into a feature.\n\n**Order (md and lg):**\n\n```\nspec → audit (once) → open questions → plan → go-ahead → build (one app at a time)\n     → tested → verify (reads the merge tier) → merged, or a PR after your sign-off\n```\n\n**Who tests it.** After you approve the spec the hand-off offers:\n1. **Agent** — \"go\" picks it. Agents plan, build, try it in the running app, verify, and merge it\n   into your main branch on your machine (`merge_into` picks another), recorded as\n   `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed; no PR.\n2. **Step by step** — the same, pausing for you at the open questions and the plan's go-ahead.\n3. **In this session** — built here, then 🔒 it stops for **your walk**: you try it in the running\n   app and type `/builder:signoff`. Only then come verify and **one PR for the whole feature**. A\n   plugin hook blocks `gh pr create` until you have signed off.\n\n**Several apps in one repo.** Each app gets its own phase, the one that provides an API before the\nones that use it, and each phase runs that app's own tests. The shared contract between apps freezes\nonce the providing app's phase passes; only `/builder:revise` reopens it, and it names every app to\nre-check. An app marked `commit: manual` is never committed by an agent.\n\n## The go-ahead and the test plan\n\nThe plan is shown as numbered slices, grouped by app, each with the tests it adds, and a test plan\nwith what it costs. \"go\" takes the recommended one; *Change the test plan* asks:\n- **Agent walk** — none: the merge tier runs every suite on the merged result (recommended) · the\n  risky parts in the running app · all of it.\n- **Review** — once at the end (recommended) · once per app · after every slice.\n\nWith the walk set to the risky parts or all of it, it also asks **Walk it yourself before it\nlands?** — yes parks the agent build for your walk and lands it after your sign-off. A breaking\nschema change, a migration or a released consumer raises the recommended walk, and says why. **The\nfloor** — the final whole-branch review — holds under every plan (the `floors` that\n`profile.mjs --levers` prints), and every test runs in the verifier whatever the plan says.\n\n## Resuming\n\nEach feature's `MANIFEST.md` says where it stands and what's next, and every step ends with:\n\n```\n📍 <feature>: <state> — next: <what happens next>\n```\n\nReply **go** to continue, or pick a numbered option where there's more than one way on — \"go\" picks\n1. After a `/clear`, `/builder:resume` (or just ask to continue). A few things wait for you on\npurpose: your walk and sign-off, a step only you can do, a hold, and opening the PR, which asks\nonce. \"go, but …\" is a change, not a go.\n\n## Words you'll see\n\n**spec** `SPEC.md`, what and why, kept after it ships · **manifest** `MANIFEST.md`, where it stands ·\n**plan** `PLAN.md`, the build step by step · **walk** trying it yourself in the running app ·\n**sign-off** your verdict after the walk · **verify** the final full check · **park** stopped for\na decision only you can make, with what and why.\n\n## FAQ\n\n- **Where are the files?** `<registry>/<feature>/` — `SPEC.md`, `MANIFEST.md`, `PLAN.md`. When it\n  ships, the folder shrinks to its `SPEC.md` and moves to `<registry>/_archive/`; git keeps the rest.\n- **The audit found problems.** Normal — they become fixes in the spec. It runs once; anything still\n  uncertain is carried into the build as a named risk.\n- **My walk found problems.** They go in the spec's `## Fixes` list, each naming its app; they're\n  fixed, you try again, and sign off.\n- **A small change after the build?** Just fix the code. `/builder:revise` is for a change that\n  unbuilt work depends on.\n- **Does it need other plugins, update my tickets, deploy, or write my design system?** No. It\n  never creates a ticket, pushes, or deploys.\n- **What are its hooks?** Two, silent outside a repo with `.claude/builder.md`: a short brief at\n  session start, and the PR lock. The guide (`docs/guide.md` in the plugin's repo) says how to turn\n  them off.\n- **How work is done.** Four skills set it, and every implementer gets them:\n  `/builder:test-driven-development`, `/builder:systematic-debugging`,\n  `/builder:receiving-code-review`, `/builder:verification-before-completion` — *no claim that\n  something works without fresh evidence.*"
         },
         {
           "role": "note",
@@ -1064,9 +1036,9 @@
         }
       ],
       "stamp": {
-        "hash": "16d4ac1f104d",
-        "version": "5.3.0",
-        "date": "2026-10-27"
+        "hash": "d83006d9ed65",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -1101,9 +1073,9 @@
         }
       ],
       "stamp": {
-        "hash": "0139b28bea7f",
-        "version": "4.14.3",
-        "date": "2026-10-24"
+        "hash": "c7e5e5c3cf4a",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     },
     {
@@ -1134,9 +1106,9 @@
         }
       ],
       "stamp": {
-        "hash": "0139b28bea7f",
-        "version": "4.14.3",
-        "date": "2026-10-24"
+        "hash": "c7e5e5c3cf4a",
+        "version": "5.5.0",
+        "date": "2026-10-28"
       }
     }
   ]
