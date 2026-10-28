@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpa
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git, mainRoot } from '../verify/git.mjs'
-import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, commitExists } from '../verify/checkouts.mjs'
+import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, commitExists, checkoutsDir } from '../verify/checkouts.mjs'
 
 function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vco-')))
@@ -135,4 +135,14 @@ test('checkoutAt keeps ignored files and removes untracked ones', () => {
   checkoutAt(co, first)
   assert.equal(existsSync(join(co, 'node_modules', 'x')), true)
   assert.equal(existsSync(join(co, 'junk.txt')), false)
+})
+
+test('checkouts live beside the main checkout (<root>-verify/co/<slot>), never inside its tree', () => {
+  const root = repo()
+  assert.equal(checkoutsDir(root), `${root}-verify/co`)
+  const co = ensureCheckout(root, 2)
+  assert.equal(co, join(`${root}-verify`, 'co', '2'))
+  assert.equal(existsSync(join(root, '.builder', 'verify', 'co')), false)
+  assert.equal(git(root, 'status', '--porcelain', '--ignored'), '', 'nothing in the consumer tree')
+  assert.equal(mainRoot(co), mainRoot(root))
 })
