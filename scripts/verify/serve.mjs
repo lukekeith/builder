@@ -194,9 +194,15 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     // service took the stale lock): what was running is aborted and goes back to the queue for the
     // new owner, with no verdict written.
     let superseded = false
+    // Requeue only the record this process started: the new owner may already have taken the
+    // request and written its own running record, which must not be flipped back.
+    const requeueOwn = (cur, req) => {
+      if (cur?.state === 'running' && cur.pid === process.pid && cur.startedAt === req.startedAt) ledger.saveRequest({ ...cur, state: 'queued', startedAt: undefined, pid: undefined })
+    }
     const finish = (req, verdict) => {
       const cur = ledger.getRequest(req.id) ?? req
-      if (superseded) return cur.state === 'running' ? ledger.saveRequest({ ...cur, state: 'queued', startedAt: undefined, pid: undefined }) : undefined
+      // A landed merge is never undone, so its verdict stands; anything else goes back to the queue.
+      if (superseded && !verdict.landed) return void requeueOwn(cur, req)
       // A merge that already landed is not undone by a late cancel, so its verdict stands.
       if (cur.state === 'cancelled' && !verdict.landed) {
         // Requests folded into it are put back by the next tick's sweep: their owners did not cancel.
@@ -337,12 +343,14 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     }
     const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
+    // A read error is retried once: a reclaimer's rename can leave the file briefly absent.
     const holdsLock = () => {
-      try {
-        return Number(readFileSync(join(verifyDir(root), 'serve.pid'), 'utf8')) === process.pid
-      } catch {
-        return false
+      for (let i = 0; i < 2; i++) {
+        try {
+          return Number(readFileSync(join(verifyDir(root), 'serve.pid'), 'utf8')) === process.pid
+        } catch {}
       }
+      return false
     }
 
     for (;;) {
@@ -353,8 +361,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         // call can't hear the abort, so don't wait on it forever.
         for (let i = 0; i < 100 && running.size; i++) await sleep(100)
         for (const h of running.values()) {
-          const cur = ledger.getRequest(h.req.id)
-          if (cur?.state === 'running') ledger.saveRequest({ ...cur, state: 'queued', startedAt: undefined, pid: undefined })
+          requeueOwn(ledger.getRequest(h.req.id), h.req)
         }
         return 'superseded'
       }
