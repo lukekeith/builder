@@ -1,7 +1,8 @@
 // scripts/test/verify-run.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, existsSync } from 'node:fs'
+import { getEventListeners } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openLedger } from '../verify/ledger.mjs'
@@ -122,9 +123,83 @@ test('bisect finds the first commit where each regression fails', async () => {
   const failsFrom = { a: 2, b: 3 }
   await bisect(regs, ['c1', 'c2', 'c3'], { atCommit: async (s) => { at = Number(s.slice(1)) }, statusAt: async (g) => (at >= failsFrom[g.id] ? 'fail' : 'pass') })
   assert.deepEqual(regs.map((g) => g.introducedBy), ['c2', 'c3'])
+  assert.equal(at, 3)
+})
+
+test('bisect leaves the checkout at the last commit, and stops once cancelled', async () => {
+  const calls = []
+  const regs = [{ id: 'a' }]
+  await bisect(regs, ['c1', 'c2', 'c3'], { atCommit: async (s) => calls.push(s), statusAt: async () => 'fail' })
+  assert.deepEqual(calls, ['c1', 'c3'])
+  assert.equal(regs[0].introducedBy, 'c1')
+  const ac = new AbortController()
+  ac.abort()
+  calls.length = 0
+  const stopped = [{ id: 'a' }]
+  await bisect(stopped, ['c1', 'c2', 'c3'], { signal: ac.signal, atCommit: async (s) => calls.push(s), statusAt: async () => 'fail' })
+  assert.deepEqual(calls, ['c3'])
+  assert.equal(stopped[0].introducedBy, 'c3')
 })
 
 test('runShell kills on timeout', async () => {
   const r = await runShell('sleep 5', { cwd: tmpdir(), timeoutMs: 200 })
   assert.equal(r.timedOut, true)
+})
+
+test('runShell removes its abort listener when the run ends', async () => {
+  const ac = new AbortController()
+  await runShell('true', { cwd: tmpdir(), signal: ac.signal })
+  await runShell('true', { cwd: tmpdir(), signal: ac.signal })
+  assert.equal(getEventListeners(ac.signal, 'abort').length, 0)
+})
+
+test('a failing test in a file the branch adds is a regression, not broken', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`), 'test/new.test.mjs': T(`test('fresh', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const v = await runRequest(req({ changed: ['test/new.test.mjs'] }), ctxFor(co, target))
+  assert.equal(v.status, 'red')
+  assert.deepEqual(v.regressions.map((r) => r.id), ['unit::test/new.test.mjs::fresh'])
+  assert.deepEqual(v.broken, [])
+})
+
+test('a lines check whose target run times out is broken, and the target output is not cached', async () => {
+  const co = project({})
+  const target = project({})
+  writeFileSync(join(co, 'lint.txt'), '✗ finding\n')
+  writeFileSync(join(target, 'lint.txt'), '✗ finding\n')
+  writeFileSync(join(target, 'slow'), '')
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 1000, db: null, checks: [
+    { name: 'lint', run: 'if [ -f slow ]; then sleep 5; fi; cat lint.txt', cwd: '.', compare: 'lines', match: '✗', tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.match(v.broken[0].reason, /check::lint: the run on the target timed out/)
+  assert.equal(ctx.ledger.readLines('tgt', 'lint'), null)
+})
+
+test('cancelled while judging the first suite\'s failures: nothing more is judged or leased', async () => {
+  const fails = (n) => T(`test('f${n}', () => assert.equal(1, 2))`)
+  const co = project({ 'test/a.test.mjs': fails(1), 'test/b.test.mjs': fails(2), 'test/c.test.mjs': fails(3) })
+  const ac = new AbortController()
+  let calls = 0
+  const ctx = ctxFor(co, co, {
+    signal: ac.signal,
+    verify: { suites: [suite, { ...suite, name: 'second' }], checks: [], timeoutMs: 60000, db: null },
+    // The suite run is lease 1; the first single-test re-run (judging begins) is lease 2 — cancel there.
+    lease: async () => (++calls === 2 && ac.abort(), { env: {}, release() {} }),
+  })
+  const t0 = Date.now()
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'cancelled')
+  assert.equal(calls, 2)
+  assert.deepEqual([v.regressions, v.flakes, v.debt, v.broken], [[], [], [], []])
+  assert.ok(Date.now() - t0 < 10000)
+})
+
+test('the request\'s report dir is removed even when the run throws', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, co, { select: () => { throw new Error('boom') } })
+  await assert.rejects(runRequest(req({ id: 'thrown' }), ctx), /boom/)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'reports', 'thrown')), false)
 })

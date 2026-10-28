@@ -37,6 +37,9 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
     signal?.addEventListener('abort', kill, { once: true })
     p.on('close', (code) => {
       if (t) clearTimeout(t)
+      // A long-lived signal outlives many runs: a listener left behind would pile up and SIGKILL a
+      // process group id the OS has since handed to someone else.
+      signal?.removeEventListener('abort', kill)
       resolve({ code: code ?? 1, timedOut, out })
     })
   })
@@ -44,15 +47,21 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
 
 export const testId = (suite, r) => `${suite}::${r.file}::${r.name}`
 
-export async function bisect(regs, commits, { atCommit, statusAt }) {
+/** Walks the range oldest first; ends with the checkout back at the range's last commit. */
+export async function bisect(regs, commits, { atCommit, statusAt, signal = null }) {
   for (const g of regs) g.introducedBy = null
   for (const sha of commits) {
+    if (signal?.aborted) break
     const open = regs.filter((g) => !g.introducedBy)
     if (!open.length) break
     await atCommit(sha)
-    for (const g of open) if ((await statusAt(g)) === 'fail') g.introducedBy = sha
+    for (const g of open) {
+      if (signal?.aborted) break
+      if ((await statusAt(g)) === 'fail') g.introducedBy = sha
+    }
   }
   for (const g of regs) g.introducedBy ??= commits.at(-1)
+  if (commits.length) await atCommit(commits.at(-1))
 }
 
 const linesOf = (out, match) => {
@@ -66,12 +75,21 @@ const linesOf = (out, match) => {
 }
 
 export async function runRequest(req, ctx) {
+  // Report files for this request; removed however the run ends, a throw included.
+  const tmp = join(ctx.ledger.dir, 'reports', req.id)
+  mkdirSync(tmp, { recursive: true })
+  try {
+    return await judgeRequest(req, ctx, tmp)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+async function judgeRequest(req, ctx, tmp) {
   const { verify, pool, ledger, checkout, signal } = ctx
   const t0 = Date.now()
   const verdict = { request: req.id, branch: req.branch, sha: req.sha, tier: req.tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0 }
   const rows = []
-  const tmp = join(ledger.dir, 'reports', req.id)
-  mkdirSync(tmp, { recursive: true })
   let n = 0
   const known = ledger.known(req.target).ids
   const owns = req.changed ?? []
@@ -80,6 +98,8 @@ export async function runRequest(req, ctx) {
   const templateFor = (needs, where) => (needs.some((x) => x.kind === 'db') ? pool.ensureTemplate(where, inputsHash(where, verify.db.inputs)) : null)
 
   const runSuite = async (suite, files, { where = checkout, grep = null } = {}) => {
+    // Once cancelled, nothing more is leased or run.
+    if (signal?.aborted) return { results: null, reason: 'cancelled' }
     const adapter = ADAPTERS[suite.runner]
     const cwd = join(where, suite.cwd)
     const report = adapter.reportPath ? adapter.reportPath(suite, cwd) : join(tmp, `${++n}-${suite.name}.out`)
@@ -100,6 +120,7 @@ export async function runRequest(req, ctx) {
   const rerun = async (suite, f, where) => statusIn(await runSuite(suite, [f.file], { where, grep: f.name }), f)
 
   const runCheck = async (c, where) => {
+    if (signal?.aborted) return { code: 1, timedOut: false, aborted: true, out: 'cancelled' }
     const cwd = join(where, c.cwd)
     const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
     try {
@@ -111,7 +132,11 @@ export async function runRequest(req, ctx) {
   const targetLines = async (c) => {
     const cached = ledger.readLines(ctx.targetSha, c.name)
     if (cached) return cached
-    const s = linesOf((await runCheck(c, await ctx.targetCheckout())).out, c.match)
+    const r = await runCheck(c, await ctx.targetCheckout())
+    // A target run cut short is not the target's output: caching it would make every later run
+    // against this sha a false red. Not cached, and the check is broken this time.
+    if (r.timedOut || r.aborted || signal?.aborted) return null
+    const s = linesOf(r.out, c.match)
     ledger.writeLines(ctx.targetSha, c.name, s)
     return s
   }
@@ -120,6 +145,7 @@ export async function runRequest(req, ctx) {
     if (r.timedOut) return { fail: true, msg: `timed out after ${Math.round(verify.timeoutMs / 60000)}m` }
     if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500) }
     const theirs = await targetLines(c)
+    if (!theirs) return { fail: false, broken: `the run on the target ${signal?.aborted ? 'was cancelled' : `timed out after ${Math.round(verify.timeoutMs / 60000)}m`}`, msg: '' }
     const fresh = [...linesOf(r.out, c.match)].filter((l) => !theirs.has(l))
     return { fail: fresh.length > 0, msg: fresh.slice(0, 30).join('\n') }
   }
@@ -144,19 +170,22 @@ export async function runRequest(req, ctx) {
     const r = await checkFails(c, checkout)
     if (signal?.aborted) break
     const id = `check::${c.name}`
+    if (r.broken) {
+      verdict.broken.push({ suite: 'check', reason: `${id}: ${r.broken}` })
+      continue
+    }
     rows.push({ id, status: r.fail ? 'fail' : 'pass' })
     if (!r.fail) continue
     checksRun.set(id, c)
     const f = { id, file: null, name: c.name, msg: r.msg }
-    record(
+    const k = await judge(
       f,
-      await judge(
-        f,
-        async () => ((await checkFails(c, checkout)).fail ? 'fail' : 'pass'),
-        async () => (c.compare === 'lines' ? 'pass' : (await checkFails(c, await ctx.targetCheckout())).fail ? 'fail' : 'pass'),
-      ),
-      'check',
+      async () => ((await checkFails(c, checkout)).fail ? 'fail' : 'pass'),
+      async () => (c.compare === 'lines' ? 'pass' : (await checkFails(c, await ctx.targetCheckout())).fail ? 'fail' : 'pass'),
     )
+    // A judgement cut short by a cancel is not a judgement.
+    if (signal?.aborted) break
+    record(f, k, 'check')
   }
 
   // 2. Suites.
@@ -186,19 +215,22 @@ export async function runRequest(req, ctx) {
       continue
     }
     for (const r of res.results) {
+      if (signal?.aborted) break
       const id = testId(s.name, r)
       rows.push({ id, status: r.status, ms: r.ms })
       if (r.status !== 'fail') continue
       const f = { id, file: r.file, name: r.name, msg: r.msg }
-      record(
+      const k = await judge(
         f,
-        await judge(
-          f,
-          (x) => rerun(s, x, checkout),
-          async (x) => rerun(s, x, await ctx.targetCheckout()),
-        ),
-        s.name,
+        (x) => rerun(s, x, checkout),
+        async (x) => {
+          // A test file the branch adds has no counterpart on the target: missing there, not broken.
+          const target = await ctx.targetCheckout()
+          return existsSync(join(target, x.file)) ? rerun(s, x, target) : 'missing'
+        },
       )
+      if (signal?.aborted) break
+      record(f, k, s.name)
     }
   }
 
@@ -209,12 +241,11 @@ export async function runRequest(req, ctx) {
   if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
   if (verdict.regressions.length && (req.commits?.length ?? 0) > 1 && !signal?.aborted) {
     await bisect(verdict.regressions, req.commits, {
+      signal,
       atCommit: ctx.atCommit,
       statusAt: async (g) => (g.suite === 'check' ? ((await checkFails(checksRun.get(g.id), checkout)).fail ? 'fail' : 'pass') : rerun(suiteOf.get(g.suite), g, checkout)),
     })
   } else for (const g of verdict.regressions) g.introducedBy = req.commits?.at(-1) ?? req.sha
-  rmSync(tmp, { recursive: true, force: true })
-
   verdict.status = signal?.aborted ? 'cancelled' : verdict.regressions.length ? 'red' : verdict.broken.length ? 'env-broken' : 'green'
   verdict.ms = Date.now() - t0
   return verdict
