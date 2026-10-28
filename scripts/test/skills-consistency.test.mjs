@@ -846,3 +846,17 @@ test('4.14.8: init always writes the agent_walk block — agent mode is part of 
   assert.doesNotMatch(init, /\(not yet \/ yes\)/)
   assert.match(tpl, /\/builder:init always writes this block/)
 })
+
+test('the plan format carries decisions, not bodies', () => {
+  const fmt = read('skills/plan/PLAN-FORMAT.md')
+  assert.match(fmt, /unambiguous, not complete/)
+  assert.match(fmt, /The implementer writes the body/)
+  assert.match(fmt, /Proportion/)
+  assert.doesNotMatch(fmt, /code blocks are required for code steps/)
+  assert.doesNotMatch(fmt, /No line budget/)
+  assert.match(fmt, /writing-plans.*7\.0\.0|7\.0\.0.*writing-plans/s)
+  assert.match(read('skills/build/prompts/implementer.md'), /you write the bodies/i)
+  assert.match(read('skills/build/prompts/task-reviewer.md'), /Interfaces/)
+  for (const f of ['skills/plan/SKILL.md', 'skills/resume/REFERENCE.md'])
+    assert.doesNotMatch(read(f), /steps with the actual code/, f)
+})
