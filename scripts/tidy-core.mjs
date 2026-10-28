@@ -7,7 +7,6 @@
 import { existsSync, statSync, cpSync, rmSync, mkdirSync } from 'node:fs'
 import { join, dirname, isAbsolute } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { dirtyPaths } from './gates-core.mjs'
 
 const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const tryGit = (args, cwd) => {
@@ -17,6 +16,9 @@ const tryGit = (args, cwd) => {
     return null
   }
 }
+
+/** Tracked paths with changes against HEAD. */
+const dirtyPaths = (wt) => (tryGit(['diff', '--name-only', 'HEAD', '--'], wt) ?? '').split('\n').filter(Boolean)
 
 /** What test runners rewrite on every run — never anyone's work. */
 export const TEST_OUTPUT = ['test-results/', 'playwright-report/', 'coverage/', '.nyc_output/', '.builder/']

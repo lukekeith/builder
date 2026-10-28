@@ -2,14 +2,14 @@
 /**
  * handoff — the build lane's end state, written once for the walk lane, so the walk lane's resume
  * reads one file instead of re-deriving it in ~7 calls (REFERENCE headings, §Walk readiness, build's
- * walk section, walk.md, the gates, the manifest).
+ * walk section, walk.md, the verifier's verdicts, the manifest).
  *
  *   node <builder>/scripts/handoff.mjs write <folder> [--note "<line>"]…
  *   node <builder>/scripts/handoff.mjs read  <folder> [--no-docs]
  *
  * write → <WS>/handoff.md: the manifest's state, ready, contract, test plan and next; HEAD and the
- *   branch; every in-scope app's last gate result from `.builder/gates/` (the runner's memo — the
- *   sha it ran at, when, and whether code moved since) and the deep set's; the contract freeze;
+ *   branch; the verifier's latest verdict per tier (commit, phase,
+ *   merge) for this branch, from `.builder/verify/requests/`; the contract freeze;
  *   walk.md's item counts; the open items (a `blocked:` line, open `## Fixes` rows, the ledger's
  *   Ruling / deferred-minor / parked lines); this config's readiness facts (agent_walk.start / smoke /
  *   env and §Walk readiness, verbatim); and the walk lane's route with the exact advance.mjs call
@@ -31,40 +31,24 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { openFeature, read, writeAtomic, git, shortHead, currentBranch, today, mdSection, configSection, codeChangedSince, parseArgs, cli } from './feature-core.mjs'
-import { isSet } from './manifest.mjs'
-import { parseGates } from './gates-core.mjs'
 import { bundle } from './docs.mjs'
 
 const TRACKED = ['state', 'ready', 'contract']
 
-function gateLines(f) {
-  const gates = parseGates(f.cfg?.body ?? '')
-  const apps = isSet(f.manifest.apps) ? f.manifest.apps.split('+').map((s) => s.trim()) : (f.cfg?.appNames ?? [])
-  const dir = join(f.root, '.builder', 'gates')
-  const memo = (key) => {
-    try {
-      return JSON.parse(read(join(dir, `${key}.json`)))
-    } catch {
-      return null
-    }
-  }
-  const since = (m) => {
-    const changed = codeChangedSince(f.root, m.head, f.cfg?.registry ?? 'docs/features')
-    return changed == null ? 'its sha is not in this history' : changed.length ? `${changed.length} code file${changed.length === 1 ? '' : 's'} changed since — the runner will re-run it` : 'no code change since'
-  }
-  const line = (label, m) => (m ? `- ${label}: ${m.exit === 0 ? 'PASS' : 'FAIL'} at ${m.head} (${m.when}) — ${since(m)}` : `- ${label}: no recorded run`)
-  const out = []
-  for (const app of apps) {
-    if (!gates.fast[app]) {
-      out.push(`- ${app} — fast: no "### ${app} — fast" block in the config`)
-      continue
-    }
-    out.push(line(`${app} — fast`, memo(`fast-${app}`)))
-    const tc = memo(`fast-${app}-typecheck`)
-    if (tc) out.push(line(`${app} — typecheck`, tc))
-  }
-  out.push(gates.deep.length ? line('deep set', memo('deep') ?? memo('deep-whole')) : '- deep set: none configured')
-  return out
+/** The branch's latest done verdict per tier, from the main checkout's request files. */
+function verifierLines(f) {
+  let reqs = []
+  try {
+    const main = git(f.root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).replace(/\/\.git$/, '')
+    const d = join(main, '.builder', 'verify', 'requests')
+    reqs = readdirSync(d).filter((n) => n.endsWith('.json')).map((n) => JSON.parse(read(join(d, n))))
+  } catch {}
+  const branch = currentBranch(f.root)
+  const mine = reqs.filter((r) => r.branch === branch && r.state === 'done' && r.verdict).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  return ['commit', 'phase', 'merge'].map((tier) => {
+    const v = mine.filter((r) => r.tier === tier).at(-1)?.verdict
+    return v ? `- ${tier}: ${v.status.toUpperCase()} at ${String(v.sha).slice(0, 7)} — ${v.regressions.length} regression(s), ${v.flakes.length} flake(s), ${v.known.length} known` : `- ${tier}: no verdict yet`
+  })
 }
 
 function walkLine(ws) {
@@ -107,9 +91,9 @@ export function compose(f, notes = []) {
         ].join('\n')
       : `The manifest says state ${m.state ?? '?'}, ready ${m.ready ?? '?'} — not the walk lane's entry (building + ready pending). Route on the manifest's next: ${m.next ?? '?'}`,
     '',
-    '## Gates (the runner\'s last result per app)',
+    '## Verifier (the latest verdict per tier)',
     '',
-    ...gateLines(f),
+    ...verifierLines(f),
     '',
     '## Contract',
     '',

@@ -109,14 +109,14 @@ test('an in-chat build shows while its ledger is fresh, and drops off after 5 mi
   assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), '')
 })
 
-test('a running gate and a running job show with elapsed time; dead or finished ones do not', () => {
+test('a running verifier request shows with its tier, branch and elapsed time; done ones do not', () => {
   const root = repo()
-  write(root, '.builder/gates/running.json', JSON.stringify({ sets: 'deep set', pid: process.pid, startedAt: new Date(NOW - 185000).toISOString() }))
-  write(root, '.builder/jobs/verify.pid', String(process.pid), NOW - 45000)
-  write(root, '.builder/jobs/old.pid', String(process.pid))
-  write(root, '.builder/jobs/old.exit', '0\n')
-  write(root, '.builder/jobs/gone.pid', String(DEAD))
-  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), 'builder · gate deep set ⏱ 3m · job verify ⏱ 45s')
+  const started = new Date(NOW - 3 * 60000).toISOString()
+  write(root, '.builder/verify/requests/a.json', JSON.stringify({ id: 'a', state: 'running', tier: 'merge', branch: 'builder/x', sha: 'abc', createdAt: started, startedAt: started, pid: process.pid }))
+  write(root, '.builder/verify/requests/b.json', JSON.stringify({ id: 'b', state: 'done', tier: 'commit', branch: 'builder/y', sha: 'def', createdAt: started }))
+  const out = render({ cwd: root, now: NOW, bootTime: BOOT, width: 200 })
+  assert.match(out, /verify merge builder\/x ⏱ 3m/)
+  assert.doesNotMatch(out, /builder\/y/)
 })
 
 test('from inside a fleet worktree (.git is a file) it reads the main checkout', () => {
@@ -149,12 +149,10 @@ test('the CLI prints the line, and prints nothing (exit 0) on garbage', () => {
   assert.equal(bad.stdout, 'builder ▓▓▓▓░░░░░░ 43% · x build 1/2\n', 'an unreadable fleet.json is no fleet segment, not "fleet 0/0"')
 })
 
-test('a lock, marker or job pid file older than the last boot is stale, whatever process has that pid now', () => {
+test('a lock pid file older than the last boot is stale, whatever process has that pid now', () => {
   const root = repo()
   write(root, '.builder/fleet/lock', String(process.pid), NOW - 60000)
   write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: { b: { status: 'building' } } }))
-  write(root, '.builder/gates/running.json', JSON.stringify({ sets: 'deep set', pid: process.pid, startedAt: new Date(NOW - 60000).toISOString() }), NOW - 60000)
-  write(root, '.builder/jobs/verify.pid', String(process.pid), NOW - 60000)
   assert.equal(render({ cwd: root, now: NOW, bootTime: NOW - 1000 }), '')
   assert.match(render({ cwd: root, now: NOW, bootTime: NOW - 120000 }), /^builder [▓░]{10} \d+% · ⚙ fleet 0\/1/)
 })
