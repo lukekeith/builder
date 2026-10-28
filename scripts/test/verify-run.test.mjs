@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, existsSync } from 
 import { getEventListeners } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { openLedger } from '../verify/ledger.mjs'
 import { runRequest, runShell, bisect } from '../verify/run.mjs'
 
@@ -202,4 +203,23 @@ test('the request\'s report dir is removed even when the run throws', async () =
   const ctx = ctxFor(co, co, { select: () => { throw new Error('boom') } })
   await assert.rejects(runRequest(req({ id: 'thrown' }), ctx), /boom/)
   assert.equal(existsSync(join(ctx.ledger.dir, 'reports', 'thrown')), false)
+})
+
+test('a report naming files relative to the runner\'s testDir resolves to the repo path, so a failure on both sides is debt', async () => {
+  const gen = `printf '<testsuites><testsuite name="x.spec.ts"><testcase classname="x.spec.ts" name="renders" time="0.1"><failure message="boom"/></testcase></testsuite></testsuites>' > r.xml`
+  const mk = () => {
+    const dir = project({ 'gen.sh': gen })
+    mkdirSync(join(dir, 'tests/visual'), { recursive: true })
+    writeFileSync(join(dir, 'tests/visual/x.spec.ts'), '')
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    execFileSync('git', ['add', '.'], { cwd: dir })
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], { cwd: dir })
+    return dir
+  }
+  const pw = { name: 'e2e', runner: 'junit', files: 'tests/**/*.spec.ts', cwd: '.', command: 'sh gen.sh', report: 'r.xml', needs: [], tiers: ['commit', 'phase', 'merge'] }
+  const ctx = ctxFor(mk(), mk(), { verify: { suites: [pw], checks: [], timeoutMs: 60000, db: null } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.regressions, [])
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
 })
