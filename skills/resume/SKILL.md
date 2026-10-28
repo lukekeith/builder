@@ -194,7 +194,8 @@ touches neither the SPEC header nor the PR lock.
 ## 🔒 The walk (before the deep pass)
 
 1. **The phase tier is green on HEAD** — `verify.mjs verdict <branch> HEAD` (REFERENCE §The verifier);
-   none or older → request `--tier phase` and wait. ⛔ not the merge tier — that runs beside the walk.
+   none or older → request `--tier phase` and wait. ⛔ not the merge tier — that runs beside the walk
+   (under the fleet; otherwise verify requests it).
 1b. 🔴 **Walk readiness** — REFERENCE §Walk readiness, whenever the manifest's `ready:` is not
    `yes` at the current HEAD, or anything since could have left the dev environment behind (a new
    migration, a restart-class change). Pending → hand off the one step that's left; ⛔ **never print

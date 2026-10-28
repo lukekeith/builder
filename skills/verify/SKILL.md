@@ -23,7 +23,12 @@ It reads four things, and **trusts nothing remembered from the build** — every
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 
 🔴 **Re-resolve that path inline in every command that uses it** — a shell variable does not survive
-between Bash calls. **The merge tier is this step's evidence** — the fleet requested it when the walk started; read it, never re-run it.
+between Bash calls. **The merge tier is this step's evidence** — the fleet requested it when the
+walk started (under the fleet; otherwise verify requests it); read it, never re-run it.
+
+**Under `--no-dev-env`** (the fleet's parallel lanes) there is no env and verify never drives the
+app: anything that needs the app driven on code changed since the walk — item 10's live steps — is a
+re-walk (AGENT-MODE.md §Batched walks), never a run here.
 
 🔴 **Under `--agent-walk` the verdict is written in this run.** No reviewer or walk agent runs in the
 background: independent subagents go out together in one foreground message, and the merge tier is
@@ -104,10 +109,14 @@ a visual diff, and a renamed element changes what the walk does.
    phase its `Phase N: closed` line. **No `- [ ]` remains under `## Fixes`.** 🔴 **A phase in a
    `commit: manual` app whose commits were staged but never approved is not landed** — say so plainly;
    it is the human's call, not a failure.
-3. **The merge tier is green on HEAD** — `node <builder>/scripts/verify/verify.mjs verdict <branch> HEAD`.
-   No verdict for HEAD (exit 5) or still running (exit 75) → `verify.mjs request <worktree> HEAD
-   --tier merge --hold` (when none is queued) and `verify.mjs wait <id>`. Quote the verdict line —
-   sha, request id, counts. **Regressions** fail this item: each becomes a `## Fixes` row naming
+3. **The merge tier is green on HEAD** — `node <builder>/scripts/verify/verify.mjs verdict <branch>
+   --tier merge`. Its verdict holds for HEAD when its sha is HEAD or the commits since touch only the
+   registry — `git diff --quiet <its sha> HEAD -- . ':!<registry>'` exits 0 (the sign-off, condense
+   and verify records; the rule `carry` lands by) — so the fleet's held run stands, never re-run.
+   Still running (exit 75) → `verify.mjs wait <id>` on its `pending: merge … <id>` line. None
+   (exit 5), or code changed since its sha → `verify.mjs request <worktree> HEAD --tier merge --hold`
+   and `verify.mjs wait <id>`. Quote the verdict line — `verify merge <sha> <branch>: …`, the request
+   id, the counts. **Regressions** fail this item: each becomes a `## Fixes` row naming
    its test and the commit that introduced it. **Flakes, known failures and newly found debt** are
    reported in the verdict and do not fail it. **Env-broken** is BLOCKED-on-environment, never READY.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly

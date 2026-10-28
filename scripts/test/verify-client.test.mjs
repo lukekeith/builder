@@ -48,6 +48,31 @@ test('verdict with nothing recorded: 75 while one is queued, 5 when none exists'
   assert.equal(cli(wt, 'verdict', 'q').status, 75)
 })
 
+test('verdict --tier: a newer phase verdict does not satisfy --tier merge', () => {
+  const { root, wt } = repo()
+  const ledger = openLedger(root)
+  const base = { regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  const m = ledger.newRequest({ worktree: wt, branch: 'd', sha: 'aaa', tier: 'merge', target: 'main' })
+  ledger.saveRequest({ ...m, state: 'done', verdict: { ...base, request: m.id, branch: 'd', sha: 'aaa', tier: 'merge', status: 'red' } })
+  const p = ledger.newRequest({ worktree: wt, branch: 'd', sha: 'bbb', tier: 'phase', target: 'main' })
+  ledger.saveRequest({ ...p, state: 'done', verdict: { ...base, request: p.id, branch: 'd', sha: 'bbb', tier: 'phase', status: 'green' } })
+  assert.equal(cli(wt, 'verdict', 'd').status, 0, 'untiered: the latest of any tier')
+  const r = cli(wt, 'verdict', 'd', '--tier', 'merge')
+  assert.equal(r.status, 1)
+  assert.match(r.stdout, /^verify merge aaa d: RED/)
+  assert.equal(cli(wt, 'verdict', 'e', '--tier', 'merge').status, 5)
+  assert.equal(cli(wt, 'verdict', 'd', '--tier', 'bogus').status, 2)
+})
+
+test('verdict exit 75 prints each pending request with its id; --tier filters the pending list too', () => {
+  const { root, wt } = repo()
+  const q = openLedger(root).newRequest({ worktree: wt, branch: 'q', sha: 'x', tier: 'merge', target: 'main' })
+  const r = cli(wt, 'verdict', 'q', '--tier', 'merge')
+  assert.equal(r.status, 75)
+  assert.match(r.stdout, new RegExp(`^pending: merge queued ${q.id}$`, 'm'))
+  assert.equal(cli(wt, 'verdict', 'q', '--tier', 'phase').status, 5)
+})
+
 test('--tree snapshots uncommitted work without touching the branch', () => {
   const { root, wt } = repo()
   const head = git(wt, 'rev-parse', 'HEAD')
