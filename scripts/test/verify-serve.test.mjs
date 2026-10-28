@@ -355,3 +355,23 @@ test('a service whose lock was taken over stops: running requests go back to que
     other.kill()
   }
 })
+
+test('a superseded service leaves a request the new owner already restarted', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const slow = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'sleep 30' }] }
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const other = spawn('sleep', ['30'])
+  try {
+    const done = serve(root, opts({ idleMs: 60000, verify: slow }))
+    for (let i = 0; i < 100 && l.getRequest(r.id).state !== 'running'; i++) await new Promise((x) => setTimeout(x, 50))
+    l.saveRequest({ ...l.getRequest(r.id), state: 'running', pid: other.pid, startedAt: '2099-01-01T00:00:00.000Z' })
+    writeFileSync(join(root, '.builder', 'verify', 'serve.pid'), String(other.pid))
+    assert.equal(await done, 'superseded')
+    const after = l.getRequest(r.id)
+    assert.equal(after.state, 'running')
+    assert.equal(after.pid, other.pid)
+  } finally {
+    other.kill()
+  }
+})
