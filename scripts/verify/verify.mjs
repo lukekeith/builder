@@ -14,7 +14,7 @@
  * Exit: 0 green · 1 red · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 75 pending.
  */
 import { spawn } from 'node:child_process'
-import { openSync, readFileSync } from 'node:fs'
+import { openSync, closeSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { git, tryGit, mainRoot } from './git.mjs'
@@ -73,6 +73,7 @@ export function ensureService(root) {
   const log = openSync(join(verifyDir(root), 'serve.log'), 'a')
   const idle = process.env.BUILDER_VERIFY_IDLE_MS
   spawn(process.execPath, ['-e', `import(${JSON.stringify(SERVE)}).then((m) => m.serve(${JSON.stringify(root)}${idle ? `, { idleMs: ${Number(idle)} }` : ''})).then(() => process.exit(0))`], { detached: true, stdio: ['ignore', log, log] }).unref()
+  closeSync(log)
 }
 
 function show(req, json) {
@@ -116,12 +117,15 @@ async function main() {
   if (cmd === 'wait') {
     const [, id] = positional
     if (!id) die(USAGE)
-    const until = Date.now() + Number(opt('--max') ?? 540) * 1000
+    const max = Number(opt('--max') ?? 540)
+    if (!Number.isFinite(max) || max <= 0) die(USAGE)
+    const until = Date.now() + max * 1000
     for (;;) {
       const r = ledger.getRequest(id)
       if (!r) die(`no request ${id}`)
       if (r.state === 'done' || (r.state === 'cancelled' && r.verdict)) show(r, flag('--json'))
-      if (['queued', 'running', 'folded'].includes(r.state)) ensureService(root)
+      // A cancel with no verdict yet is answered only by a live service tick, so make sure one runs.
+      if (['queued', 'running', 'folded'].includes(r.state) || (r.state === 'cancelled' && !r.verdict)) ensureService(root)
       if (Date.now() >= until) {
         console.log(`${id}: still ${r.state} — call wait again`)
         process.exit(75)
@@ -136,7 +140,7 @@ async function main() {
     // Re-read right before writing: the service may have finished it since, and a done verdict must stand.
     const cur = ledger.getRequest(id)
     if (cur && !['done', 'cancelled'].includes(cur.state)) ledger.saveRequest({ ...cur, state: 'cancelled', ...(cur.state === 'queued' && { verdict: { request: cur.id, branch: cur.branch, sha: cur.sha, tier: cur.tier, status: 'cancelled', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0 } }) })
-    console.log(`${id}: cancelled`)
+    console.log(cur && ['done', 'cancelled'].includes(cur.state) ? `${id}: already ${cur.state}${cur.verdict ? ` (${cur.verdict.status})` : ''}` : `${id}: cancelled`)
     return
   }
   if (cmd === 'status') {
