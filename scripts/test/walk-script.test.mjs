@@ -49,7 +49,7 @@ test('walk-script: note-tags (one app) under --agent-walk — the verification s
   const r = leanRepo('note-tags')
   const out = run('walk-script.mjs', [r.rel], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  assert.match(out.stdout, /^wrote .*walk\.md — 7 items in 1 app \(7 \[risk\]\) \(one app: the verification script is its walk — no cross-app section, the per-app test items left to the gates\)/m)
+  assert.match(out.stdout, /^wrote .*walk\.md — 7 items in 1 app \(7 \[risk\]\) \(one app: the verification script is its walk — no cross-app section, the per-app test items left to the verifier\)/m)
   const w = readText(WALK(r))
   assert.match(w, /^# note-tags — walk script\n/)
   assert.match(w, /\n## notes\n\nWhere: `\.\/` — this checkout \(app\)\.\n/)

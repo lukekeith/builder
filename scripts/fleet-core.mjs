@@ -1094,7 +1094,7 @@ export const ACTIVE_MS = 30 * 60 * 1000
 
 /**
  * True when a session is working on the feature right now: any file in `<root>/.builder/<feature>/`
- * (its ledger, briefs, gate logs — written as a build goes) was touched within ACTIVE_MS. Agents must
+ * (its ledger, briefs, review packages — written as a build goes) was touched within ACTIVE_MS. Agents must
  * not start on a feature someone is building in a session.
  */
 export function activeInSession(root, feature, now = Date.now()) {

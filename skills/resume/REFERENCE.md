@@ -5,7 +5,7 @@ before writing anything into a feature folder; steps cite sections by name (`REF
 
 **Contents:** §The first principle · §The scripts · §Sizes · §The classifier · §Flags · §Continuing on "go" · §The two-way footer · §Before a picker · §The review — what an approval shows · §Branch and ticket · §Where things live · §MANIFEST.md · §SPEC.md · §PLAN.md · §PROGRAM.md · §Prototype mode · §The craft skills · §The project's own rules · §The verifier · §Walk readiness · §Condense · §Agent model tiering
 
-🔴 **This plugin knows nothing about your project.** Every project fact — the apps, the gates, the
+🔴 **This plugin knows nothing about your project.** Every project fact — the apps, the tests, the
 house rules, the landmines, the recipe skills, the design source — lives in ONE host file,
 **`.claude/builder.md`** (`PROJECT.template.md` is the blank). This reference says what the pipeline
 *does*; that config says what it does it *to*. **Read the config before any step that touches code,
@@ -983,9 +983,9 @@ flake list and the known failures.
 
 ## Walk readiness
 
-🔴 **Green gates are not a walkable app.** Tests run against their own database and their own
+🔴 **A green verdict is not a walkable app.** Tests run against their own database and their own
 process; the human walks the *dev* environment. A migration applied to the test database but not the
-dev one, a server still running the old code, a client missing a regenerated type — every gate
+dev one, a server still running the old code, a client missing a regenerated type — every test
 passes and the app the human opens is broken. **Nobody is asked to walk, or to sign off, a build
 the local environment isn't running.**
 

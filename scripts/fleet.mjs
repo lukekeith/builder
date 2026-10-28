@@ -913,7 +913,7 @@ function noteStages(f, feature) {
 
 /**
  * Wall-clock facts for the archive row: start → merge (`wallMs`), the stage timeline, how long the
- * built feature waited for the walk lane (first walk run after the end gates), and the merge itself.
+ * built feature waited for the walk lane (first walk run after the build's last verifier run), and the merge itself.
  */
 function wallFacts(f, now = Date.now()) {
   const st = f.stages
@@ -1400,7 +1400,7 @@ async function fixWalkEnv(feature, why) {
 }
 
 /** The manifest states at which the walk lane merges the target in before starting the env: before
- *  walk readiness (it re-smokes the merged code) and before verify (it re-gates it). Never at
+ *  walk readiness (it re-smokes the merged code) and before verify (the verifier tests it again). Never at
  *  `built` with the walk still owed — a merge there would void the readiness the walk needs, and
  *  the run would bounce between readiness and the walk. */
 const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
@@ -1642,7 +1642,7 @@ function unpark(feature) {
  * Bring the target into a worktree — the code every other finished feature has merged into — so
  * the feature builds, walks and verifies on it, and the ship step's own merge finds nothing new.
  * Measured before this existed: a walk env started at the pre-merge code parked a signed-off
- * feature for a whole fleet cycle, and every ship re-ran every app's gates on a tree that had
+ * feature for a whole fleet cycle, and every ship re-ran every app's tests on a tree that had
  * just moved. Only a clean tree is merged (a manual-commit app may have work staged). A conflict is
  * never a reason to stop: an agent run resolves it (resolveMerge), and only a conflict two runs
  * could not resolve parks. Returns null when the worktree is at the target, or the merge went in.
