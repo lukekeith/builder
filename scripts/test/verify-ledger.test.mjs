@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openLedger, FLAKE_CLEAR } from '../verify/ledger.mjs'
@@ -70,4 +70,14 @@ test('a request without createdAt does not break listing', () => {
   writeFileSync(join(l.dir, 'requests', 'odd.json'), '{"id":"odd","state":"queued"}')
   l.newRequest({ branch: 'f', sha: 's', tier: 'commit', target: 'main' })
   assert.equal(l.requests().length, 2)
+})
+
+test('target lines cached before the whole-output fix (lines/) are not read back', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vled-')))
+  const l = openLedger(dir)
+  mkdirSync(join(l.dir, 'lines', 'abc'), { recursive: true })
+  writeFileSync(join(l.dir, 'lines', 'abc', 'lint.txt'), 'a tail-only line\n')
+  assert.equal(l.readLines('abc', 'lint'), null)
+  l.writeLines('abc', 'lint', new Set(['x']))
+  assert.deepEqual([...l.readLines('abc', 'lint')], ['x'])
 })
