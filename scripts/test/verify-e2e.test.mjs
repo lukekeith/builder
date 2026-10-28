@@ -89,27 +89,26 @@ test('regression found and pinned to its commit; debt, flake and ports handled; 
   const ID = 'unit::test/math.test.mjs::adds'
   const request = (tier, ...extra) => cli(wt, 'request', wt, 'HEAD', '--tier', tier, ...extra).stdout.trim()
 
-  // c1 is innocent, c2 breaks add, c3 is innocent: "blame the first commit" or "blame the last"
-  // would both name the wrong one.
-  const c1 = commit(wt, 'README.md', 'one\n', 'docs one')
-  const g = verdict(wt, request('commit'))
-  assert.equal(g.status, 'green', JSON.stringify(g))
+  // Single-commit path: a second branch whose whole range is the break, so it must be named.
+  const wt2 = join(root, '..', `${root.split('/').pop()}-solo`)
+  t.after(() => rmSync(wt2, { recursive: true, force: true }))
+  git(root, 'worktree', 'add', '-qb', 'solo', wt2)
+  const solo = commit(wt2, 'src/math.mjs', 'export const add = (a, b) => a - b\n', 'break add alone')
+  const vs = verdict(wt2, cli(wt2, 'request', wt2, 'HEAD', '--tier', 'commit').stdout.trim())
+  assert.equal(vs.status, 'red', JSON.stringify(vs))
+  assert.deepEqual(vs.regressions.map((r) => r.id), [ID])
+  assert.equal(vs.regressions[0].introducedBy, solo)
 
-  // Single-commit path: the range is just the break, so it must be named.
+  // Multi-commit path: c1 innocent, c2 breaks add, c3 innocent, and ONE request at c3 with no
+  // earlier green on the branch, so the range runs [c1, c2, c3] from the merge-base. Blaming the
+  // oldest or the newest commit of the range would both name the wrong one.
+  commit(wt, 'README.md', 'one\n', 'docs one')
   const c2 = commit(wt, 'src/math.mjs', 'export const add = (a, b) => a - b\n', 'break add')
-  const id1 = request('commit')
-  const v1 = verdict(wt, id1)
-  assert.equal(v1.status, 'red', JSON.stringify(v1))
-  assert.deepEqual(v1.regressions.map((r) => r.id), [ID])
-  assert.equal(v1.regressions[0].introducedBy, c2)
-
-  // Multi-commit path: the break sits in the middle of the range. (The two requests may fold.)
   commit(wt, 'README.md', 'three\n', 'docs three')
   const v2 = verdict(wt, request('commit'))
-  assert.equal(v2.status, 'red')
+  assert.equal(v2.status, 'red', JSON.stringify(v2))
   assert.deepEqual(v2.regressions.map((r) => r.id), [ID])
   assert.equal(v2.regressions[0].introducedBy, c2)
-  assert.notEqual(c1, c2)
 
   commit(wt, 'src/math.mjs', 'export const add = (a, b) => a + b\n', 'fix add')
   const phase = verdict(wt, request('phase'))
@@ -128,7 +127,7 @@ test('regression found and pinned to its commit; debt, flake and ports handled; 
   // was classed as debt or a regression (which a broken lease would produce, failing on main too).
   const ports = {}
   for (const n of ['a', 'b']) {
-    assert.match(`${m.debt} ${m.known} ${JSON.stringify(m.regressions)}`.includes(`port-${n}`) ? 'bad' : 'ok', /^ok$/, `port-${n} was classified as failing`)
+    assert.ok(!JSON.stringify([m.debt, m.known, m.regressions]).includes(`port-${n}`), `port-${n} was classified as failing`)
     ports[n] = readFileSync(join(portsDir, n), 'utf8')
     assert.match(ports[n], /^\d+$/)
   }
