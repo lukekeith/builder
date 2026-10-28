@@ -49,14 +49,9 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     It is always OK to pause and clarify. Don't guess.
 
     **Tests you run:** the test files for the code you are changing, plus the
-    type-check, once each at the end. 🔴 Do NOT run the app's whole suite or
-    any gate block from the project config: the controller runs the full set
-    where the go-ahead's test plan puts it, on the committed tree. If your
-    dispatch says `tests: slice=none`, write the tests but run only the
-    type-check — they run at the end. Measured on a real
-    build, implementers re-running the suite before every commit was the
-    single largest cost of the whole run and proved nothing the gate runner
-    did not prove again minutes later.
+    type-check, once each at the end. 🔴 Do NOT run the app's whole suite: the
+    verifier runs every test your commit can reach as soon as you commit, in
+    the background, and reports any regression back as a fix for this task.
 
     **Processes:** run every command in the foreground — never
     `run_in_background`, and never end your turn with something still

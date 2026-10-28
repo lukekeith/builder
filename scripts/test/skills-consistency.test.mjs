@@ -234,11 +234,13 @@ test('agent mode: build writes the E steps, agent-walk reports them, verify quot
   assert.match(verify, /the round the `🤖 AGENT SIGNED OFF … round <n>` header names/)
   assert.match(verify, /its `sha:` line/)
   assert.match(verify, /only those steps/)
-  // A gate at or under its baseline is green in verify; the walker runs no gates at all (5.2).
-  assert.match(verify, /at or under its baseline/)
-  assert.match(walk, /the walker runs no gates/)
   // init recon names tracked test output.
   assert.match(read('skills/init/SKILL.md'), /test-results\//)
+})
+
+test('6.0 agent mode: verify reads the verifier\'s verdict; the walker runs no tests', { todo: 'Task 18' }, () => {
+  assert.match(read('skills/verify/SKILL.md'), /verify\.mjs verdict/)
+  assert.match(read('skills/agent-walk/SKILL.md'), /the walker runs no tests/)
 })
 
 test('the fleet launches detached, never as a session background task', () => {
@@ -323,7 +325,7 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   const FLOORS = /The\s+floors\s+in\s+its\s+`floors`\s+hold\s+whatever\s+the\s+levers\s+say/
   const build = read('skills/build/SKILL.md')
   assert.match(build, LEVERS)
-  assert.match(build, FLOORS)
+  assert.match(build, /The\s+floor\s+—\s+the final whole-branch review\s+—\s+holds whatever the levers say/)
   assert.match(build, /\*\*`end`\*\* → no task reviewer at all/)
   assert.match(build, /`slice\+second`[\s\S]{0,200}§Contract or §Schema/)
   assert.match(build, /`unruled: park`/)
@@ -337,15 +339,11 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   const walk = read('skills/agent-walk/SKILL.md')
   assert.match(walk, LEVERS)
   assert.match(walk, FLOORS)
-  for (const v of ['end=none', 'end=touched', 'end=risk', 'end=everything', 'walk=you']) assert.ok(walk.includes(`\`${v}\``), `agent-walk names ${v}`)
-  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(tests: end=<none\|touched>\) — not human-tested/)
   assert.match(walk, /waiting for your walk — next: \/builder:resume --path <folder>/)
   assert.match(walk, /`persist=low`[^\n]*1 failed round/)
   const verify = read('skills/verify/SKILL.md')
   assert.match(verify, LEVERS)
   assert.match(verify, FLOORS)
-  assert.match(verify, /`end=touched`/)
-  assert.match(verify, /gate\.mjs <every\s+in-scope app> --typecheck/)
   assert.match(verify, /consumer parity\s+when a `released_artifact`/)
   const revise = read('skills/revise/SKILL.md')
   assert.match(revise, /fleet\.mjs --pause <feature>/)
@@ -356,15 +354,38 @@ test('each lever is applied where the work happens: build, agent-walk, verify, r
   assert.match(resume, /^\| `blocked:` reads `waiting for your walk[^\n]*`agent_walk\.env`[^\n]*fleet\.mjs <feature> --detach --into <target>/m)
   const init = read('skills/init/SKILL.md')
   assert.match(init, /build_profile_default/)
-  assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}own · touched · end/)
   for (const f of ['skills/help/SKILL.md', 'docs/guide.md']) {
     const s = read(f)
-    assert.match(s, /Testing per slice/, `${f} names the per-slice question`)
-    assert.match(s, /Testing at the end/, `${f} names the end question`)
     assert.doesNotMatch(s, /\*\*Rush\*\*/, `${f} names no preset`)
     assert.match(s, /floors/, `${f} names the floors`)
-    assert.match(s, /a type-check of every touched app/, `${f} names the type-check floor`)
     assert.match(s, /Change the test plan/, `${f} names the go-ahead's B`)
+  }
+})
+
+test('6.0 levers: agent-walk names walk · human', { todo: 'Task 18' }, () => {
+  const walk = read('skills/agent-walk/SKILL.md')
+  for (const v of ['walk=none', 'walk=risk', 'walk=full', 'human=yes']) assert.ok(walk.includes(`\`${v}\``), `agent-walk names ${v}`)
+  assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(tests: walk=none\) — not human-tested/)
+})
+
+test('6.0 levers: status, help and the guide name walk · review', { todo: 'Task 19' }, () => {
+  assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}none · end/)
+  for (const f of ['skills/help/SKILL.md', 'docs/guide.md']) {
+    const s = read(f)
+    assert.match(s, /Agent walk/, `${f} names the agent-walk question`)
+    assert.match(s, /Review/, `${f} names the review question`)
+    assert.match(s, /the final whole-branch review/, `${f} names the review floor`)
+  }
+})
+
+test('6.0: the build requests verdicts and never runs a gate', () => {
+  const build = read('skills/build/SKILL.md')
+  const exec = read('skills/build/EXECUTION.md')
+  assert.match(build, /verify\.mjs request <worktree> HEAD --tier commit/)
+  assert.match(build, /verify\.mjs request <worktree> HEAD --tier phase/)
+  assert.match(exec, /verify\.mjs verdict <branch>/)
+  for (const t of [build, exec, read('skills/build/prompts/implementer.md')]) {
+    assert.doesNotMatch(t, /gate\.mjs|job\.mjs|slice=none|@delta|deep set/)
   }
 })
 

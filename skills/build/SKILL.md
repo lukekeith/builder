@@ -17,10 +17,10 @@ way.
 review, the fix loop and its breaker, the final review, the "Rulings I made" list. **Read it first,
 with everything else this step reads, in one call:** `node <builder>/scripts/docs.mjs build` — it
 prints EXECUTION.md, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
-§MANIFEST.md · §Branch and ticket · §Quality gates — the mechanism · §Walk readiness · §The craft
-skills) and **`.claude/builder.md`** (§Quality gates for the per-app fast sets · §Global constraints
-for every brief · §House rules · §Environment landmines). Everything below is the binding this
-pipeline puts on top of that loop.
+§MANIFEST.md · §Branch and ticket · §The verifier · §Walk readiness · §The craft skills) and
+**`.claude/builder.md`** (§Verification and the `verify:` block · §Global constraints for every
+brief · §House rules · §Environment landmines). Everything below is the binding this pipeline puts
+on top of that loop.
 
 **The orchestrator does not type what a script writes** (REFERENCE §The scripts): every subagent
 prompt comes from `dispatch.mjs`, every manifest / ledger / commit change from `advance.mjs`, the walk
@@ -39,39 +39,28 @@ producer's phase close (the contract freeze)**, and when the last phase signs.
 
 ## The test plan — read on every build
 
-Read the levers first, in chat and under `--agent-walk` alike:
-`node <builder>/scripts/profile.mjs --levers <folder>` — the manifest's `tests:` line; an old
-`profile:` line mapped when there is no `tests:` (its warning, if any, goes in the ledger once); the
-recommendation when there is neither. The floors in its `floors` hold whatever the levers say: 🔴
-**the type-check of every touched app before the work lands, and the final whole-branch review.**
+Read the levers first: `node <builder>/scripts/profile.mjs --levers <folder>` — the manifest's
+`tests:` (or the recommendation when there is none). The floor — the final whole-branch review —
+holds whatever the levers say. Tests are not a lever: the verifier runs every commit's affected
+tests in the background, waits at each phase close, and runs everything on the merged result before
+the feature lands (REFERENCE §The verifier).
 
-**`slice` — what runs after each task, and at each phase close:**
-
-| `slice` | After each task | At the phase close |
-|---|---|---|
-| `none` | the implementer writes the tests its block names and runs **only the type-check** | no fast set |
-| `own` | the implementer runs its own tests + the type-check (§Dispatch, review, fix) | no fast set |
-| `own+app` | as `own` | that app's fast set |
-| `full` | as `own`, then `node <builder>/scripts/gate.mjs <app>` by the controller | that app's fast set — quoted by the runner, nothing changed since the last task's run |
-
-**`review`** — **`slice`** → a task review after every task (EXECUTION.md §3–4). **`slice+second`**
-→ also a second reviewer, on the most capable model, on any task touching §Contract or §Schema.
-**`app`** → no task reviewer; one review of the phase's whole diff at its close (§Phase close).
+**`review`** — **`slice`** → a task review after every task (EXECUTION.md §3–4). **`slice+second`** →
+also a second reviewer, on the most capable model, on every task touching §Contract or §Schema & API
+changes. **`app`** → no task reviewer; one review of the phase's whole diff at its close (§Phase
+close).
 **`end`** → no task reviewer at all. The final whole-branch review runs under every value.
 
-**`end`** is `/builder:agent-walk`'s and `/builder:verify`'s; here it decides only what the last
-phase runs before the final review (§When the last phase signs). `persist` is agent-walk's, `walk=you`
-the fleet's.
+**`walk`** is `/builder:agent-walk`'s; **`human=yes`** the fleet's; `persist` is agent-walk's.
 
 - **`models`** → EXECUTION.md §Model selection's `economy` / `strong` lines; `default` is as written.
-- **`unruled: park`** → a choice the spec doesn't settle parks the feature (§Stops) instead of taking
+- **`unruled: park`** → a decision §Decisions leaves open parks the build (§Stops) instead of taking
   the recommendation. `recommend` → a ruling, as written.
 
-🔴 **A red result is a stop wherever it runs.** Testing less moves where a failure surfaces; it never
-lets a red gate pass. A failure found later than the slice that caused it — at the end under `own`,
-in a phase-close review under `app` — is a fix dispatch against that slice: the task whose files the
-failing test or the finding covers (`git log` on them names it; two candidates → a `Ruling:`), never
-a controller fix.
+🔴 **A red verdict is a stop wherever it is read.** A regression the verifier reports is a fix
+dispatch against the task that introduced it — the verdict names the commit (`introduced by`), and
+the ledger maps a commit to its task — never a controller fix. Flakes, known failures and newly
+found debt in a verdict are reported, never fixed here.
 
 ## Precondition — read `<folder>/MANIFEST.md` first
 
@@ -104,7 +93,8 @@ Two things it leaves to this skill:
   folder's basename. 🔴 Re-resolve it inline in every command; a shell variable does not survive
   between Bash calls, and a brief written to an unresolved path lands at `/task-1-brief.md`.
 - **The pre-flight scan's third row type is this pipeline's:** one row per task for whether its
-  `Files` stay inside its `App:`. A task reaching into another app breaks that phase's gates.
+  `Files` stay inside its `App:`. A task reaching into another app breaks the one-app phase the
+  verifier waits on.
 
 ## The task loop
 
@@ -177,16 +167,14 @@ EXECUTION.md §1–5 unchanged, with these bindings:
 - **The reviewer gets §Contract** as well as the constraints block, and checks the diff against it
   rather than against the implementer's description.
 - **The implementer runs its own tests and the type-check, not the app's suite.** The prompt says
-  so; do not add "run the full suite" to a dispatch. The suite runs where the test plan puts it —
-  at the phase close (`own+app`), after every task through the gate runner (`full`), or once at the
-  end (`own`, `none`) — never inside an implementer: one running it per task was the largest single
-  cost measured in a real build, and it proved nothing the gate runner did not prove again minutes
-  later. **Under `slice=none`** the dispatch carries one more line — `dispatch.mjs` adds it from the
-  manifest: `tests: slice=none — write the tests your block names; run only the type-check; they run
-  at the end.`
-- **Under `slice=full`, after each task completes** (its review too, when there is one):
-  `node <builder>/scripts/gate.mjs <app>`. Red → a fix dispatch against that task, reviewed like any
-  other finding, and the gate again — the next task waits.
+  so; do not add "run the full suite" to a dispatch — the verifier runs everything the commit can
+  reach as soon as it lands.
+- **After each task's commit** (its review too, when there is one):
+  `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` — it prints a
+  request id and returns at once; the next task does not wait. **Before every dispatch**, read
+  `node <builder>/scripts/verify/verify.mjs verdict <branch>` (exit 75 = still running, carry on):
+  each regression it lists becomes a fix dispatch against the task its `introduced by` commit
+  belongs to, reviewed like any other finding.
 - **Under `review=app` or `end`, there is no task review:** a DONE report goes straight to
   EXECUTION.md §5, the ledger line saying so.
 - **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**: render each
@@ -208,23 +196,18 @@ A phase closes when every task the `## Phases` table assigns to it carries a `Ta
 line. **The table's `Tasks` cell is the membership source; a block's `Phase:` line is its per-block
 echo** — when they disagree, the table decides and the mismatch is said out loud. Then:
 
-1. **That app's fast set, through the gate runner — under `slice=own+app` or `full`:**
-   `node <builder>/scripts/gate.mjs <app>` (under `--agent-walk`, started with `job.mjs start` and
-   waited on — REFERENCE §Quality gates). It runs the config's block for that app, applies the
-   config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself, and prints one
-   verdict line per command and one for the set. 🔴 *Fresh* is
-   [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law, and the
-   runner is how it is kept: a set is quoted only when the runner itself proves its inputs are
-   byte-identical to its last green run, and it says so with the sha. A gate result you remember
-   from an earlier message is not one. Never run the block's commands by hand to "save time" and
-   never read the config's tails to decide what a failure means — the runner's `✗` lines carry the
-   tail, and a `✗` is a red gate, full stop.
-   ⛔ **No cross-app walk, no deep set here** — that runs once, in `/builder:verify`.
-   **Under `slice=none` or `own` no fast set runs here** — the touched apps' suites run once, at
-   §When the last phase signs.
-2. 🔴 **A phase whose gates are red does not close.** Each failure becomes a fix dispatch against the
-   task that caused it, reviewed like any other finding — never a controller fix — then the gate
-   re-runs.
+1. **The phase tier — the build's one wait.**
+   `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier phase` prints a request
+   id; `node <builder>/scripts/verify/verify.mjs wait <id>` (Bash timeout 600000) until it exits
+   with a verdict — exit 75 means still running: call it again. It runs every test the phase's
+   commits can reach, reusing what already passed at this commit. 🔴 *Fresh* is
+   [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law, and
+   the verdict is how it is kept: it names the sha it ran at. A result remembered from an earlier
+   message is not one. Never run a suite by hand beside it. ⛔ **No cross-app walk here** — the
+   merge tier and the walk cover that.
+2. 🔴 **A phase whose verdict is red does not close.** Each regression becomes a fix dispatch against
+   the task that introduced it, reviewed like any other finding — never a controller fix — then the
+   phase tier again. A consumer app's phase never starts on a red producer.
 2b. **Under `review=app`, one review of the phase's whole diff:**
    `node <builder>/scripts/dispatch.mjs task-review <folder> --phase N` — the review package from
    the BASE recorded before the phase's first task to HEAD (`<WS>/review-phase-N.diff`), with
@@ -242,8 +225,7 @@ echo** — when they disagree, the table decides and the mismatch is said out lo
    migration id. That is **the one docs-only commit the build allows**:
    `node <builder>/scripts/advance.mjs <folder> --add <folder>/SPEC.md --commit "docs({key}): {feature} — SC# landed"`.
 5. **One ledger line** — `node <builder>/scripts/advance.mjs <folder> --ledger "<line>"` (no commit):
-   `Phase N (<app>): closed — gates <one line> · <sha>`, or under
-   `slice=none` / `own`: `Phase N (<app>): closed — gates deferred to the end (tests: slice=<v>) · <sha>`.
+   `Phase N (<app>): closed — verify phase GREEN <request id> · <sha>`.
 6. **Otherwise the manifest is not written here** — per-phase state is the ledger plus `git log`.
 7. **Start the next phase in the same turn.** The go-ahead covered the whole plan.
 
@@ -255,7 +237,8 @@ nobody can hot-fix — an implementer writes its code and its tests **and stops 
 - the task's final step is `git add` plus the proposed commit message, **not `git commit`**;
 - the controller presents the staged diff and the proposed message, and takes one approval per task
   or one for the phase — the human's choice, offered explicitly;
-- that app's gates still run as the phase's gates, and a red gate still blocks the close;
+- the phase tier still runs on its uncommitted work (`verify.mjs request … --tier phase --tree`),
+  and a red verdict still blocks the close;
 - **anything else the config reserves to the human for that app** — launching it, packaging it,
   releasing it — is offered as their next action, never done here.
 
@@ -275,8 +258,9 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 4. Hand off ending `say go to continue here, or run /clear first, then /builder:resume --path <folder>`
    — all state is on disk, so continuing in this session loses nothing but room.
 
-**Under `--agent-walk`, nothing runs in the background** — implementers, reviewers and gates run in
-the foreground, and a long gate goes through `scripts/job.mjs` (resume's AGENT-MODE.md).
+**Under `--agent-walk`, nothing runs in the background** — implementers and reviewers run in the
+foreground; tests are the verifier's, which runs on its own and is read with `verify.mjs verdict` /
+`wait`.
 
 **Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (resume
 §`--agent-walk`: agent mode builds to done). Of the five stop classes:
@@ -300,23 +284,10 @@ Never ask.
 
 ## When the last phase signs
 
-1. **The end's gates, by `end`** — started **in the background, beside step 2**: launch them
-   through `job.mjs` (resume's REFERENCE §The scripts), dispatch the final review, then collect the
-   job. They don't wait on each other: the review reads the diff, the gates run the code. When the
-   review's fix wave commits, run the gates again after it — the runner quotes every line nothing
-   the fix touched reaches — so "green before the walk" still means green on the last commit.
-   - **`touched`, `risk` or `everything`** → the fast set of every app the build touched,
-     `node <builder>/scripts/gate.mjs <app> <app>…` in one call. An app with no commit since a green
-     run is quoted by the runner, not re-run — that is the point of running it this way, and the
-     quoted line is the evidence. Under `slice=none` or `own` this is the suites' first run on this
-     branch.
-   - **`none`** → the type-check floor only: `node <builder>/scripts/gate.mjs <app> <app>… --typecheck`.
-     An app with no `@typecheck` line relies on its implementers' per-task type-check — the runner
-     says so; carry that line into the hand-off.
-
-   🔴 Red is a stop here as anywhere (§The test plan): each failure is a fix dispatch against the
-   slice that caused it, then the runner again.
-2. **The final whole-branch review**, while step 1's job runs — EXECUTION.md §The final whole-branch review:
+1. **The last phase's tier is the end's.** The phase tier of the last phase (§Phase close) is
+   green on the last commit; nothing else runs here. After step 2's fix wave commits, request the
+   phase tier again and wait — "green before the walk" still means green on the last commit.
+2. **The final whole-branch review** — EXECUTION.md §The final whole-branch review:
    `node <builder>/scripts/dispatch.mjs final-review <folder>` renders
    [`prompts/final-reviewer.md`](prompts/final-reviewer.md) — on the most capable model, pointed at
    the ledger's deferred-minor and parked lines **and at §Contract**, its report written to
@@ -326,17 +297,14 @@ Never ask.
 3. 🔴 **Walk readiness** — [REFERENCE](../resume/REFERENCE.md) §Walk readiness: pending
    migrations applied to the **dev** database (asked for, not assumed), stale processes restarted,
    the running app smoked on every surface this feature changed. A defect it finds is a fix dispatch
-   like a red gate, then it runs again. **Still `pending` → stop here**: no walk script, no
+   like a regression, then it runs again. **Still `pending` → stop here**: no walk script, no
    `state: built`; write `state: building`, `ready: pending "<what>"`,
    `next: <what the human must do>, then /builder:resume --path <folder>` —
    `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "<what>"' --set "next=<…>" --head --commit "chore({key}): {feature} — built, walk readiness pending"` —
    and hand off saying exactly that. Under `--auto` this is a stop too — the walk is its terminal state, and this precedes it.
-   **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all. Instead, **run the
-   deep set here**, where it runs in parallel with other builds instead of holding the one-at-a-time
-   walk lane: `node <builder>/scripts/gate.mjs --deep <every in-scope app>` through `job.mjs`. Red
-   deep gates are fix dispatches like any red phase gate. Verify will quote this run if nothing
-   changes the tree before it, and re-run only the lines a later change reaches if something does. Then write the walk script (step 4,
-   so the walk lane finds it), write `state: building`,
+   **Under `--no-dev-env`** (the fleet's build lane): don't run readiness at all, and
+   nothing more runs here: the fleet requests the merge tier when the walk starts, and verify reads
+   it. Then write the walk script (step 4, so the walk lane finds it), write `state: building`,
    `ready: pending "dev env (fleet walk lane)"`, `next: /builder:resume --path <folder>` and commit —
    `node <builder>/scripts/advance.mjs <folder> --set state=building --set 'ready=pending "dev env (fleet walk lane)"' --set "next=/builder:resume --path <folder>" --head --commit walk-lane`
    (the preset `walk-lane` = `chore(<ticket-or-feature>): <feature> — phases closed, awaiting the walk lane`) —
@@ -361,7 +329,7 @@ Never ask.
    `walk.md` stays per-app only.
    **Tag `[risk]`** on every item touching a §Contract row, an auth or permission path, a
    load/save/delete path, a notification payload or a deep-link target (verify's re-walk table) — the
-   agent walk under `end=risk` walks only those.
+   agent walk under `walk=risk` walks only those.
 5. **Manifest:** `state: built`, `ready: yes <date> <sha>`, `next: 🔒 your walk → /builder:signoff --path <folder>`, `head`,
    `branch`. Commit: `chore(<ticket-or-feature>): <feature> — built, awaiting the walk` — one call:
    `node <builder>/scripts/advance.mjs <folder> --set state=built --set "ready=yes <YYYY-MM-DD> <sha>" --set "next=🔒 your walk → /builder:signoff --path <folder>" --head --commit built`.
@@ -369,8 +337,8 @@ Never ask.
    walk script is still written (the agent walks it), and no human is asked to.
 5b. **The hand-off file** — `node <builder>/scripts/handoff.mjs write <folder> [--note "<a line only
    this lane knows>"]`, the build's last act after its manifest commit, at both ends: built, or
-   phases closed for the walk lane. It writes `<WS>/handoff.md` — state, sha, gates, the contract,
-   walk.md's counts, open items, this config's readiness facts — so the walk lane's resume reads one
+   phases closed for the walk lane. It writes `<WS>/handoff.md` — state, sha, the verifier's verdicts,
+   the contract, walk.md's counts, open items, this config's readiness facts — so the walk lane's resume reads one
    file instead of re-deriving it. Re-running it rewrites nothing that hasn't changed.
 6. **"Rulings I made"** goes in the hand-off — every ledger line containing `Ruling:`, in order, each
    with what it costs if wrong. It is the only place those decisions reach the human.
@@ -380,7 +348,7 @@ Never ask.
 ## Build here
 
 The human chose this session over the ceremony. The plan is the same `PLAN.md`; what changes is who
-works it and what is skipped. Read `.claude/builder.md` (§Quality gates, §Global constraints, §House
+works it and what is skipped. Read `.claude/builder.md` (§Verification, §Global constraints, §House
 rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
 
 1. **Work the tasks in order, yourself, in this session.** For each `### Task N`: read its block and
@@ -391,17 +359,14 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
 2. **Commit per task** the house way (§Global constraints' commit rule): name every file you stage.
    🔴 **In an app the config marks `commit: manual`, stage and carry on** — those commits are the
    human's; list them at the end.
-3. **Gates by the test plan** — `profile.mjs --levers <folder>` (the manifest's `tests:`, or the
-   recommendation): `slice` as §The test plan says — `own+app` → `node <builder>/scripts/gate.mjs
-   <app>` at each phase close; `full` → after every task; `own` / `none` → none until the end. When
-   the last task is in: `end` `none` → `gate.mjs <app> <app>… --typecheck`; any other → `gate.mjs
-   <app> <app>…` once. `review` doesn't apply — no reviewer runs here. A red gate is fixed here, in
-   place, before the next task or phase.
+3. **Tests by the verifier** — after each task's commit, `node <builder>/scripts/verify/verify.mjs
+   request <worktree> HEAD --tier commit`; at each phase close, `--tier phase` and `wait`. A red
+   verdict is fixed here, in place, before the next task or phase.
 4. **Keep a one-line ledger** in the workspace (`<builder>/scripts/workspace <feature>` →
    `ledger.md`): `Task N: done <sha>`. After a `/clear`, `/builder:resume` routes back here and you
    pick up at the first task without a line.
 5. **Skipped:** reviewer and implementer agents, the final whole-branch review (the one floor
-   *here* gives up — choosing it was choosing that), the deep set, the
+   *here* gives up — choosing it was choosing that), the
    contract-freeze ceremony (still freeze it in the manifest when the producer's phase closes),
    walk readiness, the walk, sign-off and verify.
 6. **When the last task is in:** write `state: built`, `walk: none`, `ready: none` and commit

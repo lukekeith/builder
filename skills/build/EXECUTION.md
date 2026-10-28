@@ -84,7 +84,7 @@ ledger file, not only in todos.**
      interface the other produces (spelled the same? produced first?);
    - one row per task whose steps name a path its **Files** doesn't list;
    - 🔴 one row per task whose **Files** leave its `App:`'s path — a task reaching into another app
-     breaks that phase's gates, which are one app's commands.
+     breaks the one-app phase the verifier waits on.
 
    The script checks what can be checked by reading; you rule on each row with the SPEC as binding
    authority — reading the blocks a row names when the ruling needs them — and add any row your own
@@ -173,9 +173,8 @@ in the config's `agent_types:`.
   entry.
 - Record the implementer's agent identity — fix rounds 1–3 resume it.
 - **Never dispatch implementation subagents in parallel** (conflicts).
-- **Do not tell the implementer to run the app's suite or a gate block.** Its prompt limits it to
-  the tests of the code it changes plus the type-check — under `slice=none`, the type-check only;
-  the suite runs where the test plan puts it (build §The test plan), through the gate runner.
+- **Do not tell the implementer to run the app's suite.** Its prompt limits it to the tests of the
+  code it changes plus the type-check; the verifier runs the rest (build §The test plan).
 
 Template: [prompts/implementer.md](prompts/implementer.md)
 
@@ -198,7 +197,7 @@ If the implementer asks questions — before or mid-task — answer clearly and 
 
 ### 3. Review the task
 
-**Under `review=slice`** (and `slice+second`). Per-task reviews are task-scoped gates; the broad
+**Under `review=slice`** (and `slice+second`). Per-task reviews are task-scoped checks; the broad
 review happens once at the end. **Never skip a task review the test plan set, and never accept a
 report missing either verdict** — spec compliance AND task quality. Implementer self-review never
 replaces it. Under `review=app` the same review runs once over the phase's whole diff at its close
@@ -297,6 +296,10 @@ plan sets no task review — append, with `<plugin>/scripts/advance.mjs <folder>
 - `Task <N>: complete (commits <base7>..<head7>, <K> parked)` after a tripped breaker
 - `Task <N>: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`
 
+Then `node <plugin>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` (returns at
+once), and before the next dispatch read `node <plugin>/scripts/verify/verify.mjs verdict <branch>`
+— a regression is a fix dispatch against the task `introduced by` names.
+
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.
 
@@ -346,7 +349,7 @@ secret.
 | "This finding is obviously wrong, I'll drop it" | You adjudicate only at the cap, and every ruling is a ledger entry. Silent discards are forbidden. |
 | "The fix was small, skip the re-review" | Unreviewed fixes are how regressions land. Every round ends with a scoped re-review. |
 | "Reviews slow the loop down" | How often to review is the human's choice at the go-ahead (`review=`), never yours mid-build. The reviews they chose run every time, and the final review always does. |
-| "The suite would have caught it, so I'll run it now" | Where the suite runs is the test plan's (`slice=`). Run it where the plan says; a red one there is a fix dispatch against the slice that caused it. |
+| "The suite would have caught it, so I'll run it now" | The verifier runs it on this commit already — read its verdict. A red one is a fix dispatch against the task that introduced it. |
 | "Ledger bookkeeping is overhead" | The ledger is what survives compaction. Controllers without one have re-dispatched entire completed sequences. |
 | "The implementer spawned its own reviewer — free extra assurance" | A duplicate seat reviewing the same diff. A worker-spawned reviewer is a defect to flag, not rigor. |
-| "This phase only touches two files in another app, I'll fold it in" | Then the phase has no gates — they are one app's commands. Split it. |
+| "This phase only touches two files in another app, I'll fold it in" | Then the phase is two apps and its wait covers neither cleanly. Split it. |

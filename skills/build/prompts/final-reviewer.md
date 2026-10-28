@@ -39,8 +39,8 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     Your review is read-only on this checkout. Do not mutate the working tree,
     the index, HEAD, or branch state. If you need a working copy of another
     revision, use a separate temporary worktree — never move HEAD here. Do not
-    re-run the gate suites — the controller runs them where the test plan
-    puts them, and again after your findings are fixed. Run every command in the
+    run the test suites — the verifier runs them on every commit and on the
+    merged result. Run every command in the
     foreground, and never kill a process you did not start.
 
     ## You do not dispatch subagents
