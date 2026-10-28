@@ -1,7 +1,7 @@
 // scripts/test/verify-e2e.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -9,7 +9,14 @@ import { fileURLToPath } from 'node:url'
 import { git } from '../verify/git.mjs'
 
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', 'verify', 'verify.mjs')
-const cli = (cwd, ...a) => spawnSync('node', [CLIENT, ...a], { cwd, encoding: 'utf8', env: { ...process.env, BUILDER_VERIFY_IDLE_MS: '1500' } })
+// PORT is removed from the CLI's env: an ambient PORT in the developer's shell would otherwise
+// satisfy the port tests without the verifier leasing anything.
+const cliEnv = () => {
+  const env = { ...process.env, BUILDER_VERIFY_IDLE_MS: '1500' }
+  delete env.PORT
+  return env
+}
+const cli = (cwd, ...a) => spawnSync('node', [CLIENT, ...a], { cwd, encoding: 'utf8', env: cliEnv() })
 const T = (body) => `import { test } from 'node:test'\nimport assert from 'node:assert'\n${body}\n`
 
 function fixture() {
@@ -19,17 +26,23 @@ function fixture() {
   mkdirSync(join(root, '.claude'))
   mkdirSync(join(root, 'src'))
   mkdirSync(join(root, 'test'))
-  writeFileSync(join(root, '.claude', 'builder.md'), `---\nproject: E2E\nbase_branch: main\napps:\n  - name: app\n    path: .\nverify:\n  workers: 2\n  suites:\n    unit: { runner: node-test, files: "test/*.test.mjs", app: app, needs: [{ ports: [PORT] }] }\n---\n`)
+  writeFileSync(join(root, '.claude', 'builder.md'), `---\nproject: E2E\nbase_branch: main\napps:\n  - name: app\n    path: .\nverify:\n  workers: 2\n  suites:\n    unit: { runner: node-test, files: "test/*.test.mjs", app: app, needs: [{ ports: [PORT, PORT_B] }] }\n---\n`)
   writeFileSync(join(root, 'src', 'math.mjs'), 'export const add = (a, b) => a + b\n')
   writeFileSync(join(root, 'test', 'math.test.mjs'), T(`import { add } from '../src/math.mjs'\ntest('adds', () => assert.equal(add(2, 2), 4))`))
   writeFileSync(join(root, 'test', 'known.test.mjs'), T(`test('inherited debt', () => assert.equal('main', 'fixed'))`))
   writeFileSync(join(root, 'test', 'flaky.test.mjs'), T(`import { readFileSync, writeFileSync, existsSync } from 'node:fs'\ntest('wobbles', () => { const n = existsSync('${counter}') ? Number(readFileSync('${counter}', 'utf8')) : 0; writeFileSync('${counter}', String(n + 1)); assert.ok(n !== 0) })`))
-  writeFileSync(join(root, 'test', 'port.test.mjs'), T(`test('has its own port', () => assert.match(String(process.env.PORT), /^\\d+$/))`))
+  // Each port test records the PORT it ran with, outside the repo, so the test can prove the
+  // verifier leased a real, distinct port to each rather than only that PORT looked numeric.
+  const portsDir = realpathSync(mkdtempSync(join(tmpdir(), 've2e-p-')))
+  // A lease grants one suite run its named ports, so the two tests read two names of one lease.
+  for (const [n, v] of [['a', 'PORT'], ['b', 'PORT_B']]) {
+    writeFileSync(join(root, 'test', `port-${n}.test.mjs`), T(`import { writeFileSync } from 'node:fs'\ntest('port ${n}', () => { writeFileSync('${join(portsDir, n)}', String(process.env.${v})); assert.match(String(process.env.${v}), /^\\d+$/) })`))
+  }
   git(root, 'add', '.')
   git(root, 'commit', '-qm', 'init')
   const wt = join(root, '..', `${root.split('/').pop()}-feat`)
   git(root, 'worktree', 'add', '-qb', 'feat', wt)
-  return { root, wt }
+  return { root, wt, portsDir, counter }
 }
 const commit = (wt, file, text, msg) => {
   writeFileSync(join(wt, file), text)
@@ -39,35 +52,91 @@ const commit = (wt, file, text, msg) => {
 }
 const verdict = (wt, id) => {
   const w = cli(wt, 'wait', id, '--max', '120', '--json')
-  return JSON.parse(w.stdout)
+  try {
+    return JSON.parse(w.stdout)
+  } catch {
+    throw new Error(`wait ${id} gave no JSON verdict (exit ${w.status})\nstdout: ${w.stdout}\nstderr: ${w.stderr}`)
+  }
 }
 
-test('regression found and pinned to its commit; debt, flake and ports handled; the fix lands', () => {
-  const { root, wt } = fixture()
-  const broke = commit(wt, 'src/math.mjs', 'export const add = (a, b) => a - b\n', 'break add')
-  const id1 = cli(wt, 'request', wt, 'HEAD', '--tier', 'commit').stdout.trim()
-  commit(wt, 'README.md', 'hi\n', 'docs')
-  const id2 = cli(wt, 'request', wt, 'HEAD', '--tier', 'commit').stdout.trim()
-  const v = verdict(wt, id2)
-  assert.equal(v.status, 'red')
-  assert.deepEqual(v.regressions.map((r) => r.id), ['unit::test/math.test.mjs::adds'])
-  assert.equal(v.regressions[0].introducedBy, broke)
-  assert.equal(verdict(wt, id1).status, 'red')
+// The detached service exits on its own after BUILDER_VERIFY_IDLE_MS; wait for it so no service
+// outlives the test or holds the temp dirs being removed.
+const settle = (root) => {
+  let pid
+  try {
+    pid = Number(readFileSync(join(root, '.builder', 'verify', 'serve.pid'), 'utf8'))
+  } catch {
+    return
+  }
+  const end = Date.now() + 30000
+  while (Date.now() < end) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return
+    }
+    spawnSync('sleep', ['0.2'])
+  }
+}
+
+test('regression found and pinned to its commit; debt, flake and ports handled; the fix lands', (t) => {
+  const { root, wt, portsDir, counter } = fixture()
+  t.after(() => {
+    settle(root)
+    for (const d of [wt, root, portsDir, dirname(counter)]) rmSync(d, { recursive: true, force: true })
+  })
+  const ID = 'unit::test/math.test.mjs::adds'
+  const request = (tier, ...extra) => cli(wt, 'request', wt, 'HEAD', '--tier', tier, ...extra).stdout.trim()
+
+  // c1 is innocent, c2 breaks add, c3 is innocent: "blame the first commit" or "blame the last"
+  // would both name the wrong one.
+  const c1 = commit(wt, 'README.md', 'one\n', 'docs one')
+  const g = verdict(wt, request('commit'))
+  assert.equal(g.status, 'green', JSON.stringify(g))
+
+  // Single-commit path: the range is just the break, so it must be named.
+  const c2 = commit(wt, 'src/math.mjs', 'export const add = (a, b) => a - b\n', 'break add')
+  const id1 = request('commit')
+  const v1 = verdict(wt, id1)
+  assert.equal(v1.status, 'red', JSON.stringify(v1))
+  assert.deepEqual(v1.regressions.map((r) => r.id), [ID])
+  assert.equal(v1.regressions[0].introducedBy, c2)
+
+  // Multi-commit path: the break sits in the middle of the range. (The two requests may fold.)
+  commit(wt, 'README.md', 'three\n', 'docs three')
+  const v2 = verdict(wt, request('commit'))
+  assert.equal(v2.status, 'red')
+  assert.deepEqual(v2.regressions.map((r) => r.id), [ID])
+  assert.equal(v2.regressions[0].introducedBy, c2)
+  assert.notEqual(c1, c2)
 
   commit(wt, 'src/math.mjs', 'export const add = (a, b) => a + b\n', 'fix add')
-  const phase = verdict(wt, cli(wt, 'request', wt, 'HEAD', '--tier', 'phase').stdout.trim())
+  const phase = verdict(wt, request('phase'))
   assert.equal(phase.status, 'green', JSON.stringify(phase))
 
-  const merge = cli(wt, 'request', wt, 'HEAD', '--tier', 'merge', '--hold').stdout.trim()
+  const merge = request('merge', '--hold')
   const m = verdict(wt, merge)
   assert.equal(m.status, 'green', JSON.stringify(m))
-  assert.ok(m.debt.includes('unit::test/known.test.mjs::inherited debt') || m.known.includes('unit::test/known.test.mjs::inherited debt'))
-  assert.ok(m.flakes.includes('unit::test/flaky.test.mjs::wobbles'))
   assert.equal(m.regressions.length, 0)
+  assert.ok(m.flakes.includes('unit::test/flaky.test.mjs::wobbles'), JSON.stringify(m.flakes))
+  // The inherited failure is debt found at the merge tier; pin where it is reported.
+  const KNOWN = 'unit::test/known.test.mjs::inherited debt'
+  assert.ok(m.debt.includes(KNOWN) || m.known.includes(KNOWN), JSON.stringify({ debt: m.debt, known: m.known }))
+
+  // Ports: both port tests ran, each saw a numeric leased PORT, the ports differ, and neither
+  // was classed as debt or a regression (which a broken lease would produce, failing on main too).
+  const ports = {}
+  for (const n of ['a', 'b']) {
+    assert.match(`${m.debt} ${m.known} ${JSON.stringify(m.regressions)}`.includes(`port-${n}`) ? 'bad' : 'ok', /^ok$/, `port-${n} was classified as failing`)
+    ports[n] = readFileSync(join(portsDir, n), 'utf8')
+    assert.match(ports[n], /^\d+$/)
+  }
+  assert.notEqual(ports.a, ports.b)
+
   const rel = cli(wt, 'release', merge)
   assert.equal(rel.status, 0, rel.stdout + rel.stderr)
   assert.equal(git(root, 'rev-parse', 'main'), m.merged)
   const st = JSON.parse(cli(wt, 'status', '--json').stdout)
   assert.ok(st.flakes.includes('unit::test/flaky.test.mjs::wobbles'))
-  assert.ok(st.known.includes('unit::test/known.test.mjs::inherited debt'))
+  assert.ok(st.known.includes(KNOWN))
 })
