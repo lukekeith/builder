@@ -22,6 +22,12 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     [One line on where this fits. Interfaces and decisions from earlier tasks
     that the brief cannot know. Your resolution of any ambiguity in the brief.]
 
+    ## What the plan gives you
+
+    The plan pins the files, names, signatures, spec values and tests.
+    You write the bodies to them. A step that leaves a real design choice
+    open is the "stop and escalate" case below.
+
     ## The app you are working in
 
     **App: [APP].** Your task touches that app and no other. Do not edit

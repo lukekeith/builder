@@ -809,7 +809,7 @@ human reads it at the go-ahead and a reviewer sees it in the PR; the sign-off co
 
 **Its shape is [`../plan/PLAN-FORMAT.md`](../plan/PLAN-FORMAT.md)** — the header, the `## Phases`
 table (`Phase · App · Tasks · Goal`), then flat `### Task N` blocks carrying `App:`,
-`Phase:`, `Recipe:`, **Files**, **Interfaces** and bite-sized `- [ ]` steps with the actual code.
+`Phase:`, `Recipe:`, **Files**, **Interfaces** and bite-sized `- [ ]` steps with the test code, the signatures and the values the spec pins.
 Read it there rather than from a restatement.
 
 The two rules worth repeating because everything else depends on them:
