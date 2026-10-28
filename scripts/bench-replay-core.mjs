@@ -3,6 +3,8 @@
  * The gate replay's decisions, free of the CLI (docs/specs/2026-10-27-verifier-design.md §Benchmark 1):
  * which commits an archived feature made, where its phases closed, and where the old gates ran.
  */
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { git } from './verify/git.mjs'
 
 export function featureRange(repo, merged) {
@@ -55,6 +57,33 @@ export function touchedApps(boundaries, apps) {
 
 /** True when `child` is `parent` or under it — the replay never writes inside the repo it reads. */
 export const isInside = (parent, child) => child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`)
+
+/**
+ * What the verifier learns across features (ledger.mjs): the target's known failures and the flake
+ * list. In real use `.builder/verify/` persists in the repo; a fresh clone per feature would re-learn
+ * them every time. results.jsonl, requests/, lines/ and the service's files are per-run: not carried.
+ */
+const CARRY_FILES = ['known-failures.json', 'flakes.json']
+
+export function saveCarry(verifyDir, carryDir) {
+  mkdirSync(carryDir, { recursive: true })
+  for (const f of CARRY_FILES) if (existsSync(join(verifyDir, f))) copyFileSync(join(verifyDir, f), join(carryDir, f))
+}
+
+/** Copies the carried files into a clone's verify dir; returns how many known ids and flaky ids that seeded. */
+export function seedCarry(carryDir, verifyDir) {
+  let n = 0
+  for (const f of CARRY_FILES) {
+    if (!existsSync(join(carryDir, f))) continue
+    mkdirSync(verifyDir, { recursive: true })
+    copyFileSync(join(carryDir, f), join(verifyDir, f))
+    try {
+      const j = JSON.parse(readFileSync(join(carryDir, f), 'utf8'))
+      n += f === 'flakes.json' ? Object.keys(j).length : Object.values(j).reduce((a, k) => a + (k.ids?.length ?? 0), 0)
+    } catch {}
+  }
+  return n
+}
 
 const m = (ms) => `${Math.round(ms / 60000)}m`
 export function summarize(all) {
