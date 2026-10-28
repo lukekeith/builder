@@ -10,8 +10,7 @@ Invocation: **`/builder:build --path <folder> [--ticket <id>] [--auto] [--agent-
 erroring on it**.
 
 **`--here`, or the manifest says `build: here` (and not under `--agent-walk`)** → §Build here, and
-nothing else in this skill applies — §The test plan's levers included, which §Build here reads its own
-way.
+nothing else in this skill applies — §The test plan's levers included.
 
 **This skill is a wrapper.** [`EXECUTION.md`](EXECUTION.md) owns the loop — setup, dispatch, the task
 review, the fix loop and its breaker, the final review, the "Rulings I made" list. **Read it first,
@@ -170,11 +169,17 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   so; do not add "run the full suite" to a dispatch — the verifier runs everything the commit can
   reach as soon as it lands.
 - **After each task's commit** (its review too, when there is one):
-  `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` — it prints a
-  request id and returns at once; the next task does not wait. **Before every dispatch**, read
-  `node <builder>/scripts/verify/verify.mjs verdict <branch>` (exit 75 = still running, carry on):
-  each regression it lists becomes a fix dispatch against the task its `introduced by` commit
-  belongs to, reviewed like any other finding.
+  `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` — `<worktree>` is
+  this checkout's root (`git rev-parse --show-toplevel`). It prints a request id and returns at
+  once; the next task does not wait.
+- **Before every implementer dispatch**, read `node <builder>/scripts/verify/verify.mjs verdict
+  <branch>` — `<branch>` is the checked-out branch. It prints the latest *finished* verdict and the
+  sha it ran at; exit 75 (none finished yet) or 5 (none at all) → nothing to act on yet. A
+  regression is new only when its test id is not already ledgered for its `introduced by` commit:
+  dispatch a fix against the task that commit belongs to, reviewed like any other finding, and
+  ledger `Regression <test id> (introduced by <sha7>): fix dispatched against Task N`. One already
+  ledgered is in hand — never dispatch it twice; a later verdict that no longer lists it means the
+  fix held.
 - **Under `review=app` or `end`, there is no task review:** a DONE report goes straight to
   EXECUTION.md §5, the ledger line saying so.
 - **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**: render each
@@ -360,8 +365,10 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
    🔴 **In an app the config marks `commit: manual`, stage and carry on** — those commits are the
    human's; list them at the end.
 3. **Tests by the verifier** — after each task's commit, `node <builder>/scripts/verify/verify.mjs
-   request <worktree> HEAD --tier commit`; at each phase close, `--tier phase` and `wait`. A red
-   verdict is fixed here, in place, before the next task or phase.
+   request <worktree> HEAD --tier commit` (`<worktree>` = `git rev-parse --show-toplevel`), and read
+   `verify.mjs verdict <branch>` before the next task (exit 75 or 5 → nothing yet); at each phase
+   close, `--tier phase` and `wait`. A red verdict is fixed here, in place, before the next task or
+   phase.
 4. **Keep a one-line ledger** in the workspace (`<builder>/scripts/workspace <feature>` →
    `ledger.md`): `Task N: done <sha>`. After a `/clear`, `/builder:resume` routes back here and you
    pick up at the first task without a line.
