@@ -70,11 +70,13 @@ function lazyTracked(suite, where) {
   }
 }
 
+const REUSE_COMMITS = 3
+
 /**
  * (suite, file) → whether the phase tier may skip it. Candidates are the request's commit, then each
  * commit of base..sha newest first, then base: only ancestors, so a pass on another branch or the
- * target's merge checkout never counts. The newest candidate where all of the file's tests passed
- * (or skipped) is the one judged: a change since it that reaches the file, or that the graph can't
+ * target's merge checkout never counts. The newest candidate with any row for the file is the one
+ * judged, and only if every row there is pass/skip: a change since it that reaches the file, or that the graph can't
  * place (a 'whole' selection), means a re-run.
  */
 function phaseReuse(req, ctx, suites) {
@@ -82,7 +84,7 @@ function phaseReuse(req, ctx, suites) {
   const range = (tryGit(checkout, 'rev-list', `${req.base}..${req.sha}`) ?? '').split('\n').filter(Boolean)
   const chain = [...new Set([req.sha, ...range, req.base].filter(Boolean))]
   const passes = ledger.resultsAtAll(chain)
-  const index = new Map() // sha → "suite::file" → every test of it passed or skipped
+  const index = new Map() // sha → "suite::file" → every recorded test of it passed or skipped
   for (const [sha, byId] of passes) {
     const m = new Map()
     for (const [id, st] of byId) {
@@ -91,9 +93,13 @@ function phaseReuse(req, ctx, suites) {
     }
     index.set(sha, m)
   }
+  // The graph is built once per distinct earlier commit, synchronously: only the newest few that
+  // hold any record are consulted, and a file whose newest record is older than that is re-run.
+  const near = new Set(chain.filter((c) => c !== req.sha && index.get(c)?.size).slice(0, REUSE_COMMITS))
   const reach = new Map() // commit → what changed since it can reach, per suite
   const reachedSince = (c) => {
     if (!reach.has(c)) {
+      if (ctx.signal?.aborted) return null
       try {
         reach.set(c, ctx.select(checkout, c, suites))
       } catch {
@@ -105,7 +111,11 @@ function phaseReuse(req, ctx, suites) {
   const at = new Map() // "suite::file" → the commit judged, memoised
   return (suite, file) => {
     const key = `${suite.name}::${file}`
-    if (!at.has(key)) at.set(key, chain.find((c) => index.get(c)?.get(key)) ?? null)
+    // The newest commit with any row for the file decides, even a fail: older passes are not walked to.
+    if (!at.has(key)) {
+      const c = chain.find((x) => (x === req.sha || near.has(x)) && index.get(x)?.has(key))
+      at.set(key, c && index.get(c).get(key) ? c : null)
+    }
     const c = at.get(key)
     if (!c) return false
     if (c === req.sha) return true
@@ -177,10 +187,11 @@ async function judgeRequest(req, ctx, tmp) {
     try {
       // A junit command's {files} is the project's own runner: it may take them as regexes (playwright),
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
-      const whole = suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, lazyTracked(suite, where).list()) : null
+      const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, lazyTracked(suite, where).list()) : null
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, report })
       const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
-      if (!existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
+      // A run cut short streams a partial report: its rows would read as a complete record of the file.
+      if (r.timedOut || !existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
       const tracked = lazyTracked(suite, where)
@@ -307,7 +318,8 @@ async function judgeRequest(req, ctx, tmp) {
   }
 
   // 3. The ledger, then which commit broke what.
-  ledger.appendResults(rows.map((r) => ({ run: req.id, sha: req.sha, tier: req.tier, ...r })))
+  // A cancelled request judged only some of its tests: a partial record would later read as complete.
+  if (!signal?.aborted) ledger.appendResults(rows.map((r) => ({ run: req.id, sha: req.sha, tier: req.tier, ...r })))
   const passed = rows.filter((r) => r.status === 'pass').map((r) => r.id)
   ledger.recordClean(passed)
   if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
