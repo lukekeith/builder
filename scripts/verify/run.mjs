@@ -49,25 +49,24 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
 
 /**
  * A report's file as a repo path. Playwright's JUnit names files relative to its testDir, so the
- * suite's cwd + that name may not exist; then the one tracked file of the suite's glob ending in it
- * is the real one. Ambiguous or unfound: the name as reported (joined with cwd), as before.
+ * suite's cwd + that name may not be the test: it is taken only when it exists and the suite's glob
+ * covers it. Else the one tracked file of the glob ending in the name is the real one. Ambiguous or
+ * unfound: the name as reported (joined with cwd), as before.
  */
 function repoFile(suite, where, file, tracked) {
   const joined = suite.cwd === '.' ? file : posix.join(suite.cwd, file)
-  if (existsSync(join(where, joined))) return joined
-  const hits = tracked().filter((t) => t.endsWith(`/${file}`) && (suite.cwd === '.' || t.startsWith(`${suite.cwd}/`)))
+  if (existsSync(join(where, joined)) && tracked.covers(joined)) return joined
+  const hits = tracked.list().filter((t) => t.endsWith(`/${file}`) && (suite.cwd === '.' || t.startsWith(`${suite.cwd}/`)))
   return hits.length === 1 ? hits[0] : joined
 }
 
-/** The checkout's tracked files that match the suite's glob (all of them with none), listed once, on first use. */
+/** The suite's glob, and the checkout's tracked files it matches (all of them with no glob), listed once, on first use. */
 function lazyTracked(suite, where) {
+  const re = suite.files ? globToRegExp(suite.cwd && suite.cwd !== '.' ? posix.join(suite.cwd, suite.files) : suite.files) : null
   let list = null
-  return () => {
-    if (!list) {
-      const re = suite.files ? globToRegExp(suite.cwd && suite.cwd !== '.' ? posix.join(suite.cwd, suite.files) : suite.files) : null
-      list = (tryGit(where, 'ls-files') ?? '').split('\n').filter((t) => t && (!re || re.test(t)))
-    }
-    return list
+  return {
+    covers: (p) => !re || re.test(p),
+    list: () => (list ??= (tryGit(where, 'ls-files', '-z') ?? '').split('\0').filter((t) => t && (!re || re.test(t)))),
   }
 }
 

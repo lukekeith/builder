@@ -205,21 +205,43 @@ test('the request\'s report dir is removed even when the run throws', async () =
   assert.equal(existsSync(join(ctx.ledger.dir, 'reports', 'thrown')), false)
 })
 
-test('a report naming files relative to the runner\'s testDir resolves to the repo path, so a failure on both sides is debt', async () => {
-  const gen = `printf '<testsuites><testsuite name="x.spec.ts"><testcase classname="x.spec.ts" name="renders" time="0.1"><failure message="boom"/></testcase></testsuite></testsuites>' > r.xml`
+const XML = `printf '<testsuites><testsuite name="x.spec.ts"><testcase classname="x.spec.ts" name="renders" time="0.1"><failure message="boom"/></testcase></testsuite></testsuites>' > r.xml`
+/** A repo holding `files`, and a junit suite whose report always names the bare `x.spec.ts`. */
+async function junitRun(files, over) {
   const mk = () => {
-    const dir = project({ 'gen.sh': gen })
-    mkdirSync(join(dir, 'tests/visual'), { recursive: true })
-    writeFileSync(join(dir, 'tests/visual/x.spec.ts'), '')
+    const dir = project({})
+    for (const f of files) {
+      mkdirSync(join(dir, f, '..'), { recursive: true })
+      writeFileSync(join(dir, f), '')
+    }
     execFileSync('git', ['init', '-q'], { cwd: dir })
     execFileSync('git', ['add', '.'], { cwd: dir })
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], { cwd: dir })
     return dir
   }
-  const pw = { name: 'e2e', runner: 'junit', files: 'tests/**/*.spec.ts', cwd: '.', command: 'sh gen.sh', report: 'r.xml', needs: [], tiers: ['commit', 'phase', 'merge'] }
-  const ctx = ctxFor(mk(), mk(), { verify: { suites: [pw], checks: [], timeoutMs: 60000, db: null } })
-  const v = await runRequest(req(), ctx)
+  const pw = { name: 'e2e', runner: 'junit', cwd: '.', command: XML, report: 'r.xml', needs: [], tiers: ['commit', 'phase', 'merge'], ...over }
+  return runRequest(req(), ctxFor(mk(), mk(), { verify: { suites: [pw], checks: [], timeoutMs: 60000, db: null } }))
+}
+
+test('a report naming files relative to the runner\'s testDir resolves to the repo path, so a failure on both sides is debt', async () => {
+  const v = await junitRun(['tests/visual/x.spec.ts'], { files: 'tests/**/*.spec.ts' })
   assert.equal(v.status, 'green')
   assert.deepEqual(v.regressions, [])
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+test('testDir-relative names resolve under a subdirectory cwd', async () => {
+  const v = await junitRun(['apps/web/test/e2e/x.spec.ts'], { cwd: 'apps/web', files: 'test/e2e/*.spec.ts' })
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.debt, ['e2e::apps/web/test/e2e/x.spec.ts::renders'])
+})
+
+test('a suite with no files glob resolves by the one tracked file with that name', async () => {
+  const v = await junitRun(['tests/visual/x.spec.ts'], { files: null })
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+test('a same-named file outside the suite\'s glob does not win over the one inside it', async () => {
+  const v = await junitRun(['x.spec.ts', 'tests/visual/x.spec.ts'], { files: 'tests/**/*.spec.ts' })
   assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
 })
