@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git } from '../verify/git.mjs'
-import { featureRange, phaseBoundaries, controlPoints, summarize } from '../bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, summarize, isInside } from '../bench-replay-core.mjs'
 
 const apps = [{ name: 'server', path: 'server' }, { name: 'web', path: 'web' }]
 
@@ -60,4 +60,21 @@ test('summarize: a row per feature and totals', () => {
   assert.match(md, /\| x \| 10m \| 2 \| 2m \| 5m \| 1 \| 1 \| 2 \| 0 \| 0 \|/)
   assert.match(md, /\| \*\*total\*\* \| 15m \| 2 \| 3m \| 6m \| 1 \| 1 \| 2 \| 1 \| 0 \|/)
   assert.match(md, /blocking time: 80% less/)
+})
+
+test('summarize: unrun control runs get a column; errored features are listed, not tabulated', () => {
+  const md = summarize([
+    { feature: 'x', control: { blockingMs: 60000, reds: 0, unrun: 1 }, treatment: { blockingMs: 0, backgroundMs: 0, regressions: 0, flakes: 0, known: 0, debt: 0, broken: 0 } },
+    { feature: 'bad', error: 'setup exited 3' },
+  ])
+  assert.match(md, /Old gates: unrun \|/)
+  assert.match(md, /\| x \| 1m \| 0 \| 0m \| 0m \| 0 \| 0 \| 0 \| 0 \| 0 \| 1 \|/)
+  assert.doesNotMatch(md, /\| bad \|/)
+  assert.match(md, /errored \(not in the table\): bad — setup exited 3/)
+})
+
+test('isInside: the repo itself and anything under it, not a sibling with the same prefix', () => {
+  assert.equal(isInside('/r/app', '/r/app'), true)
+  assert.equal(isInside('/r/app', '/r/app/.builder/bench'), true)
+  assert.equal(isInside('/r/app', '/r/app-bench'), false)
 })
