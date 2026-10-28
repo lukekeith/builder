@@ -186,18 +186,20 @@ async function main() {
     const v = r.verdict
     const cfg = loadConfig(root)
     const registry = `${String(cfg.ok ? cfg.registry : 'docs/features').replace(/\/+$/, '')}/`
-    const docsOnly = (from, to) => (tryGit(root, 'diff', '--name-only', from, to) ?? '\0').split('\n').filter(Boolean).every((f) => f.startsWith(registry))
+    // --no-renames: a code file moved into the registry must list its deletion too, not only where it went.
+    const docsOnly = (from, to) => (tryGit(root, 'diff', '--name-only', '--no-renames', from, to) ?? '\0').split('\n').filter(Boolean).every((f) => f.startsWith(registry))
     const head = tryGit(root, 'rev-parse', `refs/heads/${r.branch}`)
-    if (!head || tryGit(root, 'merge-base', '--is-ancestor', r.sha, head) === null || !docsOnly(r.sha, head)) {
-      console.log(`${id}: code changed since the tested sha — request the merge again`)
+    // Code changed: this result can never carry, so it stops being held (the fleet won't try it again).
+    const codeChanged = (extra = '') => {
+      const cur = ledger.getRequest(id) ?? r
+      ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false } })
+      console.log(`${id}: code changed since the tested sha — request the merge again${extra}`)
       process.exit(2)
     }
+    if (!head || tryGit(root, 'merge-base', '--is-ancestor', r.sha, head) === null || !docsOnly(r.sha, head)) codeChanged()
     if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) !== v.targetSha) unhold(ledger, r, `${r.target} moved since the merge tier ran`)
     const m = mergedCheckout(ensureCheckout(root, 'carry'), v.targetSha, head, r.message ?? `Merge ${r.branch} into ${r.target}`)
-    if (m.conflict || !docsOnly(v.merged, m.sha)) {
-      console.log(`${id}: code changed since the tested sha — request the merge again${m.conflict ? ` (conflict in ${m.files.join(', ')})` : ''}`)
-      process.exit(2)
-    }
+    if (m.conflict || !docsOnly(v.merged, m.sha)) codeChanged(m.conflict ? ` (conflict in ${m.files.join(', ')})` : '')
     landHeld(root, ledger, r, m.sha, { carried: head })
     const n = Number(tryGit(root, 'rev-list', '--count', `${r.sha}..${head}`) ?? 0)
     console.log(`landed ${m.sha.slice(0, 7)} on ${r.target} (carried ${n} doc commit${n === 1 ? '' : 's'})`)

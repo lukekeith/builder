@@ -173,3 +173,18 @@ test('carry lands a held merge whose branch gained only registry commits; a code
   assert.match(bad.stdout, /code changed since the tested sha — request the merge again/)
   assert.equal(git(two.root, 'rev-parse', 'main'), before)
 })
+
+test('carry: a code file renamed into the registry is a code change — exit 2, nothing lands, no longer held', () => {
+  const { root, wt } = repo()
+  const id = cli(wt, 'request', wt, 'HEAD', '--tier', 'merge', '--hold').stdout.trim()
+  assert.equal(cli(wt, 'wait', id, '--max', '60').status, 0)
+  mkdirSync(join(wt, 'docs/features/x'), { recursive: true })
+  git(wt, 'mv', 'b.txt', 'docs/features/x/b.txt')
+  git(wt, 'commit', '-qm', 'move code into the registry')
+  const before = git(root, 'rev-parse', 'main')
+  const c = cli(wt, 'carry', id)
+  assert.equal(c.status, 2, c.stdout + c.stderr)
+  assert.match(c.stdout, /code changed since the tested sha/)
+  assert.equal(git(root, 'rev-parse', 'main'), before)
+  assert.equal(openLedger(root).getRequest(id).verdict.held, false)
+})

@@ -38,14 +38,20 @@ test('request once per HEAD, await, release with the fleet message', async () =>
 
 test('carry: registry-only commits after the held run land without a second run; code falls through', async () => {
   process.env.BUILDER_VERIFY_IDLE_MS = '500'
-  const { root, wt } = repo()
-  const id = requestMerge(root, wt, { target: 'main', message: 'merge(f): carried' })
-  await awaitVerdict(root, id, { pollMs: 200 })
-  writeFileSync(join(wt, 'code.js'), 'x\n')
-  git(wt, 'add', '.')
-  git(wt, 'commit', '-qm', 'code')
-  assert.deepEqual(carry(root, id), { ok: false, moved: false, codeChanged: true, reason: `${id}: code changed since the tested sha — request the merge again` })
-  git(wt, 'reset', '-q', '--hard', 'HEAD~1')
+  const held = async () => {
+    const { root, wt } = repo()
+    const id = requestMerge(root, wt, { target: 'main', message: 'merge(f): carried' })
+    await awaitVerdict(root, id, { pollMs: 200 })
+    return { root, wt, id }
+  }
+  const code = await held()
+  writeFileSync(join(code.wt, 'code.js'), 'x\n')
+  git(code.wt, 'add', '.')
+  git(code.wt, 'commit', '-qm', 'code')
+  assert.deepEqual(carry(code.root, code.id), { ok: false, moved: false, codeChanged: true, reason: `${code.id}: code changed since the tested sha — request the merge again` })
+  assert.equal(heldMerge(code.root, 'builder/f'), null, 'a result code moved past is not offered again')
+
+  const { root, wt, id } = await held()
   mkdirSync(join(wt, 'docs', 'features', 'f'), { recursive: true })
   writeFileSync(join(wt, 'docs', 'features', 'f', 'SPEC.md'), 'shipped\n')
   git(wt, 'add', '.')
