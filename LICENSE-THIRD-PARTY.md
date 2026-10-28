@@ -47,7 +47,7 @@ artifacts of how that skill was authored and validated, not things a debugging s
 - **One app per phase, and the per-app gates** are additions — they have no upstream equivalent.
 - **The implementer runs focused tests only.** Upstream's implementer prompt says "run the broader
   suite once before committing"; here it runs the tests of the code it changes plus the type-check,
-  and the phase close runs the gate block once through `scripts/gate.mjs`. The four prompts also
+  and the phase close waits on the verifier (`scripts/verify/verify.mjs`). The four prompts also
   gained a process rule with no upstream equivalent: foreground only, and never kill a process the
   task did not start — fleet worktrees share a machine.
 - **`brainstorming` is not vendored.** It was reachable only as a one-line handoff for feasibility

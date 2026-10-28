@@ -136,7 +136,7 @@ export const normTitle = (t) =>
 /**
  * The section under the heading named `name` — fence-aware, from its heading line to the next heading
  * of the same or a higher level. Matched exactly first, then as a prefix ending at a word boundary
- * (`Quality gates` finds `Quality gates — the mechanism`). `level` narrows to one heading level.
+ * (`The verifier` finds `The verifier — the mechanism`). `level` narrows to one heading level.
  * → { start, end, level, title, text (heading line included), body } or null.
  */
 export function mdSection(text, name, { level = null } = {}) {

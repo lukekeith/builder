@@ -299,7 +299,7 @@ export function brainstormOf(copy) {
   const base = join(copy, '.builder')
   if (!existsSync(base)) return null
   for (const n of readdirSync(base).sort()) {
-    if (n.startsWith('.') || ['fleet', 'jobs', 'bench'].includes(n)) continue
+    if (n.startsWith('.') || ['fleet', 'verify', 'bench'].includes(n)) continue
     const f = join(base, n, 'brainstorm.md')
     if (!existsSync(f)) continue
     let header = null

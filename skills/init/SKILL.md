@@ -143,9 +143,9 @@ which the go-ahead recommends when the spec raises no signal (`rush` · `standar
 read as the test plan it maps to; absent → the recommended plan: no agent walk, one review at the end) — as the template's commented-out line unless
 the user names one.
 
-**A 5.x config with `## Quality gates`** → run `node "$CLAUDE_PLUGIN_ROOT/scripts/verify/migrate.mjs"`, show
+**A 5.x config with a gates section** → run `node "$CLAUDE_PLUGIN_ROOT/scripts/verify/migrate.mjs"`, show
 its block and notes as the review, ask the questions its notes raise, write the `verify:` block, and
-delete `## Quality gates` and `flaky:`.
+delete that section and `flaky:`.
 
 ## 5. Prove it
 

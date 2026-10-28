@@ -50,7 +50,7 @@ test('draftRows: one row per conversation in progress, with its state and comman
     '.builder/revise/brainstorm.md': HEAD('status: exploring\nsource: brainstorm\ninput: spec\nupdated: 2026-09-29T10:00:00Z\nsettled: 1 of 4'),
     [`${REG}/revise/SPEC.md`]: '# revise — spec\n',
     '.builder/fleet/fleet.json': '{}',
-    '.builder/gates/baseline.json': '{}',
+    '.builder/verify/state.json': '{}',
     '.builder/broken/brainstorm.md': '',
   })
   const rows = Object.fromEntries(draftRows(root, REG).map((r) => [r.feature, r]))

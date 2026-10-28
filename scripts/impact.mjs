@@ -332,7 +332,7 @@ function importGraph(root, files) {
  * how f imports into it, or null.
  */
 export function impactOf(root, { baseBranch, since = null }) {
-  // `since`: a commit — what changed after it (gate.mjs quoting a line green there), not the branch.
+  // `since`: a commit — what changed after it (a check last green there), not the branch.
   const base = since ?? git(['merge-base', `refs/heads/${baseBranch}`, 'HEAD'], root).trim()
   const changed = git(['diff', '--name-only', base], root).split('\n').filter(Boolean)
   const files = new Set(git(['ls-files'], root).split('\n').filter(Boolean))

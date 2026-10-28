@@ -14,7 +14,7 @@ const worktree = (root, name, branch) => {
 }
 
 test('isTestOutput knows the usual runner output and nothing else', () => {
-  for (const p of ['test-results/.last-run.json', 'playwright-report/index.html', 'coverage/lcov.info', '.nyc_output/x.json', '.builder/gates/e2e.log', 'junit.xml', 'reports/junit-web.xml'])
+  for (const p of ['test-results/.last-run.json', 'playwright-report/index.html', 'coverage/lcov.info', '.nyc_output/x.json', '.builder/verify/e2e.log', 'junit.xml', 'reports/junit-web.xml'])
     assert.equal(isTestOutput(p), true, p)
   for (const p of ['app.js', 'src/test-results.ts', 'docs/coverage.md', 'junit.xml.bak']) assert.equal(isTestOutput(p), false, p)
 })
@@ -180,7 +180,3 @@ test('a worktree kept for your walk is kept, never in the safe batch', () => {
   assert.match(w.next, /\/builder:resume/)
 })
 
-test('uncommittedWork no longer needs gates-core', () => {
-  const src = readFileSync(new URL('../tidy-core.mjs', import.meta.url), 'utf8')
-  assert.doesNotMatch(src, /gates-core/)
-})

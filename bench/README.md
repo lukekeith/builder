@@ -1,14 +1,14 @@
 # bench — the pipeline benchmark
 
 `/builder:benchmark` runs one small feature through builder — `builder` (the recommended test plan)
-and `builder-everything` (`tests: slice=own+app end=everything review=slice`, pre-set on the manifest
+and `builder-everything` (`tests: walk=full review=slice`, pre-set on the manifest
 before the fleet runs) — through superpowers and GSD, and through plain Claude Code with no plugin (`baseline`), unattended, and reports time per step, what happened in each step, tokens,
 cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-design.md`.
 
 - `fixtures/<name>/` — the projects a run starts from, each with its own tests and `.claude/builder.md`:
   - `notes` — one app, a notes CLI with a test suite that runs in seconds.
   - `notes-hub` — two apps, `apps/cli` (the notes CLI) and `apps/server` (a `node:http` JSON API),
-    gates per app with a `@typecheck` line each, and an `agent_walk` that starts the server on its
+    a `verify:` suite per app plus a parse check each, and an `agent_walk` that starts the server on its
     own port. Its suites are slow on purpose — every test file waits `SLOW_TESTS_MS` (default
     4000 ms) and the files run one at a time, so both suites cost ~30 s — so per-slice testing and
     the end walk have something to save. Scoring runs them with `SLOW_TESTS_MS=0`.

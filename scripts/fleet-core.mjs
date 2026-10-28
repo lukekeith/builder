@@ -26,7 +26,7 @@ export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (BUILD_STATES.has(mf.state)) return 'build'
   // Batched walks (agent_walk.start with batch > 1): the walk lane holds only what needs the running
   // env — readiness and the agent walk. A walk's fixes are worked in the parallel pool (no env), and
-  // verify + ship run there too; the @walk gates verify needs ran once in the batch.
+  // verify + ship run there too.
   if (batched && mf.state === 'built' && hasOpenFixes(specText)) return 'build'
   if (batched && mf.state === 'signed-off') return 'ship'
   if (WALK_STATES.has(mf.state)) return 'walk'
