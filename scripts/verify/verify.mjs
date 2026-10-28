@@ -69,12 +69,27 @@ const die = (m) => {
   process.exit(2)
 }
 
+/** Keys a client's env may carry that belong to that client alone — a walk lane, a worktree, a test runner. */
+const CLIENT_KEYS = ['CLAUDE_PROJECT_DIR', 'BUILDER_FLEET_DIR', 'PORT', 'DATABASE_URL', 'TEST_DATABASE_URL', 'NODE_TEST_CONTEXT']
+
+/**
+ * The env the service runs every test in: the starting client's, less what is that client's own.
+ * Whichever client happens to start the service — a walk lane, a fleet worktree, a test — must not
+ * decide the database or port every later run uses.
+ */
+export function serviceEnv(root, env = process.env) {
+  const cfg = loadConfig(root)
+  const walk = cfg.ok ? cfg.agentWalk : null
+  const drop = new Set([...CLIENT_KEYS, ...Object.keys(walk?.env ?? {}), ...Object.keys(walk?.worktreeEnv ?? {})])
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !drop.has(k)))
+}
+
 export function ensureService(root) {
   // A live pid with a stale heartbeat is not a service: the pid was reused after it died.
   if (serviceAlive(root)) return
   const log = openSync(join(verifyDir(root), 'serve.log'), 'a')
   const idle = process.env.BUILDER_VERIFY_IDLE_MS
-  spawn(process.execPath, ['-e', `import(${JSON.stringify(SERVE)}).then((m) => m.runService(${JSON.stringify(root)}${idle ? `, { idleMs: ${Number(idle)} }` : ''}))`], { detached: true, stdio: ['ignore', log, log] }).unref()
+  spawn(process.execPath, ['-e', `import(${JSON.stringify(SERVE)}).then((m) => m.runService(${JSON.stringify(root)}${idle ? `, { idleMs: ${Number(idle)} }` : ''}))`], { detached: true, stdio: ['ignore', log, log], env: serviceEnv(root) }).unref()
   closeSync(log)
 }
 
