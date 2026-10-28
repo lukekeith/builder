@@ -124,3 +124,13 @@ test('loadVerify names an un-migrated 5.x config (## Quality gates or flaky:) ra
   rmSync(join(root, '.claude', 'builder.md'))
   assert.equal(loadVerify(root).reason, 'no .claude/builder.md — run /builder:init')
 })
+
+test('normalizeVerify refuses zero or non-integer capacity — it would queue forever', () => {
+  const checks = { ok: { run: 'true' } }
+  assert.throws(() => normalizeVerify({ workers: 0, checks }), /verify\.workers must be a positive integer/)
+  assert.throws(() => normalizeVerify({ workers: 1.5, checks }), /verify\.workers must be a positive integer/)
+  assert.throws(() => normalizeVerify({ checks, db: { url: 'postgres://a@h/db', max: 0 } }), /verify\.db\.max must be a positive integer/)
+  assert.throws(() => normalizeVerify({ checks, simulator: { base: 'x', max: -1 } }), /verify\.simulator\.max must be a positive integer/)
+  assert.throws(() => normalizeVerify({ checks, env: { lease: 'x', max: 'two' } }), /verify\.env\.max must be a positive integer/)
+  assert.equal(normalizeVerify({ workers: 3, checks }).workers, 3)
+})
