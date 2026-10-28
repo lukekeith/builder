@@ -146,3 +146,17 @@ test('checkouts live beside the main checkout (<root>-verify/co/<slot>), never i
   assert.equal(git(root, 'status', '--porcelain', '--ignored'), '', 'nothing in the consumer tree')
   assert.equal(mainRoot(co), mainRoot(root))
 })
+
+test('land refuses a target checked out in a linked worktree — moving it there would leave that tree behind its branch', () => {
+  const root = repo()
+  git(root, 'checkout', '-qb', 'side')
+  const base = git(root, 'rev-parse', 'main')
+  const wt = `${root}-rel`
+  git(root, 'worktree', 'add', '-q', wt, 'main')
+  git(root, 'checkout', '-qb', 'feat')
+  const tested = commit(root, 'b.txt', 'b\n', 'b')
+  const r = land(root, 'main', tested, base)
+  assert.equal(r.ok, false)
+  assert.match(r.reason, new RegExp(`main is checked out in ${wt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+  assert.equal(git(root, 'rev-parse', 'main'), base)
+})
