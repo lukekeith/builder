@@ -110,9 +110,10 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
   let untested = false
   if (!v) {
     const r = loadVerify(root)
-    // No verify: block (or no config) → nothing is configured to test, as a config with no gate blocks was:
-    // runs are green and say so (`untested`). A block that is there but wrong is env-broken.
-    if (!r.ok && /no verify: block|no \.claude\/builder\.md/.test(r.reason)) {
+    // A config with neither gates nor a verify: block → nothing is configured to test: runs are
+    // green and say so (`untested`). No config, an un-migrated 5.x one, or a block that is there
+    // but wrong is env-broken — none of them may land a merge nobody tested.
+    if (!r.ok && /no verify: block/.test(r.reason)) {
       v = { workers: 1, timeoutMs: 15 * 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, suites: [], checks: [] }
       untested = true
     } else if (!r.ok) {

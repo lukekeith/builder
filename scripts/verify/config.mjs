@@ -144,7 +144,8 @@ export function parseBlock(lines) {
 
 /** The lines under `verify:` in a config's frontmatter, or null when there is none. */
 export function verifyLines(text) {
-  const m = /^---\n([\s\S]*?)\n---/.exec(text)
+  // A config saved on Windows has CRLF line ends; read it as the same config.
+  const m = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n?/g, '\n'))
   if (!m) return null
   const lines = m[1].split('\n')
   const at = lines.findIndex((l) => /^verify:\s*(#.*)?$/.test(l))
@@ -233,10 +234,17 @@ export function normalizeVerify(raw) {
   }
 }
 
+/** What an un-migrated 5.x config says: its tests are named in a form the verifier does not read. */
+export const OLD_FORMAT = 'this config still uses ## Quality gates — run /builder:init --update to migrate it to verify:'
+
 export function loadVerify(root) {
   const p = join(root, '.claude', 'builder.md')
   if (!existsSync(p)) return { ok: false, reason: 'no .claude/builder.md — run /builder:init' }
-  const lines = verifyLines(readFileSync(p, 'utf8'))
+  const text = readFileSync(p, 'utf8').replace(/\r\n?/g, '\n')
+  const lines = verifyLines(text)
+  // A 5.x config names its gates (and flaky list) outside verify: — reading it as "nothing to
+  // test" would land every merge untested, so it is broken until it is migrated.
+  if (!lines && (/^##\s+Quality gates\b/m.test(text) || /^flaky:/m.test(/^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? ''))) return { ok: false, reason: OLD_FORMAT }
   if (!lines) return { ok: false, reason: '.claude/builder.md has no verify: block — run /builder:init --update' }
   try {
     return { ok: true, verify: normalizeVerify(parseBlock(lines)) }

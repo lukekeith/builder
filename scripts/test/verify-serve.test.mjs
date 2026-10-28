@@ -96,19 +96,38 @@ test('a cancelled request stops with a cancelled verdict', async () => {
   assert.equal(l.getRequest(r.id).verdict.status, 'cancelled')
 })
 
-test('no verify: block at all → green and marked untested; a broken block → env-broken', async () => {
+test('no .claude/builder.md → env-broken; a config with neither gates nor verify: → green and marked untested; a broken block → env-broken', async () => {
   const { root, feat } = repo()
   const l = openLedger(root)
+  const n = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  await serve(root, { idleMs: 300, tickMs: 50 })
+  assert.equal(l.getRequest(n.id).verdict.status, 'env-broken')
+  assert.equal(l.getRequest(n.id).verdict.broken[0].reason, 'no .claude/builder.md — run /builder:init')
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\napps:\n  - name: a\n    path: .\n---\n')
   const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
   await serve(root, { idleMs: 300, tickMs: 50 })
   assert.equal(l.getRequest(r.id).verdict.status, 'green')
   assert.equal(l.getRequest(r.id).verdict.untested, true)
-  mkdirSync(join(root, '.claude'), { recursive: true })
   writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\napps:\n  - name: a\n    path: .\nverify:\n  suites:\n    u: { runner: mocha }\n---\n')
   const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
   await serve(root, { idleMs: 300, tickMs: 50 })
   assert.equal(l.getRequest(b.id).verdict.status, 'env-broken')
   assert.match(l.getRequest(b.id).verdict.broken[0].reason, /runner "mocha"/)
+})
+
+test('an un-migrated 5.x config (## Quality gates, no verify:) runs nothing and lands nothing: env-broken, saying how to migrate', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const old = git(root, 'rev-parse', 'main')
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\napps:\n  - name: a\n    path: .\n---\n## Quality gates\n\n- `npm test`\n')
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'merge', target: 'main' })
+  await serve(root, { idleMs: 300, tickMs: 50 })
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'env-broken')
+  assert.equal(v.broken[0].reason, 'this config still uses ## Quality gates — run /builder:init --update to migrate it to verify:')
+  assert.equal(git(root, 'rev-parse', 'main'), old)
 })
 
 test('one service per repo: a live lock refuses a second', () => {

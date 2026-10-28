@@ -120,6 +120,8 @@ a visual diff, and a renamed element changes what the walk does.
    id, the counts. **Regressions** fail this item: each becomes a `## Fixes` row naming
    its test and the commit that introduced it. **Flakes, known failures and newly found debt** are
    reported in the verdict and do not fail it. **Env-broken** is BLOCKED-on-environment, never READY.
+   **`untested`** (the config names no tests) is not READY unless the human has said this project
+   has no tests — then the verdict says so in those words.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly
    deferred with a named decider; Data plans executed. 🔴 **And the migration re-applies on a clean
    database** — one that only works against your local state is a production incident waiting.
