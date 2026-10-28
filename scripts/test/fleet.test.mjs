@@ -1138,6 +1138,17 @@ test('a feature that ships after the human switched branches still lands on the 
   assert.equal(git(root, 'rev-list', '--parents', '-n', '1', 'main').split(' ').length, 3, 'a two-parent merge commit')
 })
 
+test('the human switching branches during the merge-tier wait: what lands is judged on the branch checked out after it', () => {
+  const root = makeRepo(['a'])
+  // The re-run (code committed after the walk-start run) switches the human's checkout while it runs.
+  withVerify(root, `verify:\n  workers: 1\n  checks:\n    sw: { run: "if [ -f app/LATE ]; then git -C '${root}' switch -q -c elsewhere; fi; true", tiers: [merge] }`)
+  const steps = HAPPY.map((s) => (s === 'verified' ? 'COMMIT:app/LATE:verified' : s))
+  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assertLanded(r, 'a')
+  assert.equal(git(root, 'branch', '--show-current'), 'elsewhere')
+  assert.ok(r.fleet.notes.some((n) => /a merged into main while elsewhere was checked out here/.test(n)), JSON.stringify(r.fleet.notes))
+})
+
 test('a fleet with unfinished work refuses another target, naming the --into that continues it', () => {
   const root = makeRepo(['a'])
   runFleet(root, ['a'], { a: ['audited', 'BLOCK:later'] })
