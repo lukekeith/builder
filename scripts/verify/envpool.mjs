@@ -32,6 +32,15 @@ export const psql = (url, sql) => {
 // the template is stale and a new one is built.
 export const inputsHash = (checkout, globs) => createHash('sha256').update(execFileSync('git', ['ls-files', '-s', '--', ...globs], { cwd: checkout, encoding: 'utf8' })).digest('hex')
 
+const pidAlive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+
 const dbName = (url) => decodeURIComponent(new URL(url).pathname.slice(1))
 const withDb = (url, name) => {
   const u = new URL(url)
@@ -39,7 +48,7 @@ const withDb = (url, name) => {
   return u.toString()
 }
 
-export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = freePort } = {}) {
+export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = freePort, alive = pidAlive } = {}) {
   // Every project command is bounded by verify.timeout: a hung hook must not hang the service.
   const sh = (cmd, o) => run(cmd, { timeout: verify.timeoutMs, ...o })
   const used = { db: 0, simulator: 0, 'walk-env': 0, hook: 0 }
@@ -115,7 +124,8 @@ export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = f
     ensureTemplate(checkout, hash) {
       const tpl = pool.templateName(hash)
       if (pg(verify.db.url, `SELECT 1 FROM pg_database WHERE datname = '${tpl}'`) === '1') return tpl
-      const building = `${tpl}_building`
+      // The builder's pid is in the name, so a sweep can tell a crashed build from a live one.
+      const building = `${tpl}_b_${process.pid}`
       pg(verify.db.url, `DROP DATABASE IF EXISTS "${building}" WITH (FORCE)`)
       pg(verify.db.url, `CREATE DATABASE "${building}"`)
       try {
@@ -123,16 +133,34 @@ export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = f
         pg(verify.db.url, `ALTER DATABASE "${building}" RENAME TO "${tpl}"`)
       } catch (e) {
         pg(verify.db.url, `DROP DATABASE IF EXISTS "${building}" WITH (FORCE)`)
+        // Another service built the same template meanwhile: use theirs.
+        if (pg(verify.db.url, `SELECT 1 FROM pg_database WHERE datname = '${tpl}'`) === '1') return tpl
         throw e
       }
       return tpl
     },
+    /**
+     * Drop what a dead service left: a clone `<base>_vt_<pid>_<n>` or a template build
+     * `<base>_vt_tpl_<hash>_b_<pid>` whose pid is gone. A live pid's are another service's — one
+     * per repo, and repos may share a database server and base name — so they stay. A
+     * `_building` without a pid is from before pids were in the name, and goes.
+     */
     dropOrphans() {
       if (!verify.db) return []
       // Filter in JS: the base name may contain "_", a LIKE wildcard that would match other projects.
       const names = pg(verify.db.url, 'SELECT datname FROM pg_database')
         .split('\n')
-        .filter((n) => n.startsWith(`${base}_vt_`) && (!n.startsWith(`${base}_vt_tpl_`) || n.endsWith('_building')))
+        .filter((n) => {
+          if (!n.startsWith(`${base}_vt_`)) return false
+          const rest = n.slice(base.length + 4)
+          if (rest.startsWith('tpl_')) {
+            if (/_building$/.test(rest)) return true
+            const b = /_b_(\d+)$/.exec(rest)
+            return Boolean(b) && !alive(Number(b[1]))
+          }
+          const c = /^(\d+)_\d+$/.exec(rest)
+          return Boolean(c) && !alive(Number(c[1]))
+        })
       for (const n of names) pg(verify.db.url, `DROP DATABASE IF EXISTS "${n}" WITH (FORCE)`)
       return names
     },

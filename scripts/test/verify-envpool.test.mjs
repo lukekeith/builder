@@ -31,7 +31,7 @@ test('a db lease is a template clone, its URL under each configured name; releas
   const pool = createPool(V(), { sh: f.sh, psql: f.psql })
   const tpl = pool.ensureTemplate('/co', 'abcdef0123456789')
   assert.equal(tpl, 'app_vt_tpl_abcdef012345')
-  assert.ok(f.cmds.some((c) => c.cmd === 'npm run migrate' && /app_vt_tpl_abcdef012345_building/.test(c.env.TEST_DATABASE_URL)))
+  assert.ok(f.cmds.some((c) => c.cmd === 'npm run migrate' && new RegExp(`app_vt_tpl_abcdef012345_b_${process.pid}$`).test(c.env.TEST_DATABASE_URL)))
   assert.equal(pool.ensureTemplate('/co', 'abcdef0123456789'), tpl)
   assert.equal(f.cmds.filter((c) => c.cmd === 'npm run migrate').length, 1)
   const l = await pool.lease([{ kind: 'db' }], { template: tpl, cwd: '/co' })
@@ -77,7 +77,7 @@ test('dropOrphans drops leftover clones, keeps templates', () => {
   const f = fakes()
   f.dbs.add('app_vt_123_4')
   f.dbs.add('app_vt_tpl_abc')
-  const pool = createPool(V(), { sh: f.sh, psql: f.psql })
+  const pool = createPool(V(), { sh: f.sh, psql: f.psql, alive: () => false })
   assert.deepEqual(pool.dropOrphans(), ['app_vt_123_4'])
   assert.deepEqual([...f.dbs], ['app_vt_tpl_abc'])
 })
@@ -91,10 +91,10 @@ test('freePort gives distinct usable ports', async () => {
 test('dropOrphans matches the base name literally and clears crashed template builds', () => {
   const f = fakes()
   const v = V({ db: { ...V().db, url: 'postgres://u:p@localhost:5432/my_app' } })
-  for (const d of ['myXapp_vt_1', 'my_app_vt_1', 'my_app_vt_tpl_abc_building', 'my_app_vt_tpl_abc']) f.dbs.add(d)
-  const pool = createPool(v, { sh: f.sh, psql: f.psql })
-  assert.deepEqual(pool.dropOrphans().sort(), ['my_app_vt_1', 'my_app_vt_tpl_abc_building'])
-  assert.deepEqual([...f.dbs].sort(), ['myXapp_vt_1', 'my_app_vt_tpl_abc'])
+  for (const d of ['myXapp_vt_1_1', 'my_app_vt_1_1', 'my_app_vt_tpl_abc_b_1', 'my_app_vt_tpl_abc_building', 'my_app_vt_tpl_abc']) f.dbs.add(d)
+  const pool = createPool(v, { sh: f.sh, psql: f.psql, alive: () => false })
+  assert.deepEqual(pool.dropOrphans().sort(), ['my_app_vt_1_1', 'my_app_vt_tpl_abc_b_1', 'my_app_vt_tpl_abc_building'])
+  assert.deepEqual([...f.dbs].sort(), ['myXapp_vt_1_1', 'my_app_vt_tpl_abc'])
 })
 
 test('a database name that is not a plain identifier is refused', () => {
@@ -109,4 +109,12 @@ test('db capacity holds under concurrent leases', async () => {
   const pool = createPool(v, { sh: f.sh, psql: f.psql })
   const r = await Promise.all([pool.lease([{ kind: 'db' }], { template: 't' }), pool.lease([{ kind: 'db' }], { template: 't' })])
   assert.equal(r.filter(Boolean).length, 1)
+})
+
+test('dropOrphans leaves the clones and template builds of a live process alone — another repo service may own them', () => {
+  const f = fakes()
+  for (const d of ['app_vt_42_1', 'app_vt_7_1', 'app_vt_tpl_abc_b_42', 'app_vt_tpl_abc_b_7', 'app_vt_tpl_abc']) f.dbs.add(d)
+  const pool = createPool(V(), { sh: f.sh, psql: f.psql, alive: (pid) => pid === 42 })
+  assert.deepEqual(pool.dropOrphans().sort(), ['app_vt_7_1', 'app_vt_tpl_abc_b_7'])
+  assert.deepEqual([...f.dbs].sort(), ['app_vt_42_1', 'app_vt_tpl_abc', 'app_vt_tpl_abc_b_42'])
 })
