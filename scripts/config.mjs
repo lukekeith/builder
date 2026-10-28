@@ -39,7 +39,7 @@ const coerce = (v) => {
  * exactly the ones PROJECT.template.md uses, and anything else is ignored rather than guessed at.
  */
 const parseFrontmatter = (text) => {
-  const m = /^---\n([\s\S]*?)\n---/.exec(text)
+  const m = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n?/g, '\n'))
   if (!m) return null
   const out = {}
   let listKey = null // the key whose list we are filling

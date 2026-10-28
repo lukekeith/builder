@@ -1,7 +1,7 @@
 // scripts/test/verify-config.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stripComment, parseFlow, parseBlock, verifyLines, normalizeVerify, loadVerify, durationMs } from '../verify/config.mjs'
@@ -101,4 +101,26 @@ test('loadVerify reads .claude/builder.md and explains a missing block', () => {
   assert.equal(r.verify.suites.length, 2)
   writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\n---\n')
   assert.match(loadVerify(root).reason, /no verify: block/)
+})
+
+test('a CRLF config is read the same as an LF one', () => {
+  const root = mkdtempSync(join(tmpdir(), 'vcfg-'))
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude', 'builder.md'), CONFIG.replace(/\n/g, '\r\n'))
+  const r = loadVerify(root)
+  assert.equal(r.ok, true, r.reason)
+  assert.equal(r.verify.suites.length, 2)
+  assert.equal(r.verify.workers, 3)
+})
+
+test('loadVerify names an un-migrated 5.x config (## Quality gates or flaky:) rather than a missing block', () => {
+  const root = mkdtempSync(join(tmpdir(), 'vcfg-'))
+  mkdirSync(join(root, '.claude'))
+  const OLD = 'this config still uses ## Quality gates — run /builder:init --update to migrate it to verify:'
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\n---\n## Quality gates\n- `npm test`\n')
+  assert.equal(loadVerify(root).reason, OLD)
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\nflaky:\n  - a.test.ts\n---\n')
+  assert.equal(loadVerify(root).reason, OLD)
+  rmSync(join(root, '.claude', 'builder.md'))
+  assert.equal(loadVerify(root).reason, 'no .claude/builder.md — run /builder:init')
 })
