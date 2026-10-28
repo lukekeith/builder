@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * impact — what this branch can break, so the deep set runs the tests that can see it and no others.
+ * impact — what this branch can break, so the verifier runs the tests that can see it and no others.
  *
  *   node <plugin>/scripts/impact.mjs [<test glob>…] [--json]
  *
- * Measured on a fleet day: the deep set ran the whole UI suite and every phase gate — eleven minutes —
- * at the end of every build and again at every verify after a walk fix, for features that touched
- * one screen. The impact of a branch is:
+ * Measured on a fleet day, before the verifier: the whole UI suite and every phase's tests ran —
+ * eleven minutes — at the end of every build and again at every verify after a walk fix, for
+ * features that touched one screen. The impact of a branch is:
  *
  *  1. the files it changed (against where it left the base branch);
  *  2. the code that reads a SCHEMA field it changed — every spelling of the field (`issueDate`,
@@ -14,7 +14,7 @@
  *  3. everything that imports 1 or 2, at any depth (relative imports, workspace packages by name,
  *     tsconfig path aliases).
  *
- * A test in a gate's glob is selected when it changed, when it imports into the impact, or when an
+ * A test in a suite's glob is selected when it changed, when it imports into the impact, or when an
  * earlier feature changed it in the same commit as a file in the impact — which is how a UI spec,
  * which imports nothing of the app, is tied to the screen it covers. A change the graph cannot see
  * past (a shared harness beside the tests, a runner config, a dependency) selects the whole suite.

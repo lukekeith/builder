@@ -149,7 +149,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs.fleet/cert-tags HEAD --tier phase) — lq3x9k2f-b07d2e · Bash(node <builder>/scripts/verify/verify.mjs wait lq3x9k2f-b07d2e) — Bash timeout 600000"
+          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs.fleet/cert-tags HEAD --tier phase --since 2c4f7b1) — lq3x9k2f-b07d2e · Bash(node <builder>/scripts/verify/verify.mjs wait lq3x9k2f-b07d2e) — Bash timeout 600000"
         },
         {
           "role": "claude",
@@ -162,7 +162,7 @@
         }
       ],
       "stamp": {
-        "hash": "417090345f6b",
+        "hash": "cb0b7ab6c814",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
@@ -244,7 +244,7 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs.fleet/cert-tags HEAD --tier phase) — lq3x9k2f-c19a4e · Bash(node <builder>/scripts/verify/verify.mjs wait lq3x9k2f-c19a4e)"
+          "text": "⏺ Bash(node <builder>/scripts/verify/verify.mjs request /Users/sam/code/acme-certs.fleet/cert-tags HEAD --tier phase --since 5a0d3e9) — lq3x9k2f-c19a4e · Bash(node <builder>/scripts/verify/verify.mjs wait lq3x9k2f-c19a4e)"
         },
         {
           "role": "claude",
@@ -314,7 +314,7 @@
         }
       ],
       "stamp": {
-        "hash": "672c343c821b",
+        "hash": "6bc74bc9643a",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
@@ -349,7 +349,7 @@
         },
         {
           "role": "claude",
-          "text": "All 12 slices are in, worked here in this session, test-first, one commit per slice.\n\n- **Tests by the verifier** — after each task's commit it ran the commit tier in the background, and the verdicts were read before the next task (the last: GREEN at 71d0e3a); a red one would have been fixed here, in place. At each phase close, the phase tier and a wait. Review and the agent walk don't apply here.\n- **Contract** — frozen in the manifest when phase 1 (api) closed.\n- **Staged, not committed — yours** (mobile is `commit: manual`):\n  - Task 10 — `feat(ACME-412): mobile tag store and API client`\n  - Task 11 — `feat(ACME-412): mobile tag filter sheet`\n  - Task 12 — `feat(ACME-412): tag chips on the mobile certificate card`\n- **Skipped, as `--here` does:** implementer and reviewer agents, the final whole-branch review (the one floor *here* gives up), walk readiness, the walk, sign-off and verify.\n\nManifest: `state: built` · `walk: none` · `ready: none` — committed `chore(cert-tags): built here — not walked`.",
+          "text": "All 12 slices are in, worked here in this session, test-first, one commit per slice.\n\n- **Tests by the verifier** — after each task's commit it ran the commit tier in the background, and the verdicts were read before the next task (the last: GREEN at 71d0e3a); a red one would have been fixed here, in place. At each phase close, the phase tier from the phase's BASE (`--since`) and a wait. Review and the agent walk don't apply here.\n- **Contract** — frozen in the manifest when phase 1 (api) closed.\n- **Staged, not committed — yours** (mobile is `commit: manual`):\n  - Task 10 — `feat(ACME-412): mobile tag store and API client`\n  - Task 11 — `feat(ACME-412): mobile tag filter sheet`\n  - Task 12 — `feat(ACME-412): tag chips on the mobile certificate card`\n- **Skipped, as `--here` does:** implementer and reviewer agents, the final whole-branch review (the one floor *here* gives up), walk readiness, the walk, sign-off and verify.\n\nManifest: `state: built` · `walk: none` · `ready: none` — committed `chore(cert-tags): built here — not walked`.",
           "inferred": true
         },
         {
@@ -362,7 +362,7 @@
         }
       ],
       "stamp": {
-        "hash": "7bc1f0271e35",
+        "hash": "aef1503efe26",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
@@ -419,7 +419,7 @@
         }
       ],
       "stamp": {
-        "hash": "21620e1b1855",
+        "hash": "da281fd8f16f",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
@@ -480,7 +480,7 @@
         }
       ],
       "stamp": {
-        "hash": "68d163e23ec2",
+        "hash": "c4816eeb760e",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
@@ -698,7 +698,7 @@
         }
       ],
       "stamp": {
-        "hash": "761b8cfcad55",
+        "hash": "bdd373baa078",
         "version": "5.5.0",
         "date": "2026-10-28"
       }
