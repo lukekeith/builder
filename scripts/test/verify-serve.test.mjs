@@ -308,3 +308,26 @@ test('walk-env leases fill {feature} from a builder/<feature> branch; any other 
   assert.equal(v.status, 'env-broken', JSON.stringify(v))
   assert.match(v.broken.map((b) => b.reason).join('\n'), /agent_walk\.env needs \{feature\} — only fleet branches \(builder\/<feature>\) can lease the walk env/)
 })
+
+test('a request on the target itself (branch === target, no --since) selects what the last commit reaches, not nothing', async () => {
+  const { root } = repo()
+  mkdirSync(join(root, 't'))
+  const t = (n) => `import { test } from 'node:test'\ntest('${n}', () => {})\n`
+  // Separate commits: files changed together are co-changed, and impact selects both.
+  writeFileSync(join(root, 't', 'a.test.mjs'), t('a'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test a')
+  writeFileSync(join(root, 't', 'b.test.mjs'), t('b'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test b')
+  writeFileSync(join(root, 't', 'b.test.mjs'), t('b2'))
+  git(root, 'commit', '-qam', 'touch b')
+  const head = git(root, 'rev-parse', 'HEAD')
+  const suite = { workers: 1, timeoutMs: 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, checks: [], suites: [{ name: 'u', runner: 'node-test', files: 't/*.test.mjs', app: null, cwd: '.', args: '', needs: [], tiers: ['commit', 'phase', 'merge'], command: null, report: null, scheme: null, target: null, destination: null }] }
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'main', sha: head, tier: 'phase', target: 'main' })
+  await serve(root, opts({ verify: suite }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.selection.u.files, 1, JSON.stringify(v.selection))
+})

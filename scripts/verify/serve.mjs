@@ -26,6 +26,8 @@ import { ensureCheckout, commitExists, checkoutAt, mergedCheckout, setupIfNeeded
 import { loadConfig } from '../config.mjs'
 
 const MAX_LAND_ATTEMPTS = 5
+// git's empty tree: the base of a root commit, which has no parent to diff against.
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 /** A serve.pid untouched this long is a dead holder even if its pid is alive (reused after a reboot or a kill). */
 export const STALE_MS = 60000
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -222,10 +224,19 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         sha = m.sha
       } else checkoutAt(checkout, req.sha)
       setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
-      const mergeBase = tryGit(root, 'merge-base', targetSha, req.sha) ?? targetSha
+      const after = (g) => g && g.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, req.sha) !== null
+      // Built on the target itself, the merge-base is the sha: there is no branch to cover. The
+      // range is then what came after the branch's last green of any tier, else the one commit.
+      const onTarget = req.branch === req.target && !req.since
+      const mergeBase = onTarget
+        ? (() => {
+            const g = ledger.lastGreen(req.branch, ['commit', 'phase', 'merge'])
+            return after(g) ? g.sha : tryGit(root, 'rev-parse', '--verify', '-q', `${req.sha}^`) ?? EMPTY_TREE
+          })()
+        : tryGit(root, 'merge-base', targetSha, req.sha) ?? targetSha
       // The commit tier starts after the branch's last green; the phase and merge tiers cover the branch.
-      const green = req.since || req.tier !== 'commit' ? null : ledger.lastGreen(req.branch)
-      const base = req.since ?? (green && green.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', green.sha, req.sha) !== null ? green.sha : mergeBase)
+      const green = req.since || req.tier !== 'commit' || onTarget ? null : ledger.lastGreen(req.branch)
+      const base = req.since ?? (after(green) ? green.sha : mergeBase)
       let targetCo = null
       const ctx = {
         verify: v,
