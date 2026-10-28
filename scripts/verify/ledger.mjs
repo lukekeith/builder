@@ -2,8 +2,10 @@
  * Everything the verifier knows, as files under <main checkout>/.builder/verify/ (spec §The
  * ledgers): every test result, the target's known failures by test ID, the flake list, the
  * requests with their verdicts, and the target's output lines for `compare: lines` checks.
- * Writes are atomic (temp + rename); the service and the clients share them without locks — a
- * request file is written by one client, then only by the service.
+ * Writes are atomic (temp + rename); the service and the clients share them without locks.
+ * Single-writer rule: known-failures.json and flakes.json are written only by the service; a
+ * request file is written once by one client, then only by the service; results.jsonl is
+ * appended by the service (readers skip a partial last line).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, appendFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,11 +21,13 @@ const readJson = (p, d) => {
     return d
   }
 }
-const writeJson = (p, v) => {
+// Temp + rename, so a reader never sees a half-written file.
+const writeAtomic = (p, text) => {
   const t = `${p}.${process.pid}.${randomBytes(2).toString('hex')}.tmp`
-  writeFileSync(t, JSON.stringify(v, null, 2) + '\n')
+  writeFileSync(t, text)
   renameSync(t, p)
 }
+const writeJson = (p, v) => writeAtomic(p, JSON.stringify(v, null, 2) + '\n')
 
 // Requests sort by createdAt, so two made in the same millisecond would fall back to a random id
 // and could swap places. Bump the clock so each request this process makes is strictly later.
@@ -49,7 +53,7 @@ export function openLedger(root) {
       .map((f) => readJson(join(dir, 'requests', f), null))
       .filter(Boolean)
       .filter(filter)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
 
   const editKnown = (target, fn) => {
     const all = readJson(P.known, {})
@@ -68,7 +72,12 @@ export function openLedger(root) {
       if (!existsSync(P.results)) return m
       for (const l of readFileSync(P.results, 'utf8').split('\n')) {
         if (!l) continue
-        const r = JSON.parse(l)
+        let r
+        try {
+          r = JSON.parse(l)
+        } catch {
+          continue // a line another process is still appending
+        }
         if (r.sha === sha) m.set(r.id, r.status)
       }
       return m
@@ -126,7 +135,7 @@ export function openLedger(root) {
     },
     writeLines(sha, name, lines) {
       mkdirSync(join(dir, 'lines', sha), { recursive: true })
-      writeFileSync(P.lines(sha, name), [...lines].join('\n') + '\n')
+      writeAtomic(P.lines(sha, name), [...lines].join('\n') + '\n')
     },
   }
 }
