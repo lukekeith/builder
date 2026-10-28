@@ -583,7 +583,7 @@
             },
             {
               "label": "Yes",
-              "description": "walk=you — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
+              "description": "human=yes — the fleet parks it for your walk after the agent's, and lands it after your /builder:signoff."
             }
           ],
           "inferred": true

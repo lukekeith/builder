@@ -1251,7 +1251,7 @@ export function walkFacts({ walkMd = null, reports = [] } = {}) {
 }
 
 const STAGE_ORDER = ['audit', 'plan', 'build', 'finalReview', 'endGates', 'walk', 'verify', 'ship', 'merge', 'parked']
-const STAGE_LABEL = { finalReview: 'final review', endGates: 'end gates' }
+const STAGE_LABEL = { finalReview: 'final review', endGates: 'last phase close' }
 /**
  * Archive rows with `wallMs` → `3h32m start → merge (audit 7m · plan 31m · … · parked 10m)`: the
  * mean per feature, each stage's mean over the rows, so the parts add up to about the whole.
