@@ -251,7 +251,9 @@ the recommended plan is first.
 Each option's description **leads with what it costs for this plan**: run
 `node <builder>/scripts/profile.mjs --cost <folder> --tests "<value>"` for each option — its own lever
 set, the other held where it stands — → `{ slices, apps, phases, reviews, walk }`, and lead with
-the count (`4 reviews`, or `one review`). Then what it does, in the words below. The
+the count (`4 reviews`, or `one review`) — on the Agent walk options, where `--cost` varies only
+reviews, lead with the ladder words instead (§Picking the test plan ahead): `no agent walk` ·
+`+ an agent walks the risky parts` · `slowest — the whole walk`. Then what it does, in the words below. The
 recommendation's option is first, with ` (Recommended)` on its label; the rest keep this order.
 
 - **Agent walk:** **None** — the merge tier runs every suite on the merged result; nobody drives the

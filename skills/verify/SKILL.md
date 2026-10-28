@@ -144,8 +144,9 @@ a visual diff, and a renamed element changes what the walk does.
 10. **The cross-app walk** — its evidence is the agent walk's `## Cross-app (verify E2E)` rows and
     any e2e suite's result in the merge tier; there is no separate live cross-app pass. Quote the
     walk's `E` rows when the code is unchanged since the walk (the diff since its sha touches only the
-    registry). On a re-verify, whether a leg is walked again follows §A re-verify is SCOPED — quote
-    the earlier run when the diff didn't earn a new one.
+    registry). With no `E` rows and no e2e suite in the merge tier, the verdict says the cross-app
+    path was not exercised. On a re-verify, whether a leg is walked again follows §A re-verify is
+    SCOPED — quote the earlier run when the diff didn't earn a new one.
     **One app in scope:** there is no cross-app walk to run — the feature's walk script *was* the
     verification script (`walk-script.mjs`), so the agent walk's report covers this item exactly as
     `E` rows would: its rows for the round the sign-off header names, every in-scope row `PASS` (a
