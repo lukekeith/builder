@@ -129,4 +129,17 @@ test('release lands a held green merge; a moved target exits 7', () => {
   const moved = cli(wt, 'release', id2)
   assert.equal(moved.status, 7)
   assert.match(moved.stdout, /target moved/)
+  assert.equal(openLedger(root).getRequest(id2).verdict.held, false, 'a stale held merge is not offered again')
+})
+
+test('release refused by uncommitted changes in the checkout exits 1 and says so; the target stays', () => {
+  const { root, wt } = repo()
+  const id = cli(wt, 'request', wt, 'HEAD', '--tier', 'merge', '--hold').stdout.trim()
+  assert.equal(cli(wt, 'wait', id, '--max', '60').status, 0)
+  const before = git(root, 'rev-parse', 'main')
+  writeFileSync(join(root, 'b.txt'), 'mine\n') // untracked here, and the merge brings b.txt
+  const rel = cli(wt, 'release', id)
+  assert.equal(rel.status, 1, rel.stdout + rel.stderr)
+  assert.match(rel.stdout, /refused the fast-forward .* uncommitted changes there\?/)
+  assert.equal(git(root, 'rev-parse', 'main'), before)
 })

@@ -83,6 +83,12 @@ test('the inventory puts every branch and worktree in one group, with the action
   assert.deepEqual(g('gone-wt'), ['merged', 'delete'], 'the gone worktree\'s branch never got a commit of its own')
 })
 
+test('the verifier\'s detached run checkouts are not dead worktrees', () => {
+  const root = repo()
+  git(root, 'worktree', 'add', '-q', '--detach', join(root, '.builder', 'verify', 'co', '0'), 'HEAD')
+  assert.equal(inventory(root, CFG, 'main').filter((i) => i.group === 'dead').length, 0)
+})
+
 test('a fleet whose lock is dead does not keep its rows running; the checked-out branch is current', () => {
   const root = fixture()
   git(root, 'switch', '-q', 'spike')

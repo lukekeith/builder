@@ -188,7 +188,8 @@ export function inventory(root, cfg, target, { fleet = null, lockAlive = false, 
     else set('unknown', 'ask')
   }
   for (const w of wts.slice(1))
-    if (w.detached || w.missing || w.path.includes('/scratchpad/'))
+    // The verifier's run checkouts (.builder/verify/co/) are detached on purpose and reused: not dead.
+    if (!w.path.includes('/.builder/verify/co/') && (w.detached || w.missing || w.path.includes('/scratchpad/')))
       items.push({ kind: 'worktree', name: w.path, path: w.path, worktree: w.missing ? null : w.path, group: 'dead', action: 'remove-worktree', why: w.missing ? 'its folder is gone' : w.detached ? 'detached — on no branch' : 'a session scratchpad' })
   // Nothing goes in the safe batch while a worktree holds someone's uncommitted work.
   for (const i of items)
