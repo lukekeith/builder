@@ -99,9 +99,9 @@ Out of the change: the phase derivation, the go-ahead, the slice table, `task-br
    modes the spec implies but no task's tests exercise, and adds a test for each to the owning task.
    It is a separate idea (coverage, not size), cheap to add, and overlaps builder's audit gap hunt.
    Recommendation: a separate small change after this one is measured, so the bench isolates one thing.
-2. **Release:** a patch on its own after 6.0.0 (it changes what `/builder:plan` writes, adds no flag or
-   capability, and asks nothing of a consumer — RELEASING's default), or fold into 6.0.0 before its
-   release. Recommendation: after 6.0.0, so the verifier benchmark stays a clean comparison.
+2. ~~Release~~ — **decided (owner, 2026-10-28): ships in 6.0.0.** Built on `feat/plan-format` and
+   merged into `feat/verifier` after the verifier's end-to-end benchmark runs (so those compare the
+   verifier alone), before the 6.0.0 release.
 
 ## Out of scope
 
