@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, chmodSync, unlinkSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, realpathSync, chmodSync, unlinkSync, utimesSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -11,6 +11,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const FLEET = join(HERE, '..', 'fleet.mjs')
 const STUB = join(HERE, 'fixtures', 'stub-claude.mjs')
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim()
+// Every fleet these tests spawn inherits it: the verifier service a landing starts exits a second
+// after its queue empties, not ten minutes later.
+process.env.BUILDER_VERIFY_IDLE_MS = '1000'
 
 /** `lines` are extra `agent_walk:` keys, e.g. ['copy: .env.local', 'setup: pnpm i']. */
 function makeRepo(features, { reset, stop, lines = [], manifest = [] } = {}) {
@@ -79,7 +82,7 @@ test('the archive row carries the plan’s size and the test plan (an old profil
   const a = assertLanded(r, 'a')
   assert.equal(a.size.tasks, 2)
   assert.equal(a.profile, 'rush')
-  assert.equal(a.tests, 'slice=own+app end=touched review=end models=economy persist=low')
+  assert.equal(a.tests, 'walk=none review=end models=economy persist=low')
   assert.equal(existsSync(join(root, 'docs/features/_archive/a/PLAN.md')), false, 'the ship removed the plan')
 })
 
@@ -108,7 +111,7 @@ test('an older copy of the folder on the target is replaced by HEAD\u2019s', () 
   git(root, 'commit', '-qam', 'plan on work')
   const r = runFleet(root, ['a'], { a: HAPPY.slice(HAPPY.indexOf('building')) })
   assert.equal(r.status, 0, r.stderr + r.stdout)
-  assert.equal(assertLanded(r, 'a').tests, 'slice=own+app end=touched review=end models=economy persist=low')
+  assert.equal(assertLanded(r, 'a').tests, 'walk=none review=end models=economy persist=low')
   assert.match(git(root, 'log', 'main', '--oneline'), /spec and plan from work/)
 })
 
@@ -140,7 +143,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
   assert.equal(a.target, 'main')
   assert.equal(a.profile, null, 'the fixture manifest has no profile:')
-  assert.equal(a.tests, 'slice=own+app end=everything review=slice', 'a go-ahead\'d feature with neither line: the thorough mapping')
+  assert.equal(a.tests, 'walk=full review=slice', 'a go-ahead\'d feature with neither line: the thorough mapping')
   assert.equal(a.size, null, 'the fixture has no PLAN.md')
   assert.equal(a.tokens.input, 1000 * a.runs)
   assert.ok(a.costUsd > 0)
@@ -160,6 +163,37 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /^- repo: clean$/m, 'nothing left behind, and the report says so')
   assert.match(readFileSync(join(root, '.builder/fleet/logs/_archive/a/a-01.log'), 'utf8'), /did audited/, 'its logs moved with it, written in full')
   assert.equal(existsSync(join(root, '.builder/fleet/logs/a-01.log')), false)
+})
+
+const withVerify = (root, block) => {
+  const p = join(root, '.claude/builder.md')
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/\n---\nbody\n$/, `\n${block}\n---\nbody\n`))
+  git(root, 'commit', '-qam', 'verify block')
+}
+const RED_CHECK = 'verify:\n  workers: 1\n  checks:\n    no-red: { run: "! git ls-files | grep -q /RED$", tiers: [merge] }'
+
+test('the verifier lands it: a held merge tier requested at walk start, released after the ship', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const r = runFleet(root, ['a'], { a: HAPPY }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.match(git(root, 'log', '-1', '--format=%s'), /^merge\(a\): agent-verified, not human-tested$/)
+  const reqs = readdirSync(join(root, '.builder/verify/requests')).map((n) => JSON.parse(readFileSync(join(root, '.builder/verify/requests', n), 'utf8')))
+  const merge = reqs.filter((q) => q.tier === 'merge')
+  assert.ok(merge.length >= 1)
+  assert.ok(merge.some((q) => q.verdict?.landed === git(root, 'rev-parse', 'main')))
+})
+
+test('a merge tier that goes red at landing parks, naming the failing check', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const steps = HAPPY.map((s) => (s === 'verified' ? 'TOUCH:docs/features/a/RED:verified' : s))
+  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 1)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /the merge tier went red on main as it is now: check::no-red/)
+  assert.doesNotMatch(git(root, 'log', '-1', '--format=%s', 'main'), /merge\(a\)/)
 })
 
 test('a blocked spec parks with its reason and the fleet exits 1', () => {
@@ -596,7 +630,7 @@ test('--status renders the table live, with progress read from each feature', ()
   assert.match(r2.stdout, /\| Tests \|/)
   assert.match(r2.stdout, /\| b \| building \| — \| ▓░░░░░░░░░ 10% · audited \| 1 \|/, 'no facts yet, no go-ahead: no plan')
   writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: audited\ntests: slice=own end=risk review=end\nnext: x\n')
-  assert.match(runFleet(root, ['--status'], {}).stdout, /\| b \| building \| own · risk · end \|/, 'no facts yet: the manifest\'s tests:')
+  assert.match(runFleet(root, ['--status'], {}).stdout, /\| b \| building \| risk · end \|/, 'no facts yet: the manifest\'s tests:')
 })
 
 test('--status says when the fleet process is gone with features mid-run, and how to resume', () => {
@@ -1076,7 +1110,7 @@ test('a merge your uncommitted changes would clobber parks; the next run merges 
   writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n') // the ship writes this path
   const first = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /merging into main failed: .* — your uncommitted changes are in the way — next: commit or stash them, then \/builder:fleet/)
+  assert.match(first.fleet.features.a.reason, /the merge tier passed but landing failed: .*uncommitted changes.* — next: \/builder:fleet to retry/)
   assert.equal(readFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'utf8'), 'my local edit\n', 'your change is untouched')
   unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
   const second = runFleet(root, [], { a: HAPPY })
@@ -1183,22 +1217,6 @@ test('a detached HEAD can launch a fleet; a missing target refuses with the fix'
   const bad = runFleet(root, ['b', '--into', 'nope'], { b: HAPPY })
   assert.equal(bad.status, 2)
   assert.match(bad.stderr, /The branch to merge into, nope, does not exist — create it \(git branch nope\) or set merge_into in \.claude\/builder\.md/)
-})
-
-test('@delta gates get their baseline measured at fleet start, once per target sha', () => {
-  const root = makeRepo(['a'])
-  const cfg = join(root, '.claude/builder.md')
-  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('---\nbody\n', '---\n\n## Quality gates\n\n### app — fast\n\n```\necho 7   # a count @delta\n```\n'))
-  git(root, 'commit', '-qam', 'delta gate')
-  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:wait'] })
-  assert.equal(first.fleet.features.a.status, 'parked', first.stderr)
-  const baseline = join(root, '.builder/gates/baseline.json')
-  assert.ok(existsSync(baseline))
-  const b1 = JSON.parse(readFileSync(baseline, 'utf8'))
-  assert.equal(b1.values['echo 7'], 7)
-  runFleet(root, [], { a: ['BLOCK:wait'] })
-  assert.equal(JSON.parse(readFileSync(baseline, 'utf8')).when, b1.when, 'not re-measured while the target sha is unchanged')
-  assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /measuring @delta/, 'the baseline note is gone once it is measured')
 })
 
 test('an older fleet\'s "worktree was kept" notes give way to the repo line, which names what is still there', () => {
@@ -1470,7 +1488,7 @@ test('a done row an older fleet left is archived on the next run, its logs with 
   assert.equal(r.status, 0, r.stderr)
   assert.deepEqual(r.fleet.features, {})
   assert.equal(r.fleet.archived, 1)
-  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'slice=own+app end=everything review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, byKind: {}, orchestrator: { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }, costByModel: {}, quality: null, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
+  assert.deepEqual({ ...r.archived.old, landedAt: '-' }, { feature: 'old', branch: 'builder/old', target: 'release', merged: 'abc1234', pr: '#9', runs: 5, runsThisTime: 0, timing: [], lanes: {}, size: null, tests: 'walk=full review=slice', profile: null, tokens: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, costUsd: 0, byKind: {}, orchestrator: { runs: 0, turns: 0, sumCtx: 0, peakCtx: 0 }, costByModel: {}, quality: null, wallMs: null, stages: null, walkQueueMs: null, walk: null, landedAt: '-' })
   assert.ok(existsSync(join(root, '.builder/fleet/logs/_archive/old/old-01.log')))
   assert.ok(existsSync(join(root, '.builder/fleet/logs/old-b-01.log')), 'a feature whose name starts the same keeps its logs')
 })
@@ -1485,7 +1503,7 @@ test('--status --archived lists the latest landings', () => {
   const ar = runFleet(root, ['--status', '--archived', '1'], {})
   assert.equal(ar.status, 0, ar.stderr)
   assert.match(ar.stdout, /# builder fleet — archive: latest 1 of 2/)
-  assert.match(ar.stdout, /\| [ab] \| own\+app · everything · slice \| \d+s \| \$0\.40 \| — \| [0-9a-f]{7,} \| — \| just now \|/)
+  assert.match(ar.stdout, /\| [ab] \| full · slice \| \d+s \| \$0\.40 \| — \| [0-9a-f]{7,} \| — \| just now \|/)
   const none = runFleet(makeRepo(['c']), ['--status', '--archived'], {})
   assert.match(none.stdout, /No feature has landed from this fleet yet\./)
 })
@@ -1597,7 +1615,7 @@ test('a pause filed while a shipped feature waits to merge parks it as revising;
   mkdirSync(join(root, 'docs/features/_archive/a'), { recursive: true })
   writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n')
   const first = runFleet(root, ['a'], { a: HAPPY })
-  assert.match(first.fleet.features.a.reason, /your uncommitted changes are in the way/)
+  assert.match(first.fleet.features.a.reason, /the merge tier passed but landing failed: .*uncommitted changes there\?/)
   unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
   assert.match(runFleet(root, ['--pause', 'a'], {}).stdout, /pause requested: a/)
   const second = runFleet(root, [], { a: HAPPY })
@@ -1721,7 +1739,7 @@ test('a new fleet run counts only what it merges: the last run\'s landings leave
 
 // ---- 5.2: the walk env and the gates ---------------------------------------------------------
 
-test('each run knows its lane: the walk lane gets the build-lane values of agent_walk.env for gate.mjs, both read the main config', () => {
+test('each run knows its lane: the walk lane gets agent_walk.env over worktree_env, the build lane worktree_env only', () => {
   const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'env: WALK_MARK=x-{feature} WT_MARK=walkdb'] })
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
@@ -1729,10 +1747,9 @@ test('each run knows its lane: the walk lane gets the build-lane values of agent
   const walk = starts.filter((l) => l.startsWith('start a walk '))
   const build = starts.filter((l) => l.startsWith('start a build '))
   assert.ok(walk.length && build.length, starts.join('\n'))
-  // walk: WT_MARK is the walk db while the run goes, and gate.mjs is told its build-lane value
-  assert.ok(walk.every((l) => l.includes(' lane_env=walk ') && l.includes(' wt_mark=walkdb ') && l.includes('gate_env={"WALK_MARK":null,"WT_MARK":"db-a"}')), walk.join('\n'))
-  assert.ok(build.every((l) => l.includes(' lane_env=build ') && l.includes(' gate_env=- ')), build.join('\n'))
-  assert.ok(starts.every((l) => l.includes(' cfg_root=set ')), starts.join('\n'))
+  // walk: WT_MARK is the walk db while the run goes; build: the worktree's own db, and no walk env
+  assert.ok(walk.every((l) => l.includes(' walk_mark=x-a ') && l.includes(' wt_mark=walkdb ')), walk.join('\n'))
+  assert.ok(build.every((l) => l.includes(' walk_mark=- ') && l.includes(' wt_mark=db-a ')), build.join('\n'))
 })
 
 test('a restart mid-walk skips the reset — the walk database keeps its migrations', async () => {
@@ -1769,7 +1786,7 @@ test('batched walks: two features walk together — one walk branch, one env, on
   assertLanded(r, 'b')
   const batches = r.calls.filter((l) => l.startsWith('batch '))
   assert.ok(batches.length >= 1, r.calls.join('\n'))
-  assert.ok(batches.every((l) => / cwd=_walk lane_env=walk$/.test(l)), batches.join('\n'))
+  assert.ok(batches.every((l) => / cwd=_walk walk_port=set$/.test(l)), batches.join('\n'))
   assert.ok(batches.some((l) => /^batch (a,b|b,a) /.test(l)), 'both walked in one batch: ' + batches.join('\n'))
   // verify (signed-off) and ship (verified) ran in the pool — build lane, no env — not in the walk lane
   assert.ok(r.calls.some((l) => /^start a build .* verified /.test(l)), r.calls.join('\n'))

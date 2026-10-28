@@ -5,14 +5,14 @@
  * fleet call this; it writes requests, starts the service when none runs, and reads verdicts.
  *
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
- *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved)
+ *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused)
  *   verify.mjs verdict <branch> [<sha>] [--json]
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
  *   verify.mjs cancel <request>
  *   verify.mjs status [--json]
  *   (each takes --in <worktree>, default the cwd; the ledger is the main checkout's)
  *
- * Exit: 0 green · 1 red · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 7 target moved (release) · 75 pending.
+ * Exit: 0 green · 1 red (release: the checkout refused the fast-forward) · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 7 target moved (release) · 75 pending.
  */
 import { spawn } from 'node:child_process'
 import { openSync, closeSync, readFileSync } from 'node:fs'
@@ -143,6 +143,14 @@ async function main() {
     if (!r || r.tier !== 'merge' || r.state !== 'done' || v?.status !== 'green' || !v.held) die(`${id}: not a held green merge — nothing to release`)
     const l = land(root, r.target, v.merged, v.targetSha)
     if (!l.ok) {
+      // The target still where it was tested: git refused the fast-forward (work in the way), not a move.
+      if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) === v.targetSha) {
+        console.log(`${id}: ${r.target} refused the fast-forward (${l.reason.replace(/\s+/g, ' ')}) — uncommitted changes there?`)
+        process.exit(1)
+      }
+      // What it tested is no longer what would land: it is not held any more, so the next request runs anew.
+      const cur = ledger.getRequest(id) ?? r
+      ledger.saveRequest({ ...cur, verdict: { ...cur.verdict, held: false } })
       console.log(`${id}: target moved — request the merge again (${l.reason})`)
       process.exit(7)
     }

@@ -26,7 +26,7 @@ const prompt = process.argv[process.argv.indexOf('-p') + 1]
 if (/--batch/.test(prompt)) {
   const words = prompt.split(/\s+/)
   const folders = words.slice(words.indexOf('--into') + 2).filter((w) => w.startsWith('/'))
-  appendFileSync(join(process.env.STUB_STATE, 'calls.log'), `batch ${folders.map((d) => d.split('/').pop()).join(',')} cwd=${process.cwd().split('/').pop()} lane_env=${process.env.BUILDER_LANE ?? '-'}\n`)
+  appendFileSync(join(process.env.STUB_STATE, 'calls.log'), `batch ${folders.map((d) => d.split('/').pop()).join(',')} cwd=${process.cwd().split('/').pop()} walk_port=${process.env.WALK_PORT ? 'set' : '-'}\n`)
   for (const d of folders) {
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: d, encoding: 'utf8' }).trim()
     const rel = relative(realpathSync(root), realpathSync(d)) // /var vs /private/var on macOS
@@ -79,7 +79,7 @@ if (/could not bring up the walk env/.test(prompt)) {
 
 let step = next(feature, 'NOOP')
 const lane = prompt.includes('--no-dev-env') ? 'build' : 'walk'
-log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} lane_env=${process.env.BUILDER_LANE ?? '-'} gate_env=${process.env.BUILDER_GATE_ENV ?? '-'} cfg_root=${process.env.BUILDER_CONFIG_ROOT ? 'set' : '-'} fleet_dir=${process.env.BUILDER_FLEET_DIR ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
+log(`start ${feature} ${lane} ${Date.now()} ${step} pid=${process.pid} walk_mark=${process.env.WALK_MARK ?? '-'} wt_mark=${process.env.WT_MARK ?? '-'} prior=${/was parked before/.test(prompt) ? 'yes' : '-'} fleet_dir=${process.env.BUILDER_FLEET_DIR ?? '-'} project_dir=${process.env.CLAUDE_PROJECT_DIR ?? '-'}`)
 
 const mfPath = join(process.cwd(), spec, 'MANIFEST.md')
 const set = (k, v) => {

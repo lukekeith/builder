@@ -7,8 +7,9 @@
  * `parallel` workers runs the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared
  * dev environment; the WALK lane takes features one at a time through that environment — walk
  * readiness, the agent walk and its sign-off, verify. The SHIP lane brings the target in and writes
- * the ship commit; then the fleet merges the feature into the target here (--no-ff, one merge
- * commit per feature) and removes its worktree and branch. Nothing is pushed. Progress is read from
+ * the ship commit; then the verifier's merge queue tests the feature merged onto the target and
+ * fast-forwards the target to exactly that merge commit (one `--no-ff` merge commit per feature),
+ * and the fleet removes its worktree and branch. Nothing is pushed. Progress is read from
  * each worktree's MANIFEST.md (and, once shipped, its SPEC header), never from a run's output.
  *
  *   node <plugin>/scripts/fleet.mjs <feature|path>… [--parallel N]
@@ -31,7 +32,7 @@ import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, 
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { parseGates } from './gates-core.mjs'
+import { requestMerge, mergeVerdict, awaitVerdict, release as releaseMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -258,26 +259,15 @@ function worktreeProblem(feature, branch) {
  * `setup` — gets agent_walk.worktree_env with {feature} filled in. Only the WALK lane — its
  * `claude -p` runs and the reset/start/smoke/stop hooks — also gets agent_walk.env, with {feature}
  * filled in, which is how two worktrees' walk envs get their own ports and databases. The build
- * lane and `setup` never see `env`: build lanes run while a walk is up, and a build's gates pointed
- * at the walk env's ports and database would collide with it or write into it.
+ * lane and `setup` never see `env`: build lanes run while a walk is up, and pointing them at the
+ * walk env's ports and database would collide with it.
  */
 function envFor(feature, lane) {
   const env = { ...process.env }
   // worktree_env first, every lane: it is how each worktree's tests get their own database, which
   // is what lets `parallel` builds share a machine without sharing a test DB.
   for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = v.replaceAll('{feature}', feature)
-  // For gate.mjs (gates-core gateEnv): which lane this is, and — in the walk lane — what each
-  // agent_walk.env key holds in the build lane, so a gate line that isn't @walk gets the test env
-  // back instead of the walk env's database. BUILDER_WALK_SMOKE lets it notice a gate that broke
-  // the running env; BUILDER_CONFIG_ROOT makes it read the gate lines from this checkout's config.
-  env.BUILDER_LANE = lane === 'walk' ? 'walk' : 'build'
-  env.BUILDER_CONFIG_ROOT = ROOT
-  if (lane === 'walk') {
-    const back = Object.fromEntries(Object.keys(AW.env).map((k) => [k, env[k] ?? null]))
-    for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
-    env.BUILDER_GATE_ENV = JSON.stringify(back)
-    if (AW.start && AW.smoke) env.BUILDER_WALK_SMOKE = String(AW.smoke).replaceAll('{feature}', feature)
-  }
+  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
@@ -1000,11 +990,7 @@ async function landNow(feature) {
     // The config is the human's: a branch that changes it never lands it unseen.
     const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
     if (cfgDiff) return park(f, configParkReason(f.branch))
-    if (f.worktree && existsSync(f.worktree)) {
-      const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
-      if (why) return park(f, why)
-    }
-    const why = mergeIntoTarget(feature, f.branch)
+    const why = await mergeThroughVerifier(feature, f)
     if (why) return park(f, why)
   }
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
@@ -1027,37 +1013,58 @@ async function landNow(feature) {
 }
 
 /**
- * The `--no-ff` merge of a branch that already carries the target. Checked out here → `git merge`,
- * so the working tree moves with it. Checked out nowhere (the human switched away mid-run) → the
- * merge commit is written straight onto the target ref: its tree is the branch's own tree, because
- * the branch already holds everything the target does. Null when it went in; else the reason, which
- * is only ever the human's own uncommitted work in the way.
+ * Land through the verifier's merge queue: the held merge-tier run requested when the walk began,
+ * if it tested this HEAD; else a new one. Green → release (the target fast-forwards to the tested
+ * merge commit). Conflict → an agent resolves it in the worktree, then a new request. A target that
+ * moved since the run → run again. Red → park, naming the tests: verify read a green merge tier
+ * before the ship, so red here means the code went red on a target that moved after it — the
+ * folder is already archived, and the human decides. Null when landed; else a park reason.
  */
-function mergeIntoTarget(feature, branch) {
+async function mergeThroughVerifier(feature, f) {
   const message = `merge(${feature}): agent-verified, not human-tested`
   const here = tryGit(['branch', '--show-current'])
-  if (here === TARGET) {
-    const before = tryGit(['rev-parse', 'HEAD'])
-    try {
-      execFileSync('git', ['merge', '--no-ff', '--no-edit', '-m', message, branch], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-      migrateAfterLanding(feature, before, 'HEAD')
-      return null
-    } catch (e) {
-      tryGit(['merge', '--abort'])
-      const why = String(e.stderr || e.stdout || e.message).split('\n').find((l) => l.trim()) ?? 'git merge failed'
-      return `shipped, but merging into ${TARGET} failed: ${why.trim()} — your uncommitted changes are in the way — next: commit or stash them, then /builder:fleet to merge it`
-    }
+  if (here !== TARGET) {
+    const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
+    if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')}, so it can't be landed from here — next: /builder:fleet from that checkout`
   }
-  const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
-  if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')}, so it can't be merged from here — next: /builder:fleet from that checkout to merge it`
-  const old = tryGit(['rev-parse', `refs/heads/${TARGET}`])
-  if (!old || tryGit(['merge-base', '--is-ancestor', old, branch]) === null) return `shipped, but ${branch} does not carry ${TARGET} — next: /builder:fleet to bring it up to date and merge it`
-  const commit = tryGit(['commit-tree', `${branch}^{tree}`, '-p', old, '-p', branch, '-m', message])
-  if (!commit || tryGit(['update-ref', `refs/heads/${TARGET}`, commit, old]) === null) return `shipped, but writing the merge onto ${TARGET} failed — next: /builder:fleet to merge it`
-  addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
-  const landed = newMigrations(old, commit)
-  if (landed.length) addNote(`${feature} brought ${landed.length} new migration${landed.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
-  return null
+  // The merge tier tests the branch as its worktree holds it; without one there is nothing to request on.
+  if (!f.worktree || !existsSync(f.worktree)) return `shipped, but its worktree is gone, so the merge tier can't run on ${f.branch} — next: /builder:agent to recreate it and land it`
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const head = tryGit(['rev-parse', 'HEAD'], f.worktree)
+    const done = mergeVerdict(ROOT, f.branch, head)
+    let id
+    try {
+      id = done?.status === 'green' && done.held ? done.request : requestMerge(ROOT, f.worktree, { target: TARGET, message })
+    } catch (e) {
+      return `shipped, but the merge tier could not be requested: ${String(e.message).split('\n')[0]} — next: /builder:fleet to retry`
+    }
+    f.reason = 'merge tier: every suite on the merged result'
+    save()
+    const v = await awaitVerdict(ROOT, id)
+    f.reason = null
+    if (!v || v.status === 'cancelled') return 'the merge-tier run was cancelled — next: /builder:agent to retry'
+    if (v.status === 'gone') continue
+    if (v.status === 'conflict') {
+      const ok = await resolveMerge(feature, f.worktree, 'features that merged while this one shipped')
+      if (ok !== true) return `a conflict with ${TARGET} in ${v.files.join(', ')} that an agent could not resolve — see ${ok} — next: resolve it in ${f.worktree}, then /builder:agent`
+      continue
+    }
+    if (v.status === 'env-broken') return `the verifier could not run the merge tier: ${v.broken.map((b) => `${b.suite}: ${b.reason}`).join('; ')} — next: fix the environment, then /builder:agent`
+    if (v.status === 'red') return `the merge tier went red on ${TARGET} as it is now: ${v.regressions.map((g) => g.id).join(', ')} — next: /builder:agent to work the fixes and land it`
+    const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
+    const r = releaseMerge(ROOT, id)
+    if (r.ok) {
+      if (here === TARGET) migrateAfterLanding(feature, before, 'HEAD')
+      else {
+        addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
+        const landed = newMigrations(before, r.sha)
+        if (landed.length) addNote(`${feature} brought ${landed.length} new migration${landed.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
+      }
+      return null
+    }
+    if (!r.moved) return `the merge tier passed but landing failed: ${r.reason} — next: /builder:fleet to retry`
+  }
+  return `${TARGET} kept moving while ${feature} was being landed — next: /builder:fleet to retry`
 }
 
 /** The migration files `from..to` added under the config's §Walk readiness `migrations:` dir, with their text. */
@@ -1377,6 +1384,19 @@ async function fixWalkEnv(feature, why) {
  *  the run would bounce between readiness and the walk. */
 const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
 
+/**
+ * The merge tier runs beside the walk (spec D8): held, so it lands only once the walk passes and
+ * the ship releases it. Requested after the walk's own sync with the target, so it tests the HEAD
+ * the walk walks; a failure here only costs time — landing requests it again.
+ */
+function requestMergeAtWalk(feature, f) {
+  try {
+    f.mergeReq = requestMerge(ROOT, f.worktree, { target: TARGET, message: `merge(${feature}): agent-verified, not human-tested` })
+  } catch (e) {
+    addNote(`${feature}: could not request the merge tier at walk start (${String(e.message).split('\n')[0]}) — it is requested at landing instead`)
+  }
+}
+
 async function walkOne(feature) {
   const f = fleet.features[feature]
   if (parkIfPaused(f, feature)) return 'parked'
@@ -1388,6 +1408,7 @@ async function walkOne(feature) {
       const why = await syncTarget(f.worktree, 'what other features merged', feature)
       if (why) return park(f, why)
     }
+    requestMergeAtWalk(feature, f)
     for (let restarts = 0; ; restarts++) {
       // A walk env that won't come up gets one agent run to find and fix the cause, then one more try.
       for (let attempt = 0; ; attempt++) {
@@ -1398,12 +1419,6 @@ async function walkOne(feature) {
         await fixWalkEnv(feature, why)
       }
       const outcome = await drive(feature, 'walk')
-      // Signed off with the env still up: its @walk gates now, for verify in the pool to read. Exit 3 —
-      // a gate broke the env — restarts it (no reset) and runs them once more.
-      if (SPLIT && parseManifest(readManifest(f.worktree, feature) ?? '').state === 'signed-off' && (await runWalkGates([feature], f.worktree, feature)) === 3) {
-        await killStart(f)
-        if (await startWalkEnv(feature, f)) await runWalkGates([feature], f.worktree, feature)
-      }
       // Walk readiness met a change the running env can't pick up (REFERENCE §Walk readiness): the
       // fleet owns the env, so it clears the line, restarts it, and the walk goes on.
       if (outcome !== 'parked' || !RESTART.test(f.reason ?? '') || restarts === 2) return outcome
@@ -1655,7 +1670,7 @@ const mergeDone = (wt) =>
 
 /**
  * Hand a conflicted merge of the target to a headless run: it resolves every file keeping both
- * sides, runs the gates of the apps it touched, and commits the merge. The other side is code that
+ * sides, runs the verifier on the apps it touched, and commits the merge. The other side is code that
  * already merged, and this side a spec the human approved — both are settled, so resolving them
  * together is work, not a question for the human. True when the merge is committed; else the last
  * run's log. A run that backed the merge out gets it started again for the next.
@@ -1675,7 +1690,7 @@ async function resolveMerge(feature, wt, why) {
       `${TARGET} is the branch the builder fleet lands on; it carries ${why}, already merged and verified. This branch carries the feature at --path ${specOf(feature)} — being built unattended to a spec the human approved. ` +
       `Resolve every conflict so BOTH sides keep working: read this feature's SPEC.md (and PLAN.md if it is there) and \`git log -p MERGE_HEAD --not HEAD -- <file>\` for what the other side changed and why; keep both behaviours, and never drop one side to make a conflict go away. ` +
       `Where the two sides really do disagree, choose what keeps the other feature's shipped behaviour and still meets this spec, and write that ruling into the merge commit message. ` +
-      `Then run the fast gates of every app whose files you changed — \`node ${scripts}/job.mjs start merge-gates -- node ${scripts}/gate.mjs <app>…\`, then \`node ${scripts}/job.mjs wait merge-gates\` in the foreground, again while it prints "still running", until it prints an exit code — and fix whatever is red. ` +
+      `Then check the apps whose files you changed: \`node ${scripts}/verify/verify.mjs request . HEAD --tier phase\` prints a request id; \`node ${scripts}/verify/verify.mjs wait <id>\` in the foreground (Bash timeout 600000), again while it exits 75, until it prints a verdict — and fix every regression it lists. ` +
       `Finish with \`git add\` and \`git commit\` so the merge commit keeps both parents. Never \`git merge --abort\` or reset, never ask a question, and run nothing in the background — nobody is there to answer, and this run ends when your last turn does.`
     const res = await runClaude(wt, feature, 'build', f.runs, prompt)
     log = res.log
@@ -1758,34 +1773,9 @@ fleet.notes = (fleet.notes ?? []).filter((n) => {
   const m = /its worktree (\S+) was kept/.exec(n)
   return !m || existsSync(m[1])
 })
-// Saved HERE, before the baseline: --status during those minutes shows the queue as it is, not
-// as the last run left it.
+// Saved HERE, before the first run: --status shows the queue as it is, not as the last run left it.
 save()
-// @delta gates compare against the target's counts: measure them here, once, before any run — and
-// only when the target has moved since the last measurement (an e2e-sized baseline is minutes).
-const baselineFor = (() => {
-  try {
-    return JSON.parse(readFileSync(join(ROOT, '.builder', 'gates', 'baseline.json'), 'utf8')).head
-  } catch {
-    return null
-  }
-})()
-const BASELINE_NOTE = 'measuring @delta gate baselines on '
-if (baselineFor !== tryGit(['rev-parse', '--short', 'HEAD']) && [...Object.values(parseGates(CFG.body).fast).flat(), ...parseGates(CFG.body).deep].some((g) => g.delta)) {
-  const log = join(DIR, 'logs', 'baseline.log')
-  mkdirSync(dirname(log), { recursive: true })
-  addNote(`${BASELINE_NOTE}${TARGET} before the first run — see ${log}`)
-  save()
-  const fd = openSync(log, 'w')
-  try {
-    execFileSync('node', [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--baseline'], { cwd: ROOT, env: process.env, stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
-  } catch {
-    addNote(`gate baseline: measuring the @delta gates on ${TARGET} failed — see ${log}; a worktree's first measurement becomes its baseline`)
-  } finally {
-    closeSync(fd)
-  }
-}
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !n.startsWith(BASELINE_NOTE) && !/ was kept \(it has changes\)/.test(n))
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('No agent_walk.reset') && !/ was kept \(it has changes\)/.test(n))
 if (!AW.reset) fleet.notes.push('No agent_walk.reset — dev-DB state accumulates from one walk to the next.')
 if ('CLAUDE_PROJECT_DIR' in AW.env) addNote('agent_walk.env may not set CLAUDE_PROJECT_DIR — it was ignored; each child reads its own worktree.')
 save()
@@ -1924,22 +1914,6 @@ function prepareWalkTree(features) {
   return { merged, deferred }
 }
 
-/**
- * The deep set's @walk lines, once for the batch, against the env serving every feature in it —
- * written to each feature's workspace as walk-gates.md, which its verify reads (verify §@walk lines).
- */
-async function runWalkGates(features, wt = WALK_WT, envOf = '_walk') {
-  if (!parseGates(CFG.body).deep.some((g) => g.walk)) return null
-  const r = await execAsync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'gate.mjs'), '--walk-only', '--force'], { cwd: wt, env: envFor(envOf, 'walk') })
-  const head = tryGit(['rev-parse', '--short', 'HEAD'], wt)
-  const text = `# @walk gates — ${wt === WALK_WT ? 'walk batch' : 'the walk'} at ${head}\n\nfeatures in the batch: ${features.join(', ')}\nexit: ${r.status}${r.status === 3 ? ' (the walk env stopped answering)' : ''}\n\n\`\`\`\n${r.output.trim().split('\n').slice(-120).join('\n')}\n\`\`\`\n`
-  for (const x of features) {
-    const ws = join(fleet.features[x].worktree, '.builder', x)
-    mkdirSync(ws, { recursive: true })
-    writeFileSync(join(ws, 'walk-gates.md'), text)
-  }
-  return r.status
-}
 /** A command without holding the fleet's event loop (an e2e suite takes minutes; the lanes keep moving). */
 const execAsync = (cmd, args, opts) =>
   new Promise((done) => {
@@ -1978,6 +1952,7 @@ async function walkBatch(batch) {
         continue
       }
     }
+    requestMergeAtWalk(feature, f)
     live.push(feature)
   }
   if (!live.length) return
@@ -2046,11 +2021,7 @@ async function walkBatch(batch) {
         }
         leaving.push([x, d])
       }
-      // The @walk gates, while the env is still up, for every feature signed off this session —
-      // before verify, in the pool, can look for them.
-      const signed = leaving.filter(([, d]) => d.action === 'handoff' && d.to === 'ship').map(([x]) => x)
-      // A gate that rewrote what the env serves (exit 3), or an env that died during the session: restart it.
-      if (signed.length && (await runWalkGates(signed)) === 3) restart = true
+      // An env that died during the session: restart it.
       if (AW.smoke && rec.startPgid && !(await smokeOk('_walk', rec))) {
         addNote('the walk env stopped answering during a batch session — restarted without a reset')
         restart = true
