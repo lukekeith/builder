@@ -24,6 +24,16 @@ test('slices: one per ### Task N, with its app, phase, name and fenced test coun
   assert.deepEqual(s.map((x) => x.tests), [3, 6, 4, 2, 2, 0, 3, 2, 1, 2, 3, 2])
 })
 
+test('countTests: the six-part task shape counts the it( lines in its Tests fences', () => {
+  const block = [
+    '### Task 1: x', 'App: api', 'Phase: 1', '',
+    '**Tests:**',
+    "- `rejects both assignees` — 422 (Behaviour 1)", fence("it('rejects both', () => { expect(a).toBe(422) })"),
+    "- `accepts one` — 200 (Behaviour 2)", fence("it('accepts one', () => { expect(b).toBe(200) })"),
+  ].join('\n')
+  assert.equal(countTests(block), 2)
+})
+
 test('countTests: it( test( def test_ func Test #[test], inside fences only', () => {
   const block = [
     'mentions it( and test( in prose',
