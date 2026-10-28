@@ -860,6 +860,10 @@ test('a target sync that conflicts goes to an agent run, and the feature carries
   const r = runFleet(root, ['u'], { u: HAPPY })
   assertLanded(r, 'u')
   assert.equal(r.calls[0], 'resolve u RESOLVE', 'the conflict is resolved before the first pipeline run')
+  // The verifier tests a commit: the merge is committed first, or the phase tier tests the pre-merge HEAD.
+  const prompt = readFileSync(join(root, '.stub', 'u.resolve-prompt.txt'), 'utf8')
+  assert.ok(prompt.indexOf('git commit') >= 0 && prompt.indexOf('git commit') < prompt.indexOf('verify.mjs request . HEAD --tier phase'), 'commit the merge, then request the phase tier')
+  assert.match(prompt, /follow-up commits/)
   assert.equal(readFileSync(join(root, 'shared.txt'), 'utf8'), 'theirs\nours\n', 'both sides landed on main')
   assert.match(git(root, 'log', '--oneline', '-1'), /merge\(u\): agent-verified/)
 })

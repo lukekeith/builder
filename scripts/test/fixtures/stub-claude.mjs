@@ -58,6 +58,7 @@ const next = (key, fallback) => {
 if (/stopped on conflicts/.test(prompt)) {
   const step = next(`${feature}:resolve`, 'RESOLVE')
   log(`resolve ${feature} ${step}`)
+  writeFileSync(join(S, `${feature}.resolve-prompt.txt`), prompt)
   if (step === 'ABORT') execFileSync('git', ['merge', '--abort'])
   if (step === 'RESOLVE') {
     const files = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { encoding: 'utf8' }).split('\n').filter(Boolean)
