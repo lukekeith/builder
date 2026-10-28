@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openLedger, FLAKE_CLEAR } from '../verify/ledger.mjs'
@@ -56,4 +56,18 @@ test('check output lines cached per target sha', () => {
   assert.equal(l.readLines('s', 'lint'), null)
   l.writeLines('s', 'lint', ['a', 'b'])
   assert.deepEqual([...l.readLines('s', 'lint')], ['a', 'b'])
+})
+
+test('a truncated trailing results line is skipped, not thrown on', () => {
+  const l = fresh()
+  l.appendResults([{ run: 'r', sha: 'a', id: 'x', status: 'pass' }])
+  appendFileSync(join(l.dir, 'results.jsonl'), '{"run":"r","sha":"a","id":"y","sta')
+  assert.deepEqual([...l.resultsAt('a')], [['x', 'pass']])
+})
+
+test('a request without createdAt does not break listing', () => {
+  const l = fresh()
+  writeFileSync(join(l.dir, 'requests', 'odd.json'), '{"id":"odd","state":"queued"}')
+  l.newRequest({ branch: 'f', sha: 's', tier: 'commit', target: 'main' })
+  assert.equal(l.requests().length, 2)
 })
