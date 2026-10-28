@@ -22,7 +22,7 @@ import { createPool } from './envpool.mjs'
 import { selectSuites } from './select.mjs'
 import { runRequest } from './run.mjs'
 import { fold, pickNext } from './schedule.mjs'
-import { ensureCheckout, commitExists, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land } from './checkouts.mjs'
+import { ensureCheckout, commitExists, checkoutAt, mergedCheckout, copyLocal, setupIfNeeded, changedFiles, land } from './checkouts.mjs'
 import { loadConfig } from '../config.mjs'
 
 const MAX_LAND_ATTEMPTS = 5
@@ -169,6 +169,8 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     }
     const cfg = loadConfig(root)
     const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
+    // agent_walk.copy: untracked local files the tests may need, copied into every checkout after it moves.
+    const local = cfg.ok ? cfg.agentWalk?.copy ?? [] : []
     // agent_walk.env as the fleet hands it to a walk: `{feature}` filled from the builder/<feature>
     // branch. Any other branch has no feature to fill it with, so it can't lease the walk env.
     const walkEnvFor = (branch) => {
@@ -234,6 +236,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         if (m.conflict) return empty(req, 'conflict', { files: m.files })
         sha = m.sha
       } else checkoutAt(checkout, req.sha)
+      copyLocal(root, checkout, local)
       setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
       const after = (g) => g && g.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, req.sha) !== null
       // Built on the target itself, the merge-base is the sha: there is no branch to cover. The
@@ -280,12 +283,14 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
           if (!targetCo) {
             targetCo = ensureCheckout(root, `t${slot}`)
             checkoutAt(targetCo, targetSha)
+            copyLocal(root, targetCo, local)
             setupIfNeeded(targetCo, v, (cmd) => shell(cmd, { cwd: targetCo, timeout: v.timeoutMs }))
           }
           return targetCo
         },
         atCommit: async (s) => {
           checkoutAt(checkout, s)
+          copyLocal(root, checkout, local)
         },
       }
       // Every commit in the range, oldest first — what bisect walks to name the one that broke a test.

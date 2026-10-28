@@ -50,7 +50,7 @@ All under `scripts/verify/`, each one job, each testable alone.
 | **service** (`serve.mjs`) | Lifecycle: one per repo (pid lock + liveness in `.builder/verify/`), started by the first request, exits after 10 idle minutes, resumes queued/running work on restart | `verify.mjs serve` (never typed by hand) |
 | **client** (`verify.mjs`) | What build, skills and fleet call | `request <worktree> <sha> --tier commit\|phase\|merge [--tree]` → request id · `status` · `verdict <branch> [<sha>]` · `wait <request>` |
 | **scheduler** | Priority queue merge > phase > commit; folds queued commit requests on one branch into one; respects resource capacity; hands work to workers | internal |
-| **run checkouts** | Each worker tests a clean checkout of the requested commit (a git worktree it reuses), never the agent's live worktree | internal |
+| **run checkouts** | Each worker tests a clean checkout of the requested commit (a git worktree it reuses), never the agent's live worktree; `agent_walk.copy` files (a .env, certs) are copied in from the main checkout after each move | internal |
 | **selector** | Commit range → test files per suite, from `impact.mjs`'s import graph; the whole suite when a change can't be traced (config, lockfile, schema, runner setup), with the reason written | `select(range) → { suite: files \| 'all', why }` |
 | **adapters** | One per runner | `list(suite)`, `command(suite, files, env)`, `parse(report) → [{ id, status, ms, msg }]` |
 | **env pool** | Isolated environments | `lease(needs) → env`, `release(lease)` |
