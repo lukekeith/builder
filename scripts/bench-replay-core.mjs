@@ -42,25 +42,33 @@ export function controlPoints(boundaries, shas, apps) {
   return pts
 }
 
+/** True when `child` is `parent` or under it — the replay never writes inside the repo it reads. */
+export const isInside = (parent, child) => child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`)
+
 const m = (ms) => `${Math.round(ms / 60000)}m`
-export function summarize(rows) {
+export function summarize(all) {
+  const errored = all.filter((r) => r.error)
+  const rows = all.filter((r) => !r.error)
   const t = rows.reduce(
     (a, r) => ({
       cb: a.cb + r.control.blockingMs,
       cr: a.cr + r.control.reds,
+      un: a.un + (r.control.unrun ?? 0),
       tb: a.tb + r.treatment.blockingMs,
       bg: a.bg + r.treatment.backgroundMs,
       ...Object.fromEntries(['regressions', 'flakes', 'known', 'debt', 'broken'].map((k) => [k, a[k] + r.treatment[k]])),
     }),
-    { cb: 0, cr: 0, tb: 0, bg: 0, regressions: 0, flakes: 0, known: 0, debt: 0, broken: 0 },
+    { cb: 0, cr: 0, un: 0, tb: 0, bg: 0, regressions: 0, flakes: 0, known: 0, debt: 0, broken: 0 },
   )
-  const row = (name, cb, cr, tb, bg, x) => `| ${name} | ${m(cb)} | ${cr} | ${m(tb)} | ${m(bg)} | ${x.regressions} | ${x.flakes} | ${x.known} | ${x.debt} | ${x.broken} |`
+  // `unrun` closes the row: old-gate runs that neither passed nor failed (no deep set, a signal, a timeout).
+  const row = (name, cb, cr, tb, bg, x, un) => `| ${name} | ${m(cb)} | ${cr} | ${m(tb)} | ${m(bg)} | ${x.regressions} | ${x.flakes} | ${x.known} | ${x.debt} | ${x.broken} | ${un} |`
   return [
-    '| Feature | Old gates: blocking | Old gates: red runs | Verifier: blocking (phase + merge) | Verifier: background (commit) | Regressions | Flakes | Known | Newly found debt | Env-broken |',
-    '|---|---|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => row(r.feature, r.control.blockingMs, r.control.reds, r.treatment.blockingMs, r.treatment.backgroundMs, r.treatment)),
-    row('**total**', t.cb, t.cr, t.tb, t.bg, t),
+    '| Feature | Old gates: blocking | Old gates: red runs | Verifier: blocking (phase + merge) | Verifier: background (commit) | Regressions | Flakes | Known | Newly found debt | Env-broken | Old gates: unrun |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => row(r.feature, r.control.blockingMs, r.control.reds, r.treatment.blockingMs, r.treatment.backgroundMs, r.treatment, r.control.unrun ?? 0)),
+    row('**total**', t.cb, t.cr, t.tb, t.bg, t, t.un),
     '',
     `blocking time: ${t.cb ? Math.round((1 - t.tb / t.cb) * 100) : 0}% less · red results the verifier did not count against a feature: ${t.flakes + t.known + t.debt} · regressions it attributed to a commit: ${t.regressions}`,
+    ...(errored.length ? ['', `errored (not in the table): ${errored.map((r) => `${r.feature} — ${r.error}`).join('; ')}`] : []),
   ].join('\n')
 }
