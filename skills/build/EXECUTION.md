@@ -296,9 +296,14 @@ plan sets no task review — append, with `<plugin>/scripts/advance.mjs <folder>
 - `Task <N>: complete (commits <base7>..<head7>, <K> parked)` after a tripped breaker
 - `Task <N>: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`
 
-Then `node <plugin>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` (returns at
-once), and before the next dispatch read `node <plugin>/scripts/verify/verify.mjs verdict <branch>`
-— a regression is a fix dispatch against the task `introduced by` names.
+Then `node <plugin>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` (`<worktree>` =
+`git rev-parse --show-toplevel`; returns at once), and before the next implementer dispatch read
+`node <plugin>/scripts/verify/verify.mjs verdict <branch>` (`<branch>` = the checked-out branch) —
+the latest finished verdict, naming the sha it ran at; exit 75 or 5 → nothing to act on yet. A
+regression whose test id is not yet ledgered for its `introduced by` commit is a fix dispatch
+against that commit's task, ledgered `Regression <test id> (introduced by <sha7>): fix dispatched
+against Task N`; one already ledgered is never dispatched twice, and a later verdict without it
+means the fix held.
 
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.
