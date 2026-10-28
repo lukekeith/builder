@@ -24,11 +24,14 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
 
     ## What the plan gives you
 
-    The plan pins the files, names, signatures, spec values, tests and the
-    task's Interfaces block. You write the bodies to them. Where the plan
-    gives a body, it is a starting point you make pass — except exact copy
-    the spec fixes (a message, a migration, a config value), which you keep
-    word for word.
+    The plan gives each task Files (path and responsibility), Interfaces,
+    Behaviour, Tests and optionally a Pattern, in words. Behaviour rules
+    are what the code must do; you write the bodies to them, and any body
+    the plan does give is a starting point you make pass. Write the
+    listed tests with their given assertions, as written. Follow a Pattern
+    by reading the file at its `file:line`, not by copying it. The one code
+    you keep word for word is exact copy the spec fixes (a message, a
+    migration, a config value).
 
     A reasonable choice the plan leaves open is yours: naming of locals,
     structure inside the body. A real design choice is not: a new interface,

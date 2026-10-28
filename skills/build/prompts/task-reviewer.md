@@ -35,6 +35,10 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     against the task's Interfaces and tests, in addition to the frozen
     contract above.
 
+    Check each Behaviour line in the task is met by the diff and covered by
+    a test that would fail without it; an uncovered or unmet line is a
+    Missing finding.
+
     ## What the implementer claims they built
 
     Read the implementer's report: [REPORT_FILE]

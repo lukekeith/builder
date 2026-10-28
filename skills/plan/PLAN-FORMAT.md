@@ -17,16 +17,16 @@ block plus its brief**. It cannot read the rest of the plan, it has never seen t
 not ask you what you meant unless you left it no choice.
 
 **A step is unambiguous, not complete.** It is done when the implementer can write exactly one
-reasonable thing from it. Each kind of step carries what makes it unambiguous and nothing more:
+reasonable thing from it. A task is six parts, all in words except the tests:
 
-- **A test step:** the test's name and its assertions, **as code**, with the spec's exact values in
-  them. Kept in full — it is the contract, and `plan-slices.mjs` counts a slice's tests from the
-  `it(` / `test(` lines inside the fences for the go-ahead.
-- **A code step:** the exact signature (name, parameters, return type), the file it lives in, and the
-  values the spec pins. **The implementer writes the body.** A body appears only for an algorithm the
-  signature and tests do not determine, or for exact copy the spec fixes (a message, a migration, a
-  config value).
-- **A verification step:** the command to run and the output that means it passed.
+- **Tests keep their assertions, as code,** with the spec's exact values in them. The plan writer pins
+  what each test checks; the implementer does not decide it. A stronger test is the point.
+  `plan-slices.mjs` counts a slice's tests from the `it(` / `test(` lines inside the fences for the
+  go-ahead.
+- **Everything else is words:** files with their one responsibility, interfaces (names, parameters and
+  return types described), behaviour rules citing their decision, a pattern as `file:line`, steps with
+  their commands. **The implementer writes the body.**
+- **The only other code is exact copy the spec fixes** (a message, a migration, a config value).
 - **A reference to another task:** that task's **Interfaces** block says what to use; the plan does
   not repeat that task's code.
 
@@ -121,32 +121,40 @@ Phase: <n>
 Recipe: <the companion skill to read FIRST, or the REFERENCE section that governs this work; append ` · tiny` for a one-file edit with its test, so the build reviews it at the cheapest tier>
 
 **Files:**
-- Create: `exact/path/to/file.ts`
-- Modify: `exact/path/to/existing.ts:123-145`
-- Test: `tests/exact/path/to/test.ts`
+- Create: `exact/path/to/file.ts` — <its one responsibility>
+- Modify: `exact/path/to/existing.ts:123-145` — <what changes in it>
+- Test: `tests/exact/path/to/test.ts` — <what it covers>
 
 **Interfaces:**
-- Consumes: <what this task uses from earlier tasks — exact signatures>
-- Produces: <what later tasks rely on — exact names, parameter and return types. A task's
-  implementer sees only their own block; this is how they learn the names neighbouring tasks use.>
+- Consumes: <what this task uses from earlier tasks — names, with parameters and return types in words>
+- Produces: <what later tasks rely on — names, parameters and return types in words, no code. A
+  task's implementer sees only their own block; this is how they learn the names neighbouring tasks use.>
 
-- [ ] **Step 1: Write the failing test**
+**Behaviour:**
+- <one rule per line, each citing the decision behind it> (D<n>)
+- both assignees set → 422 (D6)
+
+**Tests:**
+- `test name` — <what it proves> (Behaviour line it covers)
 
 ```ts
-it('does the specific thing', () => {
+it('test name', () => {
   expect(fn(input)).toEqual(expected)
 })
 ```
 
-- [ ] **Step 2: Run it and watch it fail** — `<command>` → FAIL, "fn is not defined"
+**Pattern:** (optional)
+- `path/to/similar.ts:40` — <what to follow>
 
-- [ ] **Step 3: Implement `fn(input: In): Out` in `exact/path/to/file.ts`** — <one line on the
-  approach, only where the signature and the test leave a choice>
-
-- [ ] **Step 4: Run it and watch it pass** — `<command>` → PASS
-
+- [ ] **Step 1: Write the listed tests** — in `tests/exact/path/to/test.ts`
+- [ ] **Step 2: Run `<command>`, watch them fail** — FAIL, "fn is not defined"
+- [ ] **Step 3: Implement `fn`, `Other` in `exact/path/to/file.ts` to the Behaviour**
+- [ ] **Step 4: Run `<command>`, watch them pass** — PASS
 - [ ] **Step 5: Commit** — `feat(<TICKET>): <subject>`
 ````
+
+Every Tests line is followed by its own fenced assertions (shown once above; repeat per test).
+Behaviour is one rule per line; each cites its spec decision, and a Test covers each.
 
 **Task numbering runs across the whole plan** — Task 1 … Task N continue through every phase, because
 `task-brief` keys on the literal `Task N` heading.
@@ -169,6 +177,10 @@ Every step decides something, and no step transcribes. These are **plan failures
 - "Similar to Task N" — name the Interfaces entry you mean; the implementer never sees Task N
 - a code step with no signature or file, so the implementer must guess the name
 - references to types, functions or methods not defined in any task
+- a Behaviour line with no decision it comes from
+- a Test line that doesn't say what it proves
+- a code block in a task other than test assertions or exact spec copy
+- a Pattern entry with code pasted instead of `file:line`
 
 The opposite failure is a function body the signature and tests already determine: that is the
 plan writing the code instead.
@@ -182,15 +194,17 @@ checklist you run yourself — not a subagent dispatch.
 2. **Step scan.** Each step lets the implementer write exactly one reasonable thing, and carries no
    more: a line that decides nothing is a gap (the red flags above); a body the signature and tests
    already determine is a transcript. Fix both.
-3. **Type consistency.** Do the types, signatures and property names in later tasks match what
+3. **Behaviour coverage.** Check every Behaviour line has a Test that would fail without it.
+4. **Type consistency.** Do the types, signatures and property names in later tasks match what
    earlier tasks defined? A function called `clearLayers()` in Task 3 and `clearFullLayers()` in
    Task 7 is a bug.
-4. **One app per task.** No task block's Files cross an app boundary; every block has an `App:` line
+5. **One app per task.** No task block's Files cross an app boundary; every block has an `App:` line
    that matches its phase's row.
-5. **One app per phase.** Every `## Phases` row names one app, and every task in it is that app's.
-6. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
-   is a transcript of the program. If code blocks are most of the document, replace bodies with
-   signatures, test names and assertions, and re-check each step is still unambiguous. A guide, not a
+6. **One app per phase.** Every `## Phases` row names one app, and every task in it is that app's.
+7. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
+   is a transcript of the program. The plan is words plus test assertions: if code blocks
+   beyond the tests are most of the document, replace them with words, and re-check each step is
+   still unambiguous. A guide, not a
    hard limit.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
