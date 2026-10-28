@@ -32,7 +32,7 @@ import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, 
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { requestMerge, mergeVerdict, awaitVerdict, release as releaseMerge } from './verify/fleet-hooks.mjs'
+import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -1013,8 +1013,10 @@ async function landNow(feature) {
 }
 
 /**
- * Land through the verifier's merge queue: the held merge-tier run requested when the walk began,
- * if it tested this HEAD; else a new one. Green → release (the target fast-forwards to the tested
+ * Land through the verifier's merge queue: the held merge-tier run requested when the walk began.
+ * Sign-off, verify and the ship commit only touch the registry after it, so that result carries
+ * (verify.mjs carry) — no second run. A held run of exactly this HEAD is released; else, or when
+ * code changed since the held run, a new one. Green → release (the target fast-forwards to the tested
  * merge commit). Conflict → an agent resolves it in the worktree, then a new request. A target that
  * moved since the run → run again. Red → park, naming the tests: verify read a green merge tier
  * before the ship, so red here means the code went red on a target that moved after it — the
@@ -1029,9 +1031,28 @@ async function mergeThroughVerifier(feature, f) {
   }
   // The merge tier tests the branch as its worktree holds it; without one there is nothing to request on.
   if (!f.worktree || !existsSync(f.worktree)) return `shipped, but its worktree is gone, so the merge tier can't run on ${f.branch} — next: /builder:agent to recreate it and land it`
+  // After the target moved: the migrations note, or the working tree's migrations applied.
+  const landed = (before, sha) => {
+    if (here === TARGET) return migrateAfterLanding(feature, before, 'HEAD')
+    addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
+    const added = newMigrations(before, sha)
+    if (added.length) addNote(`${feature} brought ${added.length} new migration${added.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
+  }
+  let gone = 0
   for (let attempt = 0; attempt < 5; attempt++) {
     const head = tryGit(['rev-parse', 'HEAD'], f.worktree)
     const done = mergeVerdict(ROOT, f.branch, head)
+    const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch)
+    if (held) {
+      const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
+      const c = carryMerge(ROOT, held.request)
+      if (c.ok) {
+        landed(before, c.sha)
+        return null
+      }
+      // Code changed since the held run, or the target moved (carry un-held it): a new run below.
+      if (!c.moved && !c.codeChanged) return `the merge tier passed but landing failed: ${c.reason} — next: /builder:fleet to retry`
+    }
     let id
     try {
       id = done?.status === 'green' && done.held ? done.request : requestMerge(ROOT, f.worktree, { target: TARGET, message })
@@ -1043,7 +1064,10 @@ async function mergeThroughVerifier(feature, f) {
     const v = await awaitVerdict(ROOT, id)
     f.reason = null
     if (!v || v.status === 'cancelled') return 'the merge-tier run was cancelled — next: /builder:agent to retry'
-    if (v.status === 'gone') continue
+    if (v.status === 'gone') {
+      if (++gone === 2) return `the branch's commit disappeared under the verifier (gone) — next: /builder:agent to retry`
+      continue
+    }
     if (v.status === 'conflict') {
       const ok = await resolveMerge(feature, f.worktree, 'features that merged while this one shipped')
       if (ok !== true) return `a conflict with ${TARGET} in ${v.files.join(', ')} that an agent could not resolve — see ${ok} — next: resolve it in ${f.worktree}, then /builder:agent`
@@ -1054,12 +1078,7 @@ async function mergeThroughVerifier(feature, f) {
     const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
     const r = releaseMerge(ROOT, id)
     if (r.ok) {
-      if (here === TARGET) migrateAfterLanding(feature, before, 'HEAD')
-      else {
-        addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
-        const landed = newMigrations(before, r.sha)
-        if (landed.length) addNote(`${feature} brought ${landed.length} new migration${landed.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
-      }
+      landed(before, r.sha)
       return null
     }
     if (!r.moved) return `the merge tier passed but landing failed: ${r.reason} — next: /builder:fleet to retry`

@@ -13,6 +13,7 @@
 //   CHATTY:<ms>:<step>  print a stream-json assistant line every 50 ms for <ms>, then <step>
 //   TOUCH:<path>:<step>  rewrite <path> (relative to the worktree) without committing it, then <step>
 //   CONFIG:<step>   edit .claude/builder.md in the worktree and commit it, then <step>
+//   COMMIT:<path>:<step>  write <path> (relative to the worktree, outside the spec folder too) and commit it, then <step>
 //   FIXES / FIXED   a walk's open ## Fixes row (state untouched) / every row ticked + ready: pending
 // The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
@@ -122,6 +123,14 @@ if (step.startsWith('SLOW:')) {
 if (step === 'HANG-CHILD') {
   spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
   await new Promise(() => setInterval(() => {}, 1e6))
+}
+if (step.startsWith('COMMIT:')) {
+  const [, path, ...rest] = step.split(':')
+  mkdirSync(dirname(join(process.cwd(), path)), { recursive: true })
+  writeFileSync(join(process.cwd(), path), `code ${Date.now()}\n`)
+  execFileSync('git', ['add', '--', path], { stdio: 'ignore' })
+  execFileSync('git', ['commit', '-qm', `stub: ${feature} commits ${path}`], { stdio: 'ignore' })
+  step = rest.join(':')
 }
 // CONFIG:<step> — the run edits .claude/builder.md in its worktree and commits it, then <step>.
 if (step.startsWith('CONFIG:')) {

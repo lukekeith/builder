@@ -38,11 +38,18 @@ export function mergeVerdict(root, branch, sha) {
   return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.sha === sha && r.state === 'done').at(-1)?.verdict ?? null
 }
 
+/** The branch's latest held green merge-tier verdict (whatever sha it tested), or null. */
+export function heldMerge(root, branch) {
+  return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held).at(-1)?.verdict ?? null
+}
+
 /** Poll the ledger until the request has a verdict — without blocking the fleet's event loop; null on abort. */
 export async function awaitVerdict(root, id, { pollMs = 2000, signal = null } = {}) {
   const ledger = openLedger(root)
   for (;;) {
     const r = ledger.getRequest(id)
+    // No request file: nothing will ever answer it, so the caller parks instead of waiting forever.
+    if (!r) return null
     if (r?.state === 'done' || (r?.state === 'cancelled' && r.verdict)) return r.verdict
     if (signal?.aborted) return null
     // The service exits when idle; a request still waiting needs one running.
@@ -57,4 +64,11 @@ export function release(root, id) {
   if (r.status === 0) return { ok: true, sha: openLedger(root).getRequest(id).verdict.landed }
   // One line: it becomes a park reason, and git's words span several.
   return { ok: false, moved: r.status === 7, reason: r.out.replace(/\s+/g, ' ') }
+}
+
+/** Land a held green merge whose branch has since gained only registry commits (verify.mjs carry). */
+export function carry(root, id) {
+  const r = client(root, 'carry', id, '--in', root)
+  if (r.status === 0) return { ok: true, sha: openLedger(root).getRequest(id).verdict.landed }
+  return { ok: false, moved: r.status === 7, codeChanged: r.status === 2, reason: r.out.replace(/\s+/g, ' ') }
 }
