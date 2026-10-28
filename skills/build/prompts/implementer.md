@@ -26,7 +26,9 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
 
     The plan pins the files, names, signatures, spec values, tests and the
     task's Interfaces block. You write the bodies to them. Where the plan
-    gives a body, it is a starting point you make pass.
+    gives a body, it is a starting point you make pass — except exact copy
+    the spec fixes (a message, a migration, a config value), which you keep
+    word for word.
 
     A reasonable choice the plan leaves open is yours: naming of locals,
     structure inside the body. A real design choice is not: a new interface,
