@@ -24,9 +24,14 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
 
     ## What the plan gives you
 
-    The plan pins the files, names, signatures, spec values and tests.
-    You write the bodies to them. A step that leaves a real design choice
-    open is the "stop and escalate" case below.
+    The plan pins the files, names, signatures, spec values, tests and the
+    task's Interfaces block. You write the bodies to them. Where the plan
+    gives a body, it is a starting point you make pass.
+
+    A reasonable choice the plan leaves open is yours: naming of locals,
+    structure inside the body. A real design choice is not: a new interface,
+    or a behaviour neither the spec nor the tests settle. That is the "stop
+    and escalate" case below.
 
     ## The app you are working in
 
