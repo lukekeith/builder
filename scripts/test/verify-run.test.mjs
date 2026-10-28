@@ -302,6 +302,57 @@ test('phase tier re-runs a file whose pass predates a change that reaches it', a
   assert.equal(v.reused, 0) // a was edited and b imports the edited lib, both after c0
 })
 
+test('the newest record of a file decides: a fail at a later commit is not walked past to an older pass', async () => {
+  const { dir, c0, c1, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs']))
+  ctx.ledger.appendResults([{ run: 'x', sha: c2, tier: 'commit', id: 'unit::test/a.test.mjs::ok', status: 'fail' }])
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c1, c2] }), ctx)
+  assert.equal(v.reused, 0)
+})
+
+test('a file with only some tests recorded is reused only from a complete record, so a timed-out run records nothing', async () => {
+  const dir = gitRepo(['t/a.spec.ts'])
+  const xml = `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="one" time="0.1"/></testsuite></testsuites>' > r.xml; sleep 5`
+  const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
+  const ctx = ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 500, db: null } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.match(v.broken[0].reason, /timed out/)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+})
+
+test('a cancelled request records no results', async () => {
+  const dir = gitRepo(['t/a.spec.ts'])
+  const xml = `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="one" time="0.1"><failure message="x"/></testcase><testcase classname="t/a.spec.ts" name="two" time="0.1"/></testsuite></testsuites>' > r.xml`
+  const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
+  const ac = new AbortController()
+  let leases = 0
+  const lease = async () => (++leases > 1 && ac.abort(), { env: {}, release() {} })
+  const ctx = ctxFor(dir, dir, { signal: ac.signal, lease, verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'cancelled')
+  assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+})
+
+test('earlier commits are consulted for at most the three newest; a file only older than that is re-run', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/f${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `u${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  const all = [0, 1, 2, 3, 4].map((i) => `test/f${i}.test.mjs`)
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : all, why: {} } }) })
+  all.forEach((f, i) => ctx.ledger.appendResults(green(shas[i], [f])))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: shas[4], base: c0, commits: shas }), ctx)
+  assert.equal(calls - 1, 3) // graph builds for earlier commits
+  assert.equal(v.reused, 4) // f4 exact, f1-f3 within the cap; f0 re-run
+})
+
 test('a pass recorded at a commit that is not an ancestor of the request is never used', async () => {
   const { dir, g, c0, c2 } = history()
   g('checkout', '-q', '-b', 'other', c0)
