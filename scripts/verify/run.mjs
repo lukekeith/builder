@@ -11,6 +11,8 @@ import { ADAPTERS } from './adapters.mjs'
 import { classify } from './classify.mjs'
 import { fromCwd } from './select.mjs'
 import { inputsHash } from './envpool.mjs'
+import { globToRegExp } from '../impact.mjs'
+import { tryGit } from './git.mjs'
 
 export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = null } = {}) {
   return new Promise((resolve) => {
@@ -43,6 +45,30 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
       resolve({ code: code ?? 1, timedOut, out })
     })
   })
+}
+
+/**
+ * A report's file as a repo path. Playwright's JUnit names files relative to its testDir, so the
+ * suite's cwd + that name may not exist; then the one tracked file of the suite's glob ending in it
+ * is the real one. Ambiguous or unfound: the name as reported (joined with cwd), as before.
+ */
+function repoFile(suite, where, file, tracked) {
+  const joined = suite.cwd === '.' ? file : posix.join(suite.cwd, file)
+  if (existsSync(join(where, joined))) return joined
+  const hits = tracked().filter((t) => t.endsWith(`/${file}`) && (suite.cwd === '.' || t.startsWith(`${suite.cwd}/`)))
+  return hits.length === 1 ? hits[0] : joined
+}
+
+/** The checkout's tracked files that match the suite's glob (all of them with none), listed once, on first use. */
+function lazyTracked(suite, where) {
+  let list = null
+  return () => {
+    if (!list) {
+      const re = suite.files ? globToRegExp(suite.cwd && suite.cwd !== '.' ? posix.join(suite.cwd, suite.files) : suite.files) : null
+      list = (tryGit(where, 'ls-files') ?? '').split('\n').filter((t) => t && (!re || re.test(t)))
+    }
+    return list
+  }
 }
 
 export const testId = (suite, r) => `${suite}::${r.file}::${r.name}`
@@ -111,7 +137,8 @@ async function judgeRequest(req, ctx, tmp) {
       if (!existsSync(report)) return { results: null, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m with no report` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
-      return { results: results.map((x) => ({ ...x, file: suite.cwd === '.' ? x.file : posix.join(suite.cwd, x.file) })) }
+      const tracked = lazyTracked(suite, where)
+      return { results: results.map((x) => ({ ...x, file: repoFile(suite, where, x.file, tracked) })) }
     } finally {
       lease.release()
     }
