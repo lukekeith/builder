@@ -41,13 +41,19 @@ function verifierLines(f) {
   try {
     const main = git(f.root, ['rev-parse', '--path-format=absolute', '--git-common-dir']).replace(/\/\.git$/, '')
     const d = join(main, '.builder', 'verify', 'requests')
-    reqs = readdirSync(d).filter((n) => n.endsWith('.json')).map((n) => JSON.parse(read(join(d, n))))
+    for (const n of readdirSync(d).filter((n) => n.endsWith('.json'))) {
+      // One half-written file must not blank every tier.
+      try {
+        const r = JSON.parse(read(join(d, n)))
+        if (r && typeof r === 'object') reqs.push(r)
+      } catch {}
+    }
   } catch {}
   const branch = currentBranch(f.root)
-  const mine = reqs.filter((r) => r.branch === branch && r.state === 'done' && r.verdict).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const mine = reqs.filter((r) => r.branch === branch && r.state === 'done' && r.verdict).sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')))
   return ['commit', 'phase', 'merge'].map((tier) => {
     const v = mine.filter((r) => r.tier === tier).at(-1)?.verdict
-    return v ? `- ${tier}: ${v.status.toUpperCase()} at ${String(v.sha).slice(0, 7)} — ${v.regressions.length} regression(s), ${v.flakes.length} flake(s), ${v.known.length} known` : `- ${tier}: no verdict yet`
+    return v ? `- ${tier}: ${String(v.status ?? '?').toUpperCase()} at ${String(v.sha).slice(0, 7)} — ${(v.regressions ?? []).length} regression(s), ${(v.flakes ?? []).length} flake(s), ${(v.known ?? []).length} known` : `- ${tier}: no verdict yet`
   })
 }
 

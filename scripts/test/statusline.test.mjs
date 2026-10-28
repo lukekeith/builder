@@ -10,6 +10,7 @@ import { render, repoRoots, elapsed, fit } from '../statusline.mjs'
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..')
 const NOW = Date.parse('2026-10-02T12:00:00Z')
 const BOOT = NOW - 24 * 3600 * 1000 // fixed, so fixture pid files never read as older than the real boot
+const BOOT_GAP = 3600000
 const DEAD = 2 ** 22 + 12345 // above any real pid on macOS/Linux defaults
 
 function write(root, p, text, mtime = NOW) {
@@ -117,6 +118,19 @@ test('a running verifier request shows with its tier, branch and elapsed time; d
   const out = render({ cwd: root, now: NOW, bootTime: BOOT, width: 200 })
   assert.match(out, /verify merge builder\/x ⏱ 3m/)
   assert.doesNotMatch(out, /builder\/y/)
+})
+
+test('verifier items skip dead pids, corrupt files, bad times and stale files; a missing requests dir is fine', () => {
+  const root = repo()
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT }), '')
+  const at = new Date(NOW - 60000).toISOString()
+  const req = (id, o) => JSON.stringify({ id, state: 'running', tier: 'commit', branch: `b/${id}`, startedAt: at, pid: process.pid, ...o })
+  write(root, '.builder/verify/requests/dead.json', req('dead', { pid: DEAD }))
+  write(root, '.builder/verify/requests/junk.json', '{ not json')
+  write(root, '.builder/verify/requests/nan.json', req('nan', { startedAt: 'soon' }))
+  write(root, '.builder/verify/requests/old.json', req('old', {}), NOW - 2 * BOOT_GAP)
+  write(root, '.builder/verify/requests/ok.json', req('ok', {}))
+  assert.equal(render({ cwd: root, now: NOW, bootTime: NOW - BOOT_GAP }), 'builder · verify commit b/ok ⏱ 1m')
 })
 
 test('from inside a fleet worktree (.git is a file) it reads the main checkout', () => {
