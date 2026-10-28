@@ -10,7 +10,7 @@ function fakes() {
   const psql = (url, s) => {
     sql.push(s)
     if (/SELECT 1 FROM pg_database WHERE datname = '(.+)'/.test(s)) return dbs.has(RegExp.$1) ? '1' : ''
-    if (/SELECT datname/.test(s)) return [...dbs].filter((d) => /_vt_/.test(d) && !/_vt_tpl_/.test(d)).join('\n')
+    if (/SELECT datname/.test(s)) return [...dbs].join('\n')
     let m
     if ((m = /CREATE DATABASE "([^"]+)"/.exec(s))) dbs.add(m[1])
     if ((m = /DROP DATABASE IF EXISTS "([^"]+)"/.exec(s))) dbs.delete(m[1])
@@ -83,7 +83,30 @@ test('dropOrphans drops leftover clones, keeps templates', () => {
 })
 
 test('freePort gives distinct usable ports', async () => {
-  const a = await freePort()
-  const b = await freePort()
+  const [a, b] = await Promise.all([freePort(), freePort()])
   assert.ok(a > 0 && b > 0)
+  assert.notEqual(a, b)
+})
+
+test('dropOrphans matches the base name literally and clears crashed template builds', () => {
+  const f = fakes()
+  const v = V({ db: { ...V().db, url: 'postgres://u:p@localhost:5432/my_app' } })
+  for (const d of ['myXapp_vt_1', 'my_app_vt_1', 'my_app_vt_tpl_abc_building', 'my_app_vt_tpl_abc']) f.dbs.add(d)
+  const pool = createPool(v, { sh: f.sh, psql: f.psql })
+  assert.deepEqual(pool.dropOrphans().sort(), ['my_app_vt_1', 'my_app_vt_tpl_abc_building'])
+  assert.deepEqual([...f.dbs].sort(), ['myXapp_vt_1', 'my_app_vt_tpl_abc'])
+})
+
+test('a database name that is not a plain identifier is refused', () => {
+  const f = fakes()
+  const bad = V({ db: { ...V().db, url: 'postgres://u:p@localhost:5432/ap%22p' } })
+  assert.throws(() => createPool(bad, { sh: f.sh, psql: f.psql }), /verify\.db\.url: the database name "ap"p" must be letters, digits or _ \(at most 30\)/)
+})
+
+test('db capacity holds under concurrent leases', async () => {
+  const f = fakes()
+  const v = V({ db: { ...V().db, max: 1 } })
+  const pool = createPool(v, { sh: f.sh, psql: f.psql })
+  const r = await Promise.all([pool.lease([{ kind: 'db' }], { template: 't' }), pool.lease([{ kind: 'db' }], { template: 't' })])
+  assert.equal(r.filter(Boolean).length, 1)
 })
