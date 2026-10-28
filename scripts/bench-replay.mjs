@@ -28,7 +28,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { git } from './verify/git.mjs'
 import { verifyDir } from './verify/ledger.mjs'
-import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry } from './bench-replay-core.mjs'
+import { featureRange, phaseBoundaries, controlPoints, touchedApps, normPath, summarize, isInside, saveCarry, seedCarry, verdictOf } from './bench-replay-core.mjs'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const argv = process.argv.slice(2)
@@ -57,7 +57,7 @@ const rows = readFileSync(join(repo, '.builder', 'fleet', 'archive.jsonl'), 'utf
 const timed = (cmd, args, cwd) => {
   const t0 = Date.now()
   const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL' })
-  return { ms: Date.now() - t0, status: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.slice(-4000) }
+  return { ms: Date.now() - t0, status: r.status, stdout: r.stdout ?? '', out: `${r.stdout ?? ''}${r.stderr ?? ''}`.slice(-4000) }
 }
 const verify = (cwd, ...a) => timed(process.execPath, [join(HERE, 'verify', 'verify.mjs'), ...a], cwd)
 // Exits that carry a verdict: green, red, env-broken, conflict, cancelled. 75 means still going; anything else is terminal and has none.
@@ -75,11 +75,8 @@ const requestAndWait = (wt, tier, extra = []) => {
       return { ms: Date.now() - t0, error: `no verdict after ${Math.round(maxWaitMs / 60000)}m` }
     }
     if (!VERDICT_EXIT.has(w.status)) return { ms: Date.now() - t0, error: `wait exited ${w.status}: ${w.out.trim().split('\n').pop()}` }
-    try {
-      return { ms: Date.now() - t0, verdict: JSON.parse(w.out.slice(w.out.indexOf('{'))) }
-    } catch {
-      return { ms: Date.now() - t0, error: 'verdict was not JSON' }
-    }
+    const verdict = verdictOf(w.stdout)
+    return verdict ? { ms: Date.now() - t0, verdict } : { ms: Date.now() - t0, error: `verdict was not JSON: ${w.out.trim().split('\n').pop()}` }
   }
 }
 
