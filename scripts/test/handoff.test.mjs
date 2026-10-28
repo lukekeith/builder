@@ -16,15 +16,15 @@ function walkReady() {
   git(r.root, 'add', '-A')
   git(r.root, 'commit', '-qm', 'chore(note-tags): note-tags — phases closed, awaiting the walk lane')
   const head = git(r.root, 'rev-parse', '--short', 'HEAD')
-  mkdirSync(join(r.root, '.builder', 'gates'), { recursive: true })
-  writeFileSync(join(r.root, '.builder', 'gates', 'fast-notes.json'), JSON.stringify({ hash: 'x', head, when: '2026-10-23T13:47:00.000Z', exit: 0, lines: ['✓ npm test (16s)'] }))
+  mkdirSync(join(r.root, '.builder', 'verify', 'requests'), { recursive: true })
+  writeFileSync(join(r.root, '.builder', 'verify', 'requests', 'c1.json'), JSON.stringify({ id: 'c1', state: 'done', tier: 'commit', branch: 'builder/note-tags', sha: head, createdAt: '2026-10-23T13:47:00.000Z', verdict: { status: 'green', sha: head, regressions: [], flakes: [], known: [] } }))
   mkdirSync(WS(r), { recursive: true })
   writeFileSync(join(WS(r), 'progress.md'), '# builder ledger — plan: docs/features/note-tags/PLAN.md\nTask 3: complete (commits a..b, no task review (tests: review=end))\nRuling: list --tag a --tag Bad reports invalid tag — both exit 1 — costs a one-line reorder\nTask 2: minor (deferred): show calls tagsOf twice\n')
   assert.equal(run('walk-script.mjs', [r.rel], { cwd: r.root }).status, 0)
   return { ...r, head }
 }
 
-test('handoff write: the build lane\'s end state — state, head, gates per app, contract, walk.md, open items, the walk lane\'s route', () => {
+test('handoff write: the build lane\'s end state — state, head, verifier verdicts, contract, walk.md, open items, the walk lane\'s route', () => {
   const r = walkReady()
   const out = run('handoff.mjs', ['write', r.rel, '--note', 'Deep set: none configured — nothing ran.'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
@@ -35,8 +35,9 @@ test('handoff write: the build lane\'s end state — state, head, gates per app,
   assert.match(h, /^ready: pending "dev env \(fleet walk lane\)"$/m)
   assert.match(h, /^contract: frozen 2026-10-23$/m)
   assert.match(h, /^tests: slice=own end=risk review=end$/m)
-  assert.match(h, new RegExp(`- notes — fast: PASS at ${r.head} \\(2026-10-23T13:47:00.000Z\\) — no code change since`))
-  assert.match(h, /- deep set: none configured/)
+  assert.match(h, /## Verifier \(the latest verdict per tier\)/)
+  assert.match(h, new RegExp(`^- commit: GREEN at ${r.head.slice(0, 7)} `, 'm'))
+  assert.match(h, /^- merge: no verdict yet$/m)
   assert.match(h, /walk\.md — 7 per-app items \(7 \[risk\]\) · /)
   assert.match(h, /Ruling: list --tag a --tag Bad reports invalid tag/)
   assert.match(h, /Task 2: minor \(deferred\): show calls tagsOf twice/)

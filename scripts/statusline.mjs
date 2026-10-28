@@ -3,7 +3,7 @@
  * statusline — builder's segment of Claude Code's status line (through the launcher
  * /builder:statusline installs, which puts it after the previous status line on the same row):
  * `builder` and one bar of overall progress, then fleet features with their step, a build in the
- * chat whose ledger moved in the last 5 minutes, and running gates and jobs. A feature the fleet
+ * chat whose ledger moved in the last 5 minutes, and the verifier's running requests. A feature the fleet
  * parked or failed reads `⛔ <feature>: <why>` — and stays, from fleet.json, after the fleet has
  * exited, until a new run changes the row; short of room the parks fold into `⛔ 2 parked —
  * /builder:fleet:status`. A running feature with no commit or ledger tick for 45 minutes gets a ⚠.
@@ -166,18 +166,15 @@ function buildItems(main, registry, now, skip) {
   return { items: out, pcts }
 }
 
-function gateItems(root, now, bootTime) {
-  const out = []
-  const marker = join(root, '.builder', 'gates', 'running.json')
-  const g = readJson(marker)
-  if (g && current(marker, bootTime) && alive(g.pid)) out.push(`gate ${g.sets} ⏱ ${elapsed(now - Date.parse(g.startedAt))}`)
-  const jobs = join(root, '.builder', 'jobs')
-  for (const f of list(jobs).filter((f) => f.endsWith('.pid')).sort()) {
-    const name = f.slice(0, -4)
-    if (existsSync(join(jobs, `${name}.exit`)) || !current(join(jobs, f), bootTime) || !alive(read(join(jobs, f)))) continue
-    out.push(`job ${name} ⏱ ${elapsed(now - statSync(join(jobs, f)).mtimeMs)}`)
-  }
-  return out
+/** One `verify <tier> <branch> ⏱ <elapsed>` per request the verifier is running right now. */
+export function verifyItems(main, now) {
+  const dir = join(main, '.builder', 'verify', 'requests')
+  return list(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => readJson(join(dir, f)))
+    .filter((r) => r?.state === 'running' && r.startedAt && alive(r.pid))
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    .map((r) => `verify ${r.tier} ${r.branch} ⏱ ${elapsed(now - Date.parse(r.startedAt))}`)
 }
 
 export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now() - uptime() * 1000 }) {
@@ -187,15 +184,14 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     const cfg = loadConfig(roots.main)
     if (!cfg.ok) return ''
     const fleet = fleetItems(roots.main, cfg.registry, bootTime, now)
-    const gateRoots = [...new Set([roots.root, roots.main, ...(fleet?.worktrees ?? [])])]
     const builds = buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set())
-    const rest = [...builds.items, ...gateRoots.flatMap((r) => gateItems(r, now, bootTime))]
+    const rest = [...builds.items, ...verifyItems(roots.main, now)]
     const [lead, ...running] = fleet?.items ?? []
     const stops = fleet?.stops ?? []
     const landed = landedItems(fleet?.landed ?? [])
     if (!lead && !running.length && !rest.length && !stops.length && !landed.length) return ''
     // One bar for everything with progress — the mean of the fleet's features and in-chat builds.
-    // Gates and jobs alone have none, and get the name without a bar.
+    // Verifier runs alone have none, and get the name without a bar.
     const pcts = [...(fleet?.pcts ?? []), ...builds.pcts]
     const head = pcts.length ? `builder ${progressBar(pcts.reduce((a, b) => a + b, 0) / pcts.length)}` : 'builder'
     // The parks get their room first, after `builder` and the fleet's count; the rest fit after them.

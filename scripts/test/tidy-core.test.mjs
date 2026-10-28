@@ -179,3 +179,8 @@ test('a worktree kept for your walk is kept, never in the safe batch', () => {
   assert.match(w.why, /waiting for your walk/)
   assert.match(w.next, /\/builder:resume/)
 })
+
+test('uncommittedWork no longer needs gates-core', () => {
+  const src = readFileSync(new URL('../tidy-core.mjs', import.meta.url), 'utf8')
+  assert.doesNotMatch(src, /gates-core/)
+})
