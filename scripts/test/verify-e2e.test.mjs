@@ -14,6 +14,7 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', 'verify', 've
 const cliEnv = () => {
   const env = { ...process.env, BUILDER_VERIFY_IDLE_MS: '1500' }
   delete env.PORT
+  delete env.PORT_B
   return env
 }
 const cli = (cwd, ...a) => spawnSync('node', [CLIENT, ...a], { cwd, encoding: 'utf8', env: cliEnv() })
