@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpa
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git, mainRoot } from '../verify/git.mjs'
-import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, commitExists, checkoutsDir } from '../verify/checkouts.mjs'
+import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, commitExists, checkoutsDir, copyLocal } from '../verify/checkouts.mjs'
 
 function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vco-')))
@@ -159,4 +159,31 @@ test('land refuses a target checked out in a linked worktree — moving it there
   assert.equal(r.ok, false)
   assert.match(r.reason, new RegExp(`main is checked out in ${wt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   assert.equal(git(root, 'rev-parse', 'main'), base)
+})
+
+test('copyLocal brings agent_walk.copy files in: missing skipped, tracked never overwritten, directories whole, redone after a clean', () => {
+  const root = repo()
+  writeFileSync(join(root, '.gitignore'), 'ignored.env\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'ignore')
+  writeFileSync(join(root, 'a.txt'), 'edited locally\n') // tracked, differs from the commit
+  writeFileSync(join(root, 'ignored.env'), 'K=1\n')
+  writeFileSync(join(root, 'plain.env'), 'P=1\n') // untracked and not ignored: `clean` takes it
+  mkdirSync(join(root, 'certs/sub'), { recursive: true })
+  writeFileSync(join(root, 'certs/sub/c.pem'), 'pem')
+  const co = ensureCheckout(root, 0)
+  const rels = ['a.txt', 'ignored.env', 'plain.env', 'nope.bin', 'certs']
+  const sha = git(root, 'rev-parse', 'HEAD')
+  checkoutAt(co, sha)
+  copyLocal(root, co, rels)
+  assert.equal(readFileSync(join(co, 'a.txt'), 'utf8'), 'one\n')
+  assert.equal(readFileSync(join(co, 'ignored.env'), 'utf8'), 'K=1\n')
+  assert.equal(readFileSync(join(co, 'certs/sub/c.pem'), 'utf8'), 'pem')
+  assert.equal(existsSync(join(co, 'nope.bin')), false)
+  checkoutAt(co, sha)
+  assert.equal(existsSync(join(co, 'ignored.env')), true)
+  assert.equal(existsSync(join(co, 'plain.env')), false)
+  copyLocal(root, co, rels)
+  assert.equal(readFileSync(join(co, 'plain.env'), 'utf8'), 'P=1\n')
+  copyLocal(root, co, [])
 })

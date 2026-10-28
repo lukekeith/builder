@@ -2,8 +2,8 @@
  * Run checkouts — the clean copies a worker tests, never the agent's live worktree (spec §The
  * units) — and landing: the merge queue fast-forwards the target to exactly the commit it tested.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
 import { git, tryGit, sh } from './git.mjs'
 import { checkedOutBranch } from '../config.mjs'
@@ -32,6 +32,22 @@ export function checkoutAt(path, sha) {
   git(path, 'checkout', '-q', '--detach', '--force', sha)
   git(path, 'clean', '-fdq')
   return git(path, 'rev-parse', 'HEAD')
+}
+
+/**
+ * agent_walk.copy's untracked files (a .env, certs, a local binary) from the main checkout into a
+ * test checkout, as the fleet gives its worktrees — else tests that need them fail on branch and
+ * target alike and are filed as known. A missing source is skipped; a file tracked at the
+ * checkout's HEAD is never overwritten. Run after every move: `clean` removes what isn't ignored.
+ */
+export function copyLocal(root, path, rels) {
+  if (!rels?.length) return
+  const tracked = new Set((tryGit(path, 'ls-files', '-z') ?? '').split('\0').filter(Boolean))
+  for (const rel of rels) {
+    const src = join(root, rel)
+    if (!existsSync(src)) continue
+    cpSync(src, join(path, rel), { recursive: true, filter: (from) => statSync(from).isDirectory() || !tracked.has(relative(root, from)) })
+  }
 }
 
 /** Merge `branchSha` onto `targetSha`. Only unmerged files make a conflict; any other failure throws with git's words. */
