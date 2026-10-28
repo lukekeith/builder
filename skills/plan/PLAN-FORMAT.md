@@ -1,19 +1,34 @@
 # PLAN.md — the format
 
-Adapted from superpowers' `writing-plans` (MIT — see
+Adapted from superpowers' `writing-plans`, as of 7.0.0 (MIT — see
 [LICENSE-THIRD-PARTY.md](../../LICENSE-THIRD-PARTY.md)). `builder:plan` derives the phases; this
 file is the shape it writes them in, and the rules that keep the result executable.
 
 **Contents:** §File structure, before tasks · §Task right-sizing · §Bite-sized steps · §The header · §Task structure · §No placeholders · §Self-review
 
-**Write the plan assuming the engineer has zero context for this codebase and questionable taste.**
-Document everything they need: which files to touch, the code, the tests, the command to run, how to
-tell it worked. Assume a skilled developer who knows almost nothing about this toolset or problem
-domain, and who does not know good test design well. DRY. YAGNI. TDD. Frequent commits.
+**Write the plan for an engineer who has not seen this codebase or this spec.** Assume they write
+idiomatic code once they know the exact interface and the exact test, and that they make a reasonable
+choice wherever the plan leaves one open. What they cannot know is what you decided: which files,
+which names and signatures, which values from the spec, which tests prove each task. Document those.
+DRY. YAGNI. TDD. Frequent commits.
 
-That assumption is not pessimism — it is literally true here. Each task is executed by a **fresh
-subagent that sees only its own task block plus its brief**. It cannot read the rest of the plan, it
-has never seen this repo, and it will not ask you what you meant unless you left it no choice.
+That is literally true here. Each task is executed by a **fresh subagent that sees only its own task
+block plus its brief**. It cannot read the rest of the plan, it has never seen this repo, and it will
+not ask you what you meant unless you left it no choice.
+
+**A step is unambiguous, not complete.** It is done when the implementer can write exactly one
+reasonable thing from it. Each kind of step carries what makes it unambiguous and nothing more:
+
+- **A test step:** the test's name and its assertions, **as code**, with the spec's exact values in
+  them. Kept in full — it is the contract, and `plan-slices.mjs` counts a slice's tests from the
+  `it(` / `test(` lines inside the fences for the go-ahead.
+- **A code step:** the exact signature (name, parameters, return type), the file it lives in, and the
+  values the spec pins. **The implementer writes the body.** A body appears only for an algorithm the
+  signature and tests do not determine, or for exact copy the spec fixes (a message, a migration, a
+  config value).
+- **A verification step:** the command to run and the output that means it passed.
+- **A reference to another task:** that task's **Interfaces** block says what to use; the plan does
+  not repeat that task's code.
 
 ---
 
@@ -125,11 +140,8 @@ it('does the specific thing', () => {
 
 - [ ] **Step 2: Run it and watch it fail** — `<command>` → FAIL, "fn is not defined"
 
-- [ ] **Step 3: Write the minimal implementation**
-
-```ts
-export const fn = (input: In): Out => expected
-```
+- [ ] **Step 3: Implement `fn(input: In): Out` in `exact/path/to/file.ts`** — <one line on the
+  approach, only where the signature and the test leave a choice>
 
 - [ ] **Step 4: Run it and watch it pass** — `<command>` → PASS
 
@@ -147,20 +159,19 @@ to the earlier task's implementer; anything below the final block is handed to t
 live in the `## Phases` table and on each task's `Phase:` line. A heading written only as an example
 goes inside a fence.
 
-**No line budget.** `PLAN.md` carries code and is deleted at sign-off, so its length taxes only the
-go-ahead read.
-
 ## No placeholders
 
-Every step contains the actual content an engineer needs. These are **plan failures** — never write
-them:
+Every step decides something, and no step transcribes. These are **plan failures** — never write them:
 
 - "TBD", "TODO", "implement later", "fill in details"
 - "Add appropriate error handling" / "add validation" / "handle edge cases"
-- "Write tests for the above" — without the actual test code
-- "Similar to Task N" — repeat the code; the implementer never sees Task N
-- steps describing what to do without showing how (code blocks are required for code steps)
+- "Write tests for the above" — without the test's name and assertions
+- "Similar to Task N" — name the Interfaces entry you mean; the implementer never sees Task N
+- a code step with no signature or file, so the implementer must guess the name
 - references to types, functions or methods not defined in any task
+
+The opposite failure is a function body the signature and tests already determine: that is the
+plan writing the code instead.
 
 ## Self-review
 
@@ -168,13 +179,19 @@ After writing the plan, read the SPEC with fresh eyes and check the plan against
 checklist you run yourself — not a subagent dispatch.
 
 1. **Spec coverage.** Skim each SPEC section. Can you point to a task that implements it? List gaps.
-2. **Placeholder scan.** Search for every red flag above. Fix them.
+2. **Step scan.** Each step lets the implementer write exactly one reasonable thing, and carries no
+   more: a line that decides nothing is a gap (the red flags above); a body the signature and tests
+   already determine is a transcript. Fix both.
 3. **Type consistency.** Do the types, signatures and property names in later tasks match what
    earlier tasks defined? A function called `clearLayers()` in Task 3 and `clearFullLayers()` in
    Task 7 is a bug.
 4. **One app per task.** No task block's Files cross an app boundary; every block has an `App:` line
    that matches its phase's row.
 5. **One app per phase.** Every `## Phases` row names one app, and every task in it is that app's.
+6. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
+   is a transcript of the program. If code blocks are most of the document, replace bodies with
+   signatures, test names and assertions, and re-check each step is still unambiguous. A guide, not a
+   hard limit.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
 gets a task.

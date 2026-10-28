@@ -52,7 +52,7 @@ reads it at the go-ahead, a reviewer sees it in the PR, and the sign-off condens
 there. In short: the header (Goal · Architecture · Tech Stack · Spec) · `## Global Constraints`
 copied verbatim from the config · the `## Phases` table (`Phase · App · Tasks · Goal`) ·
 then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, **Files**, **Interfaces** and
-bite-sized `- [ ]` steps with the actual code, the run command and the commit.
+bite-sized `- [ ]` steps with the test code, the signatures and the values the spec pins, the run command and the commit.
 
 - **Task numbering runs across the whole plan** — `task-brief` keys on the literal `Task N` heading.
 - **Every task names the recipe skill to read FIRST** on its `Recipe:` line (the config's §Companion
