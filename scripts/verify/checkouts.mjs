@@ -30,13 +30,21 @@ export function checkoutAt(path, sha) {
   return git(path, 'rev-parse', 'HEAD')
 }
 
+/** Merge `branchSha` onto `targetSha`. Only unmerged files make a conflict; any other failure throws with git's words. */
 export function mergedCheckout(path, targetSha, branchSha, message) {
   checkoutAt(path, targetSha)
-  if (tryGit(path, 'merge', '--no-ff', '-m', message, branchSha) !== null) return { sha: git(path, 'rev-parse', 'HEAD') }
-  const files = (tryGit(path, 'diff', '--name-only', '--diff-filter=U') ?? '').split('\n').filter(Boolean)
-  tryGit(path, 'merge', '--abort')
-  return { conflict: true, files }
+  try {
+    git(path, 'merge', '--no-ff', '-m', message, branchSha)
+    return { sha: git(path, 'rev-parse', 'HEAD') }
+  } catch (err) {
+    const files = (tryGit(path, 'diff', '--name-only', '--diff-filter=U') ?? '').split('\n').filter(Boolean)
+    tryGit(path, 'merge', '--abort')
+    if (!files.length) throw new Error(`merge of ${branchSha} failed: ${gitWords(err)}`)
+    return { conflict: true, files }
+  }
 }
+
+const gitWords = (err) => String(err.stderr || err.message).trim()
 
 /** `verify.setup` in this checkout when its inputs (lockfiles by default) changed since it last ran. */
 export function setupIfNeeded(path, verify, run = (cmd) => sh(cmd, { cwd: path })) {
@@ -51,12 +59,16 @@ export function setupIfNeeded(path, verify, run = (cmd) => sh(cmd, { cwd: path }
 
 export const changedFiles = (root, from, to) => (tryGit(root, 'diff', '--name-only', from, to) ?? '').split('\n').filter(Boolean)
 
-/** Fast-forward `target` to `tested` only if it still points at `expectedOld`. */
+/** Fast-forward `target` to `tested` only if it still points at `expectedOld` and `tested` descends from it. */
 export function land(root, target, tested, expectedOld) {
   const cur = tryGit(root, 'rev-parse', `refs/heads/${target}`)
   if (cur !== expectedOld) return { ok: false, reason: `${target} moved (${cur?.slice(0, 7)} is not ${expectedOld.slice(0, 7)})` }
-  if (checkedOutBranch(root) === target) {
-    return tryGit(root, 'merge', '--ff-only', '--quiet', tested) === null ? { ok: false, reason: `merge --ff-only refused in the main checkout — uncommitted changes there?` } : { ok: true }
+  if (tryGit(root, 'merge-base', '--is-ancestor', expectedOld, tested) === null) return { ok: false, reason: `not a fast-forward of ${target}` }
+  try {
+    if (checkedOutBranch(root) === target) git(root, 'merge', '--ff-only', '--quiet', tested)
+    else git(root, 'update-ref', `refs/heads/${target}`, tested, expectedOld)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, reason: `${target} moved or refused the fast-forward: ${gitWords(err)}` }
   }
-  return tryGit(root, 'update-ref', `refs/heads/${target}`, tested, expectedOld) === null ? { ok: false, reason: `${target} moved` } : { ok: true }
 }
