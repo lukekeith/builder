@@ -11,7 +11,7 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
          silently inherits the session's most expensive one]
   prompt: |
     You are reviewing one task's implementation: first whether it matches its
-    requirements, then whether it is well-built. This is a task-scoped gate,
+    requirements, then whether it is well-built. This is a task-scoped check,
     not a merge review — a broad whole-branch review happens separately after
     all tasks are complete.
 
@@ -56,7 +56,7 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
 
     🔴 **A change outside [APP] is a finding.** This task was scoped to one
     app; a hunk touching another one is a Critical finding regardless of its
-    quality, because the phase's gates only cover [APP].
+    quality, because the phase is [APP]'s alone.
 
     Your review is read-only on this checkout. Do not mutate the working tree,
     the index, HEAD, or branch state in any way.
