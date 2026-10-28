@@ -1031,10 +1031,12 @@ async function mergeThroughVerifier(feature, f) {
   }
   // The merge tier tests the branch as its worktree holds it; without one there is nothing to request on.
   if (!f.worktree || !existsSync(f.worktree)) return `shipped, but its worktree is gone, so the merge tier can't run on ${f.branch} — next: /builder:agent to recreate it and land it`
-  // After the target moved: the migrations note, or the working tree's migrations applied.
+  // After the target moved: the migrations note, or the working tree's migrations applied. The
+  // branch is read again now — the merge-tier wait takes minutes, and the human may have switched.
   const landed = (before, sha) => {
-    if (here === TARGET) return migrateAfterLanding(feature, before, 'HEAD')
-    addNote(`${feature} merged into ${TARGET} while ${here ?? 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
+    const now = tryGit(['branch', '--show-current'])
+    if (now === TARGET) return migrateAfterLanding(feature, before, 'HEAD')
+    addNote(`${feature} merged into ${TARGET} while ${now || 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
     const added = newMigrations(before, sha)
     if (added.length) addNote(`${feature} brought ${added.length} new migration${added.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
   }
