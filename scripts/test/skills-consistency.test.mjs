@@ -303,7 +303,7 @@ test('the go-ahead takes a test plan and launches the fleet; resume routes an ag
   assert.match(plan, /fleet\.mjs <feature> --detach --into <target>/)
   assert.match(plan, /Walk it yourself before\s+it lands\?/)
   assert.match(plan, /\/builder:init --update/)
-  assert.match(plan, /tests: slice=<v> end=<v> review=<v>/)
+  assert.match(plan, /tests: walk=<v> review=<v>/)
   assert.match(plan, /chore\(<ticket-or-feature>\): <feature> — go-ahead \(<test plan>\)/)
   // No `2. agent` footer: with agent_walk the fleet launches; without it agents can't take it.
   assert.doesNotMatch(plan, /2\. agent/)
@@ -322,7 +322,7 @@ test('agents get the right target, no hand build in agent_walk projects, and the
   assert.match(plan, /`<merge_into> \(Recommended\)`/)
   // A feature branch the human has checked out is the recommendation, ahead of merge_into.
   assert.match(plan, /the recommendation is \*\*the branch checked out here\*\* when it\n  is not `base_branch` and not a `builder\/\*` branch/)
-  assert.match(plan, /The tool.s \*Other\* on any of the three testing questions is the rest of the levers/)
+  assert.match(plan, /The tool.s \*Other\* on either question is the rest of the levers/)
   // I-2: planned + no go-ahead in an agent_walk project goes to plan's go-ahead, never a hand build.
   const resume = resumeAll()
   assert.match(resume, /^\| `state: planned` \*\*and\*\* `go-ahead: none` \*\*and\*\* the config has an `agent_walk:` block[^\n]*\/builder:plan --path <folder>/m)
@@ -384,7 +384,7 @@ test('6.0 levers: agent-walk names walk · human', () => {
   assert.match(walk, /🤖 AGENT SIGNED OFF — no walk \(tests: walk=none\) — not human-tested/)
 })
 
-test('6.0 levers: status, help and the guide name walk · review', { todo: 'Task 19' }, () => {
+test('6.0 levers: status, help and the guide name walk · review', () => {
   assert.match(read('skills/status/SKILL.md'), /\*\*Tests\*\* column[\s\S]{0,80}none · end/)
   for (const f of ['skills/help/SKILL.md', 'docs/guide.md']) {
     const s = read(f)
@@ -490,13 +490,11 @@ test('4.12.0: the go-ahead shows slices and a test plan you can change', () => {
   assert.match(g, /^B\. Change the test plan/m)
   assert.match(g, /^C\. Keep planning/m)
   assert.match(g, /"go" is A/)
-  // The three questions, each recommendation first.
-  assert.match(g, /\*\*Testing while building — after each slice:\*\* \*\*Its own tests\*\*/)
-  assert.match(g, /\*\*Testing at the end — once every slice is built:\*\* \*\*The touched apps' suites, once\*\*/)
+  // The two questions, each recommendation first.
+  assert.match(g, /\*\*Agent walk:\*\* \*\*None\*\*/)
   assert.match(g, /\*\*Review:\*\* \*\*Once at the end\*\*/)
-  // The floors are never offered off.
-  assert.match(g, /\*\*The floors are not options\*\*/)
-  assert.match(g, /the type-check of every touched app before\s+the work lands, and the final whole-branch review/)
+  // The floor is never offered off.
+  assert.match(g, /\*\*The floor is not an option\*\*[\s\S]{0,200}the final whole-branch review/)
   // Build reads the levers on every build.
   const build = read('skills/build/SKILL.md')
   assert.match(build, /^## The test plan — read on every build$/m)
@@ -550,7 +548,7 @@ test('4.10.2: /builder:agent never offers in-session or shared-branch work, and 
   assert.match(agent, /\*\*`inSession: true`\*\*/)
   assert.match(agent, /being built in a session; finish it there/)
   assert.match(agent, /non-empty `sharedWith`/)
-  assert.match(agent, /built in a session, not tested yet · agents only walk it, verify and\s+merge it/)
+  assert.match(agent, /built in a session, not tested yet · agents walk it, verify and\s+land it/)
   assert.match(agent, /features not built yet first, then part-built, then built/)
 })
 

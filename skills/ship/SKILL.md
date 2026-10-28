@@ -149,7 +149,7 @@ next feature pays it again. Read what it cost: `## Fixes` rows, `PARKED.md` when
 ledger's fix rounds (`<WS>/progress.md` — the ship call removes the workspace, so read it first) and
 §Findings rows marked `build-time risk`. **A lesson qualifies only when all three hold:**
 
-- it cost this feature a fix round, a red gate, a failed walk or a park;
+- it cost this feature a fix round, a red verdict, a failed walk or a park;
 - it is about the repo, not this feature — a test that needs a service started, a convention the code
   enforces, a command that must run first — so the next feature here would hit it too;
 - neither §Standing traps nor §House rules already says it.

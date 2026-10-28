@@ -17,9 +17,10 @@ The work is `scripts/fleet.mjs`; this skill checks, confirms once, launches it a
 **What it will do, per spec:** a worktree at `<agent_walk.worktrees>/<feature>` on a new branch
 `builder/<feature>` (or the branch it is already underway on); `claude -p "/builder:resume --path <spec> --agent-walk"` runs until the feature
 is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
-product decision open or the config reserves a step to the human, **parked** with that decision named. Then the fleet **merges
-it into the branch checked out here** — one `--no-ff` merge commit per feature, `merge(<feature>):
-agent-verified, not human-tested` — and removes its worktree and `builder/` branch. **Migrations
+product decision open or the config reserves a step to the human, **parked** with that decision named. Then the verifier's **merge
+queue** lands it on the branch checked out here — the whole suite on the feature merged onto it, then
+a fast-forward to exactly that tested merge commit (`merge(<feature>): agent-verified, not
+human-tested`) — and the fleet removes its worktree and `builder/` branch. **Migrations
 that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge
 into the branch checked out here the fleet runs the config's §Walk readiness `apply:` then
 `regenerate:` in this checkout when `apply_mode: agent` and every new migration is additive; under
@@ -47,18 +48,14 @@ worktree is brought up to the target first**: before each build- or ship-lane ru
 walk env starts (at walk readiness and at verify — never between readiness and the walk), the fleet
 merges the target branch into the worktree, so a feature builds on what the others have landed and
 the ship step's own merge finds nothing new. **A conflict there goes to an agent**: the merge is left
-in progress and a run of its own resolves it — both sides kept, the touched apps' gates green, the
+in progress and a run of its own resolves it — both sides kept, the phase tier green, the
 merge committed — and the feature carries on; only a conflict two such runs could not resolve parks.
-Before merging a shipped feature into the target the fleet brings the target into its branch the
-same way, so the merge into the target never conflicts, and it lands even if you have switched this
-checkout to another branch meanwhile (the merge commit is written straight onto the target). When that merge brings
-new commits, `agent_walk.sync` runs in the worktree — the install and the test-DB migration a merged-in
+The merge tier merges the target in itself; a conflict goes to an agent in the feature's worktree,
+and a target that moved during the run is tested again. When a merge into the worktree brings new
+commits, `agent_walk.sync` runs in the worktree — the install and the test-DB migration a merged-in
 package or migration needs (without it, a walk env once failed on a package the merge had just added).
-**Builds run in parallel safely when each worktree has its own test database**: `agent_walk.worktree_env`
-(`TEST_DATABASE_URL=…_{feature}`, say) reaches every run and `setup` in a worktree, `{feature}` filled
-in, and `setup` can create that database. With it, `parallel: 3`; without it, suites that share one
-database must run with `parallel: 1`. If the config has `@delta` gates, the fleet measures their
-baselines on the target branch at start (`gate.mjs --baseline`, log in `.builder/fleet/logs/`).
+**Builds run in parallel safely**: tests run in the verifier, each in its own database cloned from a
+template (`verify.db`), never in a build lane. `parallel: 3` is the default.
 
 **A program chain runs to the end in one fleet run.** A child whose PROGRAM §Children *Depends on*
 entries haven't shipped **waits** (`⏳ <child> → <branch>, once <dep> merges`): it gets no worktree
@@ -99,8 +96,8 @@ Then, above the question, **one line per spec** — REFERENCE §The review at th
 for users, in plain words from its SPEC §Idea, and its test plan:
 
 ~~~
-cert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests own · touched · end
-cert-history  — owners see every change made to a certificate, newest first (web) · tests own · touched · end
+cert-tags     — owners tag certificates and filter the list by tag (web, mobile) · tests none · end
+cert-history  — owners see every change made to a certificate, newest first (web) · tests none · end
 ~~~
 
 Never a list of folder paths: the human is confirming what the agents will build.
@@ -152,8 +149,7 @@ walk — up to `agent_walk.batch` (default 8; 1 walks one feature at a time, as 
 branches onto the target in a walk worktree of its own (`<worktrees>/_walk`, branch `builder/_walk`,
 never merged, removed when the fleet ends), brings the env up **once** (`reset` once), and runs one
 session there: readiness for the batch, one walker going screen by screen across every feature
-(agent-walk §Batched walks), each verdict written in that feature's own worktree. The deep set's
-`@walk` lines then run once against that env, into each feature's `walk-gates.md`. A feature that
+(agent-walk §Batched walks), each verdict written in that feature's own worktree. A feature that
 conflicts with the others waits for the next batch. The walk lane does nothing else: a walk's fixes,
 verify and ship run in the parallel lanes with no env, and a fixed feature rejoins a later batch,
 which re-walks only what its fix changed. A batch whose env won't come up falls back to one walk
@@ -194,7 +190,7 @@ When asked after the fleet has ended (`/builder:fleet:status` shows no row in fl
   worktree has the investigation — what was tried, the evidence, where to dig; relay the why and the
   next step, and point at the record. Naming it again (`/builder:agent`, or `/builder:fleet <feature>`) unparks and retries
   it — answer what it asks in the SPEC first when the next step says so. A park whose why is not a
-  decision the spec left open or a step the config reserves — a conflict, a gate, a walk — is work
+  decision the spec left open or a step the config reserves — a conflict, a red verdict, a walk — is work
   the agents should have done; retrying it is the right next step.
 - **failed** — the log path.
 

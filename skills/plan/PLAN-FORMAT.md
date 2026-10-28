@@ -37,8 +37,8 @@ split only where a reviewer could meaningfully reject one task while approving i
 task ends with an independently testable deliverable.
 
 🔴 **And a task touches exactly one app.** A task whose Files cross two of the config's apps is two
-tasks, in two phases — a phase's gates are one app's commands, so a task that straddles apps cannot
-be gated.
+tasks, in two phases — the verifier waits on one app per phase, and a phase touching two apps makes
+its wait cover neither cleanly: one app's tests say nothing about the other's.
 
 ## Bite-sized steps
 
@@ -84,9 +84,9 @@ requirements implicitly include this section. Do not re-wrap the bullets.>
 
 ## Phases
 
-| Phase | App | Tasks | Goal | Gates |
-|---|---|---|---|---|
-| 1 | <app> | 1–3 | <what exists at the end of this phase that didn't before> | <that app's fast gates> |
+| Phase | App | Tasks | Goal |
+|---|---|---|---|
+| 1 | <app> | 1–3 | <what exists at the end of this phase that didn't before> |
 
 ---
 ```
@@ -94,8 +94,8 @@ requirements implicitly include this section. Do not re-wrap the bullets.>
 **The `## Phases` table is this format's one addition to the original**, and it is load-bearing: it
 is the whole phase view and the membership source for what a phase closes on — the build's, not the
 human's: at the go-ahead the human sees slices, one per `### Task N`, which `plan-slices.mjs` prints
-from this file with the test cases each block's fences carry. `App` names ONE app. `Tasks` is the task-number range. `Gates` is that app's
-fast set — never another app's, never the deep set.
+from this file with the test cases each block's fences carry. `App` names ONE app. `Tasks` is the
+task-number range.
 
 ## Task structure
 
@@ -174,7 +174,7 @@ checklist you run yourself — not a subagent dispatch.
    Task 7 is a bug.
 4. **One app per task.** No task block's Files cross an app boundary; every block has an `App:` line
    that matches its phase's row.
-5. **Gates are the right app's.** Every `## Phases` row's Gates cell is that row's app's fast set.
+5. **One app per phase.** Every `## Phases` row names one app, and every task in it is that app's.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
 gets a task.

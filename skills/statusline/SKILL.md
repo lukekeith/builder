@@ -19,8 +19,8 @@ Print its output verbatim. Then:
 
 - **on** → it shows from the next refresh (about 2 seconds) in every open session, no restart, and
   stays on across restarts until `--off`. Say what it tracks: a
-  running fleet, a build in the chat while its ledger moved in the last 5 minutes, running gates and
-  jobs, as `builder` with one bar of overall progress after their own status line — and that the
+  running fleet, a build in the chat while its ledger moved in the last 5 minutes, the verifier's
+  running requests, as `builder` with one bar of overall progress after their own status line — and that the
   segment reads `builder ░░░░░░░░░░ idle` while nothing runs.
 - **off** → their previous status line is back as it was.
 - **A refusal** (`isn't builder's`, invalid settings JSON) → relay it; never edit settings.json by
