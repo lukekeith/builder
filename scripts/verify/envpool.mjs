@@ -19,7 +19,14 @@ export const freePort = () =>
     })
   })
 
-export const psql = (url, sql) => execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+export const psql = (url, sql) => {
+  try {
+    return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  } catch (e) {
+    // psql says why on stderr; the default message is only "Command failed".
+    throw new Error(`${e.message}${e.stderr ? `\n${String(e.stderr).trim()}` : ''}`)
+  }
+}
 
 // Hash of the staged/committed content of the files a template is built from: when it changes,
 // the template is stale and a new one is built.
@@ -37,6 +44,9 @@ export function createPool(verify, { sh = shell, psql: pg = psql, ports = freePo
   const cap = { db: verify.db?.max ?? 0, simulator: verify.simulator?.max ?? 0, 'walk-env': 1, hook: verify.env?.max ?? verify.workers }
   const counted = (needs) => needs.map((n) => n.kind).filter((k) => k in used)
   const base = verify.db ? dbName(verify.db.url) : null
+  // Names go straight into SQL, so only plain identifiers; 30 keeps every derived name under
+  // Postgres's 63-byte limit.
+  if (base !== null && !/^[A-Za-z0-9_]{1,30}$/.test(base)) throw new Error(`verify.db.url: the database name "${base}" must be letters, digits or _ (at most 30)`)
   let seq = 0
 
   const pool = {
@@ -117,9 +127,10 @@ export function createPool(verify, { sh = shell, psql: pg = psql, ports = freePo
     },
     dropOrphans() {
       if (!verify.db) return []
-      const names = pg(verify.db.url, `SELECT datname FROM pg_database WHERE datname LIKE '${base}\\_vt\\_%' AND datname NOT LIKE '${base}\\_vt\\_tpl\\_%'`)
+      // Filter in JS: the base name may contain "_", a LIKE wildcard that would match other projects.
+      const names = pg(verify.db.url, 'SELECT datname FROM pg_database')
         .split('\n')
-        .filter(Boolean)
+        .filter((n) => n.startsWith(`${base}_vt_`) && (!n.startsWith(`${base}_vt_tpl_`) || n.endsWith('_building')))
       for (const n of names) pg(verify.db.url, `DROP DATABASE IF EXISTS "${n}" WITH (FORCE)`)
       return names
     },
