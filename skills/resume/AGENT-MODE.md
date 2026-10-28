@@ -18,18 +18,15 @@ config → refuse in one line naming `/builder:init --update`.
 asks hangs until it times out.
 
 🔴 **Nothing runs in the background, and no turn ends waiting.** A headless `claude -p` run **exits
-when its last turn ends**, and whatever it left running goes with it — a gate suite cut off half-way,
+when its last turn ends**, and whatever it left running goes with it — a test run cut off half-way,
 a reviewer whose verdict is never read, a feature the fleet then parks for "no progress". So under
 `--agent-walk`, in this command and every step it runs:
 
 - **Never** `run_in_background` on Bash or Agent, never `ScheduleWakeup`, `Monitor` or a cron.
   Subagents run in the foreground, several in one message when they are independent.
-- **A command that may outlast one Bash call** (a gate suite, an e2e run, a CI watch) is started with
-  `node <builder>/scripts/job.mjs start <name> -- <command>` and then waited on in the foreground,
-  **Bash timeout 600000**, with `node <builder>/scripts/job.mjs wait <name>` — again and again while it
-  prints `still running` (exit 75), until it prints an exit code. That code is the gate's result.
-  Gate suites are always `scripts/gate.mjs` (REFERENCE §Quality gates), so the command under `job.mjs`
-  is `node <builder>/scripts/gate.mjs …`, never the config's commands pasted by hand.
+- **A wait that may outlast one Bash call** is a verifier wait: `node <builder>/scripts/verify/verify.mjs
+  wait <id>` in the foreground, **Bash timeout 600000**, again while it exits 75, until it prints a
+  verdict. Nothing else waits: tests run in the verifier, not in this run.
 - **Never kill a process you did not start in this run**, and never `pkill`/`killall` by pattern:
   other fleet worktrees share this machine, and their suites look exactly like yours. Wrap a command
   of yours that may hang in `timeout`.
@@ -38,7 +35,7 @@ a reviewer whose verdict is never read, a feature the fleet then parks for "no p
   manifest the next run resumes from.
 
 🔴 **Agent mode builds to done. It does not park on work.** A spec the human approved and handed
-to agents has no reason to stop short of merged: a merge conflict, a red gate, a failing agent walk,
+to agents has no reason to stop short of merged: a merge conflict, a red verdict, a failing agent walk,
 a plan that came out large, a dev env that won't start — each of those is work, and the run does it.
 A park is reserved for **a product decision the spec leaves open that no ruling can responsibly
 settle** — which means the spec was not finished — and for the few steps the config reserves to the
@@ -73,16 +70,15 @@ Every point that would ask resolves one of two ways:
 | A plan that wants to split | build it whole — record `Ruling: built as one feature under --agent-walk — <the split it wanted>` (plan §Writing the plan's dials). Never a park |
 | An open scope question the spec can't answer, and no ruling can settle without guessing at what the product should be | park — the spec needs a human. A question a reasonable reading of the SPEC settles is a ruling, not this |
 | An audit `blocked:` finding | park, citing it — it is a spec defect (a released contract it would break, a promise it can't keep) |
-| A merge conflict · a red gate · a failed agent walk · a dev env that won't come up · a stalled step | work it — never a park. The fleet hands conflicts and env failures to a run of their own (fleet §What it will do) |
+| A merge conflict · a red verdict · a failed agent walk · a dev env that won't come up · a stalled step | work it — never a park. The fleet hands conflicts and env failures to a run of their own (fleet §What it will do) |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
 | The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
 | The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
 | The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
-| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a gate line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
-| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness, the agent walk and the `@walk` lines; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, verify and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
-| A gate run exits 3 — the walk env stopped answering after it | `blocked: "walk env needs a restart — <what broke it>"`, commit, end the run: the fleet restarts it without a reset (REFERENCE §Quality gates — the mechanism, *Gates and the walk env*) |
+| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
+| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness and the agent walk; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, verify and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
@@ -106,7 +102,7 @@ the steps run on in one turn, as below.
 **Under `--walk-lane`** (the fleet's walk lane when it owns the walk env) the run does only what needs
 the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
 or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away
-from the folder the env serves from. Never run a gate suite or a build in this run.
+from the folder the env serves from. Never run a test suite or a build in this run.
 
 **Agent mode's job is a feature merged into the target branch.** A run that stops short of that
 without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
@@ -116,36 +112,19 @@ left to the human — only `commit: manual` and `hold:` stop the feature, and th
 
 ## Ship in agent mode (`--agent-walk`)
 
-Agent mode lands every feature on **one branch: the one the human ran `/builder:agent` or
-`/builder:fleet` from**, which the fleet passes as `--into <branch>`. It opens no PR and pushes
-nothing — pushing that branch, and any PR from it, stay the human's. The feature has an agent
-sign-off (`walk: agent-pass …`, SPEC header `> 🤖 AGENT SIGNED OFF …`) and `verify: READY`. This
-runs without a question; a step that can't finish **parks** (`blocked:` + commit + end the run, per
-§`--agent-walk`). Long waits go through `scripts/job.mjs`.
+Agent mode lands every feature on **one branch** — `--into`, else the config's `merge_into`.
+The fleet requested the **merge tier** (held) when the walk began: every suite and check on the
+target merged with this branch.
 
-1. **Pre-flight.** No `--into` → park `"no target branch — run it through /builder:fleet"`.
-   `hold:` set → park (the hold is the human's).
-2. **Bring the target in.** `git merge --no-edit <into>` — a local branch, visible from this
-   worktree.
-   - Nothing new → go on.
-   - Nothing new is the normal case: the fleet merges the target into the worktree before every
-     build-lane run and before the walk env starts, so the tree already carries it.
-   - Merged cleanly with new commits (another feature landed first) → `node <builder>/scripts/gate.mjs
-     <every in-scope app>` (through `job.mjs`). The runner re-runs only the apps whose inputs the
-     merge changed and quotes the rest. Red → each failure a `- [ ] <app>: … (target sync)` under
-     `## Fixes`, fixed per §Working `## Fixes`, gates green, then on.
-   - Conflicts → **resolve them, always.** The other side is features that already merged, this side
-     a spec the human approved; both are settled, so the job is code that does both. Read this SPEC
-     and `git log -p MERGE_HEAD --not HEAD -- <file>` for each file, keep both behaviours, and where
-     they truly disagree keep the merged feature's behaviour working while still meeting this spec —
-     a ruling in the merge commit message. Then `gate.mjs` for the in-scope apps, fixes until green,
-     and commit the merge. Never `git merge --abort` to park.
-3. **Ship.** `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) — the SHIPPED
-   header naming `<into>`, `MANIFEST.md` removed, the workspace removed, a program child's line set
-   to `shipped` — one commit.
-4. **End the run.** The fleet merges this branch into `<into>` in the human's checkout (one `--no-ff`
-   merge commit per feature, `merge(<feature>): agent-verified, not human-tested`) and removes the
-   worktree. Hand off with every ruling the run made, and:
+1. **Verify** reads that verdict for HEAD (verify §The checklist item 3). Regressions are
+   `- [ ] … (merge tier, <sha>)` rows under `## Fixes`: work them (§Working `## Fixes`), commit,
+   and verify again — a new merge-tier request on the new HEAD.
+2. **Ship** — `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) condenses the
+   folder as it does after any sign-off.
+3. **End the run.** The fleet releases the held merge: the target fast-forwards to the merge
+   commit the verifier tested (`merge(<feature>): agent-verified, not human-tested`), and the
+   worktree goes. A target that moved since the run is merged and tested again by the fleet; a
+   conflict comes back to an agent in the worktree. Hand off with every ruling the run made, and:
    `📍 <feature>: shipped — merging into <into> (agent-verified, not human-tested)`.
 
 A feature that already has a PR open (a draft from an earlier version of this pipeline) ships the

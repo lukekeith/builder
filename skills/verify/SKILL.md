@@ -1,6 +1,6 @@
 ---
 name: verify
-description: The final check on a built feature after it was tested — every affected app's full gates, contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
+description: The final check on a built feature after it was tested — the verifier's merge tier (every suite and check on the feature merged onto the target), contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
 ---
 
 # `/builder:verify` — is it actually done?
@@ -15,69 +15,36 @@ It reads four things, and **trusts nothing remembered from the build** — every
   whatever is still owed. In prototype mode, §Prototype and §Replaced surfaces as well.
 - **`<folder>/MANIFEST.md`** — `state:` · `apps:` · `contract:` · `tests:` · `walk:` · `verify:` ·
   `hold:` · `head`.
-- **`.claude/builder.md`** — §Quality gates (the fast sets and the deep set), §House rules (item 7's
+- **`.claude/builder.md`** — the `verify:` block and §Verification, §House rules (item 7's
   checklist), §Environment landmines. `node <builder>/scripts/docs.mjs verify` prints it in one call
-  with the REFERENCE sections this step cites — §Quality gates — the mechanism, §The two-way footer,
+  with the REFERENCE sections this step cites — §The verifier, §The two-way footer,
   §Continuing on "go".
 - **the ledger** — the sign-off removed `PLAN.md`, so the ledger plus `git log` are the record of
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 
 🔴 **Re-resolve that path inline in every command that uses it** — a shell variable does not survive
-between Bash calls. **The deep set's verdict is written here and nowhere else** — the fleet's build
-lane may have run the deep block already, and `gate.mjs` quotes that run when the tree is unchanged
-(REFERENCE §Quality gates).
+between Bash calls. **The merge tier is this step's evidence** — the fleet requested it when the walk started; read it, never re-run it.
 
-**`@walk` lines and the walk env.** Without a walk env of the fleet's own (no `agent_walk.start`),
-verify runs in the walk lane: a deep line marked `@walk` (an e2e suite) runs with `agent_walk.env`;
-every other line runs with the test env — never the walk env's database (REFERENCE §Quality gates —
-the mechanism, *Gates and the walk env*). Under the fleet an e2e-looking line **without** `@walk`
-(or `@local`) is not run at all — it would hit the human's dev stack — and the runner prints it
-`? … unverified`: carry it into the verdict as unverified, never as green or red, and name `@walk`
-as the fix. **`gate.mjs` exit 3** — the walk env stopped answering after a set — is not a red gate:
-write the restart line and end the run.
-**Under `--no-dev-env`** (the fleet's parallel lanes — wherever `agent_walk.start` is set, one walk at
-a time or batched) there is no env here and verify never drives the app. The `@walk` lines ran once
-while the env was up, right after the sign-off: `<WS>/walk-gates.md` holds that run — the sha, the
-features walked, the exit and the output. Exit 0 on code no fix has
-changed since → quote it as item 3's `@walk` evidence. A red run: judge from the output whether a
-failing test is this feature's (it exercises what this diff changed) — this feature's → a `## Fixes`
-row; another feature's → say so, and it is not this feature's to hold. Anything that needs the app
-driven on code changed since the walk — item 10, a re-run `@walk` line — is a re-walk, never a run
-here: AGENT-MODE.md §Batched walks.
+🔴 **Under `--agent-walk` the verdict is written in this run.** No reviewer or walk agent runs in the
+background: independent subagents go out together in one foreground message, and the merge tier is
+read with `verify.mjs wait <id>` in the foreground (Bash timeout 600000; exit 75 → call again)
+(resume's AGENT-MODE.md). A verify that ends its turn "waiting on the verifier" is lost when the
+headless run exits.
 
-🔴 **Under `--agent-walk` the verdict is written in this run.** No gate, reviewer or walk agent runs in
-the background: independent subagents go out together in one foreground message, and a suite that
-may outlast one Bash call runs through `scripts/job.mjs start` + `wait` until it reports an exit code
-(resume's AGENT-MODE.md). A verify that ends its turn "waiting on the gates" is lost when the headless
-run exits.
-
-**The test plan.** Read the levers on every verify, in chat and under `--agent-walk` alike:
-`node <builder>/scripts/profile.mjs --levers <folder>` — it reads the manifest's `tests:` line, and
-maps an old `profile:` line when there is no `tests:`. The floors in its `floors` hold whatever the
-levers say: **the type-check of every touched app** — `node <builder>/scripts/gate.mjs <every
-in-scope app> --typecheck`, the config's fast-set lines marked `@typecheck`; an app with none marked
-relies on the implementer's per-task type-check, and the verdict says so in one line — and **the
-final whole-branch review**, which the build ran. `end` sets the rest:
-
-- **`end=none`** → the type-check above, plus items 2, 4 and 6. Every other item is named as skipped
-  by the test plan in the verdict, whose first line reads `nothing was tested (tests: end=none)`. A
-  feature with a `released_artifact` consumer affected or a schema change gets one more line saying
-  that ships untested — a warning, never a refusal.
-- **`end=touched`** → each app's fast set (item 3 without `--deep`), plus consumer parity
-  when a `released_artifact` consumer is affected (item 5). No deep set, no E2E, no pattern sweep —
-  items 1, 2, 4, 6 and 8 still hold; the rest are named as skipped by the test plan in the verdict.
-- **`end=risk`** → the checklist as written, with the cross-app E2E (item 10) only on the legs
-  §A re-verify's table names for this feature's diff.
-- **`end=everything`** → the checklist as written: a feature's first verify, every leg.
-- **No agent walk** (`end=none` or `end=touched` under `--agent-walk`): item 1 holds on the
-  `🤖 AGENT SIGNED OFF — no walk …` header, and the verdict's first line says nothing walked it.
-  **`end=risk`** under `--agent-walk`: item 1 holds on the report's `[risk]` and `E` rows.
+**The test plan.** `node <builder>/scripts/profile.mjs --levers <folder>` — it reads the manifest's
+`tests:` line, and maps an old `profile:` or `slice=`/`end=` line. Tests are not a lever:
+READY = the merge tier green on HEAD + the walk passed. The floors in its `floors` hold whatever the
+levers say — **the final whole-branch review**, which the build ran. The checklist holds as written
+under every lever, consumer parity when a `released_artifact` consumer is affected (item 5)
+included. `walk` sets what the walk was: **`walk=none`** → no agent walk; item 1 holds on the `🤖 AGENT SIGNED OFF — no walk …` header, and
+the verdict's first line says the feature was not walked. **`walk=risk`** → item 1 holds on the
+report's `[risk]` and `E` rows. **`walk=full`** → the whole walk.
 
 🔴 **This entire skill is [`verification-before-completion`](../verification-before-completion/SKILL.md)
 applied to a feature.** Its iron law governs every line of the verdict: *no completion claim without
 fresh verification evidence.* Every item below is a claim that needs a command behind it, run in this
 pass; anything quoted from an earlier run is marked as quoted, with which run and on which tree. A
-READY verdict assembled from remembered green gates is the failure this step exists to catch.
+READY verdict assembled from a remembered or older verdict is the failure this step exists to catch.
 
 ## Precondition — read `<folder>/MANIFEST.md` first
 
@@ -90,7 +57,7 @@ whose state is `signed-off` — an INCOMPLETE verdict leaves the state there, so
 | `walk:` carries a name + date **and** the SPEC header carries `✅ SIGNED OFF` | run |
 | `walk: agent-pass …` **and** the SPEC header carries `🤖 AGENT SIGNED OFF` | run, as an **agent-signed-off** feature: checklist item 1 holds on the agent walk report, the verdict says "agent-walked, not human-tested", and READY's `next:` is `/builder:resume --path <folder>` — which, in agent mode, opens the PR and takes it to merged |
 | `walk: agent-pass …` at `state: built` (walked before agents signed off) | not signed off yet: hand to `/builder:agent-walk --path <folder>`, which writes the agent sign-off |
-| `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. **Under `--agent-walk`:** hand to `/builder:agent-walk --path <folder>` instead. Never run the deep pass on a build nobody has looked at |
+| `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. **Under `--agent-walk`:** hand to `/builder:agent-walk --path <folder>` instead. Never call a build READY that nobody has looked at |
 | `verify:` already carries a verdict | a **re-verify** — scoped, per §A re-verify is SCOPED |
 | `hold:` set | run anyway: verify is local and changes nothing outward. The hold binds the PR, and the verdict carries it instead of a PR command |
 | `state:` anything before `built` | not built yet. One line naming the state and the step that owns it, hand back, stop |
@@ -98,15 +65,13 @@ whose state is `signed-off` — an INCOMPLETE verdict leaves the state there, so
 **When two rows fit, the more specific wins** — a `verify:` already carrying a verdict makes it the
 scoped re-verify row, whatever `state:` says.
 
-**Why the walk comes first:** the deep pass needs every in-scope app up at once — the slowest and
-most fragile thing this pipeline runs. A human spots in seconds what it takes twenty minutes to
-discover, so the expensive pass is spent once, on what they have already accepted.
+**Why the walk comes first:** a human (or the agent walk) spots in seconds what a suite takes minutes
+to discover; the merge tier runs beside the walk, so neither waits on the other.
 
 ## A re-verify is SCOPED
 
-Re-run the gates the diff can turn red; quote the rest from the earlier run on the same tree, saying
-which is which. 🔴 **Scope by APP first** — a fix inside one app cannot turn another's gates red, so
-those are quoted, not re-run.
+Request the merge tier on the new HEAD; it runs everything on the merged result, so there is nothing
+to scope by hand.
 
 🔴 **The cross-app E2E walk is NOT automatically part of a re-verify.** A feature's FIRST verify
 always runs it (checklist 10). A re-verify runs it only when the diff can change what a consumer
@@ -116,7 +81,7 @@ does — classify the diff, say which class you chose, and quote the earlier run
 |---|---|
 | a §Contract row, an auth or permission path, a load/save/delete path, a notification payload or a deep-link target | **Yes** — the affected leg |
 | only presentation, **but** changes a string, label or accessible name the walk script asserts on, or a surface a visual check diffs | **Yes, narrowly** — that leg and that check |
-| only presentation, and nothing the walk or a check reads | **No** — that app's fast gates only, plus a look at the running app if it's visual |
+| only presentation, and nothing the walk or a check reads | **No** — the merge tier on HEAD, plus a look at the running app if it's visual |
 
 The middle row is worth reading twice: "cosmetic" is not a safety guarantee. A reworded label changes
 a visual diff, and a renamed element changes what the walk does.
@@ -139,24 +104,12 @@ a visual diff, and a renamed element changes what the walk does.
    phase its `Phase N: closed` line. **No `- [ ]` remains under `## Fixes`.** 🔴 **A phase in a
    `commit: manual` app whose commits were staged but never approved is not landed** — say so plainly;
    it is the human's call, not a failure.
-3. **Gates green NOW, per app** — one call:
-   `node <builder>/scripts/gate.mjs --deep <every in-scope app>` (through `job.mjs` under
-   `--agent-walk`). It runs each in-scope app's fast set and the config's deep block, applying the
-   config's `flaky:` re-runs, `@delta` baselines and `@known-red` marks itself. A set the runner
-   **quotes** — its inputs byte-identical to a green run it recorded, at a sha it names — counts as
-   run: that is REFERENCE §Quality gates' rule, and the quoted line with its sha is the evidence the
-   verdict cites. So does a **quoted line** (`⏩ <cmd> — green at <sha> (…); changed since: … — none
-   is this set's input` or `— none reaches <glob>`): the build's end gates ran it green and nothing
-   since reaches it — cite that line as it stands. Only a fix that reaches a line re-runs it. A `@scoped` deep line runs only the tests this branch can reach
-   (REFERENCE §Quality gates — the mechanism): cite `.builder/gates/impact.md` for which ran and why,
-   and name the other features it pulled in. Never run the config's commands by hand beside it,
-   never widen a scoped run "to be safe" (`--whole` is for when the impact report is plainly wrong,
-   and says why), and never re-run a red gate yourself to see whether it is "really" red — the
-   runner already applied the flake rule; a `✗` is a finding.
-   A line **at or under its baseline** (`→ 7 (baseline 7)`) is green: report it as `<n> = baseline
-   <n>` and move on. Open a failure's log only when the set is red — above its baseline — and then
-   only for the failures above it; the ones already failing on the base branch are not this
-   feature's to explain.
+3. **The merge tier is green on HEAD** — `node <builder>/scripts/verify/verify.mjs verdict <branch> HEAD`.
+   No verdict for HEAD (exit 5) or still running (exit 75) → `verify.mjs request <worktree> HEAD
+   --tier merge --hold` (when none is queued) and `verify.mjs wait <id>`. Quote the verdict line —
+   sha, request id, counts. **Regressions** fail this item: each becomes a `## Fixes` row naming
+   its test and the commit that introduced it. **Flakes, known failures and newly found debt** are
+   reported in the verdict and do not fail it. **Env-broken** is BLOCKED-on-environment, never READY.
 4. **Schema rows landed** — every §Schema row's Status carries its real migration id or is explicitly
    deferred with a named decider; Data plans executed. 🔴 **And the migration re-applies on a clean
    database** — one that only works against your local state is a production incident waiting.
@@ -165,25 +118,22 @@ a visual diff, and a renamed element changes what the walk does.
    consumer codes against exactly that shape**, traced in the shipped code with `file:line`. Then the
    compatibility question for every app the config marks `released_artifact: true`: **what does a
    currently-released build see?** Any rename, removal, type change, nullability change or enum
-   narrowing on a field it reads is a gate failure unless §Apps states the transition AND the code
+   narrowing on a field it reads is a blocking finding unless §Apps states the transition AND the code
    implements it. The manifest's `contract:` must read `frozen` — an open contract on a built feature
    means the producer's phase never closed properly, and that is a finding.
 6. **No OPEN decisions** in §Decisions; every *Replaces* item covered or dropped-with-a-decider.
-   Shipping by silently deleting a capability users have is a gate failure.
+   Shipping by silently deleting a capability users have is a blocking finding.
 7. **Pattern-regression sweep** on the feature's new code, per app — **the config's §House rules for
    that app, checked mechanically against the diff**. Don't assume the linters covered it: a house
    rule with no lint behind it is exactly the one that regresses, and the config marks which those
-   are. Read the diff for them rather than trusting a green gate.
+   are. Read the diff for them rather than trusting a green verdict.
 8. **§Testing satisfied** — each named test exists and passes at its layer; in prototype mode every
    `B#` owed row is backed by a committed test or a captured state, not by a walk that saw it once.
-9. **Whatever the config's deep set names beyond gates** — a visual diff suite, an integration suite,
-   a boundary check. Item 3's `--deep` run covered what the deep block lists; this item is for what
-   the config describes in prose beside it. Run it, record the output, and honour the config's own
-   caveats about how to read it (an advisory percentage is advisory; a known rendering artifact is
-   not a regression).
-10. **The cross-app E2E walk** — 🔴 the ONE place the pipeline exercises every app at once: §Testing's
-    walk script, executed live. Can't bring the stack up → **BLOCKED-on-environment**, never READY.
-    Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
+9. **Whatever the config's §Verification names beyond the verifier** — a check described in prose that
+   has no suite or check in the `verify:` block. Run it here and quote it.
+10. **The cross-app walk** — the agent walk's `## Cross-app (verify E2E)` rows (quoted when the code
+    is unchanged since the walk), and any e2e suite's result in the merge tier. Can't bring the stack
+    up → **BLOCKED-on-environment**, never READY. Mandatory on a feature's **first** verify; conditional on a re-verify — see §A re-verify is
     SCOPED, and quote the earlier run when the diff didn't earn a new one.
     **One app in scope:** there is no cross-app walk to run — the feature's walk script *was* the
     verification script (`walk-script.mjs`), so the agent walk's report covers this item exactly as
@@ -201,9 +151,9 @@ a visual diff, and a renamed element changes what the walk does.
     No such section (built before builder 4.6) → item 10 as written. A human walk never covers it.
 11. **Spec-parity spot-check** (`opus` judgment, not grep) — trace the spec's 3–4 most load-bearing
     behaviours (permission gates, tenancy scoping, state rules, offline behaviour, routing) in the
-    shipped code with `file:line`. This catches a feature that passes every gate while doing something
-    the spec didn't say. **When the impact report lists code of another feature** — it reads a schema
-    field this one changed — spot-check that feature's one behaviour on that field too, and stop
+    shipped code with `file:line`. This catches a feature that passes every suite while doing something
+    the spec didn't say. **When the merge tier's selection pulled in another feature's
+    tests** — they read a schema field this one changed — spot-check that feature's one behaviour on that field too, and stop
     there: the rest of the codebase is not this verify's to re-prove.
 
 **Prototype mode adds 12 and 13.**
@@ -248,9 +198,8 @@ After a crash, re-run the same command — it finishes what's missing or says `a
 (REFERENCE §The scripts).
 
 🔒 **READY is not shipped: this skill never opens a PR**, never writes to the ticket system, and never
-deploys. Hand back to `/builder:resume --path <folder>`. Lead the hand-off with the evidence — which
-apps' gates ran, which were quoted from an earlier run, what the contract-parity trace found, what the
-deep checks showed, and whether the cross-app walk ran or was quoted — then:
+deploys. Hand back to `/builder:resume --path <folder>`. Lead the hand-off with the evidence — the
+merge-tier verdict (sha, request, counts), what the contract-parity trace found, and whether the cross-app walk ran or was quoted — then:
 
 ```
 📍 <feature>: verify READY (<apps>) — 🛑 held — <the hold's words>

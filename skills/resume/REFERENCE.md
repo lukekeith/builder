@@ -3,7 +3,7 @@
 Every `builder:*` step reads this file for the shapes it writes and the rules it enforces. Load it
 before writing anything into a feature folder; steps cite sections by name (`REFERENCE §Sizes`).
 
-**Contents:** §The first principle · §The scripts · §Sizes · §The classifier · §Flags · §Continuing on "go" · §The two-way footer · §Before a picker · §The review — what an approval shows · §Branch and ticket · §Where things live · §MANIFEST.md · §SPEC.md · §PLAN.md · §PROGRAM.md · §Prototype mode · §The craft skills · §The project's own rules · §Quality gates — the mechanism · §Walk readiness · §Condense · §Agent model tiering
+**Contents:** §The first principle · §The scripts · §Sizes · §The classifier · §Flags · §Continuing on "go" · §The two-way footer · §Before a picker · §The review — what an approval shows · §Branch and ticket · §Where things live · §MANIFEST.md · §SPEC.md · §PLAN.md · §PROGRAM.md · §Prototype mode · §The craft skills · §The project's own rules · §The verifier · §Walk readiness · §Condense · §Agent model tiering
 
 🔴 **This plugin knows nothing about your project.** Every project fact — the apps, the gates, the
 house rules, the landmines, the recipe skills, the design source — lives in ONE host file,
@@ -53,11 +53,6 @@ paste the absolute path thereafter — 🔴 a shell variable does not survive be
 }
 ```
 
-`job.mjs` is the one for unattended runs: `start <name> -- <command>` launches a long command
-detached under `.builder/jobs/`, and `wait <name>` blocks up to 9 minutes (Bash timeout 600000) and
-exits with the command's own code — or 75 with `still running`, to be called again. It is how a
-headless run waits on a gate suite without backgrounding anything (resume's AGENT-MODE.md).
-
 🔴 **Prefer `$CLAUDE_PLUGIN_ROOT`.** It is the documented, portable way for a plugin to reference its
 own files, and it is correct for every install shape — marketplace, vendored, or a local skills
 directory. The fallbacks exist only because it is not set in every context, and each has a flaw the
@@ -85,7 +80,7 @@ Below, `<builder>/scripts/x` means that resolved path.
 |---|---|
 | `list-features.mjs` | every feature in the registry with its state and next command — the picker's data source. `--json` · `--check` · `--all` · `--status` (the `/builder:status` table) |
 | `check-obligations.mjs` | the cross-section gate on a `SPEC.md` (§SPEC.md). Exit 1 = a dangling obligation, and it names its own rows |
-| `gate.mjs <app>… \| --deep [<app>…] \| --all` | 🔴 **the only way a gate block is run** (§Quality gates — the mechanism): runs the config's fast set per app and/or its deep set, applies `flaky:`, `@delta` and `@known-red`, and quotes a set whose inputs are byte-identical to its last green run, naming the sha. Exit 0 green, 1 red. `--force` runs regardless; `--baseline` records the `@delta` counts (the fleet does this at start); `<app>… --typecheck` runs only the lines marked `@typecheck` — the type-check floor every test plan keeps |
+| `verify/verify.mjs request\|verdict\|wait\|release\|carry\|cancel\|status` | 🔴 **the only way tests are run** (§The verifier): requests a tier for a commit, reads verdicts, waits on one (up to 9 minutes per call; exit 75 → call again), lands a held merge |
 | `workspace <feature>` | prints and ensures the git-ignored workspace for one feature. `--remove <feature>` deletes it — the ship step's call, because `rm -rf "$(…)"` is refused by the harness |
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
@@ -174,7 +169,7 @@ mid-task. When in doubt, the heavier size.
 | `--agent-walk` | **unattended mode**, what `/builder:fleet` runs: implies `--auto`, and **never asks** — every pause takes its recommendation; it parks only on a product decision the spec leaves open, or a step the config reserves to the human (resume's AGENT-MODE.md). Resume passes `--auto` along with it to every step it runs, so a step that only knows `--auto` still settles its own pauses. The walk and sign-off are `/builder:agent-walk`'s; the feature is shipped and merged into the fleet's target branch, locally (resume's AGENT-MODE.md §Ship in agent mode). Needs the config's `agent_walk:` block. Recorded on the manifest as `agent-walk: on` |
 | `--into <branch>` | agent mode's target: the `merge_into` branch (default `base_branch`; `current` = the branch checked out when the fleet launched; `--into` for one run), which every finished feature is merged into. The fleet passes it; resume's AGENT-MODE.md §Ship in agent mode needs it |
 | `--here` | **build it here, without the ceremony** — the human's choice on a handoff footer (**In this session**, §The two-way footer). Resume records `build: here` on the manifest and routes as usual: align, audit, the decisions gate and the plan still run in full; the go-ahead shows the slice table and proceeds; `/builder:build` then works `PLAN.md` in this session (build §Build here) and stops at `state: built`. No fleet, no worktree, no reviewer agents, no walk-readiness lock, no sign-off or verify. Ignored under `--agent-walk` |
-| `--walk-lane` | the fleet's walk lane when it owns the walk env: walk readiness and the agent walk only — end the run at `signed-off`, or once the walk writes `## Fixes`; verify, fixes and ship belong to the parallel lanes. Never run a gate suite or a build here (AGENT-MODE.md) |
+| `--walk-lane` | the fleet's walk lane when it owns the walk env: walk readiness and the agent walk only — end the run at `signed-off`, or once the walk writes `## Fixes`; verify, fixes and ship belong to the parallel lanes. Never run a test suite or a build here (AGENT-MODE.md) |
 | `--no-dev-env` | never start, migrate or touch the dev environment. Where a step needs it, write `ready: pending "dev env (fleet walk lane)"`, commit, and end the run. The fleet's build lane passes it, so parallel worktrees never share a dev env |
 | `--help` | print the help: on `/builder:brainstorm`, `/builder:intake`, `/builder:spec` or `/builder:resume` the `builder:help` card; on any other family skill its own Invocation line and the flags it reads. Then STOP — no recon, no file touched. Overrides every other flag |
 | *free text after the flags* | the work itself: `/builder:brainstorm move the save button into the header` |
@@ -283,7 +278,7 @@ the ones done:
 | `building` (stopped) | sent to agents who finish the build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on with the build here (next: phase N/M), pausing for you at each decision and for your walk | — |
 | `built` (the walk) | sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed | you walk it yourself in the running app, then sign it off here | — |
 | fixes owed (signoff PROBLEMS / PARTIAL, verify INCOMPLETE) | sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed | fix them here one at a time, then re-walk or re-verify what they touched | — |
-| `signed-off` | sent to agents who verify it and merge it on their own; you get the review of what landed | carry on here (next: verify — every app's gates fresh, then the PR), pausing for you before the PR opens | — |
+| `signed-off` | sent to agents who verify it and merge it on their own; you get the review of what landed | carry on here (next: verify — the merge tier on HEAD, then the PR), pausing for you before the PR opens | — |
 | `verified` (READY) | sent to agents who merge it on their own, without a PR; you get the review of what landed | carry on here (next: open the PR — asked once before it opens) | — |
 | `verified`, PR open | sent to agents who finish it and merge it on their own; you get the review of what landed | carry on here (next: condense it to its shipped spec once the PR merges) | — |
 
@@ -548,7 +543,7 @@ explicit command the config's §Companion skills names.
                                      `list-features.mjs --archived` lists it.
 
 .builder/<feature>/                  git-ignored; `<builder>/scripts/workspace <feature>` prints it
-  progress.md                        the ledger: phase closes, gate runs, rulings, env notes
+  progress.md                        the ledger: phase closes, verdicts, rulings, env notes
   walk.md                            the walk script, written when the last phase signs
   task-N-brief.md · task-N-report.md · review-*.diff
 ```
@@ -574,7 +569,7 @@ apps: <app>+<app>                                     # the in-scope apps, from 
 contract: frozen <YYYY-MM-DD> | open | none           # none = no producer change
 hold: none | "<reason>"                               # 🛑 PR HELD, in the human's words
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
-tests: slice=<v> end=<v> review=<v> [models=… persist=… unruled=… walk=you]  # the test plan (plan §The go-ahead); an old profile: line without it is still read
+tests: walk=<v> review=<v> [models=… persist=… unruled=… human=yes]  # the test plan (plan §The go-ahead); an old profile: or slice=/end= line is still read
 walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: the agent sign-off, written by /builder:agent-walk — never a human's
 verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
@@ -813,7 +808,7 @@ human reads it at the go-ahead and a reviewer sees it in the PR; the sign-off co
 `git log` keeps it.
 
 **Its shape is [`../plan/PLAN-FORMAT.md`](../plan/PLAN-FORMAT.md)** — the header, the `## Phases`
-table (`Phase · App · Tasks · Goal · Gates`), then flat `### Task N` blocks carrying `App:`,
+table (`Phase · App · Tasks · Goal`), then flat `### Task N` blocks carrying `App:`,
 `Phase:`, `Recipe:`, **Files**, **Interfaces** and bite-sized `- [ ]` steps with the actual code.
 Read it there rather than from a restatement.
 
@@ -821,8 +816,8 @@ The two rules worth repeating because everything else depends on them:
 
 - 🔴 **Nothing sits between task blocks, and nothing after the last one.** `task-brief` reads a task
   from its heading to the next `Task <n>` heading at any level, or to end of file for the last one.
-- 🔴 **One app per task, and per phase.** A phase's `Gates` cell is that app's fast set from the
-  config; a task straddling apps cannot be gated.
+- 🔴 **One app per task, and per phase.** A phase is one app's: the verifier's phase tier waits on
+  that app, and a task straddling apps makes the wait cover neither cleanly.
 
 ## PROGRAM.md
 
@@ -913,13 +908,13 @@ gets only what its brief contains.
 | [`test-driven-development`](../test-driven-development/SKILL.md) | implementing any feature or bugfix, before writing implementation code | every implementer · the plan's steps are written in its cycle |
 | [`systematic-debugging`](../systematic-debugging/SKILL.md) | any bug, test failure or unexpected behaviour, **before proposing a fix** | an implementer whose test fails for a reason it cannot name · a fix round that is not converging · `/builder:revise` on a reported problem · `## Fixes` work |
 | [`receiving-code-review`](../receiving-code-review/SKILL.md) | receiving review feedback, before implementing any of it | every implementer in the fix loop · the main context working a `## Fixes` list |
-| [`verification-before-completion`](../verification-before-completion/SKILL.md) | about to claim anything is complete, fixed or passing | every gate claim, every phase close, `/builder:verify`'s whole verdict, and every hand-off that says a thing works |
+| [`verification-before-completion`](../verification-before-completion/SKILL.md) | about to claim anything is complete, fixed or passing | every verdict claim, every phase close, `/builder:verify`'s whole verdict, and every hand-off that says a thing works |
 
-🔴 **`verification-before-completion` is the rule this pipeline's gates exist to enforce**, stated
-once: *no completion claim without fresh verification evidence.* A phase close that reports gates
-green without having run them in that message, a verdict quoting a run from an earlier tree without
+🔴 **`verification-before-completion` is the rule the verifier exists to enforce**, stated
+once: *no completion claim without fresh verification evidence.* A phase close that reports green
+without a verdict for HEAD, a verdict quoting a run from an earlier tree without
 saying so, or a hand-off that calls something done because an agent said so — each is the same
-violation, and each is what the gate table, the `quote it and say which` rule and the PR lock are
+violation, and each is what a verdict's sha, the `quote it and say which` rule and the PR lock are
 built to prevent.
 
 🔴 **`test-driven-development` outranks a plan step that contradicts it.** The plan's steps are
@@ -933,7 +928,7 @@ These live in `.claude/builder.md` and are **read there, every time**:
 | What | Config section | Who reads it |
 |---|---|---|
 | the apps, their roles, which commit manually, which ship released artifacts | frontmatter `apps:` | every step |
-| the literal gate commands, per app, fast and deep | §Quality gates | build (phase close) · verify · the walk |
+| the test suites and checks, per app | the `verify:` block | the verifier |
 | the block pasted verbatim into every implementer and reviewer brief | §Global constraints | build · plan |
 | the audit's per-app checklist | §House rules | audit · verify |
 | what costs hours when rediscovered | §Environment landmines | build · verify · the walk script |
@@ -944,108 +939,41 @@ These live in `.claude/builder.md` and are **read there, every time**:
 🔴 **A step that needs one of these and cannot find the config does not guess.** It says which
 section is missing and stops.
 
-## Quality gates — the mechanism
+## The verifier
 
-The **fast set** is the config's per-app block, run **at every phase close by the controller**. A
-phase touches ONE app, so its gates are one block, never all of them.
+Tests are run by one background service per repo — `scripts/verify/` — from the config's `verify:`
+block (`suites` by runner, `checks`, the `db` pool). Nobody pastes a test command; nobody waits on
+one except where this section says.
 
-The **deep set** is the config's deep block — **what the fast sets do not cover**, an e2e suite, a
-whole-repo check — and its verdict is written ONCE, in `/builder:verify`, beside every in-scope
-app's fast set and consumer parity against the frozen §Contract. Under the fleet, the build lane
-runs the deep block when the last phase closes (in parallel with other builds, off the one-at-a-time
-walk lane) and verify quotes that run when nothing has changed the tree since.
+| Tier | Requested by | What runs | Who waits |
+|---|---|---|---|
+| **commit** | build, after each task's commit — `verify.mjs request <worktree> HEAD --tier commit` | the checks marked `commit`, and the tests the commits since the branch's last green can reach | nobody; read with `verify.mjs verdict <branch>` before each dispatch |
+| **phase** | build, at each phase close — `--tier phase`, then `verify.mjs wait <id>` | the tests the branch can reach, reusing what already passed at this commit, and the `phase` checks | the build — its one wait |
+| **merge** | the fleet when the walk starts (held), or verify — `--tier merge` | every suite whole and every check, on the target merged with the branch | landing; the walk runs beside it |
 
-🔴 **Every gate block is run through `scripts/gate.mjs`, never by pasting the config's commands.**
-The runner does what a controller used to do by hand at every close, in opus turns over 100-line
-tails: it runs the block, re-runs a failure the config's `flaky:` list matches (once, the narrow
-`rerun:` when given), compares an `@delta` count against the baseline measured on the target branch,
-reports an `@known-red` gate without counting it, and prints one line per command and one per set.
-A fast-set line marked `@typecheck` is the app's type-check: `gate.mjs <app>… --typecheck` runs only
-those lines — the floor that holds under every test plan, `tests: end=none` included. An app with
-none marked prints `no @typecheck line for <app>` and exits green; the implementer's per-task
-type-check is then all there is, and verify says so.
+**A verdict** names its sha and request, and lists **regressions** (fails here, passes on the
+target — the only thing that dispatches a fix, each with the commit that introduced it),
+**flakes** (failed, then passed on the same commit — listed automatically unless the branch owns
+the test), **known** failures (fail on the target too) and **newly found debt**. **Env-broken** —
+no report, a failed lease — is never red and never a fix. Exit codes: 0 green · 1 red · 3
+env-broken · 4 conflict · 5 none · 6 cancelled · 7 target moved · 75 still running (call again).
+`verify.mjs verdict <branch> [<sha>]` reads the latest *finished* verdict (exit 75 when only
+unfinished ones exist, 5 when there are none); `verify.mjs wait <id>` blocks up to 9 minutes per
+call (Bash timeout 600000).
 
-**The memo, and what "fresh" means.** The runner records each GREEN set against a content hash of
-its inputs — the app's path, every tracked path no other app owns (shared packages, the lockfile,
-root config), the registry excluded, and the gate commands themselves. When a later call finds the
-tree clean and the hash unchanged, it **quotes** the recorded run, naming the sha and time, and exits
-green. That is fresh evidence in [`verification-before-completion`](../verification-before-completion/SKILL.md)'s
-sense: the claim rests on a run the runner can prove is against this exact input, not on a model
-remembering. A red result is never quoted — red always runs again. Measured before the memo: the same
-server suite ran about fourteen times per feature and test execution was 60% of a fleet's wall-clock;
-most of those runs re-proved a tree nothing had touched.
+**Fresh** means the verdict's sha is HEAD. A green verdict for an older sha says nothing about
+HEAD; a remembered result is not a verdict.
 
-**The deep set runs what the branch can reach, not everything.** A deep line marked
-`@scoped <glob>` runs only the tests in that glob the branch reaches (`scripts/impact.mjs`): what it
-changed; the code reading a schema field it **removed, renamed or retyped** under any spelling
-(`issueDate` / `issue_date`), so another feature built on that column is tested with this one — an
-added field has no readers yet; everything importing either, seen through barrel re-exports to the
-module that provides each name (type-only imports excluded — the typecheck owns types); files that
-load one by name (a harness page's `<script src>`, a spec's `goto('/harness.html')`); and tests an
-earlier feature changed in the same commit as a file in the impact, which is how a UI spec is tied to
-the screen it covers. A change the graph can't see past — a file beside the tests nothing loads, a
-runner config, a lockfile — runs the whole suite, and `gate.mjs --whole` forces it. A scoped `@delta`
-line with failures in its subset is judged on the whole suite, so a known-red test can't hide a new
-one. The selection, with why for each test, is written to `.builder/gates/impact.md`: verify's
-evidence. Measured before it: the deep set ran the whole UI suite and every phase gate — eleven
-minutes — at every build end and again at every verify after a walk fix.
+**The merge tier lands.** Green on a held request → `verify.mjs release <id>` fast-forwards the
+target to exactly the merge commit it tested (one `--no-ff` merge commit per feature). When the
+only commits since the tested sha touch the registry — the sign-off, verify and ship records —
+`verify.mjs carry <id>` lands the held green merge with those commits on top, without a second
+run. A target that moved since (exit 7), or any other commit since → request again. One merge per
+target runs at a time; `verify.mjs cancel <id>` drops a request.
 
-**Implementers do not run the suite.** Their prompt limits them to the tests of the code they change
-plus the type-check; the phase close runs the block once, on the committed tree.
-
-**Gates and the walk env (`@walk`).** Under the fleet, the walk lane runs with the walk env up and
-with `agent_walk.env` (its ports, its database) in the environment. With a walk env of the fleet's
-own (`agent_walk.start`) the walk lane holds only readiness, the walk and the `@walk` lines — verify
-and `## Fixes` rounds run in the parallel lanes, away from the folder the env serves from, one walk
-at a time or batched; without `start`, verify and fixes stay in the walk lane. `gate.mjs` keeps the
-two apart:
-
-- **An untagged line runs with the test env** — `agent_walk.env`'s keys go back to their build-lane
-  values (`worktree_env`, or unset) — so a unit or integration suite never runs against the walk
-  env's database or URLs, in the walk lane exactly as in the build lane.
-- **A line marked `@walk` needs the running walk env** — an e2e suite against the app. It gets
-  `agent_walk.env`, runs in the walk lane (right after the sign-off, into `walk-gates.md`, when the
-  fleet owns the env; else in verify), and the build lane skips it (`~ … @walk`). Outside the fleet
-  the tag changes nothing: the line runs against whatever env is up, as before.
-- **An e2e-looking line without `@walk`** (playwright, cypress, `e2e`…) is not run under the fleet —
-  its URLs would fall back to the human's dev stack — and is printed `? … unverified`; `@local` marks
-  one that starts its own stack. Outside the fleet nothing changes.
-- **The fleet smokes the env after every walk run.** Red means the env died under the run: a verdict
-  that run committed (doc-only) is dropped, the env restarts without a reset, and the walk runs
-  again — once — instead of turning a dead env into `## Fixes`.
-- **After each set in the walk lane, `gate.mjs` re-polls `agent_walk.smoke`.** When a gate broke the
-  running env — a build rewriting the folder the dev server serves from (Next.js `.next`, Nuxt
-  `.nuxt`, SvelteKit `.svelte-kit`) — it exits **3** and says so: write
-  `blocked: "walk env needs a restart — <what broke it>"`, commit and end the run; the fleet restarts
-  the env **without a reset**. The lasting fix is the walk env's own output folder, set through
-  `agent_walk.env` (`/builder:init` offers it).
-- **Under the fleet the gate lines come from the main checkout's config** — the one the fleet reads —
-  never the branch's copy: a branch can't loosen its own gates, and `gate.mjs` warns when the two
-  differ.
-
-**Quoting a line.** A line that passed is remembered (`.builder/gates/lines.json`) with the commit it
-passed at. A later run quotes it — `⏩ <cmd> — green at <sha>; changed since: … — none is this set's
-input` (or `— none reaches <glob>` for a `@scoped` line, by the import graph from that commit) — and
-the quote is evidence like a run. A `@delta`, `@known-red`, `@walk` or `<…>` line, a dirty tree,
-`--force` and `--whole` never quote. **`@parallel`** lines start together across the run's sets.
-
-**Baseline drift.** A gate written as a count (`… | grep -c "error TS"   # @delta`) is judged against
-the count on the target branch, measured by `gate.mjs --baseline` — the fleet runs it at start in the
-main checkout, and a worktree reads it from there. No hard-coded number goes stale in the config.
-
-### 🔴 The cross-app E2E walk is an END-OF-BUILD gate, not a per-phase one
-
-It needs every app up at once, which is the slowest and most fragile thing this pipeline does, and
-the phases under it are already covered in seconds by cheaper tests. So:
-
-- the plan puts the walk — **authoring** it as well as running it — in the **last phase only**;
-- the build never runs it as a phase gate;
-- verify runs it once and quotes that run in the verdict;
-- prefer the cheapest layer that can catch the defect.
-
-**A small change does not re-earn it.** Feature complete → the walk, always. A later tweak → only if
-the diff can change what a consumer does: a contract row, an auth path, a load/save/delete path, or
-something the walk script asserts on. `builder:verify` §A re-verify is SCOPED holds the table.
+**Each run is isolated**: a clean checkout of the requested commit (never the agent's worktree),
+its own database cloned from a template, its own ports. `verify.mjs status` shows the queue, the
+flake list and the known failures.
 
 ## Walk readiness
 
@@ -1138,7 +1066,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 | SPEC header carries `SHIPPED` (or manifest `state: shipped`) | **DONE** | run no step; print the header; offer a new feature folder |
 | archived, header `CLOSED` or `DROPPED` | **closed** | no step runs on it; a `DROPPED` one never satisfies a program dependency, a `CLOSED` one does (its code is in the target) |
 | header carries `SIGNED OFF`, manifest `verify: none` | signed off | verify next |
-| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship and merge into the target branch |
+| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship; the merge queue lands it |
 | manifest `hold:` set | parked | local-only steps until the human lifts the hold |
 
 **Legacy layouts.** 🔴 **The manifest is the discriminator.** A folder holding `MANIFEST.md` is this
@@ -1160,7 +1088,7 @@ expensive part and it stays exactly where it is.
    `ticket:`, `contract:` (`frozen <date>` when the producer's phase is verified, else `open`), and
    `next: /builder:resume --path <folder>`.
    🔴 **A prior pipeline's "verified" is not this pipeline's sign-off.** The walk here comes BEFORE
-   the deep pass, so a pre-walk verdict is not one of ours: write `walk: none` and `verify: none`
+   the merge tier's verdict is read, so a pre-walk verdict is not one of ours: write `walk: none` and `verify: none`
    unless a human actually exercised the feature, and say so in the SPEC. A `/builder:signoff`
    record's authority comes from the human typing it; writing one any other way forges the gate.
 2. **Write `SPEC.md` as the index this pipeline reads** — §Apps, §Decisions (OPEN rows preserved as

@@ -48,16 +48,16 @@ export const STEPS = {
   // §The review (the go-ahead's recap), §Flags (--here), §Continuing on "go".
   plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket', 'The review', 'Flags', 'Continuing on "go"'), CONFIG],
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
-  // §MANIFEST.md · §Branch and ticket), and §Quality gates, §Walk readiness, §The craft skills where it cites them.
-  build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'Quality gates — the mechanism', 'Walk readiness', 'The craft skills'), CONFIG],
+  // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
+  build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
   // resume SKILL, `state: building` + `ready: pending` (the fleet's walk lane): "run REFERENCE §Walk readiness,
   // then the build's walk script and `state: built`" — build SKILL §When the last phase signs.
   'walk-lane': [...R('Walk readiness'), ['skills/build/SKILL.md', 'When the last phase signs'], CONFIG],
   // agent-walk SKILL: "Condense exactly as builder:ship §At sign-off does", REFERENCE §How a park reads,
   // §The park record, §Agent model tiering.
   'agent-walk': [['skills/ship/SKILL.md', 'At sign-off'], ...R('Condense', 'How a park reads', 'The park record', 'Agent model tiering'), CONFIG],
-  // verify SKILL: REFERENCE §Quality gates (— the mechanism), §The two-way footer, §Continuing on "go".
-  verify: [...R('Quality gates — the mechanism', 'The two-way footer', 'Continuing on "go"'), CONFIG],
+  // verify SKILL: REFERENCE §The verifier, §The two-way footer, §Continuing on "go".
+  verify: [...R('The verifier', 'The two-way footer', 'Continuing on "go"'), CONFIG],
   // signoff SKILL: REFERENCE §Condense's sign-off row, §Walk readiness (step 1b), §The two-way footer.
   signoff: [['skills/ship/SKILL.md', 'At sign-off'], ...R('Condense', 'Walk readiness', 'The two-way footer', 'Continuing on "go"'), CONFIG],
   // ship SKILL: "REFERENCE §Condense says what each writes".
