@@ -1,8 +1,29 @@
 import { execFileSync, execSync } from 'node:child_process'
 import { dirname } from 'node:path'
 
-const ID = ['-c', 'user.name=builder-verify', '-c', 'user.email=verify@localhost']
-export const git = (cwd, ...a) => execFileSync('git', [...ID, ...a], { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+const run = (cwd, a) => execFileSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+const FALLBACK = { 'user.name': 'builder-verify', 'user.email': 'verify@localhost' }
+const ids = new Map()
+/**
+ * The identity a commit here needs: none when the repo (or the user) has one, so a landed merge
+ * carries the user's name as the old fleet merge did; builder-verify only for a key nobody set —
+ * a fresh CI box, where git would otherwise refuse to commit. Looked up once per cwd.
+ */
+const identity = (cwd) => {
+  const key = String(cwd)
+  if (!ids.has(key)) {
+    const has = (k) => {
+      try {
+        return run(cwd, ['config', k]) !== ''
+      } catch {
+        return false
+      }
+    }
+    ids.set(key, Object.entries(FALLBACK).filter(([k]) => !has(k)).flatMap(([k, v]) => ['-c', `${k}=${v}`]))
+  }
+  return ids.get(key)
+}
+export const git = (cwd, ...a) => run(cwd, [...identity(cwd), ...a])
 export const tryGit = (cwd, ...a) => {
   try {
     return git(cwd, ...a)
