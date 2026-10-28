@@ -8,7 +8,11 @@ import { createHash } from 'node:crypto'
 import { git, tryGit, sh } from './git.mjs'
 import { checkedOutBranch } from '../config.mjs'
 
-export const checkoutsDir = (root) => join(root, '.builder', 'verify', 'co')
+/**
+ * Beside the main checkout, not in it: a checkout inside the consumer's tree is seen by its file
+ * watchers, globs and tools (and by every test that walks the repo). State stays in .builder/verify/.
+ */
+export const checkoutsDir = (root) => `${root}-verify/co`
 
 export function ensureCheckout(root, slot) {
   const path = join(checkoutsDir(root), String(slot))
