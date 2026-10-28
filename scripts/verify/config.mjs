@@ -78,6 +78,7 @@ export function parseFlow(src) {
       i++
       out[key] = value(',}]:')
       ws()
+      if (src[i] === ':') throw new Error(`quote the value of "${key}" — it holds ':' (in ${src})`)
       if (src[i] === ',') {
         i++
         continue
@@ -193,7 +194,7 @@ export function normalizeVerify(raw) {
       cwd: s.cwd ?? '.',
       args: s.args ?? '',
       needs: list(s.needs).map((n) => needOf(n, where)),
-      tiers: tiersOf(s.tiers, TIERS, where),
+      tiers: tiersOf(s.tiers, [...TIERS], where),
       command: s.command ?? null,
       report: s.report ?? null,
       scheme: s.scheme ?? null,
@@ -214,7 +215,10 @@ export function normalizeVerify(raw) {
   const all = [...suites, ...checks]
   if (all.some((x) => x.needs.some((n) => n.kind === 'db')) && !db) throw new Error('verify: a suite needs db but verify.db is not set')
   if (all.some((x) => x.needs.some((n) => n.kind === 'simulator')) && !r.simulator) throw new Error('verify: a suite needs simulator but verify.simulator is not set')
-  if (all.some((x) => x.needs.some((n) => n.kind === 'hook')) && !r.env?.lease) throw new Error('verify: a suite needs a hook resource but verify.env.lease is not set')
+  const hooks = [...new Set(all.flatMap((x) => x.needs.filter((n) => n.kind === 'hook').map((n) => n.name)))]
+  if (hooks.length && !r.env?.lease) {
+    throw new Error(`verify: a suite needs ${hooks.map((h) => `"${h}"`).join(', ')} — not db, walk-env, simulator or { ports: [...] }, so it is a hook resource, and verify.env.lease is not set`)
+  }
   const workers = r.workers ?? 2
   return {
     workers,
