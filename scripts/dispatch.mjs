@@ -19,7 +19,7 @@
  *                          renders prompts/implementer.md: the task name, the app, the commit
  *                          instruction from the app's `commit:` mode (with the plan's commit subject),
  *                          the working directory, the report path, and a Context line (task i of n,
- *                          its phase and goal, `tests: slice=none` when the test plan says so, your
+ *                          its phase and goal, your
  *                          --context). Records the task's BASE (HEAD now) the first time.
  *      --round R           a fix round (fresh at rounds 4–5; rounds 1–3 send the resumed implementer
  *                          the same file): the findings verbatim, receiving-code-review first, and from
@@ -341,10 +341,8 @@ function implementer(f, a, ws) {
   const subject = /\*\*Step \d+:\s*Commit\*\*\s*[—–-]\s*`([^`]+)`/.exec(block)?.[1]
   const manual = app?.commit === 'manual'
   const commit = manual ? `${texts.manual}${subject ? ` Propose: \`${subject}\`.` : ''}` : `${texts.auto}${subject ? ` Subject: \`${subject}\`.` : ''}`
-  const levers = parseTestPlan(f.manifest).levers
   const phaseRow = phaseGoal(read(f.planPath), t.phase ?? null, n)
   const ctx = [`Task ${n} of ${tasks.length} · Phase ${phaseRow.phase ?? '?'} (${t.app})${phaseRow.goal ? ` — ${phaseRow.goal}` : ''}.`]
-  if (levers.slice === 'none') ctx.push('tests: slice=none — write the tests your block names; run only the type-check; they run at the end.')
   if (round) {
     ctx.push('')
     ctx.push(round >= 4 ? `A prior implementer attempted this task ${round - 1} times; you own it now. Read the report file for what was tried.` : `Fix round ${round}/5 of this task — the report file holds what was done so far.`)
@@ -547,8 +545,8 @@ export function rewalkScope(f, dir, n) {
 }
 
 function agentWalk(f, a, ws) {
-  const end = parseTestPlan(f.manifest).levers.end
-  if (end === 'none' || end === 'touched') throw new Error(`no walker under end=${end} — the sign-off is \`condense.mjs <folder> --signoff agent --no-walk\` (agent-walk §The test plan)`)
+  const walkLever = parseTestPlan(f.manifest).levers.walk
+  if (walkLever === 'none') throw new Error(`no walker under walk=none — the sign-off is \`condense.mjs <folder> --signoff agent --no-walk\` (agent-walk §The test plan)`)
   const walk = join(ws, 'walk.md')
   if (!existsSync(walk)) throw new Error(`no ${walk} — the build writes it (scripts/walk-script.mjs)`)
   const dir = join(ws, 'agent-walk')
@@ -576,8 +574,8 @@ function agentWalk(f, a, ws) {
     '',
     '## What to walk',
     '',
-    end === 'risk'
-      ? 'Work every `[risk]` item and every step of the `## Cross-app (verify E2E)` section, in order, per app — and say in the report that the other items were out of scope (tests: end=risk).'
+    walkLever === 'risk'
+      ? 'Work every `[risk]` item and every step of the `## Cross-app (verify E2E)` section, in order, per app — and say in the report that the other items were out of scope (tests: walk=risk).'
       : 'Work **every** item of walk.md, in order, per app — the `## Cross-app (verify E2E)` section too, when it is there.',
   ]
   lines.push(...rewalkScope(f, dir, n))
@@ -589,7 +587,7 @@ function agentWalk(f, a, ws) {
     '- Never edit code, never commit, never touch the manifest or the SPEC.',
     '- **Walk by screen.** Group the items by the screen or component they exercise; reach each one once and check every item on it in order — one app session, one launch — recording a row per item. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving every item from a fresh launch is the slow way to walk a screen that holds them all.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
-    '- Run no gates — no test suite, no build, no gate.mjs. You judge the running app; gates belong to the fix rounds and verify. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
+    '- Run no tests — no test suite, no build. You judge the running app; tests are the verifier\'s. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
     '',
     '## Output',
     '',
@@ -608,17 +606,17 @@ function agentWalk(f, a, ws) {
 function walkBatch(features, a, root) {
   const walks = []
   for (const f of features) {
-    const end = parseTestPlan(f.manifest).levers.end
-    if (end === 'none' || end === 'touched') continue // no walker: agent-walk signs it off --no-walk
+    const w = parseTestPlan(f.manifest).levers.walk
+    if (w === 'none') continue // no walker: agent-walk signs it off --no-walk
     const ws = f.ws()
     const walk = join(ws, 'walk.md')
     if (!existsSync(walk)) throw new Error(`no ${walk} — the build writes it (scripts/walk-script.mjs)`)
     const dir = join(ws, 'agent-walk')
     const rounds = existsSync(dir) ? readdirSync(dir).map((d) => +(/^round-(\d+)$/.exec(d)?.[1] ?? NaN)).filter(Number.isInteger) : []
     const n = (rounds.length ? Math.max(...rounds) : 0) + 1
-    walks.push({ f, end, walk, n, out: join(dir, `round-${n}`), scope: rewalkScope(f, dir, n) })
+    walks.push({ f, walkLever: w, walk, n, out: join(dir, `round-${n}`), scope: rewalkScope(f, dir, n) })
   }
-  if (!walks.length) throw new Error('no feature in this batch needs a walker (every test plan ends at none or touched)')
+  if (!walks.length) throw new Error('no feature in this batch needs a walker (every test plan says walk=none)')
   const cfg = walks[0].f.cfg
   const driver = cfg?.agentWalk?.driver
   const landmines = configSection(cfg, 'Environment landmines').trim()
@@ -643,8 +641,8 @@ function walkBatch(features, a, root) {
       `## ${w.f.feature} — round ${w.n}`,
       '',
       `Walk script: ${w.walk}`,
-      w.end === 'risk'
-        ? 'Scope: every `[risk]` item and every step of the `## Cross-app (verify E2E)` section — say in the report that the other items were out of scope (tests: end=risk).'
+      w.walkLever === 'risk'
+        ? 'Scope: every `[risk]` item and every step of the `## Cross-app (verify E2E)` section — say in the report that the other items were out of scope (tests: walk=risk).'
         : 'Scope: **every** item — the `## Cross-app (verify E2E)` section too, when it is there.',
       ...w.scope,
       '',
@@ -659,7 +657,7 @@ function walkBatch(features, a, root) {
     '- An item fails in the feature whose walk script lists it. When a failure looks caused by ANOTHER feature in the batch (it touches what that one changed), say so in its row — the fix is judged in the feature it fails in.',
     '- Never edit code, never commit, never touch any manifest or SPEC.',
     "- The `## Cross-app (verify E2E)` sections are walked like every other item: one row per step, `#` = `E<k>`, App = `cross-app`, with its evidence.",
-    "- Run no gates — no test suite, no build, no gate.mjs. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
+    "- Run no tests — no test suite, no build. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
   )
   if (a.context) lines.push('', a.context.trim())
   const ws = join(root, '.builder', '_walk')

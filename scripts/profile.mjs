@@ -1,7 +1,7 @@
 /**
- * The test plan — the single owner of its levers (slice · end · review, plus models/persist/unruled/
- * walk), the floors, the mapping of an old `profile:` onto it, the recommendation made from a
- * feature's SPEC.md / PLAN.md, what a plan costs in runs and minutes, and the time/token estimate
+ * The test plan — the single owner of its levers (walk · review, plus models/persist/unruled/human),
+ * the floor, the mapping of an old `profile:` or old `slice/end` manifest onto it, the recommendation
+ * made from a feature's SPEC.md / PLAN.md, what a plan costs in reviews, and the time/token estimate
  * drawn from fleet history.
  *
  *   node scripts/profile.mjs --levers <folder>
@@ -24,25 +24,24 @@ const PRESETS = {
   'thorough-you': { testing: 'full+human', review: 'per-task',        models: 'default', verify: 'everything', persist: 'default', unruled: 'recommend', landing: 'local' },
 }
 const LEVERS = { testing: ['none','risky','full','full+human'], review: ['final','per-task','per-task+second'], models: ['economy','default','strong'], verify: ['floors','full','everything'], persist: ['low','default'], unruled: ['recommend','park'], landing: ['local'] }
-/** What holds under every test plan: the touched apps' type-check, and the final whole-branch review. */
-export const FLOORS = { typecheck: true, finalReview: true }
+/** What holds under every test plan: the final whole-branch review. (Tests are the verifier's — every tier runs whatever the plan says.) */
+export const FLOORS = { finalReview: true }
 
-/** The test-plan levers, recommended value first. `review=slice+second` and `walk=you` are Other-only. */
+/** The test-plan levers, recommended value first. `human=yes` is Other-only. */
 export const TEST_LEVERS = {
-  slice: ['own', 'own+app', 'full', 'none'],
-  end: ['touched', 'risk', 'everything', 'none'],
+  walk: ['none', 'risk', 'full'],
   review: ['end', 'app', 'slice', 'slice+second'],
   models: ['default', 'economy', 'strong'],
   persist: ['default', 'low'],
   unruled: ['recommend', 'park'],
-  walk: ['you'],
+  human: ['yes'],
 }
-/** The fast plan; `walk` is absent (the agent walks alone). */
-export const RECOMMENDED = Object.fromEntries(Object.entries(TEST_LEVERS).filter(([k]) => k !== 'walk').map(([k, v]) => [k, v[0]]))
-const CORE = ['slice', 'end', 'review']
+/** The fast plan; `human` is absent (the agents land it alone). */
+export const RECOMMENDED = Object.fromEntries(Object.entries(TEST_LEVERS).filter(([k]) => k !== 'human').map(([k, v]) => [k, v[0]]))
+const CORE = ['walk', 'review']
 const EXTRA = ['models', 'persist', 'unruled']
-const END_RANK = ['none', 'touched', 'risk', 'everything']
-const atLeast = (end, floor) => (END_RANK.indexOf(end) >= END_RANK.indexOf(floor) ? end : floor)
+const WALK_RANK = ['none', 'risk', 'full']
+const atLeast = (walk, floor) => (WALK_RANK.indexOf(walk) >= WALK_RANK.indexOf(floor) ? walk : floor)
 
 const result = (preset, levers, warning) => ({ preset, levers: { ...levers }, floors: { ...FLOORS }, warning })
 
@@ -67,19 +66,22 @@ function parseProfile(value) {
   return result('thorough', PRESETS.thorough, `unknown profile "${v}" — using thorough`)
 }
 
-/** levers → the manifest value: the three levers always, the rest only when not the default. */
+/** levers → the manifest value: the two levers always, the rest only when not the default. */
 export function formatTests(levers) {
   const l = levers ?? {}
   const pairs = CORE.map((k) => `${k}=${l[k] ?? RECOMMENDED[k]}`)
   for (const k of EXTRA) if (l[k] && l[k] !== RECOMMENDED[k]) pairs.push(`${k}=${l[k]}`)
-  if (l.walk === 'you') pairs.push('walk=you')
+  if (l.human === 'yes') pairs.push('human=yes')
   return pairs.join(' ')
 }
 
-/** levers → `own · touched · end`, with ` · you` when walk=you. */
-export const planLabel = (levers) => [...CORE.map((k) => levers?.[k] ?? RECOMMENDED[k]), ...(levers?.walk === 'you' ? ['you'] : [])].join(' · ')
+/** levers → `none · end`, with ` · you` when human=yes. */
+export const planLabel = (levers) => [...CORE.map((k) => levers?.[k] ?? RECOMMENDED[k]), ...(levers?.human === 'yes' ? ['you'] : [])].join(' · ')
 
-/** 'slice=own end=risk …' → { levers, warning|null }. Missing keys are recommended; a `(note)` is skipped. */
+/** What a manifest written before 6.0 says, in 6.0's levers: `end` chose the walk; `slice` is the verifier's now. */
+const OLD_END_WALK = { none: 'none', touched: 'none', risk: 'risk', everything: 'full' }
+
+/** 'walk=risk review=end …' → { levers, warning|null }. Missing keys are recommended; a `(note)` is skipped. */
 export function parseTests(value) {
   const levers = { ...RECOMMENDED }
   const bad = []
@@ -88,21 +90,24 @@ export function parseTests(value) {
     const i = pair.indexOf('=')
     const k = i < 0 ? pair : pair.slice(0, i)
     const val = i < 0 ? '' : pair.slice(i + 1)
-    if (Object.hasOwn(TEST_LEVERS, k) && TEST_LEVERS[k].includes(val)) levers[k] = val
+    if (k === 'slice') continue
+    if (k === 'end' && Object.hasOwn(OLD_END_WALK, val)) levers.walk = OLD_END_WALK[val]
+    else if (k === 'walk' && val === 'you') levers.human = 'yes'
+    else if (Object.hasOwn(TEST_LEVERS, k) && TEST_LEVERS[k].includes(val)) levers[k] = val
     else bad.push(pair)
   }
   return { levers, warning: bad.length ? `ignored tests ${bad.length > 1 ? 'values' : 'value'} ${bad.join(', ')}` : null }
 }
 
-const OLD_END = { none: 'touched', risky: 'risk', full: 'everything', 'full+human': 'everything' }
-const OLD_VERIFY = { floors: 'touched', full: 'risk', everything: 'everything' }
+const OLD_WALK = { none: 'none', risky: 'risk', full: 'full', 'full+human': 'full' }
+const OLD_VERIFY = { floors: 'none', full: 'risk', everything: 'full' }
 const OLD_REVIEW = { final: 'end', 'per-task': 'slice', 'per-task+second': 'slice+second' }
 
-/** Resolved old levers (parseProfile) → test-plan levers (spec §6). Every old build ran the app's suite at the phase close. */
+/** Resolved old levers (parseProfile) → test-plan levers. */
 function fromOld(old) {
-  const levers = { ...RECOMMENDED, slice: 'own+app', end: atLeast(OLD_END[old.testing], OLD_VERIFY[old.verify]), review: OLD_REVIEW[old.review] }
+  const levers = { ...RECOMMENDED, walk: atLeast(OLD_WALK[old.testing], OLD_VERIFY[old.verify]), review: OLD_REVIEW[old.review] }
   for (const k of EXTRA) levers[k] = old[k]
-  if (old.testing === 'full+human') levers.walk = 'you'
+  if (old.testing === 'full+human') levers.human = 'yes'
   return levers
 }
 
@@ -179,9 +184,8 @@ function mentionsMigration(planText) {
 }
 
 /**
- * → { tests: { slice, end, review [, models, persist] }, signals, reason }. The base is the
- * recommended plan, or build_profile_default's mapping; a signal raises only `end`, to at least
- * `risk`. Never `slice=full`.
+ * → { tests: { walk, review [, models, persist] }, signals, reason }. The base is the
+ * recommended plan, or build_profile_default's mapping; a signal raises only walk, to at least `risk`.
  */
 export function recommend({ specText, planText, cfg }) {
   const apps = tableRows(section(specText, 'Apps')).filter((r) => r[1]?.includes('✅')).length
@@ -204,61 +208,18 @@ export function recommend({ specText, planText, cfg }) {
   for (const k of EXTRA) if (base[k] !== RECOMMENDED[k]) tests[k] = base[k]
   let reason = preset ? `build_profile_default: ${preset}` : 'the recommended plan'
   if (signals.length) {
-    tests.end = atLeast(tests.end, 'risk')
-    reason = `end raised to ${tests.end}: ${signals.join(', ')}`
+    tests.walk = atLeast(tests.walk, 'risk')
+    reason = `walk raised to ${tests.walk}: ${signals.join(', ')}`
   }
   return { tests, signals, reason }
 }
 
-/** Each task's app: its `App:` line, else the Phases row whose Tasks cell holds its number. */
-function taskApps(planText) {
-  const text = String(planText ?? '')
-  const byPhase = new Map()
-  for (const r of tableRows(section(text, 'Phases'))) {
-    for (const part of (r[2] ?? '').split(/[,\s]+/).filter(Boolean)) {
-      const m = /^(\d+)(?:[-–](\d+))?$/.exec(part)
-      if (m) for (let n = +m[1]; n <= +(m[2] ?? m[1]); n++) byPhase.set(n, r[1])
-    }
-  }
-  const blocks = text.split(/^(?=### Task \d+)/m).filter((b) => /^### Task \d+/.test(b))
-  return blocks.map((b) => {
-    const n = +/^### Task (\d+)/.exec(b)[1]
-    const own = /^\s*[-*]*\s*\**App:?\**:?\s*`?([\w.-]+)`?/im.exec(b)
-    return own?.[1] ?? byPhase.get(n) ?? null
-  })
-}
-
-/**
- * → { slices, apps, phases, ownRuns, suiteRuns, reviews, walk: 'none'|'risk'|'full', minutes|null }.
- * minutes = Σ suite runs × that app's recorded fast-set duration (`readDurations`), when every app
- * that runs a suite has one.
- */
-export function cost({ planText, levers, durations }) {
+/** → { slices, apps, phases, reviews, walk }: what the plan costs in reviews, and how much an agent walks. Tests are the verifier's. */
+export function cost({ planText, levers }) {
   const l = { ...RECOMMENDED, ...(levers ?? {}) }
   const { tasks, phases, apps } = planSize(planText)
-  const phaseApps = tableRows(section(planText, 'Phases')).map((r) => r[1]).filter(Boolean)
-  const appsOf = taskApps(planText)
-  const runs = new Map()
-  const add = (app, n = 1) => app && runs.set(app, (runs.get(app) ?? 0) + n)
-  if (l.slice === 'own+app') phaseApps.forEach((a) => add(a))
-  if (l.slice === 'full') appsOf.forEach((a) => add(a))
-  if (l.end !== 'none') [...new Set([...phaseApps, ...appsOf.filter(Boolean)])].forEach((a) => add(a))
-  const suiteRuns = (l.slice === 'own+app' ? phases : l.slice === 'full' ? tasks : 0) + (l.end !== 'none' ? apps : 0)
   const reviews = (l.review.startsWith('slice') ? tasks : l.review === 'app' ? phases : 0) + 1
-  let ms = 0
-  for (const [app, n] of runs) {
-    const d = durations?.[app]?.total
-    if (typeof d !== 'number' || !(d >= 0)) { ms = null; break }
-    ms += n * d
-  }
-  return {
-    slices: tasks, apps, phases,
-    ownRuns: l.slice === 'none' ? 0 : tasks,
-    suiteRuns,
-    reviews,
-    walk: l.end === 'risk' ? 'risk' : l.end === 'everything' ? 'full' : 'none',
-    minutes: ms == null ? null : Math.round(ms / 60000),
-  }
+  return { slices: tasks, apps, phases, reviews, walk: l.walk }
 }
 
 const median = (xs) => {
@@ -323,14 +284,7 @@ async function main(argv) {
     out = estimate(rows, label, planSize(planText).tasks)
   } else {
     const levers = chosen()
-    let durations = {}
-    try {
-      // gates-core records the last green duration per app; a copy without it means counts only.
-      const { readDurations } = await import('./gates-core.mjs')
-      const root = repoRoot(dir)
-      if (typeof readDurations === 'function' && root) durations = readDurations(root) ?? {}
-    } catch {}
-    out = cost({ planText, levers, durations })
+    out = cost({ planText, levers })
   }
   console.log(JSON.stringify(out))
 }

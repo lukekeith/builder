@@ -115,7 +115,7 @@ test('--dry-run prepares one copy, prints the sessions per config with their pro
   assert.match(r.stdout, /^builder-everything: 3 sessions/m)
   assert.doesNotMatch(r.stdout, /builder-(rush|standard|thorough)/)
   assert.match(r.stdout, /\[the recommended test plan\]/)
-  assert.match(r.stdout, /\[tests: slice=own\+app end=everything review=slice\]/)
+  assert.match(r.stdout, /\[tests: walk=full review=slice\]/)
   assert.match(r.stdout, /\/builder:brainstorm --auto/)
   assert.match(r.stdout, /superpowers: 1 session/)
   assert.match(r.stdout, /gsd: 4 sessions/)
@@ -193,11 +193,11 @@ test('run: builder-everything pre-sets its test plan on the manifest before the 
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
   const run = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8')).runs[0]
   assert.equal(run.config, 'builder-everything')
-  assert.equal(run.tests, 'slice=own+app end=everything review=slice')
-  assert.match(r.calls[0], /choose the test plan \*\*tests: slice=own\+app end=everything review=slice\*\*/)
+  assert.equal(run.tests, 'walk=full review=slice')
+  assert.match(r.calls[0], /choose the test plan \*\*tests: walk=full review=slice\*\*/)
   const copy = join(root, 'tmp', id, 'builder-everything')
-  assert.match(readFileSync(join(copy, 'docs', 'features', 'tags', 'MANIFEST.md'), 'utf8'), /^tests: slice=own\+app end=everything review=slice$/m)
-  assert.match(git(copy, 'log', '--format=%s', 'main'), /bench\(tags\): test plan slice=own\+app end=everything review=slice/)
+  assert.match(readFileSync(join(copy, 'docs', 'features', 'tags', 'MANIFEST.md'), 'utf8'), /^tests: walk=full review=slice$/m)
+  assert.match(git(copy, 'log', '--format=%s', 'main'), /bench\(tags\): test plan walk=full review=slice/)
 })
 
 test('presetTests replaces a tests: line already there and is a no-op without a plan or a manifest', async () => {
@@ -205,11 +205,11 @@ test('presetTests replaces a tests: line already there and is a no-op without a 
   const copy = makeRoot()
   mkdirSync(join(copy, 'docs', 'features', 'a'), { recursive: true })
   const mf = join(copy, 'docs', 'features', 'a', 'MANIFEST.md')
-  writeFileSync(mf, 'state: spec\ntests: slice=own end=touched review=end\nnext: x\n')
+  writeFileSync(mf, 'state: spec\ntests: walk=none review=end\nnext: x\n')
   assert.equal(presetTests(copy, 'a', null), false)
-  assert.equal(presetTests(copy, 'missing', 'slice=full'), false)
-  assert.equal(presetTests(copy, 'a', 'slice=own+app end=everything review=slice'), true)
-  assert.equal(readFileSync(mf, 'utf8'), 'state: spec\ntests: slice=own+app end=everything review=slice\nnext: x\n')
+  assert.equal(presetTests(copy, 'missing', 'walk=full'), false)
+  assert.equal(presetTests(copy, 'a', 'walk=full review=slice'), true)
+  assert.equal(readFileSync(mf, 'utf8'), 'state: spec\ntests: walk=full review=slice\nnext: x\n')
 })
 
 test('run: builder config sized xs/sm in the brainstorm record is in-chat — spec and fleet are not run', () => {

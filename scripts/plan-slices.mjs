@@ -22,7 +22,6 @@ import { pathToFileURL } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 import { RECOMMENDED, parseTests, parseTestPlan, recommend, cost, formatTests, section } from './profile.mjs'
-import { readDurations } from './gates-core.mjs'
 import { headings, writeAtomic } from './feature-core.mjs'
 
 const FENCE = /^\s*(`{3,}|~{3,})/
@@ -228,40 +227,22 @@ export function spliceIndex(specText, index) {
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const andList = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`)
 
-/** levers → the test plan in plain words, one phrase per lever, `·`-joined. */
-export function leverWords(levers, apps) {
+/** levers → the test plan in plain words, one phrase per lever, `·`-joined. Tests are the verifier's and always run. */
+export function leverWords(levers) {
   const l = { ...RECOMMENDED, ...(levers ?? {}) }
-  const suites = `the ${andList(apps)} ${apps.length === 1 ? 'suite' : 'suites'} once`
-  const slice = {
-    own: 'each slice runs its own tests',
-    'own+app': "each slice runs its own tests, and each app's suite once its slices are done",
-    full: "the app's suite after every slice",
-    none: 'no tests while building — a type-check only',
-  }[l.slice]
-  const end = {
-    touched: `at the end, ${suites}`,
-    risk: `at the end, ${suites}, and an agent tries the risky parts`,
-    everything: 'at the end, everything — the deep set, the cross-app E2E and the full walk',
-    none: 'nothing tested at the end — a type-check only',
-  }[l.end]
+  const walk = { none: 'no agent walk', risk: 'an agent walks the risky parts', full: 'an agent walks all of it' }[l.walk]
   const review = { end: 'one review at the end', app: 'a review after each app', slice: 'a review after every slice', 'slice+second': 'two reviews after every slice' }[l.review]
   const extra = [
     l.models !== 'default' && `${l.models} models`,
     l.persist === 'low' && 'low persistence',
     l.unruled === 'park' && 'parks on an unruled decision',
-    l.walk === 'you' && 'you walk it before it lands',
+    l.human === 'yes' && 'you walk it before it lands',
   ].filter(Boolean)
-  return [slice, end, review, ...extra].join(' · ')
+  return ['tests run beside the build, everything on the merged result', walk, review, ...extra].join(' · ')
 }
 
-/** cost() → `12 quick test runs + 3 suite runs (≈ 6 min of tests)`, ` · N reviews` past the one final review. */
-export function costWords(c) {
-  const runs = [c.ownRuns && plural(c.ownRuns, 'quick test run'), c.suiteRuns && plural(c.suiteRuns, 'suite run')].filter(Boolean)
-  let out = runs.length ? runs.join(' + ') : 'no test runs'
-  if (runs.length && c.minutes != null) out += ` (≈ ${c.minutes || '<1'} min of tests)`
-  if (c.reviews > 1) out += ` · ${c.reviews} reviews`
-  return out
-}
+/** cost() → `N reviews` past the one final review, else `one review`. */
+export const costWords = (c) => (c.reviews > 1 ? `${c.reviews} reviews` : 'one review')
 
 /** Over LONG slices, each app keeps its first 3 and last 1, with `… n more` between. */
 function shown(group, long) {
@@ -286,7 +267,7 @@ export function render({ feature, target, slices: s, cost: c, levers, recommende
     lines.push(r.more ? `${head}${r.more} more` : `${head}${clip(r.name).padEnd(namew)}  ${tag(r.tests).padStart(tw)}`)
   }
   const rec = formatTests(levers) === formatTests({ ...RECOMMENDED, ...recommended })
-  lines.push('', `Test plan${rec ? ' (recommended)' : ''}: ${leverWords(levers, apps)}`, `  ${costWords(c)}`)
+  lines.push('', `Test plan${rec ? ' (recommended)' : ''}: ${leverWords(levers)}`, `  ${costWords(c)}`)
   return lines.join('\n')
 }
 
@@ -336,7 +317,7 @@ function main(argv) {
     slices: slices(planText),
     levers,
     recommended,
-    cost: cost({ planText, levers, durations: readDurations(root) }),
+    cost: cost({ planText, levers }),
   }
   console.log(flag('--json') ? JSON.stringify(out) : render(out))
 }

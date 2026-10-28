@@ -70,37 +70,31 @@ test('render: header, app once per group, right-aligned +N tests, — for none',
 
 test('render: the recommended test plan, its words and its counts', () => {
   const out = render(base())
-  assert.match(out, /\nTest plan \(recommended\): each slice runs its own tests · at the end, the api, web and mobile suites once · one review at the end\n/)
-  assert.match(out, /\n {2}12 quick test runs \+ 3 suite runs$/)
+  assert.match(out, /\nTest plan \(recommended\): tests run beside the build, everything on the merged result · no agent walk · one review at the end\n/)
+  assert.match(out, /\n {2}one review$/)
 })
 
-test('render: not the recommendation → no (recommended); minutes only when known', () => {
-  const levers = { ...RECOMMENDED, slice: 'own+app', review: 'slice' }
-  const out = render(base({ levers, cost: { ...cost({ planText: PLAN, levers, durations: {} }), minutes: 6 } }))
-  assert.match(out, /\nTest plan: each slice runs its own tests, and each app's suite once its slices are done · /)
+test('render: not the recommendation → no (recommended); the cost line is the reviews', () => {
+  const levers = { ...RECOMMENDED, walk: 'full', review: 'slice' }
+  const out = render(base({ levers, cost: cost({ planText: PLAN, levers }) }))
+  assert.match(out, /\nTest plan: tests run beside the build, everything on the merged result · an agent walks all of it · /)
   assert.match(out, / · a review after every slice\n/)
-  assert.match(out, /12 quick test runs \+ 6 suite runs \(≈ 6 min of tests\) · 13 reviews$/)
+  assert.match(out, /\n {2}13 reviews$/)
 })
 
 test('leverWords: a phrase per lever value', () => {
-  const apps = ['api', 'web']
-  const w = (l) => leverWords({ ...RECOMMENDED, ...l }, apps)
-  assert.equal(w({}), 'each slice runs its own tests · at the end, the api and web suites once · one review at the end')
-  assert.match(w({ slice: 'full' }), /^the app's suite after every slice · /)
-  assert.match(w({ slice: 'none' }), /^no tests while building — a type-check only · /)
-  assert.match(w({ end: 'risk' }), / · at the end, the api and web suites once, and an agent tries the risky parts · /)
-  assert.match(w({ end: 'everything' }), / · at the end, everything — the deep set, the cross-app E2E and the full walk · /)
-  assert.match(w({ end: 'none' }), / · nothing tested at the end — a type-check only · /)
+  const w = (l) => leverWords({ ...RECOMMENDED, ...l })
+  assert.equal(w({}), 'tests run beside the build, everything on the merged result · no agent walk · one review at the end')
+  assert.match(w({ walk: 'risk' }), / · an agent walks the risky parts · /)
+  assert.match(w({ walk: 'full' }), / · an agent walks all of it · /)
   assert.match(w({ review: 'app' }), / · a review after each app$/)
   assert.match(w({ review: 'slice+second' }), / · two reviews after every slice$/)
-  assert.match(w({ walk: 'you', models: 'economy', persist: 'low', unruled: 'park' }), / · economy models · low persistence · parks on an unruled decision · you walk it before it lands$/)
-  assert.equal(leverWords(RECOMMENDED, ['api']).includes('the api suite once'), true)
+  assert.match(w({ human: 'yes', models: 'economy', persist: 'low', unruled: 'park' }), / · economy models · low persistence · parks on an unruled decision · you walk it before it lands$/)
 })
 
-test('costWords: no runs at all reads plainly; a zero part is left out', () => {
-  assert.equal(costWords({ ownRuns: 0, suiteRuns: 0, reviews: 1, minutes: null }), 'no test runs')
-  assert.equal(costWords({ ownRuns: 0, suiteRuns: 2, reviews: 1, minutes: 0 }), '2 suite runs (≈ <1 min of tests)')
-  assert.equal(costWords({ ownRuns: 1, suiteRuns: 1, reviews: 2, minutes: null }), '1 quick test run + 1 suite run · 2 reviews')
+test('costWords: one review reads plainly; more are counted', () => {
+  assert.equal(costWords({ reviews: 1 }), 'one review')
+  assert.equal(costWords({ reviews: 13 }), '13 reviews')
 })
 
 test('render: over 30 slices, each app shows its first 3 and last 1 with … n more', () => {
@@ -136,19 +130,19 @@ test('CLI: no tests: line → the recommendation, marked (recommended)', () => {
   const r = run(dir)
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stdout, /^cert-tags — 12 slices in 3 apps · lands on main\n/)
-  // The fixture spec has three apps in scope — a signal that raises the end to the risky parts.
-  assert.match(r.stdout, /Test plan \(recommended\): each slice runs its own tests · at the end, the api, web and mobile suites once, and an agent tries the risky parts · one review at the end/)
+  // The fixture spec has three apps in scope — a signal that raises the walk to the risky parts.
+  assert.match(r.stdout, /Test plan \(recommended\): tests run beside the build, everything on the merged result · an agent walks the risky parts · one review at the end/)
 })
 
 test('CLI: --tests wins over the manifest; the manifest tests: line over the recommendation', () => {
-  const { dir } = repo({ manifest: 'tests: slice=none end=none review=app\n' })
-  assert.match(run(dir).stdout, /Test plan: no tests while building — a type-check only · nothing tested at the end — a type-check only · a review after each app\n {2}no test runs · 4 reviews/)
-  assert.match(run(dir, ['--tests', 'slice=full end=risk review=end']).stdout, /Test plan: the app's suite after every slice/)
+  const { dir } = repo({ manifest: 'tests: walk=none review=app\n' })
+  assert.match(run(dir).stdout, /Test plan: tests run beside the build, everything on the merged result · no agent walk · a review after each app\n {2}4 reviews/)
+  assert.match(run(dir, ['--tests', 'walk=full review=end']).stdout, /Test plan: tests run beside the build, everything on the merged result · an agent walks all of it/)
 })
 
 test('CLI: an old profile: line maps through parseTestPlan', () => {
   const { dir } = repo({ manifest: 'profile: thorough\ngo-ahead: luke 2026-10-01\n' })
-  assert.match(run(dir).stdout, /Test plan: each slice runs its own tests, and each app's suite once its slices are done · at the end, everything/)
+  assert.match(run(dir).stdout, /Test plan: tests run beside the build, everything on the merged result · an agent walks all of it · a review after every slice/)
 })
 
 test('CLI: target = manifest target:, else merge_into, else base_branch', () => {
@@ -157,23 +151,15 @@ test('CLI: target = manifest target:, else merge_into, else base_branch', () => 
   assert.match(run(repo({ config: 'base_branch: trunk\n' }).dir).stdout, /lands on trunk\n/)
 })
 
-test('CLI: minutes from the recorded fast-set durations', () => {
-  const { root, dir } = repo()
-  mkdirSync(join(root, '.builder', 'gates'), { recursive: true })
-  const d = (ms) => ({ total: ms, commands: {}, at: 'x' })
-  writeFileSync(join(root, '.builder', 'gates', 'durations.json'), JSON.stringify({ api: d(120000), web: d(120000), mobile: d(120000) }))
-  assert.match(run(dir, ['--tests', 'slice=own end=touched review=end']).stdout, /12 quick test runs \+ 3 suite runs \(≈ 6 min of tests\)\n$/)
-})
-
 test('CLI: --json → { feature, target, slices, levers, recommended, cost }', () => {
-  const { dir } = repo({ manifest: 'tests: slice=own end=touched review=end\n' })
+  const { dir } = repo({ manifest: 'tests: walk=none review=end\n' })
   const out = JSON.parse(run(dir, ['--json']).stdout)
   assert.deepEqual(Object.keys(out), ['feature', 'target', 'slices', 'levers', 'recommended', 'cost'])
   assert.equal(out.feature, 'cert-tags')
   assert.equal(out.slices.length, 12)
-  assert.equal(out.levers.end, 'touched')
-  assert.equal(out.recommended.end, 'risk')
-  assert.equal(out.cost.suiteRuns, 3)
+  assert.equal(out.levers.walk, 'none')
+  assert.equal(out.recommended.walk, 'risk')
+  assert.equal(out.cost.reviews, 1)
 })
 
 test('CLI: no folder → usage, exit 2; no PLAN.md → says so, exit 1', () => {

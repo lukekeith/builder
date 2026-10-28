@@ -470,8 +470,8 @@ test('renderArchived lists the latest landings newest first', () => {
   assert.ok(out.indexOf('| b |') < out.indexOf('| a |'))
   assert.match(out, /\| b \| — \| — \| — \| — \| fff0000 \| #9 \| 1h ago \|/)
   assert.match(out, /\| a \| — \| — \| — \| — \| abc1234 \| — \| 2h ago \|/)
-  const full = renderArchived([{ ...row('c'), tests: 'slice=own end=touched review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 }, costUsd: 30, size: { tasks: 12 } }], 1, now)
-  assert.match(full, /\| c \| own · touched · end \| 12m \| \$30\.00 \| \$2\.50 \| abc1234 \|/)
+  const full = renderArchived([{ ...row('c'), tests: 'walk=none review=end', lanes: { build: 600000, walk: 120000 }, tokens: { input: 1500000, output: 600000, cacheRead: 0 }, costUsd: 30, size: { tasks: 12 } }], 1, now)
+  assert.match(full, /\| c \| none · end \| 12m \| \$30\.00 \| \$2\.50 \| abc1234 \|/)
   assert.equal(renderArchived([], 0), 'No feature has landed from this fleet yet.\n')
 })
 
@@ -591,9 +591,9 @@ test('specBringIn: a new branch takes HEAD\u2019s folder unless the target alrea
 test('renderStatus shows each feature\'s test plan as its label; an old profile in the facts maps onto it', () => {
   const f = (facts) => ({ status: 'building', runs: 1, facts: facts ? { size: 'md', ...facts } : undefined })
   const out = renderStatus({ features: {
-    a: f({ tests: 'slice=own end=touched review=end' }),
-    b: f({ tests: 'slice=own end=risk review=app walk=you' }),
-    c: f({ tests: 'slice=own+app end=everything review=slice', profile: 'rush' }),
+    a: f({ tests: 'walk=none review=end' }),
+    b: f({ tests: 'walk=risk review=app human=yes' }),
+    c: f({ tests: 'walk=full review=slice', profile: 'rush' }),
     d: f({ profile: 'rush' }),
     e: f({ profile: 'thorough-you' }),
     g: f({ profile: 'bogus' }),
@@ -601,27 +601,27 @@ test('renderStatus shows each feature\'s test plan as its label; an old profile 
   } })
   assert.match(out, /\| Tests \|/)
   assert.doesNotMatch(out, /\| Profile \|/)
-  assert.match(out, /\| a \| building \| own · touched · end \|/)
-  assert.match(out, /\| b \| building \| own · risk · app · you \|/)
-  assert.match(out, /\| c \| building \| own\+app · everything · slice \|/, 'tests wins over profile')
-  assert.match(out, /\| d \| building \| own\+app · touched · end \|/)
-  assert.match(out, /\| e \| building \| own\+app · everything · slice · you \|/)
-  assert.match(out, /\| g \| building \| own\+app · everything · slice \|/, 'an unknown old profile reads as thorough')
+  assert.match(out, /\| a \| building \| none · end \|/)
+  assert.match(out, /\| b \| building \| risk · app · you \|/)
+  assert.match(out, /\| c \| building \| full · slice \|/, 'tests wins over profile')
+  assert.match(out, /\| d \| building \| none · end \|/)
+  assert.match(out, /\| e \| building \| full · slice · you \|/)
+  assert.match(out, /\| g \| building \| full · slice \|/, 'an unknown old profile reads as thorough')
   assert.match(out, /\| h \| building \| — \|/)
 })
 
 test('renderArchived labels the test plan as every status view does — an old row by its profile', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
-  assert.match(renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now), /\| y \| own\+app · everything · slice · you \|/)
-  assert.match(renderArchived([{ ...row('z'), tests: 'slice=own end=touched review=end', profile: null }], 1, now), /\| z \| own · touched · end \|/)
+  assert.match(renderArchived([{ ...row('y'), profile: 'thorough-you' }], 1, now), /\| y \| full · slice · you \|/)
+  assert.match(renderArchived([{ ...row('z'), tests: 'walk=none review=end', profile: null }], 1, now), /\| z \| none · end \|/)
   assert.match(renderArchived([{ ...row('h'), profile: 'here' }], 1, now), /\| h \| here \|/)
 })
 
 test('renderStatus: a row with no facts yet shows the label the caller resolves for it', () => {
-  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { tests: 'slice=own end=touched review=end' } } } }
-  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'own · risk · end' : 'own · everything · end'))
-  assert.match(out, /\| a \| queued \| own · risk · end \|/)
-  assert.match(out, /\| b \| building \| own · touched · end \|/, 'facts win over the fallback')
+  const fleet = { target: 'main', features: { a: { status: 'queued', runs: 0 }, b: { status: 'building', runs: 1, facts: { tests: 'walk=none review=end' } } } }
+  const out = renderStatus(fleet, null, null, Date.now(), [], (name) => (name === 'a' ? 'risk · end' : 'full · end'))
+  assert.match(out, /\| a \| queued \| risk · end \|/)
+  assert.match(out, /\| b \| building \| none · end \|/, 'facts win over the fallback')
   assert.match(renderStatus(fleet), /\| a \| queued \| — \|/, 'no fallback given: as before')
 })
 
