@@ -233,3 +233,17 @@ test('the lock: two processes racing for it — exactly one wins', async () => {
   child.kill()
   assert.equal([mine, childWon].filter(Boolean).length, 1)
 })
+
+test('a held merge runs and stays held: green, target untouched, targetSha recorded', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const old = git(root, 'rev-parse', 'main')
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'merge', target: 'main', hold: true })
+  await serve(root, opts())
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green')
+  assert.equal(v.held, true)
+  assert.equal(v.landed, undefined)
+  assert.equal(v.targetSha, old)
+  assert.equal(git(root, 'rev-parse', 'main'), old)
+})
