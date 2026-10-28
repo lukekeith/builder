@@ -167,6 +167,17 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     }
     const cfg = loadConfig(root)
     const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
+    // agent_walk.env as the fleet hands it to a walk: `{feature}` filled from the builder/<feature>
+    // branch. Any other branch has no feature to fill it with, so it can't lease the walk env.
+    const walkEnvFor = (branch) => {
+      const feature = /^builder\/(.+)$/.exec(branch ?? '')?.[1]
+      const out = {}
+      for (const [k, val] of Object.entries(walkEnv)) {
+        if (String(val).includes('{feature}') && !feature) throw new Error('agent_walk.env needs {feature} — only fleet branches (builder/<feature>) can lease the walk env')
+        out[k] = String(val).replaceAll('{feature}', feature)
+      }
+      return out
+    }
     const pool = createPool(v)
     for (const r of ledger.requests((x) => x.state === 'running')) ledger.saveRequest({ ...r, state: 'queued', startedAt: undefined })
     try {
@@ -229,8 +240,17 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
           for (;;) {
             if (signal.aborted) throw new Error('cancelled')
             const l = await pool.lease(needs, o)
-            if (l) return needs.some((n) => n.kind === 'walk-env') ? { ...l, env: { ...walkEnv, ...l.env } } : l
-            await waitOrAbort(1000, signal)
+            if (!l) {
+              await waitOrAbort(1000, signal)
+              continue
+            }
+            if (!needs.some((n) => n.kind === 'walk-env')) return l
+            try {
+              return { ...l, env: { ...walkEnvFor(req.branch), ...l.env } }
+            } catch (e) {
+              l.release()
+              throw e
+            }
           }
         },
         select: selectSuites,

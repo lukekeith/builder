@@ -291,3 +291,20 @@ test('a held merge runs and stays held: green, target untouched, targetSha recor
   assert.equal(v.targetSha, old)
   assert.equal(git(root, 'rev-parse', 'main'), old)
 })
+
+test('walk-env leases fill {feature} from a builder/<feature> branch; any other branch is env-broken, saying why', async () => {
+  const { root, feat } = repo()
+  git(root, 'branch', 'builder/x', feat)
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\nbase_branch: main\napps:\n  - name: a\n    path: .\nagent_walk:\n  env: WALK_DB=db_{feature} PLAIN=1\n---\n')
+  const walk = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'test "$WALK_DB" = db_x && test "$PLAIN" = 1', needs: [{ kind: 'walk-env' }] }] }
+  const l = openLedger(root)
+  const ok = l.newRequest({ worktree: root, branch: 'builder/x', sha: feat, tier: 'commit', target: 'main' })
+  const bad = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: walk }))
+  assert.equal(l.getRequest(ok.id).verdict.status, 'green', JSON.stringify(l.getRequest(ok.id).verdict))
+  assert.deepEqual(l.getRequest(ok.id).verdict.debt, [], 'the check passed — {feature} was filled')
+  const v = l.getRequest(bad.id).verdict
+  assert.equal(v.status, 'env-broken', JSON.stringify(v))
+  assert.match(v.broken.map((b) => b.reason).join('\n'), /agent_walk\.env needs \{feature\} — only fleet branches \(builder\/<feature>\) can lease the walk env/)
+})
