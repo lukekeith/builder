@@ -375,3 +375,17 @@ test('a superseded service leaves a request the new owner already restarted', as
     other.kill()
   }
 })
+
+test('agent_walk.copy files reach the checkout a request runs in', async () => {
+  const { root, feat } = repo()
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  writeFileSync(join(root, '.claude', 'builder.md'), '---\nproject: x\nbase_branch: main\napps:\n  - name: a\n    path: .\nagent_walk:\n  copy: local.env\n---\n')
+  writeFileSync(join(root, 'local.env'), 'K=1\n') // untracked in the main checkout
+  const needs = { ...VERIFY, checks: [{ ...VERIFY.checks[0], run: 'test -f local.env' }] }
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: needs }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.deepEqual(v.debt, [], 'the check passed here — the file was copied in')
+})

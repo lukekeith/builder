@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync, symlinkSync, lstatSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git, mainRoot } from '../verify/git.mjs'
@@ -186,4 +186,25 @@ test('copyLocal brings agent_walk.copy files in: missing skipped, tracked never 
   copyLocal(root, co, rels)
   assert.equal(readFileSync(join(co, 'plain.env'), 'utf8'), 'P=1\n')
   copyLocal(root, co, [])
+})
+
+test('copyLocal: an ignored symlink survives a second move on the slot, and a dangling link inside a copied directory does not throw', () => {
+  const root = repo()
+  writeFileSync(join(root, '.gitignore'), '.env\nlinks\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'ignore')
+  writeFileSync(join(root, 'env.local'), 'K=1\n')
+  symlinkSync('env.local', join(root, '.env'))
+  mkdirSync(join(root, 'links'))
+  symlinkSync('gone', join(root, 'links/dangling'))
+  writeFileSync(join(root, 'links/real'), 'r')
+  const co = ensureCheckout(root, 0)
+  const sha = git(root, 'rev-parse', 'HEAD')
+  for (let i = 0; i < 3; i++) {
+    checkoutAt(co, sha)
+    copyLocal(root, co, ['.env', 'env.local', 'links'])
+    assert.equal(readFileSync(join(co, '.env'), 'utf8'), 'K=1\n')
+    assert.equal(readFileSync(join(co, 'links/real'), 'utf8'), 'r')
+    assert.equal(lstatSync(join(co, 'links/dangling')).isSymbolicLink(), true)
+  }
 })

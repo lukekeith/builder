@@ -2,7 +2,7 @@
  * Run checkouts — the clean copies a worker tests, never the agent's live worktree (spec §The
  * units) — and landing: the merge queue fast-forwards the target to exactly the commit it tested.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { createHash } from 'node:crypto'
 import { git, tryGit, sh } from './git.mjs'
@@ -46,7 +46,20 @@ export function copyLocal(root, path, rels) {
   for (const rel of rels) {
     const src = join(root, rel)
     if (!existsSync(src)) continue
-    cpSync(src, join(path, rel), { recursive: true, filter: (from) => statSync(from).isDirectory() || !tracked.has(relative(root, from)) })
+    // An untracked symlink left by the last copy would make cpSync see src and dest as one file
+    // (it writes links as absolute ones): removed first, entry by entry. Tracked paths are skipped.
+    cpSync(src, join(path, rel), {
+      recursive: true,
+      filter: (from) => {
+        const r = relative(root, from)
+        if (tracked.has(r)) return false
+        const to = join(path, r)
+        try {
+          if (lstatSync(to).isSymbolicLink()) rmSync(to)
+        } catch {}
+        return true
+      },
+    })
   }
 }
 
