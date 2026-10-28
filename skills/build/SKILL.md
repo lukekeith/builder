@@ -202,8 +202,9 @@ line. **The table's `Tasks` cell is the membership source; a block's `Phase:` li
 echo** — when they disagree, the table decides and the mismatch is said out loud. Then:
 
 1. **The phase tier — the build's one wait.**
-   `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier phase` prints a request
-   id; `node <builder>/scripts/verify/verify.mjs wait <id>` (Bash timeout 600000) until it exits
+   `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier phase --since <BASE>`
+   (`<BASE>` = the BASE recorded before the phase's first task — on the target branch itself there
+   is no branch point to measure from) prints a request id; `node <builder>/scripts/verify/verify.mjs wait <id>` (Bash timeout 600000) until it exits
    with a verdict — exit 75 means still running: call it again. It runs every test the phase's
    commits can reach, reusing what already passed at this commit. 🔴 *Fresh* is
    [`verification-before-completion`](../verification-before-completion/SKILL.md)'s iron law, and
@@ -367,7 +368,8 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
 3. **Tests by the verifier** — after each task's commit, `node <builder>/scripts/verify/verify.mjs
    request <worktree> HEAD --tier commit` (`<worktree>` = `git rev-parse --show-toplevel`), and read
    `verify.mjs verdict <branch>` before the next task (exit 75 or 5 → nothing yet); at each phase
-   close, `--tier phase` and `wait`. A red verdict is fixed here, in place, before the next task or
+   close, `--tier phase --since <the phase's BASE>` (`<sha>^` of the phase's first ledger line) and
+   `wait`. A red verdict is fixed here, in place, before the next task or
    phase.
 4. **Keep a one-line ledger** in the workspace (`<builder>/scripts/workspace <feature>` →
    `ledger.md`): `Task N: done <sha>`. After a `/clear`, `/builder:resume` routes back here and you
