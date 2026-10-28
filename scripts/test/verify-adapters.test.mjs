@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
-import { parseJUnit, parseJestJson, parseXcresult } from '../verify/reports.mjs'
+import { parseJUnit, parseJestJson, parseXcresult, parseJsonLines } from '../verify/reports.mjs'
 import { ADAPTERS, leafOf, q } from '../verify/adapters.mjs'
 
 const suite = (o) => ({ name: 's', runner: 'node-test', files: 'test/*.test.mjs', cwd: '.', args: '', needs: [], tiers: [], ...o })
@@ -78,4 +78,26 @@ test('node-test runs for real: per-test file, name path, status', () => {
   try { execSync(one, { cwd: dir, env, stdio: 'ignore', shell: '/bin/bash' }) } catch {}
   const only = ADAPTERS['node-test'].parse(readFileSync(report, 'utf8'), { root: dir }).filter((x) => x.status !== 'skip')
   assert.deepEqual(only.map((x) => x.name), ['math > breaks'])
+})
+
+test('parseJestJson: a file that fails to load is one fail row, not nothing', () => {
+  const jest = JSON.stringify({ testResults: [{ name: '/repo/src/bad.test.ts', status: 'failed', message: 'SyntaxError: Unexpected token', assertionResults: [] }] })
+  const r = parseJestJson(jest, { root: '/repo' })
+  assert.deepEqual(r.map((x) => [x.file, x.name, x.status, x.ms]), [['src/bad.test.ts', '<file failed to load>', 'fail', 0]])
+  assert.match(r[0].msg, /SyntaxError/)
+})
+
+test('parseJsonLines skips a truncated line; parseXcresult of empty text is []', () => {
+  const text = '{"file":"a","name":"x","status":"pass","ms":1,"msg":null}\n{"file":"a","na'
+  assert.deepEqual(parseJsonLines(text).map((r) => r.name), ['x'])
+  assert.deepEqual(parseXcresult(''), [])
+  assert.deepEqual(parseXcresult('  \n'), [])
+})
+
+test('phpunit: leaf is regex-escaped; grep without files filters on the leaf alone', () => {
+  const s = suite({ runner: 'phpunit' })
+  assert.match(ADAPTERS.phpunit.command({ suite: s, files: ['tests/FooTest.php'], grep: 'testA(b)', report: '/r' }), /--filter 'FooTest::testA\\\(b\\\)'/)
+  const none = ADAPTERS.phpunit.command({ suite: s, files: null, grep: 'testBar', report: '/r' })
+  assert.match(none, /--filter 'testBar'/)
+  assert.doesNotMatch(none, /undefined/)
 })

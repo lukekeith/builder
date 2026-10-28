@@ -36,7 +36,10 @@ export function parseJUnit(xml, { root = null } = {}) {
 export function parseJestJson(text, { root = null } = {}) {
   const j = JSON.parse(text)
   return (j.testResults ?? []).flatMap((f) =>
-    (f.assertionResults ?? []).map((a) => ({
+    // a file that fails to load or compile has no assertions — without a row a red suite would read as empty
+    f.status === 'failed' && !f.assertionResults?.length
+      ? [{ file: rel(f.name ?? f.testFilePath, root), name: '<file failed to load>', status: 'fail', ms: 0, msg: clip(f.message) }]
+      : (f.assertionResults ?? []).map((a) => ({
       file: rel(f.name ?? f.testFilePath, root),
       name: a.fullName ?? a.title,
       status: a.status === 'passed' ? 'pass' : a.status === 'failed' ? 'fail' : 'skip',
@@ -48,6 +51,7 @@ export function parseJestJson(text, { root = null } = {}) {
 
 /** `xcrun xcresulttool get test-results tests --format json`: a test's file is its class + `.swift`. */
 export function parseXcresult(text) {
+  if (!text.trim()) return []
   const out = []
   const walk = (n, cls) => {
     if (n.nodeType === 'Test Case') {
@@ -67,5 +71,12 @@ export const parseJsonLines = (text, { root = null } = {}) =>
   text
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l))
+    .flatMap((l) => {
+      // a runner killed mid-write leaves a truncated last line; keep the rows before it
+      try {
+        return [JSON.parse(l)]
+      } catch {
+        return []
+      }
+    })
     .map((r) => ({ ...r, file: rel(r.file, root) }))

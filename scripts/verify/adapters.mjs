@@ -32,7 +32,7 @@ export const ADAPTERS = {
   phpunit: {
     command: ({ suite, files, grep, report }) => {
       const cls = (files ?? []).map((f) => basename(f, '.php'))
-      const filter = grep ? `${cls[0]}::${leafOf(grep)}` : cls.length ? `(${cls.map(re).join('|')})` : null
+      const filter = grep ? (cls.length ? `${re(cls[0])}::${re(leafOf(grep))}` : re(leafOf(grep))) : cls.length ? `(${cls.map(re).join('|')})` : null
       return join('./vendor/bin/phpunit', `--log-junit ${q(report)}`, suite.args, filter && `--filter ${q(filter)}`)
     },
     parse: parseJUnit,
