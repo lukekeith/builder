@@ -43,15 +43,20 @@ export function heldMerge(root, branch) {
   return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held).at(-1)?.verdict ?? null
 }
 
-/** Poll the ledger until the request has a verdict — without blocking the fleet's event loop; null on abort. */
-export async function awaitVerdict(root, id, { pollMs = 2000, signal = null } = {}) {
+/**
+ * Poll the ledger until the request has a verdict — without blocking the fleet's event loop; null
+ * on abort or after `maxMs` (default 3 h): a service that never answers parks the feature rather
+ * than holding the fleet forever.
+ */
+export async function awaitVerdict(root, id, { pollMs = 2000, signal = null, maxMs = 3 * 3600000 } = {}) {
   const ledger = openLedger(root)
+  const until = Date.now() + maxMs
   for (;;) {
     const r = ledger.getRequest(id)
     // No request file: nothing will ever answer it, so the caller parks instead of waiting forever.
     if (!r) return null
     if (r?.state === 'done' || (r?.state === 'cancelled' && r.verdict)) return r.verdict
-    if (signal?.aborted) return null
+    if (signal?.aborted || Date.now() >= until) return null
     // The service exits when idle; a request still waiting needs one running.
     ensureService(root)
     await new Promise((res) => setTimeout(res, pollMs))

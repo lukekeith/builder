@@ -1,14 +1,14 @@
 // scripts/test/verify-client.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, readFileSync, existsSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { git } from '../verify/git.mjs'
 import { openLedger } from '../verify/ledger.mjs'
-import { summarize, exitFor } from '../verify/verify.mjs'
+import { summarize, exitFor, ensureService } from '../verify/verify.mjs'
 
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', 'verify', 'verify.mjs')
 const CONFIG = `---\nproject: X\nbase_branch: main\napps:\n  - name: a\n    path: .\nverify:\n  workers: 1\n  checks:\n    ok: { run: "test -f b.txt", tiers: [commit, phase, merge] }\n---\n`
@@ -226,4 +226,46 @@ test('carry: a code file renamed into the registry is a code change — exit 2, 
   assert.match(c.stdout, /code changed since the tested sha/)
   assert.equal(git(root, 'rev-parse', 'main'), before)
   assert.equal(openLedger(root).getRequest(id).verdict.held, false)
+})
+
+const until = async (f, ms = 15000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    const v = f()
+    if (v) return v
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  return f()
+}
+const pidOf = (root) => {
+  try {
+    return Number(readFileSync(join(root, '.builder', 'verify', 'serve.pid'), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+test('ensureService: a serve.pid naming a live but foreign pid, untouched for over 60 s, is stale — a service starts', async () => {
+  const { root } = repo()
+  openLedger(root)
+  const p = join(root, '.builder', 'verify', 'serve.pid')
+  writeFileSync(p, String(process.ppid))
+  const old = new Date(Date.now() - 120000)
+  utimesSync(p, old, old)
+  process.env.BUILDER_VERIFY_IDLE_MS = '500'
+  ensureService(root)
+  const pid = await until(() => { const n = pidOf(root); return n && n !== process.ppid ? n : null })
+  assert.ok(pid, 'a new service took the lock')
+  await until(() => !existsSync(p))
+})
+
+test('a service sent SIGTERM drops its lock and exits', async () => {
+  const { root } = repo()
+  openLedger(root)
+  process.env.BUILDER_VERIFY_IDLE_MS = '60000'
+  ensureService(root)
+  const pid = await until(() => pidOf(root))
+  assert.ok(pid)
+  process.kill(pid, 'SIGTERM')
+  assert.ok(await until(() => !existsSync(join(root, '.builder', 'verify', 'serve.pid'))), 'serve.pid removed')
 })

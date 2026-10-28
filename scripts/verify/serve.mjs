@@ -10,6 +10,7 @@
  *   node scripts/verify/serve.mjs <main checkout>     (started by verify.mjs; never by hand)
  */
 import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync } from 'node:fs'
+import { Worker } from 'node:worker_threads'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
 import { join } from 'node:path'
@@ -25,6 +26,8 @@ import { ensureCheckout, commitExists, checkoutAt, mergedCheckout, setupIfNeeded
 import { loadConfig } from '../config.mjs'
 
 const MAX_LAND_ATTEMPTS = 5
+/** A serve.pid untouched this long is a dead holder even if its pid is alive (reused after a reboot or a kill). */
+export const STALE_MS = 60000
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // A wait a cancel cuts short (the timer and its abort listener are both cleaned up either way).
 const waitOrAbort = (ms, signal) => wait(ms, null, { signal }).catch(() => {})
@@ -69,7 +72,7 @@ export function takeLock(root) {
     }
     const pid = /^\d+$/.test(text.trim()) ? Number(text.trim()) : 0
     if (pid === process.pid) return true
-    if (pid && alive(pid)) return false
+    if (pid && alive(pid) && Date.now() - mtime < STALE_MS) return false
     // Unreadable but fresh: a holder from an older build may still be writing it.
     if (!pid && Date.now() - mtime < 5000) return false
     const aside = uniq()
@@ -94,6 +97,38 @@ export function takeLock(root) {
   }
   return false
 }
+/** True when a service holds the lock: its pid is alive and its heartbeat is fresh. */
+export function serviceAlive(root) {
+  const p = join(verifyDir(root), 'serve.pid')
+  try {
+    const pid = Number(readFileSync(p, 'utf8'))
+    return pid > 0 && alive(pid) && Date.now() - statSync(p).mtimeMs < STALE_MS
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The heartbeat: serve.pid's mtime, touched every `ms` while this process holds it. It runs on a
+ * worker thread because setup, git and project hooks are synchronous and block the main thread
+ * for minutes — a tick-driven touch would let a busy service look dead.
+ */
+function heartbeat(root, ms) {
+  const src = `const { workerData: { p, pid, ms } } = require('node:worker_threads')
+const fs = require('node:fs')
+setInterval(() => {
+  try {
+    if (fs.readFileSync(p, 'utf8').trim() === String(pid)) {
+      const t = new Date()
+      fs.utimesSync(p, t, t)
+    }
+  } catch {}
+}, ms)`
+  const w = new Worker(src, { eval: true, workerData: { p: join(verifyDir(root), 'serve.pid'), pid: process.pid, ms } })
+  w.unref()
+  return w
+}
+
 const dropLock = (root) => {
   try {
     if (Number(readFileSync(join(verifyDir(root), 'serve.pid'), 'utf8')) === process.pid) unlinkSync(join(verifyDir(root), 'serve.pid'))
@@ -103,162 +138,169 @@ const dropLock = (root) => {
 const shell = (cmd, o) => sh(cmd, o)
 const empty = (req, status, extra = {}) => ({ request: req.id, branch: req.branch, sha: req.sha, tier: req.tier, status, regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0, ...extra })
 
-export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = runRequest, verify = null } = {}) {
+export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeatMs = 5000, run = runRequest, verify = null } = {}) {
   const ledger = openLedger(root)
   if (!takeLock(root)) return 'locked'
-  let v = verify
-  let untested = false
-  if (!v) {
-    const r = loadVerify(root)
-    // A config with neither gates nor a verify: block → nothing is configured to test: runs are
-    // green and say so (`untested`). No config, an un-migrated 5.x one, or a block that is there
-    // but wrong is env-broken — none of them may land a merge nobody tested.
-    if (!r.ok && /no verify: block/.test(r.reason)) {
-      v = { workers: 1, timeoutMs: 15 * 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, suites: [], checks: [] }
-      untested = true
-    } else if (!r.ok) {
-      for (const q of ledger.requests((x) => x.state === 'queued' || x.state === 'running' || x.state === 'folded')) ledger.saveRequest({ ...q, state: 'done', doneAt: new Date().toISOString(), verdict: empty(q, 'env-broken', { broken: [{ suite: '-', reason: r.reason }] }) })
-      dropLock(root)
-      return 'idle'
-    } else v = r.verify
-  }
-  const cfg = loadConfig(root)
-  const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
-  const pool = createPool(v)
-  for (const r of ledger.requests((x) => x.state === 'running')) ledger.saveRequest({ ...r, state: 'queued', startedAt: undefined })
+  const beat = heartbeat(root, heartbeatMs)
   try {
-    pool.dropOrphans()
-  } catch {}
-
-  const running = new Map()
-  const slots = [...Array(v.workers).keys()]
-  let idleSince = Date.now()
-
-  const finish = (req, verdict) => {
-    const cur = ledger.getRequest(req.id) ?? req
-    // A merge that already landed is not undone by a late cancel, so its verdict stands.
-    if (cur.state === 'cancelled' && !verdict.landed) {
-      // Requests folded into it are put back by the next tick's sweep: their owners did not cancel.
-      const v2 = verdict.requeue ? empty(req, 'cancelled') : { ...verdict, status: 'cancelled', broken: (verdict.broken ?? []).filter((b) => b.reason !== 'cancelled') }
-      ledger.saveRequest({ ...cur, doneAt: new Date().toISOString(), verdict: v2 })
-      return
-    }
-    if (verdict.requeue) {
-      const attempts = (cur.attempts ?? 0) + 1
-      if (attempts < MAX_LAND_ATTEMPTS) return ledger.saveRequest({ ...cur, state: 'queued', attempts, startedAt: undefined })
-      verdict = empty(req, 'env-broken', { broken: [{ suite: '-', reason: `could not land after ${attempts} tries: ${verdict.reason}` }] })
-    }
-    const done = { ...cur, state: 'done', doneAt: new Date().toISOString(), verdict: { ...verdict, request: req.id, branch: req.branch, sha: req.sha, tier: req.tier } }
-    ledger.saveRequest(done)
-    for (const id of req.foldedFrom ?? []) {
-      const f = ledger.getRequest(id)
-      if (f?.state === 'folded') ledger.saveRequest({ ...f, state: 'done', doneAt: done.doneAt, verdict: done.verdict })
-    }
+    return await work()
+  } finally {
+    await beat.terminate()
+    dropLock(root)
   }
 
-  const execute = async (req, slot, signal) => {
-    if (!commitExists(root, req.sha)) return empty(req, 'gone')
-    if (tryGit(root, 'rev-parse', '--verify', '-q', `refs/heads/${req.target}`) === null) return empty(req, 'env-broken', { broken: [{ suite: '-', reason: `target branch "${req.target}" does not exist` }] })
-    const targetSha = git(root, 'rev-parse', `refs/heads/${req.target}`)
-    const checkout = ensureCheckout(root, slot)
-    let sha = req.sha
-    if (req.tier === 'merge') {
-      const m = mergedCheckout(checkout, targetSha, req.sha, req.message ?? `Merge ${req.branch} into ${req.target}`)
-      if (m.conflict) return empty(req, 'conflict', { files: m.files })
-      sha = m.sha
-    } else checkoutAt(checkout, req.sha)
-    setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout }))
-    const mergeBase = tryGit(root, 'merge-base', targetSha, req.sha) ?? targetSha
-    // The commit tier starts after the branch's last green; the phase and merge tiers cover the branch.
-    const green = req.since || req.tier !== 'commit' ? null : ledger.lastGreen(req.branch)
-    const base = req.since ?? (green && green.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', green.sha, req.sha) !== null ? green.sha : mergeBase)
-    let targetCo = null
-    const ctx = {
-      verify: v,
-      pool,
-      ledger,
-      checkout,
-      targetSha,
-      signal,
-      baseEnv: {},
-      lease: async (needs, o) => {
-        // Waits for capacity, but never past a cancel: the run is told at once, not after a poll.
-        for (;;) {
-          if (signal.aborted) throw new Error('cancelled')
-          const l = await pool.lease(needs, o)
-          if (l) return needs.some((n) => n.kind === 'walk-env') ? { ...l, env: { ...walkEnv, ...l.env } } : l
-          await waitOrAbort(1000, signal)
-        }
-      },
-      select: selectSuites,
-      targetCheckout: async () => {
-        if (!targetCo) {
-          targetCo = ensureCheckout(root, `t${slot}`)
-          checkoutAt(targetCo, targetSha)
-          setupIfNeeded(targetCo, v, (cmd) => shell(cmd, { cwd: targetCo }))
-        }
-        return targetCo
-      },
-      atCommit: async (s) => {
-        checkoutAt(checkout, s)
-      },
+  async function work() {
+    let v = verify
+    let untested = false
+    if (!v) {
+      const r = loadVerify(root)
+      // A config with neither gates nor a verify: block → nothing is configured to test: runs are
+      // green and say so (`untested`). No config, an un-migrated 5.x one, or a block that is there
+      // but wrong is env-broken — none of them may land a merge nobody tested.
+      if (!r.ok && /no verify: block/.test(r.reason)) {
+        v = { workers: 1, timeoutMs: 15 * 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, suites: [], checks: [] }
+        untested = true
+      } else if (!r.ok) {
+        for (const q of ledger.requests((x) => x.state === 'queued' || x.state === 'running' || x.state === 'folded')) ledger.saveRequest({ ...q, state: 'done', doneAt: new Date().toISOString(), verdict: empty(q, 'env-broken', { broken: [{ suite: '-', reason: r.reason }] }) })
+        return 'idle'
+      } else v = r.verify
     }
-    // Every commit in the range, oldest first — what bisect walks to name the one that broke a test.
-    const commits = (tryGit(root, 'rev-list', '--reverse', '--first-parent', `${base}..${req.sha}`) ?? '').split('\n').filter(Boolean)
-    const verdict = await run({ ...req, sha, base, commits: commits.length ? commits : [req.sha], changed: changedFiles(root, mergeBase, req.sha) }, ctx)
-    verdict.sha = req.sha
-    if (untested) verdict.untested = true
-    if (req.tier === 'merge') {
-      verdict.merged = sha
-      // The target tip this merge was tested on: a later `release` lands against exactly it.
-      verdict.targetSha = targetSha
-      // A held merge (its walk runs beside it) records what it tested and leaves the target alone.
-      if (verdict.status === 'green' && req.hold) verdict.held = true
-      else if (verdict.status === 'green') {
-        const l = land(root, req.target, sha, targetSha)
-        if (!l.ok) return { requeue: true, reason: l.reason }
-        verdict.landed = sha
+    const cfg = loadConfig(root)
+    const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
+    const pool = createPool(v)
+    for (const r of ledger.requests((x) => x.state === 'running')) ledger.saveRequest({ ...r, state: 'queued', startedAt: undefined })
+    try {
+      pool.dropOrphans()
+    } catch {}
+
+    const running = new Map()
+    const slots = [...Array(v.workers).keys()]
+    let idleSince = Date.now()
+
+    const finish = (req, verdict) => {
+      const cur = ledger.getRequest(req.id) ?? req
+      // A merge that already landed is not undone by a late cancel, so its verdict stands.
+      if (cur.state === 'cancelled' && !verdict.landed) {
+        // Requests folded into it are put back by the next tick's sweep: their owners did not cancel.
+        const v2 = verdict.requeue ? empty(req, 'cancelled') : { ...verdict, status: 'cancelled', broken: (verdict.broken ?? []).filter((b) => b.reason !== 'cancelled') }
+        ledger.saveRequest({ ...cur, doneAt: new Date().toISOString(), verdict: v2 })
+        return
+      }
+      if (verdict.requeue) {
+        const attempts = (cur.attempts ?? 0) + 1
+        if (attempts < MAX_LAND_ATTEMPTS) return ledger.saveRequest({ ...cur, state: 'queued', attempts, startedAt: undefined })
+        verdict = empty(req, 'env-broken', { broken: [{ suite: '-', reason: `could not land after ${attempts} tries: ${verdict.reason}` }] })
+      }
+      const done = { ...cur, state: 'done', doneAt: new Date().toISOString(), verdict: { ...verdict, request: req.id, branch: req.branch, sha: req.sha, tier: req.tier } }
+      ledger.saveRequest(done)
+      for (const id of req.foldedFrom ?? []) {
+        const f = ledger.getRequest(id)
+        if (f?.state === 'folded') ledger.saveRequest({ ...f, state: 'done', doneAt: done.doneAt, verdict: done.verdict })
       }
     }
-    return verdict
-  }
 
-  const start = (req, slot) => {
-    // Re-read first: a client may have cancelled it since this tick listed the queue.
-    if (ledger.getRequest(req.id)?.state !== 'queued') return void slots.push(slot)
-    const r = { ...req, state: 'running', startedAt: new Date().toISOString(), pid: process.pid }
-    ledger.saveRequest(r)
-    const abort = new AbortController()
-    running.set(r.id, { req: r, abort })
-    execute(r, slot, abort.signal)
-      .catch((e) => abort.signal.aborted ? empty(r, 'cancelled') : empty(r, 'env-broken', { broken: [{ suite: '-', reason: String(e.message ?? e).slice(0, 1000) }] }))
-      .then((verdict) => finish(r, verdict))
-      .finally(() => {
-        running.delete(r.id)
-        slots.push(slot)
-      })
-  }
-
-  // Each tick: a cancel nobody answered (never started, or one that raced a service write) gets
-  // its verdict; a folded request whose survivor was cancelled goes back to the queue on its own
-  // sha (its owner did not cancel), and one whose survivor is done takes the survivor's verdict.
-  const sweep = () => {
-    const now = new Date().toISOString()
-    for (const r of ledger.requests((x) => x.state === 'cancelled' && !x.verdict && !running.has(x.id))) ledger.saveRequest({ ...r, doneAt: now, verdict: empty(r, 'cancelled') })
-    for (const f of ledger.requests((x) => x.state === 'folded')) {
-      let end = ledger.getRequest(f.foldedInto)
-      const seen = new Set([f.id])
-      while (end?.state === 'folded' && !seen.has(end.id)) {
-        seen.add(end.id)
-        end = ledger.getRequest(end.foldedInto)
+    const execute = async (req, slot, signal) => {
+      if (!commitExists(root, req.sha)) return empty(req, 'gone')
+      if (tryGit(root, 'rev-parse', '--verify', '-q', `refs/heads/${req.target}`) === null) return empty(req, 'env-broken', { broken: [{ suite: '-', reason: `target branch "${req.target}" does not exist` }] })
+      const targetSha = git(root, 'rev-parse', `refs/heads/${req.target}`)
+      const checkout = ensureCheckout(root, slot)
+      let sha = req.sha
+      if (req.tier === 'merge') {
+        const m = mergedCheckout(checkout, targetSha, req.sha, req.message ?? `Merge ${req.branch} into ${req.target}`)
+        if (m.conflict) return empty(req, 'conflict', { files: m.files })
+        sha = m.sha
+      } else checkoutAt(checkout, req.sha)
+      setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
+      const mergeBase = tryGit(root, 'merge-base', targetSha, req.sha) ?? targetSha
+      // The commit tier starts after the branch's last green; the phase and merge tiers cover the branch.
+      const green = req.since || req.tier !== 'commit' ? null : ledger.lastGreen(req.branch)
+      const base = req.since ?? (green && green.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', green.sha, req.sha) !== null ? green.sha : mergeBase)
+      let targetCo = null
+      const ctx = {
+        verify: v,
+        pool,
+        ledger,
+        checkout,
+        targetSha,
+        signal,
+        baseEnv: {},
+        lease: async (needs, o) => {
+          // Waits for capacity, but never past a cancel: the run is told at once, not after a poll.
+          for (;;) {
+            if (signal.aborted) throw new Error('cancelled')
+            const l = await pool.lease(needs, o)
+            if (l) return needs.some((n) => n.kind === 'walk-env') ? { ...l, env: { ...walkEnv, ...l.env } } : l
+            await waitOrAbort(1000, signal)
+          }
+        },
+        select: selectSuites,
+        targetCheckout: async () => {
+          if (!targetCo) {
+            targetCo = ensureCheckout(root, `t${slot}`)
+            checkoutAt(targetCo, targetSha)
+            setupIfNeeded(targetCo, v, (cmd) => shell(cmd, { cwd: targetCo, timeout: v.timeoutMs }))
+          }
+          return targetCo
+        },
+        atCommit: async (s) => {
+          checkoutAt(checkout, s)
+        },
       }
-      if (!end || end.state === 'cancelled' || end.state === 'folded') ledger.saveRequest({ ...f, state: 'queued', foldedInto: undefined, foldedFrom: undefined, commits: undefined })
-      else if (end.state === 'done' && end.verdict) ledger.saveRequest({ ...f, state: 'done', doneAt: end.doneAt ?? now, verdict: end.verdict })
+      // Every commit in the range, oldest first — what bisect walks to name the one that broke a test.
+      const commits = (tryGit(root, 'rev-list', '--reverse', '--first-parent', `${base}..${req.sha}`) ?? '').split('\n').filter(Boolean)
+      const verdict = await run({ ...req, sha, base, commits: commits.length ? commits : [req.sha], changed: changedFiles(root, mergeBase, req.sha) }, ctx)
+      verdict.sha = req.sha
+      if (untested) verdict.untested = true
+      if (req.tier === 'merge') {
+        verdict.merged = sha
+        // The target tip this merge was tested on: a later `release` lands against exactly it.
+        verdict.targetSha = targetSha
+        // A held merge (its walk runs beside it) records what it tested and leaves the target alone.
+        if (verdict.status === 'green' && req.hold) verdict.held = true
+        else if (verdict.status === 'green') {
+          const l = land(root, req.target, sha, targetSha)
+          if (!l.ok) return { requeue: true, reason: l.reason }
+          verdict.landed = sha
+        }
+      }
+      return verdict
     }
-  }
-  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
-  try {
+    const start = (req, slot) => {
+      // Re-read first: a client may have cancelled it since this tick listed the queue.
+      if (ledger.getRequest(req.id)?.state !== 'queued') return void slots.push(slot)
+      const r = { ...req, state: 'running', startedAt: new Date().toISOString(), pid: process.pid }
+      ledger.saveRequest(r)
+      const abort = new AbortController()
+      running.set(r.id, { req: r, abort })
+      execute(r, slot, abort.signal)
+        .catch((e) => abort.signal.aborted ? empty(r, 'cancelled') : empty(r, 'env-broken', { broken: [{ suite: '-', reason: String(e.message ?? e).slice(0, 1000) }] }))
+        .then((verdict) => finish(r, verdict))
+        .finally(() => {
+          running.delete(r.id)
+          slots.push(slot)
+        })
+    }
+
+    // Each tick: a cancel nobody answered (never started, or one that raced a service write) gets
+    // its verdict; a folded request whose survivor was cancelled goes back to the queue on its own
+    // sha (its owner did not cancel), and one whose survivor is done takes the survivor's verdict.
+    const sweep = () => {
+      const now = new Date().toISOString()
+      for (const r of ledger.requests((x) => x.state === 'cancelled' && !x.verdict && !running.has(x.id))) ledger.saveRequest({ ...r, doneAt: now, verdict: empty(r, 'cancelled') })
+      for (const f of ledger.requests((x) => x.state === 'folded')) {
+        let end = ledger.getRequest(f.foldedInto)
+        const seen = new Set([f.id])
+        while (end?.state === 'folded' && !seen.has(end.id)) {
+          seen.add(end.id)
+          end = ledger.getRequest(end.foldedInto)
+        }
+        if (!end || end.state === 'cancelled' || end.state === 'folded') ledger.saveRequest({ ...f, state: 'queued', foldedInto: undefined, foldedFrom: undefined, commits: undefined })
+        else if (end.state === 'done' && end.verdict) ledger.saveRequest({ ...f, state: 'done', doneAt: end.doneAt ?? now, verdict: end.verdict })
+      }
+    }
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
     for (;;) {
       for (const [id, h] of running) if (ledger.getRequest(id)?.state === 'cancelled') h.abort.abort()
       sweep()
@@ -286,9 +328,27 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, run = run
       else if (Date.now() - idleSince >= idleMs) return 'idle'
       await sleep(tickMs)
     }
-  } finally {
-    dropLock(root)
   }
+}
+
+/**
+ * The service as a process: a SIGTERM or SIGINT drops the lock before exiting (so the next client
+ * starts a service at once), and a crash is logged and drops it too — never a lock left behind.
+ */
+export function runService(root, opts = {}) {
+  const stop = (code) => () => {
+    dropLock(root)
+    process.exit(code)
+  }
+  process.once('SIGTERM', stop(143))
+  process.once('SIGINT', stop(130))
+  return serve(root, opts)
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error(`verifier service crashed: ${e?.stack ?? e}`)
+      dropLock(root)
+      process.exit(1)
+    })
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -297,5 +357,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error('usage: serve.mjs <main checkout>')
     process.exit(2)
   }
-  serve(root).then(() => process.exit(0))
+  runService(root)
 }
