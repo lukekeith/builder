@@ -113,9 +113,10 @@ a visual diff, and a renamed element changes what the walk does.
    --tier merge`. Its verdict holds for HEAD when its sha is HEAD or the commits since touch only the
    registry — `git diff --quiet <its sha> HEAD -- . ':!<registry>'` exits 0 (the sign-off, condense
    and verify records; the rule `carry` lands by) — so the fleet's held run stands, never re-run.
-   Still running (exit 75) → `verify.mjs wait <id>` on its `pending: merge … <id>` line. None
-   (exit 5), or code changed since its sha → `verify.mjs request <worktree> HEAD --tier merge --hold`
-   and `verify.mjs wait <id>`. Quote the verdict line — `verify merge <sha> <branch>: …`, the request
+   A `pending: merge … <id>` line — still running (exit 75), or a newer run printed after an older
+   verdict — → `verify.mjs wait <id>` on it, never a second request. No verdict and none pending
+   (exit 5), or code changed since its sha → `verify.mjs request <worktree> HEAD --tier merge
+   --hold` and `verify.mjs wait <id>`. Quote the verdict line — `verify merge <sha> <branch>: …`, the request
    id, the counts. **Regressions** fail this item: each becomes a `## Fixes` row naming
    its test and the commit that introduced it. **Flakes, known failures and newly found debt** are
    reported in the verdict and do not fail it. **Env-broken** is BLOCKED-on-environment, never READY.

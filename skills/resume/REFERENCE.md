@@ -960,7 +960,8 @@ env-broken · 4 conflict · 5 none · 6 cancelled · 7 target moved · 75 still 
 2 usage (and `carry` when code changed). `verify.mjs verdict <branch> [<sha>] [--tier <t>]` reads
 the latest *finished* verdict — of that tier, with `--tier`, so a newer phase green never answers
 for the merge tier — and exits 75 when only unfinished ones exist, printing a `pending: <tier>
-<state> <id>` line for each (an id to wait on), or 5 when there are none. `verify.mjs wait <id>`
+<state> <id>` line for each (an id to wait on), or 5 when there are none. A run still going that is
+newer than the verdict shown gets its `pending:` line too, after the verdict. `verify.mjs wait <id>`
 blocks up to 9 minutes per call (Bash timeout 600000).
 
 **Fresh** means the verdict's sha is HEAD — or, for a merge-tier verdict, the commits since it

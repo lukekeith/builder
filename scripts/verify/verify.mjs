@@ -7,7 +7,7 @@
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
  *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused)
  *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
- *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (75 → one `pending: <tier> <state> <id>` line per request, an id to wait on)
+ *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (a `pending: <tier> <state> <id>` line per run still going — after a finished verdict, those newer than it; an id to wait on)
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
  *   verify.mjs cancel <request>
  *   verify.mjs status [--json]
@@ -145,16 +145,27 @@ async function main() {
     const [, branch, sha] = positional
     if (!branch) die(USAGE)
     const tier = opt('--tier')
-    if (tier != null && !['commit', 'phase', 'merge'].includes(tier)) die(USAGE)
+    if (flag('--tier') && !['commit', 'phase', 'merge'].includes(tier)) die(USAGE)
     // A tier filter keeps a newer phase-tier green from answering a question about the merge tier.
-    const mine = (r) => r.branch === branch && (!tier || r.tier === tier)
+    const mine = ledger.requests((r) => r.branch === branch && (!tier || r.tier === tier))
+    const isPending = (r) => ['queued', 'running', 'folded'].includes(r.state)
     const full = sha ? tryGit(here, 'rev-parse', sha) ?? sha : null
-    const done = ledger.requests((r) => mine(r) && r.state === 'done' && r.verdict && (!full || r.sha === full)).at(-1)
-    if (done) show(done, flag('--json'))
-    const pending = ledger.requests((r) => mine(r) && ['queued', 'running', 'folded'].includes(r.state))
+    const done = mine.filter((r) => r.state === 'done' && r.verdict && (!full || r.sha === full)).at(-1)
+    // One line per pending request, so a caller has an id to `wait` on rather than queueing another run.
+    const printPending = (list) => { for (const r of list) console.log(`pending: ${r.tier} ${r.state} ${r.id}`) }
+    if (done) {
+      const json = flag('--json')
+      if (json) console.log(JSON.stringify(done.verdict, null, 2))
+      else {
+        console.log(summarize(done.verdict))
+        // A newer run still going would replace this verdict: name it, the exit stays this verdict's.
+        printPending(mine.slice(mine.indexOf(done) + 1).filter(isPending))
+      }
+      process.exit(exitFor(done.verdict.status))
+    }
+    const pending = mine.filter(isPending)
     console.log(pending.length ? `verify ${branch}: pending (${pending.map((r) => `${r.tier} ${r.state}`).join(', ')})` : `verify ${branch}: no verdict`)
-    // One line per pending request, so a caller has an id to `wait` on.
-    for (const r of pending) console.log(`pending: ${r.tier} ${r.state} ${r.id}`)
+    printPending(pending)
     process.exit(pending.length ? 75 : 5)
   }
   if (cmd === 'wait') {
