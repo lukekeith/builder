@@ -48,20 +48,22 @@ and faster, and build quality (fix rounds, task-review findings, parks) does not
   - **Reference to another task:** that task's **Interfaces** block — not a repeat of its code.
 - **D1a. The task shape (owner, 2026-10-28)** — six parts, all in words except the tests:
   - **Files:** each path with its one responsibility (`Modify: path:lines — what it does`).
-  - **Interfaces:** the function, class, field and type names neighbouring tasks rely on, with their
-    parameters and return types described in words.
+  - **Interfaces:** the function, class, field and type names neighbouring tasks rely on, each name in
+    backticks (the scan pairs names by them), with parameters and return types described in words
+    (`Produces: \`parseTags\` — takes the raw tag string, returns the list of normalised tags`).
   - **Behaviour:** the rules the task must meet, one per line, each citing the spec decision behind it
     (`both assignees set → 422 (D6)`).
+  - **Pattern** (optional): existing code to follow, as `file:line`, never copied in. It sits above
+    Tests because the head `plan-slices.mjs` reads ends at the first fence.
   - **Tests:** each test's name and what it proves, one line each — and under it **its assertions as
     code**, with the spec's exact values. The owner prefers stronger tests: the plan writer pins what
     each test checks; the implementer does not decide it. (`plan-slices.mjs` keeps counting them.)
-  - **Pattern** (optional): existing code to follow, as `file:line`, never copied in.
   - **Steps:** the test-first cycle in words, with the commands and the commit message. No code in a
     task except the test assertions and exact copy the spec fixes.
   The task reviewer checks every Behaviour line has a test that would fail without it.
 - **D2. Everything builder adds for the zero-context implementer stays:** the `App:` / `Phase:` /
   `Recipe:` lines, **Files** with exact paths (and line ranges for a modify), **Interfaces**
-  (Consumes/Produces with exact signatures — now the main way a task learns its neighbours' names),
+  (Consumes/Produces with exact names in backticks, types in words — now the main way a task learns its neighbours' names),
   `## Global Constraints` copied verbatim, the `## Phases` table, one app per task and per phase, the
   TDD step order, and the rule that nothing sits between task blocks (`task-brief`'s extraction).
 - **D3. "No placeholders" becomes "every step decides something, no step transcribes".** The forbidden

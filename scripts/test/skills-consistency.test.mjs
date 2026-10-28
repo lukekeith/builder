@@ -875,6 +875,8 @@ test('the plan format carries decisions, not bodies', () => {
     assert.match(fmt, new RegExp(`\\*\\*${part}:\\*\\*`), part)
   assert.match(fmt, /\(D\d+\)/)
   assert.match(fmt, /Behaviour line with no decision/)
+  assert.match(fmt, /an Interfaces name not in backticks/)
+  assert.match(fmt, /exact names in backticks/)
   assert.match(fmt, /every Behaviour line has a Test/)
   assert.match(read('skills/build/prompts/task-reviewer.md'), /Behaviour/)
   assert.match(read('skills/build/prompts/implementer.md'), /Pattern/)

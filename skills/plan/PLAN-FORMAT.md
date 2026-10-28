@@ -17,14 +17,15 @@ block plus its brief**. It cannot read the rest of the plan, it has never seen t
 not ask you what you meant unless you left it no choice.
 
 **A step is unambiguous, not complete.** It is done when the implementer can write exactly one
-reasonable thing from it. A task is six parts, all in words except the tests:
+reasonable thing from it. A task is six parts (Files, Interfaces, Behaviour, Pattern, Tests, Steps),
+all in words except the tests:
 
 - **Tests keep their assertions, as code,** with the spec's exact values in them. The plan writer pins
   what each test checks; the implementer does not decide it. A stronger test is the point.
   `plan-slices.mjs` counts a slice's tests from the `it(` / `test(` lines inside the fences for the
   go-ahead.
-- **Everything else is words:** files with their one responsibility, interfaces (names, parameters and
-  return types described), behaviour rules citing their decision, a pattern as `file:line`, steps with
+- **Everything else is words:** files with their one responsibility, interfaces (exact names in backticks,
+  parameters and return types described), behaviour rules citing their decision, a pattern as `file:line`, steps with
   their commands. **The implementer writes the body.**
 - **The only other code is exact copy the spec fixes** (a message, a migration, a config value).
 - **A reference to another task:** that task's **Interfaces** block says what to use; the plan does
@@ -126,13 +127,18 @@ Recipe: <the companion skill to read FIRST, or the REFERENCE section that govern
 - Test: `tests/exact/path/to/test.ts` — <what it covers>
 
 **Interfaces:**
-- Consumes: <what this task uses from earlier tasks — names, with parameters and return types in words>
-- Produces: <what later tasks rely on — names, parameters and return types in words, no code. A
-  task's implementer sees only their own block; this is how they learn the names neighbouring tasks use.>
+- Consumes: <what this task uses from earlier tasks — each name in backticks, its parameters and
+  return type in words>
+- Produces: `parseTags` — takes the raw tag string, returns the list of normalised tags. <Names in
+  backticks, types in words, no code. A task's implementer sees only their own block; this is how they
+  learn the names neighbouring tasks use, and the scan pairs names by their backticks.>
 
 **Behaviour:**
 - <one rule per line, each citing the decision behind it> (D<n>)
 - both assignees set → 422 (D6)
+
+**Pattern:** (optional)
+- `path/to/similar.ts:40` — <what to follow>
 
 **Tests:**
 - `test name` — <what it proves> (Behaviour line it covers)
@@ -143,12 +149,9 @@ it('test name', () => {
 })
 ```
 
-**Pattern:** (optional)
-- `path/to/similar.ts:40` — <what to follow>
-
 - [ ] **Step 1: Write the listed tests** — in `tests/exact/path/to/test.ts`
 - [ ] **Step 2: Run `<command>`, watch them fail** — FAIL, "fn is not defined"
-- [ ] **Step 3: Implement `fn`, `Other` in `exact/path/to/file.ts` to the Behaviour**
+- [ ] **Step 3: Implement `fn` in `exact/path/to/file.ts` to the Behaviour**
 - [ ] **Step 4: Run `<command>`, watch them pass** — PASS
 - [ ] **Step 5: Commit** — `feat(<TICKET>): <subject>`
 ````
@@ -175,12 +178,13 @@ Every step decides something, and no step transcribes. These are **plan failures
 - "Add appropriate error handling" / "add validation" / "handle edge cases"
 - "Write tests for the above" — without the test's name and assertions
 - "Similar to Task N" — name the Interfaces entry you mean; the implementer never sees Task N
-- a code step with no signature or file, so the implementer must guess the name
+- a step that names neither the file nor the Interfaces names it implements
 - references to types, functions or methods not defined in any task
 - a Behaviour line with no decision it comes from
 - a Test line that doesn't say what it proves
 - a code block in a task other than test assertions or exact spec copy
 - a Pattern entry with code pasted instead of `file:line`
+- an Interfaces name not in backticks
 
 The opposite failure is a function body the signature and tests already determine: that is the
 plan writing the code instead.
@@ -204,8 +208,7 @@ checklist you run yourself — not a subagent dispatch.
 7. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
    is a transcript of the program. The plan is words plus test assertions: if code blocks
    beyond the tests are most of the document, replace them with words, and re-check each step is
-   still unambiguous. A guide, not a
-   hard limit.
+   still unambiguous. A guide, not a hard limit.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
 gets a task.

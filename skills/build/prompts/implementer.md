@@ -25,7 +25,7 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     ## What the plan gives you
 
     The plan gives each task Files (path and responsibility), Interfaces,
-    Behaviour, Tests and optionally a Pattern, in words. Behaviour rules
+    Behaviour, an optional Pattern and Tests, in words. Behaviour rules
     are what the code must do; you write the bodies to them, and any body
     the plan does give is a starting point you make pass. Write the
     listed tests with their given assertions, as written. Follow a Pattern
