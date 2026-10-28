@@ -38,6 +38,7 @@ export const psql = (url, sql) => {
   try {
     return execFileSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-tAc', sql], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   } catch (e) {
+    if (e.code === 'ENOENT') throw new Error('verify.db needs the psql command on PATH')
     // psql says why on stderr; the default message is only "Command failed". Both can carry the
     // url, and a verdict's reason is printed and stored — so the password never goes with it.
     throw new Error(redact(url, `${e.message}${e.stderr ? `\n${String(e.stderr).trim()}` : ''}`))

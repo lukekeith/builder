@@ -945,6 +945,10 @@ Tests are run by one background service per repo — `scripts/verify/` — from 
 block (`suites` by runner, `checks`, the `db` pool). Nobody pastes a test command; nobody waits on
 one except where this section says.
 
+The `db` pool runs `psql` against the project's own Postgres server (`psql` must be on PATH; without
+it the run says `verify.db needs the psql command on PATH`). A project without `verify.db` needs no
+database and no `psql`.
+
 | Tier | Requested by | What runs | Who waits |
 |---|---|---|---|
 | **commit** | build, after each task's commit — `verify.mjs request <worktree> HEAD --tier commit` | the checks marked `commit`, and the tests the commits since the branch's last green can reach | nobody; read with `verify.mjs verdict <branch>` before each dispatch |

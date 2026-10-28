@@ -190,8 +190,13 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     const slots = [...Array(v.workers).keys()]
     let idleSince = Date.now()
 
+    // Set when serve.pid names another process (a sleep outlasted the heartbeat and a second
+    // service took the stale lock): what was running is aborted and goes back to the queue for the
+    // new owner, with no verdict written.
+    let superseded = false
     const finish = (req, verdict) => {
       const cur = ledger.getRequest(req.id) ?? req
+      if (superseded) return cur.state === 'running' ? ledger.saveRequest({ ...cur, state: 'queued', startedAt: undefined, pid: undefined }) : undefined
       // A merge that already landed is not undone by a late cancel, so its verdict stands.
       if (cur.state === 'cancelled' && !verdict.landed) {
         // Requests folded into it are put back by the next tick's sweep: their owners did not cancel.
@@ -332,7 +337,27 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     }
     const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
+    const holdsLock = () => {
+      try {
+        return Number(readFileSync(join(verifyDir(root), 'serve.pid'), 'utf8')) === process.pid
+      } catch {
+        return false
+      }
+    }
+
     for (;;) {
+      if (!holdsLock()) {
+        superseded = true
+        for (const h of running.values()) h.abort.abort()
+        // Let the aborted runs wind down (each requeues its request); a run stuck in a blocking
+        // call can't hear the abort, so don't wait on it forever.
+        for (let i = 0; i < 100 && running.size; i++) await sleep(100)
+        for (const h of running.values()) {
+          const cur = ledger.getRequest(h.req.id)
+          if (cur?.state === 'running') ledger.saveRequest({ ...cur, state: 'queued', startedAt: undefined, pid: undefined })
+        }
+        return 'superseded'
+      }
       for (const [id, h] of running) if (ledger.getRequest(id)?.state === 'cancelled') h.abort.abort()
       sweep()
       const { keep, folded } = fold(ledger.requests((x) => x.state === 'queued'))

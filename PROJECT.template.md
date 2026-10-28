@@ -96,6 +96,7 @@ agent_walk:
 verify:
   workers: 2
   # setup: npm ci                       # runs in each test checkout when its lockfiles change
+  # (verify.db runs `psql` against the project's own Postgres server, so `psql` must be on PATH; a project without verify.db needs no database and no psql)
   # db: { kind: postgres, url: "postgres://localhost/myrepo", env: [TEST_DATABASE_URL], inputs: "prisma/**", prepare: "npm run db:migrate:test", max: 4 }
   suites:
     unit: { runner: vitest, files: "src/**/*.test.ts" }     # per-test results → selected per commit, whole at merge
