@@ -68,6 +68,12 @@ export function land(root, target, tested, expectedOld) {
   const cur = tryGit(root, 'rev-parse', `refs/heads/${target}`)
   if (cur !== expectedOld) return { ok: false, reason: `${target} moved (${cur?.slice(0, 7)} is not ${expectedOld.slice(0, 7)})` }
   if (tryGit(root, 'merge-base', '--is-ancestor', expectedOld, tested) === null) return { ok: false, reason: `not a fast-forward of ${target}` }
+  // Checked out in a linked worktree: moving the ref would leave that tree's files behind its branch.
+  const elsewhere = (tryGit(root, 'worktree', 'list', '--porcelain') ?? '')
+    .split('\n\n')
+    .slice(1)
+    .find((b) => b.split('\n').includes(`branch refs/heads/${target}`))
+  if (elsewhere) return { ok: false, reason: `${target} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')} — switch that worktree to another branch, then land again` }
   try {
     if (checkedOutBranch(root) === target) git(root, 'merge', '--ff-only', '--quiet', tested)
     else git(root, 'update-ref', `refs/heads/${target}`, tested, expectedOld)
