@@ -43,7 +43,11 @@ test('stripComment keeps # inside quotes', () => {
 test('parseFlow reads nested flow maps and lists, quoted values keep , : { }', () => {
   assert.deepEqual(parseFlow(`{ a: 1, b: [x, { ports: [P, Q] }], c: "x, y: {z}" }`), { a: 1, b: ['x', { ports: ['P', 'Q'] }], c: 'x, y: {z}' })
   assert.deepEqual(parseFlow(`[a, b]`), ['a', 'b'])
-  assert.throws(() => parseFlow(`{ a: 1 b: 2 }`), /expected ','/)
+  assert.throws(() => parseFlow(`{ a: [1] b: 2 }`), /expected ','/)
+})
+
+test('parseFlow tells you to quote a bare value holding a colon', () => {
+  assert.throws(() => parseFlow('{ run: npm run test:unit }'), /quote the value of "run"/)
 })
 
 test('verifyLines takes the block up to the next top-level key', () => {
@@ -77,6 +81,7 @@ test('normalizeVerify refuses what it cannot run', () => {
   assert.throws(() => normalizeVerify({ suites: { a: { runner: 'node-test', tiers: ['nightly'] } } }), /tier "nightly"/)
   assert.throws(() => normalizeVerify({ suites: { a: { runner: 'junit' } } }), /command/)
   assert.throws(() => normalizeVerify({ suites: { a: { runner: 'node-test', needs: ['simulator'] } } }), /verify\.simulator/)
+  assert.throws(() => normalizeVerify({ suites: { a: { runner: 'node-test', needs: ['dbb'] } } }), /"dbb"/)
   assert.throws(() => normalizeVerify({}), /no suites and no checks/)
 })
 
