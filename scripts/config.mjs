@@ -178,7 +178,6 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     ticket: unfilled(fm.ticket) ? null : (fm.ticket ?? null),
     design: unfilled(fm.design) ? null : (fm.design ?? null),
     agentWalk,
-    flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
 }
@@ -237,20 +236,6 @@ export function checkedOutBranch(root) {
 const unfilled = (block) => {
   if (!block || typeof block !== 'object') return false
   return Object.values(block).some((v) => typeof v === 'string' && /^<.*>$/.test(v.trim()))
-}
-
-/**
- * The optional `flaky:` list — gates whose failure output matching `match` (a regex, or the literal
- * text when it is not one) earns ONE re-run: `rerun` when given (the narrow command that proves the
- * flaky file alone), else the same command. `scripts/gate.mjs` applies it, so the decision "is this
- * the known flake?" is made by the config, not by a model reading a 100-line tail each time. An
- * entry with no `match`, or still a template `<placeholder>`, is dropped.
- */
-const flakyOf = (list) => {
-  if (!Array.isArray(list)) return []
-  return list
-    .filter((e) => e && typeof e === 'object' && typeof e.match === 'string' && e.match.trim() && !unfilled(e))
-    .map((e) => ({ match: e.match.trim(), rerun: typeof e.rerun === 'string' && e.rerun.trim() ? e.rerun.trim() : null }))
 }
 
 /**

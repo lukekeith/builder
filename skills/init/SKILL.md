@@ -46,10 +46,10 @@ shows it.
 | `apps` | workspace declarations first — `package.json` `workspaces`, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`, `go.work`, a Cargo `[workspace]`, a Gradle/Maven multi-module build. No workspace → **one app** at the root, `role: app`. Skip packages that are only shared libraries, configs or type packages unless they ship on their own |
 | app `role` | a guess to confirm, never a fact: whatever serves the API or owns the schema → `producer`; web/mobile/desktop clients → `consumer`; scripts, CLIs, internal dashboards → `tool`; a lone app → `app` |
 | app `released_artifact` | `true` for anything installed on a device rather than deployed: mobile apps, desktop apps, published packages and CLIs |
-| fast gates, per app | that app's `package.json` scripts (`lint`, `typecheck`, `test`, `build`), `Makefile` targets, `justfile`, `Taskfile`, or the language default (`go test ./...`, `cargo test`, `pytest`). Use the command exactly as the repo runs it, including the package manager the lockfile implies (`pnpm`, `yarn`, `bun`, `npm`) |
-| deep gates | e2e suites (`playwright`, `cypress`, `detox`, `e2e` scripts), full builds, and the CI workflow in `.github/workflows/` — CI is the best record of what "passing" means here. Write each e2e runner as `<runner> {tests}   # … @scoped <its spec glob>`, and never a wrapper script that re-runs what the fast sets already run (PROJECT.template §Quality gates) |
-| tracked test output | `git ls-files` for `test-results/`, `playwright-report/`, `coverage/`, `.nyc_output/`, `junit*.xml`. A runner rewrites these on every run, the tree reads dirty, and `gate.mjs` never quotes a dirty tree — so every verify re-runs what the build already ran. List any found in the step 6 report with the fix (`git rm -r --cached <path>` and a `.gitignore` line); never untrack anything yourself |
-| known-red gates | don't run anything to find out; list the gate commands and ask in step 3 |
+| test suites, per app | the runner each app's tests use (`node --test`, vitest, jest, phpunit, xcodebuild, Playwright) and the glob of its test files — each becomes a `verify.suites` entry `{ runner, files, cwd, app }` |
+| checks | type-check, lint, build and guard commands from `package.json` scripts, `Makefile` targets and `.github/workflows/` — each a `verify.checks` entry; a lint or guard with inherited findings gets `compare: lines` and a `match:` for its finding lines |
+| tracked test output | a runner's output folder or report the repo commits (`test-results/`, `playwright-report/`, `junit*.xml`) — list it; the fleet restores it instead of stashing it, but the human should `.gitignore` it |
+| a test database | a `DATABASE_URL` / `TEST_DATABASE_URL` the suites read, and the migrate command — `verify.db` with that variable in `env:` and the migrate command as `prepare:` |
 | house rules | per-app `CLAUDE.md` / `AGENTS.md`, `docs/architecture*`, `CONTRIBUTING.md` — **point at them**, don't copy them |
 | walk readiness | the migrations directory and the ORM's own commands for **status**, **apply** and **regenerate** against the dev database (`prisma migrate status/deploy/generate`, `drizzle-kit`, `knex migrate:status/latest`, `rails db:migrate:status`, `alembic current/upgrade head`, `manage.py showmigrations/migrate`); the dev **start** command (`dev`, `dev:all`, `docker compose up`); a health endpoint or smoke-tagged test for **smoke**. `apply_mode` is always a step-3 question — recommend `ask` |
 | environment landmines | `docker-compose*.yml`, `.env.example`, ports in dev scripts, a README "gotchas" or "troubleshooting" section |
@@ -69,13 +69,9 @@ the answer is a choice:
   commits;
 - **`apply_mode`** for dev-database migrations — recommend `ask`: the pipeline asks before applying
   them, so a walk is never run against an old schema;
-- **known-red gates** — which of the listed gates fail on `{base_branch}` today. A gate that is red
-  for inherited debt gets `@known-red` in its comment; one the repo judges as "must not grow" (a
-  type-error count) is written to print the number and gets `@delta`, so `scripts/gate.mjs` compares
-  it against the base branch instead of a count someone typed in;
-- **flaky tests** — any test file that fails under the whole suite and passes alone. Each becomes a
-  `flaky:` entry: `match:` the text that identifies it in the output, `rerun:` the command that runs
-  that file alone. The gate runner then re-runs it once instead of a model deciding each time;
+- **which suites need a database, ports, a simulator or the running dev env** — each becomes that
+  suite's `needs:` (`db` · `{ ports: [NAMES] }` · `simulator` · `walk-env`). Known failures and flaky
+  tests are never asked: the verifier learns both;
 - the **`agent_walk` block** — 🔴 **always written.** Agent mode (`/builder:agent`, `/builder:fleet`,
   the *Agent* option on every build footer) is part of every install, and a config without this block
   silently has none. **Before its questions, say in plain words what it means:** with this block,
@@ -102,30 +98,16 @@ the answer is a choice:
   (`npm ci && <migrate against the worktree's test DB>`), run after the fleet merges the target into a
   worktree with new commits, so a package or migration another feature landed is present before the
   next run;
-- **the walk env and the gates**, only when `start` runs a dev server from the worktree:
-  - **a shared output folder** — recon first: a Next.js (`next dev` / `next build`, `.next`), Nuxt
-    (`.nuxt`), SvelteKit (`.svelte-kit`) or Rails (`public/assets`) app whose fast or deep set builds
-    it. A build gate in the walk lane would rewrite what the running dev server serves and take the
-    walk env down. Recommend a separate output folder for the walk env, set through `agent_walk.env`
-    — Next.js: `distDir` read from an env var in `next.config.*` (e.g. `distDir:
-    process.env.NEXT_DIST_DIR || '.next'`) and `NEXT_DIST_DIR=.next-walk` in `env` — and add an
-    §Environment landmine saying so. Say plainly it needs that one config change in the app; a
-    Docker walk env that builds inside its image, a Vite dev server, or an app with no web build
-    doesn't need it — skip the question;
-  - **a smoke that proves sign-in can work**, not only `/health` — a preflight from the web origin
-    (`curl -sf -X OPTIONS -H "Origin: http://localhost:<web port>" <api>/…`) or a sign-in page load —
-    so a wrong CORS origin or env value fails at start, not in every e2e;
-  - **`@walk`** on any deep-set line that needs the running app (an e2e suite against a URL): it then
-    runs in verify against the walk env with `agent_walk.env`, and every untagged line runs with the
-    test env (REFERENCE §Quality gates — the mechanism, *Gates and the walk env*). Under the fleet an
-    untagged e2e line is not run at all (it would hit the human's dev stack); `@local` marks one that
-    starts its own;
-  - **`@parallel`** on deep or fast lines that share no database, port or build folder with the rest
-    — they then start together. Ask only when two or more slow suites exist; never on two that share
-    a test database;
-  - **a `pending:` command that exits non-zero while migrations are pending** — the fleet asks it
-    after a merge instead of guessing from git. `status:` stays as it is (many tools exit 0 from it
-    either way); the template's `pending:` comment has one-liners for the common tools;
+- **a shared output folder**, only when `start` runs a dev server from the worktree — if a build
+  writes where the running dev server serves from (Next.js `.next`, Nuxt `.nuxt`, SvelteKit
+  `.svelte-kit`, Rails `public/assets`), the walk lane's env breaks when a build lane builds: say so
+  in §Environment landmines;
+- **a smoke that proves sign-in can work**, not only `/health` — a preflight from the web origin
+  (`curl -sf -X OPTIONS -H "Origin: http://localhost:<web port>" <api>/…`) or a sign-in page load —
+  so a wrong CORS origin or env value fails at start, not in every e2e;
+- **a `pending:` command that exits non-zero while migrations are pending** — the fleet asks it
+  after a merge instead of guessing from git. `status:` stays as it is (many tools exit 0 from it
+  either way); the template's `pending:` comment has one-liners for the common tools;
 - the **ticket** and **design** blocks, only when recon found a sign of one.
 
 Nothing unresolved → skip this step and say so.
@@ -142,8 +124,8 @@ mkdir -p .claude && cp "$CLAUDE_PLUGIN_ROOT/PROJECT.template.md" .claude/builder
   `agent_walk:` blocks outright when unused; commented-out keys mislead the next reader. Keep the
   parser's subset: flat scalars, the `apps:` list of one-level maps, one level of nested map —
   `config.mjs` ignores anything fancier rather than guessing.
-- **Body** — one real paragraph on what the repo is; a `### <app> — fast` block per app with its
-  literal commands, each with a `# what it proves` comment; the deep set; §Global constraints with the
+- **Body** — one real paragraph on what the repo is; the `verify:` block in the frontmatter and a
+  short §Verification in prose; §Global constraints with the
   template's fixed bullets kept verbatim and the commit line rewritten to the style `git log` shows;
   §House rules as one line per app pointing at its source; landmines only when recon found some.
 - **Delete the template's instructional comments** (the `# ─── … ───` banners and the
@@ -158,9 +140,12 @@ saying so in the change list ("added agent_walk — agent mode is now on"); leav
 user says they don't want agent runs here. With an `agent_walk:` block,
 make sure the frontmatter documents **`build_profile_default`** — the project's default test plan,
 which the go-ahead recommends when the spec raises no signal (`rush` · `standard` · `thorough`, each
-read as the test plan it maps to; absent → the recommended plan: each slice's own tests, the touched
-apps' suites once at the end, one review at the end) — as the template's commented-out line unless
+read as the test plan it maps to; absent → the recommended plan: no agent walk, one review at the end) — as the template's commented-out line unless
 the user names one.
+
+**A 5.x config with `## Quality gates`** → run `node "$CLAUDE_PLUGIN_ROOT/scripts/verify/migrate.mjs"`, show
+its block and notes as the review, ask the questions its notes raise, write the `verify:` block, and
+delete `## Quality gates` and `flaky:`.
 
 ## 5. Prove it
 
@@ -175,8 +160,7 @@ comment it out (the config loader never warns, so this is the one place it is na
 
 `list-features.mjs` must load the config: with an empty registry it reports no features, and that is
 a pass. A `reason` line such as "lists no apps" or "no frontmatter" means step 4 is wrong — fix it and
-run again. **Don't run the gate commands** to check them; that is the first phase's job, and on an
-unfamiliar repo they can be slow or need services running.
+run again. **Don't run the suites** to check them; the verifier's first request does.
 
 ## 6. Report
 
