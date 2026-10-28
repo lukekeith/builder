@@ -263,3 +263,34 @@ the saving reaches wall clock and cost.
 - Moving the per-feature orchestration from a model into code — the next spec, simpler once nothing
   waits on tests.
 - Speculative batching in the merge queue (several features tested together); one at a time first.
+
+## Amendments made while planning (2026-10-27)
+
+What writing the plan (`docs/plans/2026-10-27-verifier.md`) settled that this spec left open or
+said differently:
+
+- **The walk gets its own lever.** Removing `end` also removed what chose the agent walk's scope.
+  The test plan is now **`walk=none|risk|full`** and `review`, plus `models`, `persist`,
+  `unruled` and **`human=yes`** (the old `walk=you`). Old manifests map on read: `end=none|touched`
+  → `walk=none`, `risk` → `risk`, `everything` → `full`; `slice=` is dropped silently. The floor
+  is the final whole-branch review; the type-check is a `verify:` check now.
+- **Held merges.** Because the walk runs beside the merge tier, a merge request can be held: it
+  runs and records what it tested without landing; `verify.mjs release <id>` lands it later by
+  the same compare-and-swap (exit 7 when the target moved). The fleet requests it held when the
+  walk starts and releases it at landing. A merge tier that goes red **at landing** (the target
+  moved after verify read a green one) parks with the failing tests named; red before the ship is
+  verify's to turn into `## Fixes` rows.
+- **Known failures are learned, not seeded.** There is no up-front full run on the target. A
+  failing test that also fails on the target tip is added to the known list the first time it is
+  seen (judging step 5), which reaches the same list without the up-front cost.
+- **Config additions:** `setup` / `setup_inputs` (install in each test checkout when lockfiles
+  change), `simulator: { base, max }`, a suite's `args` and `cwd`, xcodebuild's `scheme` /
+  `target` / `destination`, a junit suite's `command` / `report`, a check's `match` (which output
+  lines count for `compare: lines`), and `env.max`. No `verify:` block at all → runs are green and
+  marked `untested`, as a config with no gate blocks was.
+- **Phase-tier reuse is by sha**: a test file whose every test already passed at this exact commit
+  is not re-run.
+- **node:test reports through builder's own reporter** (`scripts/verify/node-reporter.mjs`), since
+  Node's JUnit reporter doesn't say which file a test lives in.
+- **The end-to-end test uses its own fixture**, not `bench/fixtures/notes-hub`: the benchmark
+  scores notes-hub's tests, and planting a flaky one there would change every bench run.
