@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git, mainRoot } from '../verify/git.mjs'
@@ -100,4 +100,39 @@ test('land in the main checkout uses merge --ff-only there', () => {
   const tested = git(co, 'rev-parse', 'HEAD')
   assert.deepEqual(land(root, 'main', tested, base), { ok: true })
   assert.equal(readFileSync(join(root, 'z.txt'), 'utf8'), 'z\n')
+})
+
+test('land refuses a sha that does not descend from the expected tip, leaving the target alone', () => {
+  const root = repo()
+  const base = git(root, 'rev-parse', 'HEAD')
+  const tip = commit(root, 'a.txt', 'two\n', 'two')
+  git(root, 'checkout', '-q', '--detach', base)
+  const side = commit(root, 'b.txt', 'b\n', 'side')
+  git(root, 'checkout', '-q', 'main')
+  const r = land(root, 'main', side, tip)
+  assert.deepEqual(r, { ok: false, reason: 'not a fast-forward of main' })
+  assert.equal(git(root, 'rev-parse', 'refs/heads/main'), tip)
+  git(root, 'checkout', '-q', '--detach')
+  assert.equal(land(root, 'main', side, tip).ok, false)
+  assert.equal(git(root, 'rev-parse', 'refs/heads/main'), tip)
+})
+
+test('mergedCheckout throws, not a conflict, when the merge fails for another reason', () => {
+  const root = repo()
+  const base = git(root, 'rev-parse', 'HEAD')
+  const co = ensureCheckout(root, 5)
+  assert.throws(() => mergedCheckout(co, base, 'f'.repeat(40), 'm'), /merge of f+ failed/)
+})
+
+test('checkoutAt keeps ignored files and removes untracked ones', () => {
+  const root = repo()
+  const first = commit(root, '.gitignore', 'node_modules/\n', 'ignore')
+  const co = ensureCheckout(root, 6)
+  checkoutAt(co, first)
+  mkdirSync(join(co, 'node_modules'))
+  writeFileSync(join(co, 'node_modules', 'x'), 'x')
+  writeFileSync(join(co, 'junk.txt'), 'x')
+  checkoutAt(co, first)
+  assert.equal(existsSync(join(co, 'node_modules', 'x')), true)
+  assert.equal(existsSync(join(co, 'junk.txt')), false)
 })
