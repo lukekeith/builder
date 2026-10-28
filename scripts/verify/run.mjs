@@ -176,7 +176,7 @@ async function judgeRequest(req, ctx, tmp) {
   const env = (lease) => ({ ...process.env, ...(ctx.baseEnv ?? {}), ...lease.env })
   const templateFor = (needs, where) => (needs.some((x) => x.kind === 'db') ? pool.ensureTemplate(where, inputsHash(where, verify.db.inputs)) : null)
 
-  const runSuite = async (suite, files, { where = checkout, grep = null } = {}) => {
+  const runSuite = async (suite, files, { where = checkout, grep = null, pairs = null } = {}) => {
     // Once cancelled, nothing more is leased or run.
     if (signal?.aborted) return { results: null, reason: 'cancelled' }
     const adapter = ADAPTERS[suite.runner]
@@ -188,7 +188,7 @@ async function judgeRequest(req, ctx, tmp) {
       // A junit command's {files} is the project's own runner: it may take them as regexes (playwright),
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
       const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, lazyTracked(suite, where).list()) : null
-      const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, report })
+      const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, pairs: pairs && pairs.map((p) => ({ ...p, file: fromCwd(suite.cwd, [p.file])[0] })), report })
       const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
       if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
@@ -202,6 +202,37 @@ async function judgeRequest(req, ctx, tmp) {
   }
   const statusIn = (res, f) => (res.results ? res.results.find((x) => x.file === f.file && x.name === f.name)?.status ?? 'missing' : 'broken')
   const rerun = async (suite, f, where) => statusIn(await runSuite(suite, [f.file], { where, grep: f.name }), f)
+  // Several failing tests, one run: their files and a name filter matching them all. A name that also
+  // matches a test in another file of the batch is harmless — only each failure's own row is read.
+  const rerunMany = async (suite, fs, where) => {
+    const res = await runSuite(suite, [...new Set(fs.map((f) => f.file))], { where, grep: fs.map((f) => f.name), pairs: fs.map((f) => ({ file: f.file, name: f.name })) })
+    return new Map(fs.map((f) => [f.id, statusIn(res, f)]))
+  }
+  /**
+   * The re-run questions for a suite's failures that classify() will actually ask (not known, not
+   * listed flaky), answered one run per question for all of them. Lazy, so a suite whose failures are
+   * all known runs nothing, and the target is asked only about what still failed here.
+   */
+  const batchedJudging = (suite, fails) => {
+    const cands = fails.filter((f) => !known.has(f.id) && !ledger.isFlaky(f.id))
+    let here = null
+    let there = null
+    const hereAll = () => (here ??= cands.length ? rerunMany(suite, cands, checkout) : new Map())
+    const thereAll = () =>
+      (there ??= (async () => {
+        const h = await hereAll()
+        const still = cands.filter((f) => h.get(f.id) !== 'pass')
+        const target = await ctx.targetCheckout()
+        // A test file the branch adds has no counterpart on the target: missing there, not broken.
+        const present = still.filter((f) => existsSync(join(target, f.file)))
+        const got = present.length ? await rerunMany(suite, present, target) : new Map()
+        return new Map(still.map((f) => [f.id, got.get(f.id) ?? 'missing']))
+      })())
+    return {
+      rerunHere: async (f) => (await hereAll()).get(f.id) ?? rerun(suite, f, checkout),
+      rerunOnTarget: async (f) => (await thereAll()).get(f.id) ?? rerun(suite, f, await ctx.targetCheckout()),
+    }
+  }
 
   const runCheck = async (c, where) => {
     if (signal?.aborted) return { code: 1, timedOut: false, aborted: true, out: 'cancelled' }
@@ -298,21 +329,15 @@ async function judgeRequest(req, ctx, tmp) {
       verdict.broken.push({ suite: s.name, reason: res.reason })
       continue
     }
+    const failing = res.results.filter((r) => r.status === 'fail').map((r) => ({ id: testId(s.name, r), file: r.file, name: r.name, msg: r.msg }))
+    const batched = batchedJudging(s, failing)
     for (const r of res.results) {
       if (signal?.aborted) break
       const id = testId(s.name, r)
       rows.push({ id, status: r.status, ms: r.ms })
       if (r.status !== 'fail') continue
       const f = { id, file: r.file, name: r.name, msg: r.msg }
-      const k = await judge(
-        f,
-        (x) => rerun(s, x, checkout),
-        async (x) => {
-          // A test file the branch adds has no counterpart on the target: missing there, not broken.
-          const target = await ctx.targetCheckout()
-          return existsSync(join(target, x.file)) ? rerun(s, x, target) : 'missing'
-        },
-      )
+      const k = await judge(f, batched.rerunHere, batched.rerunOnTarget)
       if (signal?.aborted) break
       record(f, k, s.name)
     }

@@ -368,3 +368,61 @@ test('a pass recorded at a commit that is not an ancestor of the request is neve
   const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c2] }), ctx)
   assert.equal(v.reused, 0)
 })
+
+const fails = (n) => T(`test('${n}', () => assert.equal(1, 2))`)
+const passes = (n) => T(`test('${n}', () => {})`)
+const counting = () => {
+  const o = { leases: 0 }
+  o.lease = async () => (o.leases++, { env: {}, release() {} })
+  return o
+}
+
+test('N failing tests in one suite: judged in one re-run here and one on the target, not 2N', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2'), 'test/c.test.mjs': fails('old3'), 'test/d.test.mjs': passes('ok') }
+  const n = counting()
+  const v = await runRequest(req(), ctxFor(project(files), project(files), { lease: n.lease }))
+  assert.equal(n.leases, 3) // the suite, the failures together here, the failures together on the target
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.debt.sort(), ['unit::test/a.test.mjs::old1', 'unit::test/b.test.mjs::old2', 'unit::test/c.test.mjs::old3'])
+})
+
+test('known failures trigger no run; only the others are batched', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2') }
+  const n = counting()
+  const ctx = ctxFor(project(files), project(files), { lease: n.lease })
+  ctx.ledger.addKnown('main', ['unit::test/a.test.mjs::old1', 'unit::test/b.test.mjs::old2'])
+  const v = await runRequest(req(), ctx)
+  assert.equal(n.leases, 1)
+  assert.equal(v.known.length, 2)
+  ctx.ledger.removeKnown('main', ['unit::test/b.test.mjs::old2'])
+  n.leases = 0
+  await runRequest(req({ id: 'r2' }), ctx)
+  assert.equal(n.leases, 3)
+})
+
+test('one batch, mixed outcomes: a flake, debt and a regression are each classified right', async () => {
+  const counter = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-c-'))), 'n')
+  const flaky = T(`import { readFileSync, writeFileSync, existsSync } from 'node:fs'\ntest('wobbles', () => { const n = existsSync('${counter}') ? Number(readFileSync('${counter}', 'utf8')) : 0; writeFileSync('${counter}', String(n + 1)); assert.ok(n % 2 === 1) })`)
+  const co = project({ 'test/f.test.mjs': flaky, 'test/d.test.mjs': fails('debt'), 'test/r.test.mjs': fails('reg') })
+  const target = project({ 'test/f.test.mjs': flaky, 'test/d.test.mjs': fails('debt'), 'test/r.test.mjs': passes('reg') })
+  const n = counting()
+  const v = await runRequest(req(), ctxFor(co, target, { lease: n.lease }))
+  assert.equal(n.leases, 3)
+  assert.deepEqual(v.flakes, ['unit::test/f.test.mjs::wobbles'])
+  assert.deepEqual(v.debt, ['unit::test/d.test.mjs::debt'])
+  assert.deepEqual(v.regressions.map((r) => r.id), ['unit::test/r.test.mjs::reg'])
+})
+
+test('a batch that produces no report: every failure in it is broken, not a regression', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2') }
+  const co = project(files)
+  // Neither file exists on the target: missing there, so both are regressions, from one run here.
+  const v = await runRequest(req(), ctxFor(co, project({})))
+  assert.equal(v.regressions.length, 2)
+  // From the 2nd lease on (the re-run here, then the target's) a bad flag: no report for the whole batch.
+  let runs = 0
+  const lease = async () => ({ env: ++runs >= 2 ? { NODE_OPTIONS: '--no-such-flag-xyz' } : {}, release() {} })
+  const w = await runRequest(req({ id: 'r9' }), ctxFor(co, project(files), { lease }))
+  assert.equal(w.regressions.length, 0)
+  assert.equal(w.broken.length, 2)
+})
