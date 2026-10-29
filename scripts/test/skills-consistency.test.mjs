@@ -271,6 +271,8 @@ test('the fleet skill starts a watcher (fleet.mjs --wait) as the session backgro
   assert.match(fleet, /fleet\.mjs --wait/)
   assert.match(fleet, /watcher[\s\S]{0,400}`run_in_background`/)
   assert.match(fleet, /🔴 \*\*Never\*\* launch it as a background task/, 'the fleet itself is still never backgrounded')
+  assert.match(fleet, /without marking it seen/)
+  assert.match(fleet, /killed or ended non-zero is not a finish/)
   assert.match(read('skills/agent/SKILL.md'), /watcher/)
 })
 
