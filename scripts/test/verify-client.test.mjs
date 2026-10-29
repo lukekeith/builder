@@ -283,3 +283,15 @@ test('the service starts with a scrubbed env: a walk-env key or DATABASE_URL in 
   assert.equal(w.status, 0, w.stdout + w.stderr)
   assert.equal(readFileSync(out, 'utf8'), '')
 })
+
+test('wait --json prints a verdict larger than a pipe buffer whole', () => {
+  const { root, wt } = repo()
+  const dir = join(root, '.builder', 'verify', 'requests')
+  mkdirSync(dir, { recursive: true })
+  const known = Array.from({ length: 3000 }, (_, i) => `server::apps/server/test/t${i}.test.ts::a test name long enough to fill the pipe ${i}`)
+  const verdict = { request: 'big', branch: 'feat', sha: 'x', tier: 'commit', status: 'green', regressions: [], flakes: [], known, debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  writeFileSync(join(dir, 'big.json'), JSON.stringify({ id: 'big', branch: 'feat', sha: 'x', tier: 'commit', state: 'done', verdict }))
+  const r = cli(wt, 'wait', 'big', '--json')
+  assert.ok(r.stdout.length > 65536, `stdout ${r.stdout.length} bytes, exit ${r.status}: ${r.stderr.slice(-300)}`)
+  assert.equal(JSON.parse(r.stdout).known.length, 3000)
+})

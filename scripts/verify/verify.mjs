@@ -261,4 +261,9 @@ async function main() {
   die(USAGE)
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main()
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // Every exit path calls process.exit(), and stdout to a pipe is asynchronous on macOS: a verdict
+  // past the pipe's 64 KB would be cut off mid-JSON. Blocking writes finish before the exit.
+  process.stdout._handle?.setBlocking?.(true)
+  main()
+}
