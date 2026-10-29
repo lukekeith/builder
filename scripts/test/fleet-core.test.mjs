@@ -825,14 +825,20 @@ test('landedMigrations asks the dev DB when a status: command says: current → 
 })
 
 test('waitForFleet returns once no live fleet holds the lock, and at once when none does', async () => {
-  let alive = true
-  let polls = 0
   const waited = []
-  const done = waitForFleet('/x', { pollMs: 1, alive: () => (++polls < 4 ? true : (alive = false)), sleep: async (ms) => void waited.push(ms) })
-  await done
-  assert.equal(alive, false)
-  assert.equal(polls, 4)
+  await waitForFleet('/x', { pollMs: 1, alive: () => waited.length < 3, sleep: async (ms) => void waited.push(ms) })
   assert.deepEqual(waited, [1, 1, 1])
-  polls = 0
   await waitForFleet('/x', { pollMs: 1, alive: () => false, sleep: async () => assert.fail('no fleet: no wait') })
+})
+
+test('waitForFleet gives a lock a grace to appear before it concludes no fleet is coming', async () => {
+  let t = 0
+  const sleep = async (ms) => void (t += ms)
+  // Appears 3 s in, held 2 s: waited for.
+  await waitForFleet('/x', { pollMs: 1000, graceMs: 15000, alive: () => t >= 3000 && t < 5000, sleep })
+  assert.equal(t, 5000)
+  // Never appears: returns after the grace, not before.
+  t = 0
+  await waitForFleet('/x', { pollMs: 1000, graceMs: 15000, alive: () => false, sleep })
+  assert.equal(t, 15000)
 })

@@ -310,12 +310,17 @@ export function ago(iso, now = Date.now()) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-/** True when `<root>/.builder/fleet/lock` names a live process. */
-/** Resolves when no live fleet holds the lock — at once if none does. Silent; polls every `pollMs`. */
-export async function waitForFleet(root, { pollMs = 20000, alive = fleetAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+/**
+ * Resolves when no live fleet holds the lock. Silent. A launch returns before its fleet takes the
+ * lock, so with `graceMs` a lock that is not there yet gets that long to appear before "no fleet".
+ */
+export async function waitForFleet(root, { pollMs = 20000, graceMs = 0, alive = fleetAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  const step = Math.min(pollMs, 1000)
+  for (let waited = 0; !alive(root) && waited < graceMs; waited += step) await sleep(step)
   while (alive(root)) await sleep(pollMs)
 }
 
+/** True when `<root>/.builder/fleet/lock` names a live process. */
 export function fleetAlive(root) {
   let pid = NaN
   try {

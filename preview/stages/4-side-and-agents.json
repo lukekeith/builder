@@ -665,7 +665,7 @@
         }
       ],
       "stamp": {
-        "hash": "0a97a08fa444",
+        "hash": "780a97995e25",
         "version": "5.5.0",
         "date": "2026-10-29"
       }
@@ -728,7 +728,7 @@
         }
       ],
       "stamp": {
-        "hash": "cafd2501b113",
+        "hash": "c6df90d98e7c",
         "version": "5.5.0",
         "date": "2026-10-29"
       }
@@ -768,7 +768,7 @@
       "id": "fleet-report",
       "skill": "fleet",
       "title": "Fleet: the final report",
-      "when": "Asked after the fleet has ended — every row landed, parked or failed.",
+      "when": "Asked after the fleet has ended — every row landed, parked or failed — or when the session's `fleet.mjs --wait` watcher ends 0 with the status as its output (a killed or non-zero watcher is not a finish).",
       "source": "skills/fleet/SKILL.md §5. When it finishes",
       "feature": "cert-tags",
       "turns": [
@@ -830,7 +830,7 @@
         }
       ],
       "stamp": {
-        "hash": "578b2a5b0eef",
+        "hash": "b8133d673dc0",
         "version": "5.5.0",
         "date": "2026-10-29"
       }

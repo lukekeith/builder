@@ -135,12 +135,15 @@ this session (the Bash tool's `run_in_background`, or any agent's equivalent): a
 background tasks, or the session ending, kills the fleet with it — mid-run, with no record of why.
 Detached, it outlives the session.
 
-The **watcher** is the opposite: right after that line, also run `node <builder>/scripts/fleet.mjs --wait`
-as a background task of this session (the Bash tool's `run_in_background`). It prints nothing while the
-fleet runs; when the fleet exits it prints what `--status` prints (and marks it seen) and ends, and its
-completion notice is the cue to reply with §5's report. The fleet is never the background task; the
-watcher is, because if the session ends or the task is killed nothing is lost — the status line and the
-next session's brief still tell.
+The **watcher** is the opposite: right after that line (it prints only once the fleet holds its lock),
+also run `node <builder>/scripts/fleet.mjs --wait` as a background task of this session (the Bash
+tool's `run_in_background`). It prints nothing while the fleet runs; when the fleet exits it prints
+what `--status` prints and ends 0 — without marking it seen: only opening `/builder:fleet:status`
+does, so an overnight finish still shows on the status line and in the next brief. Its completion
+notice is the cue to reply with §5's report — only when its output is that status: a watcher that
+was killed or ended non-zero is not a finish. The fleet is never the background task; the watcher is,
+because if the session ends or the task is killed nothing is lost — the status line and the next
+session's brief still tell.
 
 **Adding to a running fleet:** run the same command in the foreground — it drops the specs in the
 inbox and returns at once. Print its `↳` / `✗` / `↻` lines, then the footer:
@@ -191,7 +194,7 @@ a line under `/builder:fleet:status`. A fleet whose process is gone with work mi
 
 ## 5. When it finishes
 
-When the watcher's completion notice arrives, or when asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+When the watcher ends 0 with the status as its output, or when asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
 - **done** — merged into the target, its worktree and branch removed, and archived: the row leaves the table for

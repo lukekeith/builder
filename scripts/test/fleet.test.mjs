@@ -1836,15 +1836,52 @@ test('batched walks: a walk that finds problems sends the fixes to the pool, and
   assert.ok(r.calls.some((l) => /^start a build .* FIXED /.test(l)), 'the fix ran in the pool: ' + r.calls.join('\n'))
 })
 
-test('--wait with no fleet running prints exactly what --status prints, at once, and marks it seen', () => {
+test('--wait with no fleet running prints exactly what --status prints, but leaves it unseen', () => {
   const root = makeRepo(['a'])
   runFleet(root, ['a'], { a: HAPPY })
   const status = runFleet(root, ['--status'], {})
   rmSync(join(root, '.builder/fleet/seen'), { force: true })
-  const t = Date.now()
-  const r = runFleet(root, ['--wait'], {})
+  const r = runFleet(root, ['--wait'], {}, { FLEET_WAIT_GRACE_MS: '0' })
   assert.equal(r.status, 0, r.stderr)
-  assert.ok(Date.now() - t < 10000, 'no wait when nothing runs')
   assert.equal(r.stdout, status.stdout)
-  assert.equal(existsSync(join(root, '.builder/fleet/seen')), true, 'opening the status marks it seen')
+  assert.equal(existsSync(join(root, '.builder/fleet/seen')), false, 'only opening /builder:fleet:status marks it seen')
+})
+
+test('--wait gives a lock a grace to appear: a fleet that has not taken it yet is waited for, not mistaken for the last run', async () => {
+  const root = makeRepo(['a'])
+  runFleet(root, ['a'], { a: HAPPY })
+  const holder = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+  try {
+    const t = Date.now()
+    setTimeout(() => writeFileSync(join(root, '.builder/fleet/lock'), String(holder.pid)), 500)
+    setTimeout(() => process.kill(holder.pid), 2500)
+    const r = await new Promise((res) => {
+      const c = spawn('node', [FLEET, '--wait'], { cwd: root, env: { ...process.env, FLEET_WAIT_GRACE_MS: '3000', FLEET_WAIT_POLL_MS: '200' } })
+      let out = ''
+      c.stdout.on('data', (d) => (out += d))
+      c.on('close', (code) => res({ code, out }))
+    })
+    assert.equal(r.code, 0)
+    assert.ok(Date.now() - t >= 2400, `returned while the fleet held the lock (${Date.now() - t} ms)`)
+    assert.match(r.out, /# builder fleet/)
+  } finally {
+    try { process.kill(holder.pid) } catch {}
+  }
+})
+
+test('--detach prints its line only once the child holds the lock', async () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a', '--detach'], { a: HAPPY.map((s) => `SLOW:${s}`) })
+  const pid = Number(/pid (\d+)/.exec(r.stdout)[1])
+  assert.equal(readFileSync(join(root, '.builder/fleet/lock'), 'utf8').trim(), String(pid), 'the lock was already taken when the line printed')
+  for (let i = 0; i < 600 && !archiveOf(root).a; i++) await new Promise((res) => setTimeout(res, 100))
+})
+
+test('--detach whose child exits before taking the lock says so, with the tail of fleet.out', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a', '--into', 'no-such-branch', '--detach'], {})
+  assert.doesNotMatch(r.stdout, /fleet started detached/)
+  assert.notEqual(r.status, 0)
+  assert.match(r.stdout + r.stderr, /fleet exited at once/)
+  assert.match(r.stdout + r.stderr, /no-such-branch/, 'the tail of fleet.out is shown')
 })
