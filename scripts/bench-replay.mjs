@@ -147,7 +147,7 @@ function replay(row, dir) {
       treatment.requests.push({ tier, ms: r.ms, error: r.error })
       return
     }
-    treatment.requests.push({ tier, sha: String(v.sha).slice(0, 7), ms: r.ms, status: v.status, broken: v.broken, regressions: v.regressions.map((g) => ({ id: g.id, msg: String(g.msg ?? '').slice(0, 300), introducedBy: g.introducedBy })), flakes: v.flakes, known: v.known, debt: v.debt })
+    treatment.requests.push({ tier, sha: String(v.sha).slice(0, 7), ms: r.ms, status: v.status, selection: v.selection, reused: v.reused, broken: v.broken, regressions: v.regressions.map((g) => ({ id: g.id, msg: String(g.msg ?? '').slice(0, 300), introducedBy: g.introducedBy })), flakes: v.flakes, known: v.known, debt: v.debt })
     treatment.regressions += v.regressions.length
     treatment.flakes += v.flakes.length
     treatment.known += v.known.length
