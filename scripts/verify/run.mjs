@@ -122,11 +122,16 @@ function phaseReuse(req, ctx, suites) {
     }
     index.set(sha, m)
   }
-  // The graph is built once per distinct earlier commit, synchronously, and for at most a few: the
-  // commits that are some file's newest record, in the order files are asked about. A file whose
-  // commit would be one more is re-run. (Counting commits that hold any record instead let later
-  // commits that recorded only other files crowd out every older pass.)
-  const graphs = new Set()
+  // Each file is judged at its newest record. The graph is built once per distinct earlier commit,
+  // synchronously, and for at most a few: the commits that are the newest passing record of the most
+  // files (newest first on a tie), chosen up front so the answer doesn't depend on the order files
+  // are asked. A file whose commit isn't among them is re-run.
+  const newest = new Map() // "suite::file" → the newest commit with any row for it
+  for (const c of chain) for (const k of index.get(c)?.keys() ?? []) if (!newest.has(k)) newest.set(k, c)
+  const counts = new Map()
+  for (const [k, c] of newest) if (c !== req.sha && index.get(c).get(k)) counts.set(c, (counts.get(c) ?? 0) + 1)
+  const order = new Map(chain.map((c, i) => [c, i]))
+  const graphs = new Set([...counts].sort((a, b) => b[1] - a[1] || order.get(a[0]) - order.get(b[0])).slice(0, REUSE_COMMITS).map(([c]) => c))
   const reach = new Map() // commit → what changed since it can reach, per suite
   const reachedSince = (c) => {
     if (!reach.has(c)) {
@@ -144,16 +149,13 @@ function phaseReuse(req, ctx, suites) {
     const key = `${suite.name}::${file}`
     // The newest commit with any row for the file decides, even a fail: older passes are not walked to.
     if (!at.has(key)) {
-      const c = chain.find((x) => index.get(x)?.has(key))
+      const c = newest.get(key)
       at.set(key, c && index.get(c).get(key) ? c : null)
     }
     const c = at.get(key)
     if (!c) return false
     if (c === req.sha) return true
-    if (!graphs.has(c)) {
-      if (graphs.size >= REUSE_COMMITS) return false
-      graphs.add(c)
-    }
+    if (!graphs.has(c)) return false
     const files = reachedSince(c)?.[suite.name]?.files
     return Array.isArray(files) && !files.includes(file)
   }
