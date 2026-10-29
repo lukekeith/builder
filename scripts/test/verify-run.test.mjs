@@ -377,6 +377,32 @@ test('later commits that recorded only other files do not crowd out a file\'s ne
   assert.equal(calls - 1, 2)
 })
 
+test('the graph slots go to the commits holding the most passes, whatever order the files are asked in', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/s${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `s${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  for (let i = 0; i < 6; i++) writeFileSync(join(dir, `test/m${i}.test.mjs`), T(`test('ok', () => {})`))
+  g('add', '.')
+  g('commit', '-qm', 'many')
+  const tip = g('rev-parse', 'HEAD')
+  const singles = [0, 1, 2].map((i) => `test/s${i}.test.mjs`)
+  const many = [0, 1, 2, 3, 4, 5].map((i) => `test/m${i}.test.mjs`)
+  // The three singles are asked first; the six files that passed together at one older commit after them.
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : [...singles, ...many], why: {} } }) })
+  ctx.ledger.appendResults(green(shas[0], many))
+  singles.forEach((f, i) => ctx.ledger.appendResults(green(shas[i + 1], [f])))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: tip, base: c0, commits: [...shas, tip] }), ctx)
+  assert.equal(calls - 1, 3)
+  assert.equal(v.reused, 8) // the six at shas[0] and the two newest singles; s0's commit gets no slot
+  assert.deepEqual(idsRun(ctx), ['unit::test/s0.test.mjs::ok'])
+})
+
 /** history() with package-lock.json changed first: the selection over the branch is whole from then on. */
 function lockedHistory(lockLast = false) {
   const { dir, g, c0 } = history()
