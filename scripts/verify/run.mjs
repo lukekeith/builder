@@ -122,9 +122,11 @@ function phaseReuse(req, ctx, suites) {
     }
     index.set(sha, m)
   }
-  // The graph is built once per distinct earlier commit, synchronously: only the newest few that
-  // hold any record are consulted, and a file whose newest record is older than that is re-run.
-  const near = new Set(chain.filter((c) => c !== req.sha && index.get(c)?.size).slice(0, REUSE_COMMITS))
+  // The graph is built once per distinct earlier commit, synchronously, and for at most a few: the
+  // commits that are some file's newest record, in the order files are asked about. A file whose
+  // commit would be one more is re-run. (Counting commits that hold any record instead let later
+  // commits that recorded only other files crowd out every older pass.)
+  const graphs = new Set()
   const reach = new Map() // commit → what changed since it can reach, per suite
   const reachedSince = (c) => {
     if (!reach.has(c)) {
@@ -142,12 +144,16 @@ function phaseReuse(req, ctx, suites) {
     const key = `${suite.name}::${file}`
     // The newest commit with any row for the file decides, even a fail: older passes are not walked to.
     if (!at.has(key)) {
-      const c = chain.find((x) => (x === req.sha || near.has(x)) && index.get(x)?.has(key))
+      const c = chain.find((x) => index.get(x)?.has(key))
       at.set(key, c && index.get(c).get(key) ? c : null)
     }
     const c = at.get(key)
     if (!c) return false
     if (c === req.sha) return true
+    if (!graphs.has(c)) {
+      if (graphs.size >= REUSE_COMMITS) return false
+      graphs.add(c)
+    }
     const files = reachedSince(c)?.[suite.name]?.files
     return Array.isArray(files) && !files.includes(file)
   }
