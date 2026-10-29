@@ -205,11 +205,14 @@ async function judgeRequest(req, ctx, tmp) {
   const env = (lease) => ({ ...process.env, ...(ctx.baseEnv ?? {}), ...lease.env })
   const templateFor = (needs, where) => (needs.some((x) => x.kind === 'db') ? pool.ensureTemplate(where, inputsHash(where, verify.db.inputs)) : null)
 
-  const trackedMemo = new Map() // suite name → the checkout's tracked glob, listed once
+  // The checkout's tracked glob, listed once per suite and commit: bisect moves this checkout to older
+  // commits, whose files differ.
+  const trackedMemo = new Map()
   const trackedFor = (suite, where) => {
     if (where !== checkout) return lazyTracked(suite, where)
-    if (!trackedMemo.has(suite.name)) trackedMemo.set(suite.name, lazyTracked(suite, where))
-    return trackedMemo.get(suite.name)
+    const key = `${suite.name}@${tryGit(where, 'rev-parse', 'HEAD')}`
+    if (!trackedMemo.has(key)) trackedMemo.set(key, lazyTracked(suite, where))
+    return trackedMemo.get(key)
   }
   const runSuite = async (suite, files, { where = checkout, grep = null, pairs = null } = {}) => {
     // Once cancelled, nothing more is leased or run.
