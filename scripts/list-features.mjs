@@ -46,6 +46,10 @@ import { ago, landedRows, buildingInSession, sharedBranch } from './fleet-core.m
 import { newerRelease, newerLine } from './newer.mjs'
 import { fileURLToPath } from 'node:url'
 
+// stdout to a pipe is asynchronous on macOS and this script exits with process.exit(): blocking writes keep
+// --json output past 64 KB whole (the verify CLI's fix; nodejs/node#6456).
+process.stdout._handle?.setBlocking?.(true)
+
 const CFG = requireConfig()
 const ROOT = CFG.root
 const REGISTRY = [{ root: CFG.registry, requireManifest: false }]
