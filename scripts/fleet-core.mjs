@@ -311,6 +311,11 @@ export function ago(iso, now = Date.now()) {
 }
 
 /** True when `<root>/.builder/fleet/lock` names a live process. */
+/** Resolves when no live fleet holds the lock — at once if none does. Silent; polls every `pollMs`. */
+export async function waitForFleet(root, { pollMs = 20000, alive = fleetAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  while (alive(root)) await sleep(pollMs)
+}
+
 export function fleetAlive(root) {
   let pid = NaN
   try {

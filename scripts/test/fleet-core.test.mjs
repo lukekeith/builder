@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimes
 const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow } from '../fleet-core.mjs'
+import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, STALL_MS } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
@@ -822,4 +822,17 @@ test('landedMigrations asks the dev DB when a status: command says: current → 
   const maybe = landedMigrations({ files, readiness })
   assert.match(maybe.why, /the dev DB may be behind: if it lacks them, run/)
   assert.equal(maybe.kind, 'maybe', 'the caller asks pending: only then')
+})
+
+test('waitForFleet returns once no live fleet holds the lock, and at once when none does', async () => {
+  let alive = true
+  let polls = 0
+  const waited = []
+  const done = waitForFleet('/x', { pollMs: 1, alive: () => (++polls < 4 ? true : (alive = false)), sleep: async (ms) => void waited.push(ms) })
+  await done
+  assert.equal(alive, false)
+  assert.equal(polls, 4)
+  assert.deepEqual(waited, [1, 1, 1])
+  polls = 0
+  await waitForFleet('/x', { pollMs: 1, alive: () => false, sleep: async () => assert.fail('no fleet: no wait') })
 })
