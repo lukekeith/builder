@@ -355,6 +355,50 @@ test('earlier commits are consulted for at most the three newest; a file only ol
   assert.equal(v.reused, 4) // f4 exact, f1-f3 within the cap; f0 re-run
 })
 
+/** history() with package-lock.json changed first: the selection over the branch is whole from then on. */
+function lockedHistory(lockLast = false) {
+  const { dir, g, c0 } = history()
+  g('checkout', '-q', c0)
+  const commit = (f, body) => (writeFileSync(join(dir, f), body), g('add', '.'), g('commit', '-qm', f), g('rev-parse', 'HEAD'))
+  const c1 = lockLast ? commit('x1.mjs', '1\n') : commit('package-lock.json', '{}\n')
+  const c2 = commit('x2.mjs', '2\n')
+  const c3 = lockLast ? commit('package-lock.json', '{}\n') : commit('x3.mjs', '3\n')
+  return { dir, c0, c1, c2, c3 }
+}
+const both = ['test/a.test.mjs', 'test/b.test.mjs']
+
+test('a whole selection reuses the files that passed after the change that made it whole', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c2, ['test/a.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 1)
+  assert.deepEqual(idsRun(ctx), ['unit::test/b.test.mjs::ok'])
+  assert.equal(v.selection.unit.files, 1)
+  assert.match(v.selection.unit.why, /whole selection, 1 reused/)
+})
+
+test('a whole selection re-runs a file whose newest record is a fail', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs']))
+  ctx.ledger.appendResults([{ run: 'x', sha: c2, tier: 'commit', id: 'unit::test/a.test.mjs::ok', status: 'fail' }, ...green(c2, ['test/b.test.mjs'])])
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 1)
+  assert.ok(idsRun(ctx).includes('unit::test/a.test.mjs::ok'))
+  assert.ok(!idsRun(ctx).includes('unit::test/b.test.mjs::ok'))
+})
+
+test('a whole selection since the pass reuses nothing and the suite runs whole', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory(true)
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c2, both))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 0)
+  assert.equal(v.selection.unit.files, 'all')
+  assert.deepEqual(idsRun(ctx).sort(), both.map((f) => `unit::${f}::ok`))
+})
+
 test('a pass recorded at a commit that is not an ancestor of the request is never used', async () => {
   const { dir, g, c0, c2 } = history()
   g('checkout', '-q', '-b', 'other', c0)

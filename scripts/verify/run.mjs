@@ -341,10 +341,20 @@ async function judgeRequest(req, ctx, tmp) {
   for (const s of suites) {
     if (signal?.aborted) break
     let { files, why } = sel[s.name]
+    // A whole selection (a lockfile changed somewhere on the branch) is judged file by file over the
+    // glob's tracked files; it stays whole unless at least one file is reused.
+    const wholeList = files === 'all' && reuse && s.files ? lazyTracked(s, checkout).list() : null
     if (Array.isArray(files) && reuse) {
       const keep = files.filter((f) => !reuse(s, f))
       verdict.reused += files.length - keep.length
       files = keep
+    } else if (wholeList?.length) {
+      const keep = wholeList.filter((f) => !reuse(s, f))
+      if (keep.length < wholeList.length) {
+        verdict.reused += wholeList.length - keep.length
+        why = `${typeof why === 'string' ? `${why}; ` : ''}whole selection, ${wholeList.length - keep.length} reused`
+        files = keep
+      }
     }
     verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null }
     if (files !== 'all' && !files.length) continue

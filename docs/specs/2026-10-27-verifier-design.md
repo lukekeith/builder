@@ -289,7 +289,7 @@ said differently:
   lines count for `compare: lines`), and `env.max`. No `verify:` block at all → runs are green and
   marked `untested`, as a config with no gate blocks was.
 - **Phase-tier reuse is by unchanged inputs**: a selected test file is not re-run when all its tests
-  passed (every recorded row pass/skip, from a complete run) at this commit, or at one of the newest few earlier commits of the branch since `req.base` (the merge-base) that nothing since reaches per the selector's import graph.
+  passed (every recorded row pass/skip, from a complete run) at this commit, or at one of the newest few earlier commits of the branch since `req.base` (the merge-base) that nothing since reaches per the selector's import graph; also when the selection is the whole suite (a lockfile changed on the branch), judged per tracked file of the suite's glob, the suite staying whole when none is reusable.
 - **node:test reports through builder's own reporter** (`scripts/verify/node-reporter.mjs`), since
   Node's JUnit reporter doesn't say which file a test lives in.
 - **The end-to-end test uses its own fixture**, not `bench/fixtures/notes-hub`: the benchmark
