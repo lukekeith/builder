@@ -68,11 +68,11 @@ export function elapsed(ms) {
 }
 
 /** Items joined by ` · `; over `width`, whole trailing items go and ` +N more` says so. */
-export function fit(items, width) {
+export function fit(items, width, keep = 1) {
   for (let k = items.length; k > 0; k--) {
     const more = items.length - k
     const line = items.slice(0, k).join(' · ') + (more ? ` +${more} more` : '')
-    if ([...line].length <= width || k === 1) return line
+    if ([...line].length <= width || k <= keep) return line
   }
   return ''
 }
@@ -114,12 +114,17 @@ export function parkItems(stops, budget) {
   return [...items.join(' · ')].length <= budget ? items : [stopCount(stops, budget)]
 }
 
-/** `✔ a merged — /builder:fleet:status` · `✔ a, b merged …` · `✔ 3 merged …` — what landed since the status was last opened. */
-export function landedItems(landed) {
+/**
+ * What landed since the status was last opened, in the longest form that fits `budget` columns:
+ * `✔ a merged — /builder:fleet:status` → `✔ a merged` → `✔ 1 merged`. Never empty-handed: the
+ * shortest form is the floor, and the line keeps it whatever the width.
+ */
+export function landedItems(landed, budget = Infinity) {
   if (!landed.length) return []
   const names = landed.map((l) => l.feature)
   const what = names.length <= 2 ? names.join(', ') : `${names.length}`
-  return [`✔ ${what} merged — /builder:fleet:status`]
+  const forms = [`✔ ${what} merged — /builder:fleet:status`, `✔ ${what} merged`, `✔ ${names.length} merged`]
+  return [forms.find((f) => [...f].length <= budget) ?? forms[2]]
 }
 
 function fleetItems(main, registry, bootTime, now) {
@@ -190,16 +195,23 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     const rest = [...builds.items, ...verifyItems(roots.main, now, bootTime)]
     const [lead, ...running] = fleet?.items ?? []
     const stops = fleet?.stops ?? []
-    const landed = landedItems(fleet?.landed ?? [])
-    if (!lead && !running.length && !rest.length && !stops.length && !landed.length) return ''
+    const landings = fleet?.landed ?? []
+    if (!lead && !running.length && !rest.length && !stops.length && !landings.length) return ''
     // One bar for everything with progress — the mean of the fleet's features and in-chat builds.
     // Verifier runs alone have none, and get the name without a bar.
     const pcts = [...(fleet?.pcts ?? []), ...builds.pcts]
     const head = pcts.length ? `builder ${progressBar(pcts.reduce((a, b) => a + b, 0) / pcts.length)}` : 'builder'
     // The parks get their room first, after `builder` and the fleet's count; the rest fit after them.
     const fixed = [head, ...(lead ? [lead] : [])]
-    const parks = parkItems(stops, width - [...fixed.join(' · ')].length - 3)
-    return fit([...fixed, ...parks, ...landed, ...running, ...rest], width)
+    // A landing is never folded into "+N more": it gets room right after the parks and shrinks to fit.
+    // The parks keep their priority, but give up room (down to their folded count) for its short form.
+    const room = width - [...fixed.join(' · ')].length - 3
+    const floor = landedItems(landings, 0).length ? [...landedItems(landings, 0)[0]].length + 3 : 0
+    let parks = parkItems(stops, room)
+    if (floor && parks.length && [...parks.join(' · ')].length + floor > room) parks = parkItems(stops, room - floor)
+    const used = parks.length ? [...parks.join(' · ')].length + 3 : 0
+    const landed = landedItems(landings, room - used)
+    return fit([...fixed, ...parks, ...landed, ...running, ...rest], width, fixed.length + parks.length + landed.length)
   } catch {
     return ''
   }
