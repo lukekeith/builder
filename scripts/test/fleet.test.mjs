@@ -1853,16 +1853,16 @@ test('--wait gives a lock a grace to appear: a fleet that has not taken it yet i
   const holder = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
   try {
     const t = Date.now()
-    setTimeout(() => writeFileSync(join(root, '.builder/fleet/lock'), String(holder.pid)), 500)
-    setTimeout(() => process.kill(holder.pid), 2500)
+    setTimeout(() => writeFileSync(join(root, '.builder/fleet/lock'), String(holder.pid)), 3000)
+    setTimeout(() => process.kill(holder.pid), 5000)
     const r = await new Promise((res) => {
-      const c = spawn('node', [FLEET, '--wait'], { cwd: root, env: { ...process.env, FLEET_WAIT_GRACE_MS: '3000', FLEET_WAIT_POLL_MS: '200' } })
+      const c = spawn('node', [FLEET, '--wait'], { cwd: root, env: { ...process.env, FLEET_WAIT_GRACE_MS: '5000', FLEET_WAIT_POLL_MS: '200' } })
       let out = ''
       c.stdout.on('data', (d) => (out += d))
       c.on('close', (code) => res({ code, out }))
     })
     assert.equal(r.code, 0)
-    assert.ok(Date.now() - t >= 2400, `returned while the fleet held the lock (${Date.now() - t} ms)`)
+    assert.ok(Date.now() - t >= 4900, `returned while the fleet held the lock (${Date.now() - t} ms)`)
     assert.match(r.out, /# builder fleet/)
   } finally {
     try { process.kill(holder.pid) } catch {}

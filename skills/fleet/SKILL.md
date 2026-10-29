@@ -130,7 +130,9 @@ node <builder>/scripts/fleet.mjs <the same arguments> --detach
 ```
 
 It starts the fleet in its own session — output to `.builder/fleet/fleet.out` — prints
-`fleet started detached (pid N)` and returns at once. 🔴 **Never** launch it as a background task of
+`fleet started detached (pid N)` once the fleet holds its lock (a few seconds, at most 30). If it
+prints `fleet exited at once` instead, the fleet never started: relay that output and its `fleet.out`
+tail, and start no watcher. 🔴 **Never** launch it as a background task of
 this session (the Bash tool's `run_in_background`, or any agent's equivalent): a session's limit on
 background tasks, or the session ending, kills the fleet with it — mid-run, with no record of why.
 Detached, it outlives the session.
