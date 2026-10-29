@@ -115,16 +115,20 @@ export function parkItems(stops, budget) {
 }
 
 /**
- * What landed since the status was last opened, in the longest form that fits `budget` columns:
- * `✔ a merged — /builder:fleet:status` → `✔ a merged` → `✔ 1 merged`. Never empty-handed: the
- * shortest form is the floor, and the line keeps it whatever the width.
+ * What landed since the status was last opened, longest form first:
+ * `✔ a merged — /builder:fleet:status` → `✔ a merged` → `✔ 1 merged`.
  */
-export function landedItems(landed, budget = Infinity) {
+export function landedForms(landed) {
   if (!landed.length) return []
   const names = landed.map((l) => l.feature)
   const what = names.length <= 2 ? names.join(', ') : `${names.length}`
-  const forms = [`✔ ${what} merged — /builder:fleet:status`, `✔ ${what} merged`, `✔ ${names.length} merged`]
-  return [forms.find((f) => [...f].length <= budget) ?? forms[2]]
+  return [`✔ ${what} merged — /builder:fleet:status`, `✔ ${what} merged`, `✔ ${names.length} merged`]
+}
+
+/** The longest landing form that fits `budget` columns; the shortest is the floor. */
+export function landedItems(landed, budget = Infinity) {
+  const forms = landedForms(landed)
+  return forms.length ? [forms.find((f) => [...f].length <= budget) ?? forms[forms.length - 1]] : []
 }
 
 function fleetItems(main, registry, bootTime, now) {
@@ -204,14 +208,26 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     // The parks get their room first, after `builder` and the fleet's count; the rest fit after them.
     const fixed = [head, ...(lead ? [lead] : [])]
     // A landing is never folded into "+N more": it gets room right after the parks and shrinks to fit.
-    // The parks keep their priority, but give up room (down to their folded count) for its short form.
+    // The parks keep their priority, but give up room (down to their folded count) for its short form
+    // and for the ` +N more` that follows when more items come after it.
+    const after = [...running, ...rest]
+    const tail = after.length ? [...` +${after.length} more`].length : 0
     const room = width - [...fixed.join(' · ')].length - 3
-    const floor = landedItems(landings, 0).length ? [...landedItems(landings, 0)[0]].length + 3 : 0
+    const forms = landedForms(landings)
+    const floor = forms.length ? [...forms[forms.length - 1]].length + 3 + tail : 0
     let parks = parkItems(stops, room)
     if (floor && parks.length && [...parks.join(' · ')].length + floor > room) parks = parkItems(stops, room - floor)
-    const used = parks.length ? [...parks.join(' · ')].length + 3 : 0
-    const landed = landedItems(landings, room - used)
-    return fit([...fixed, ...parks, ...landed, ...running, ...rest], width, fixed.length + parks.length + landed.length)
+    let out
+    if (!forms.length) out = fit([...fixed, ...parks, ...after], width)
+    else {
+      const keep = fixed.length + parks.length + 1
+      for (const form of forms) {
+        out = fit([...fixed, ...parks, form, ...after], width, keep)
+        if ([...out].length <= width) break
+      }
+    }
+    // The last resort: a line that still does not fit is cut, never left to overflow.
+    return clip(out, width)
   } catch {
     return ''
   }

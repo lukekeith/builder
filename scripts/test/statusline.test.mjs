@@ -216,3 +216,41 @@ test('a park and a landing share a narrow line: the park first, both in short fo
   assert.ok([...out].length <= 60, out)
   assert.doesNotMatch(out, /more/)
 })
+
+const row = (feature, at) => JSON.stringify({ feature, merged: 'abc1234', target: 'main', landedAt: new Date(at).toISOString(), walk: { rounds: [] } })
+function liveFleet() {
+  const root = repo()
+  write(root, '.builder/fleet/lock', String(process.pid))
+  write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: {
+    c: { status: 'parked', reason: 'the spec leaves open whether a revoked certificate can be downloaded' },
+    d: { status: 'failed', reason: 'run timed out twice' },
+    e: { status: 'building', worktree: null }, f: { status: 'building', worktree: null },
+  } }))
+  feature(root, 'e', 'building', { tasks: 9, done: 4 })
+  feature(root, 'f', 'building', { tasks: 9, done: 2 })
+  return root
+}
+function exitedWithEverything() {
+  const root = repo()
+  write(root, '.builder/fleet/lock', String(DEAD))
+  write(root, '.builder/fleet/fleet.json', JSON.stringify(PARKED))
+  write(root, '.builder/fleet/archive.jsonl', row('order-flow-prototype', NOW - 3600000) + '\n')
+  feature(root, 'sheet-order', 'building', { tasks: 6, done: 2 })
+  return root
+}
+
+test('the line never exceeds its width, whatever is on it', () => {
+  for (const make of [liveFleet, exitedWithEverything]) {
+    const root = make()
+    for (const width of [120, 60, 40, 10]) {
+      const out = render({ cwd: root, now: NOW, bootTime: BOOT, width })
+      assert.ok([...out].length <= width, `${make.name} @${width}: ${[...out].length} chars: ${out}`)
+    }
+  }
+})
+
+test('a live fleet with no landing renders as it always did: the parks first, whole items dropped into +N more', () => {
+  const root = liveFleet()
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 60 }), 'builder ▓▓░░░░░░░░ 17% · ⚙ fleet 0/4 +3 more')
+  assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 120 }), 'builder ▓▓░░░░░░░░ 17% · ⚙ fleet 0/4 · ⛔ c: the spec leaves open whether a re… · ⛔ d: run timed out twice +2 more')
+})
