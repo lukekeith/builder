@@ -25,6 +25,10 @@ import { requireConfig } from './config.mjs'
 import { loadFleet, fleetDir, fleetAlive, pruneArchivedLogs } from './fleet-core.mjs'
 import { inventory, summaryLine, clearWorktree, worktrees, featureOf } from './tidy-core.mjs'
 
+// stdout to a pipe is asynchronous on macOS and this script exits with process.exit(): blocking writes keep
+// --json output past 64 KB whole (the verify CLI's fix; nodejs/node#6456).
+process.stdout._handle?.setBlocking?.(true)
+
 const argv = process.argv.slice(2)
 const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : undefined)
 const CFG = requireConfig()
