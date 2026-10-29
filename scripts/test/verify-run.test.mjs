@@ -389,6 +389,16 @@ test('a whole selection re-runs a file whose newest record is a fail', async () 
   assert.ok(!idsRun(ctx).includes('unit::test/b.test.mjs::ok'))
 })
 
+test('a config-driven runner keeps a whole selection whole, whatever passed before', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.verify = { suites: [{ ...suite, runner: 'vitest' }], checks: [], timeoutMs: 60000, db: null }
+  ctx.ledger.appendResults(green(c2, both))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 0)
+  assert.equal(v.selection.unit.files, 'all')
+})
+
 test('a whole selection since the pass reuses nothing and the suite runs whole', async () => {
   const { dir, c0, c1, c2, c3 } = lockedHistory(true)
   const ctx = phaseCtx(dir)
