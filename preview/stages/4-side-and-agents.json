@@ -602,9 +602,9 @@
         }
       ],
       "stamp": {
-        "hash": "4797c1088a5a",
+        "hash": "bfa9764cacac",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-29"
       }
     },
     {
@@ -653,11 +653,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node …/scripts/fleet.mjs cert-tags cert-history --into main --detach)"
+          "text": "⏺ Bash(node …/scripts/fleet.mjs cert-tags cert-history --into main --detach) · Bash(node …/scripts/fleet.mjs --wait, in the background)"
         },
         {
           "role": "claude",
-          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. `/builder:fleet:status` shows where it stands (and the `builder` status line, if it's on) — once every row has landed, parked or failed, that's the final report. Nothing waits on it here, so what happens shows where you look: a merge as `✔ <feature> merged` on the status line and in the next session's brief until you open `/builder:fleet:status`; a park as `⛔ <feature>: <why>` there too, and a block in `.builder/fleet/fleet.out`.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. While this session is open I'll report here when it finishes (a watcher is waiting); otherwise the `builder` status line and the next session's brief tell — a merge as `✔ <feature> merged` until you open `/builder:fleet:status`, a park as `⛔ <feature>: <why>`, and a block in `.builder/fleet/fleet.out`. `/builder:fleet:status` shows where it stands any time.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -665,9 +665,9 @@
         }
       ],
       "stamp": {
-        "hash": "cce5c345374d",
+        "hash": "0a97a08fa444",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-29"
       }
     },
     {
@@ -728,9 +728,9 @@
         }
       ],
       "stamp": {
-        "hash": "bed646b0dacd",
+        "hash": "cafd2501b113",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-29"
       }
     },
     {
@@ -830,9 +830,9 @@
         }
       ],
       "stamp": {
-        "hash": "6dc3d17ff418",
+        "hash": "578b2a5b0eef",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-29"
       }
     },
     {

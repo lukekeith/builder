@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, realpathSync, chmodSync, unlinkSync, utimesSync } from 'node:fs'
+import { rmSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, realpathSync, chmodSync, unlinkSync, utimesSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -1834,4 +1834,17 @@ test('batched walks: a walk that finds problems sends the fixes to the pool, and
   assertLanded(r, 'a')
   assertLanded(r, 'b')
   assert.ok(r.calls.some((l) => /^start a build .* FIXED /.test(l)), 'the fix ran in the pool: ' + r.calls.join('\n'))
+})
+
+test('--wait with no fleet running prints exactly what --status prints, at once, and marks it seen', () => {
+  const root = makeRepo(['a'])
+  runFleet(root, ['a'], { a: HAPPY })
+  const status = runFleet(root, ['--status'], {})
+  rmSync(join(root, '.builder/fleet/seen'), { force: true })
+  const t = Date.now()
+  const r = runFleet(root, ['--wait'], {})
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(Date.now() - t < 10000, 'no wait when nothing runs')
+  assert.equal(r.stdout, status.stdout)
+  assert.equal(existsSync(join(root, '.builder/fleet/seen')), true, 'opening the status marks it seen')
 })

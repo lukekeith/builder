@@ -16,6 +16,7 @@
  *   node <plugin>/scripts/fleet.mjs --all [--parallel N]
  *   node <plugin>/scripts/fleet.mjs … --dry-run     # pre-flight and the plan; nothing created
  *   node <plugin>/scripts/fleet.mjs --status        # the last run's table
+ *   node <plugin>/scripts/fleet.mjs --wait          # silent until the fleet exits, then --status
  *   node <plugin>/scripts/fleet.mjs --status --archived [N]   # the latest N landings (20)
  *
  * State lives in .builder/fleet/ (fleet.json, STATUS.md, logs/). Re-running resumes. A feature that
@@ -28,7 +29,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -51,8 +52,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --pause <feature>   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--archived', '--pause', '--no-env-check'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --wait | --pause <feature>   (named while a fleet runs: added to its queue)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--wait', '--archived', '--pause', '--no-env-check'])
 for (const a of argv) {
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
@@ -103,7 +104,9 @@ const testsOf = (feature, f) => {
   return existsSync(p) ? parseTestPlan(parseManifest(readFileSync(p, 'utf8'))).label : null
 }
 
-if (flag('--status') || flag('--archived')) {
+if (flag('--status') || flag('--archived') || flag('--wait')) {
+  // --wait: block, silent, until no live fleet holds the lock; then the status, as --status prints it.
+  if (flag('--wait')) await waitForFleet(ROOT)
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   // Opening the status is seeing what landed: the status line and the brief stop announcing it.
   markSeen(ROOT)
