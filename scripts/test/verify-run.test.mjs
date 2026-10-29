@@ -355,6 +355,28 @@ test('earlier commits are consulted for at most the three newest; a file only ol
   assert.equal(v.reused, 4) // f4 exact, f1-f3 within the cap; f0 re-run
 })
 
+test('later commits that recorded only other files do not crowd out a file\'s newest pass', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/f${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `u${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  const all = [0, 1, 2, 3, 4].map((i) => `test/f${i}.test.mjs`)
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : all, why: {} } }) })
+  // f0–f2 last passed together at the first commit; the three commits after it each recorded only f3 or f4.
+  ctx.ledger.appendResults(green(shas[0], all.slice(0, 3)))
+  ctx.ledger.appendResults(green(shas[1], [all[3]]))
+  ctx.ledger.appendResults(green(shas[2], [all[4]]))
+  ctx.ledger.appendResults(green(shas[3], [all[3], all[4]]))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: shas[4], base: c0, commits: shas }), ctx)
+  assert.equal(v.reused, 5) // f0–f2 judged at shas[0], f3–f4 at shas[3]: two graph builds, under the cap
+  assert.equal(calls - 1, 2)
+})
+
 /** history() with package-lock.json changed first: the selection over the branch is whole from then on. */
 function lockedHistory(lockLast = false) {
   const { dir, g, c0 } = history()
