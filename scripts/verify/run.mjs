@@ -98,6 +98,8 @@ function lazyTracked(suite, where) {
 }
 
 const REUSE_COMMITS = 3
+/** Runners whose whole run is the suite's glob itself; the rest let their own config pick the files, so a whole selection stays whole. */
+const LISTED_WHOLE = new Set(['node-test', 'junit'])
 
 /**
  * (suite, file) → whether the phase tier may skip it. Candidates are the request's commit, then each
@@ -203,6 +205,12 @@ async function judgeRequest(req, ctx, tmp) {
   const env = (lease) => ({ ...process.env, ...(ctx.baseEnv ?? {}), ...lease.env })
   const templateFor = (needs, where) => (needs.some((x) => x.kind === 'db') ? pool.ensureTemplate(where, inputsHash(where, verify.db.inputs)) : null)
 
+  const trackedMemo = new Map() // suite name → the checkout's tracked glob, listed once
+  const trackedFor = (suite, where) => {
+    if (where !== checkout) return lazyTracked(suite, where)
+    if (!trackedMemo.has(suite.name)) trackedMemo.set(suite.name, lazyTracked(suite, where))
+    return trackedMemo.get(suite.name)
+  }
   const runSuite = async (suite, files, { where = checkout, grep = null, pairs = null } = {}) => {
     // Once cancelled, nothing more is leased or run.
     if (signal?.aborted) return { results: null, reason: 'cancelled' }
@@ -214,14 +222,14 @@ async function judgeRequest(req, ctx, tmp) {
     try {
       // A junit command's {files} is the project's own runner: it may take them as regexes (playwright),
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
-      const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, lazyTracked(suite, where).list()) : null
+      const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, trackedFor(suite, where).list()) : null
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, pairs: pairs && pairs.map((p) => ({ ...p, file: fromCwd(suite.cwd, [p.file])[0] })), report })
       const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
       if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
-      const tracked = lazyTracked(suite, where)
+      const tracked = trackedFor(suite, where)
       return { results: results.map((x) => ({ ...x, file: repoFile(suite, where, x.file, tracked) })) }
     } finally {
       lease.release()
@@ -343,7 +351,7 @@ async function judgeRequest(req, ctx, tmp) {
     let { files, why } = sel[s.name]
     // A whole selection (a lockfile changed somewhere on the branch) is judged file by file over the
     // glob's tracked files; it stays whole unless at least one file is reused.
-    const wholeList = files === 'all' && reuse && s.files ? lazyTracked(s, checkout).list() : null
+    const wholeList = files === 'all' && reuse && s.files && LISTED_WHOLE.has(s.runner) ? trackedFor(s, checkout).list() : null
     if (Array.isArray(files) && reuse) {
       const keep = files.filter((f) => !reuse(s, f))
       verdict.reused += files.length - keep.length
