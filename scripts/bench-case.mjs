@@ -224,6 +224,43 @@ export function specCommits(repo, registry, feature, commits) {
   return out
 }
 
+/**
+ * Where a case starts, from the feature's range (featureRange): the base the clone checks out and the
+ * spec commits cherry-picked onto it, together the tree the original build began from.
+ *
+ * The branch's leading commits are its spec-only commits (specCommits) and any merge that brought the
+ * target in (each merged parent an ancestor of range.base, the target as it was at the landing).
+ * The base is range.base, with the spec-only commits before the first such merge, whenever the
+ * target's copy of the feature's folder there is the one at the fork (where the branch was cut): the
+ * spec commits touch nothing else, so they apply exactly — every case that always ran keeps its start.
+ * When it is not — the target moved on and committed its own copy (a go-ahead made there) — they would
+ * not apply, and the base is the commit they were made on: the last such merge when the target was
+ * merged in before the build began (the build began on the target's code it brought in, and the spec
+ * commits before it are already in it), else the fork; the spec commits after it are cherry-picked.
+ * → { base, specs, spec }: `spec` is false when no spec-only commit leads the branch.
+ */
+export function caseStart(repo, registry, feature, range) {
+  const dir = `${registry.replace(/\/+$/, '')}/${feature}/`
+  const lead = []
+  for (const c of range.commits) {
+    const merged = git(repo, 'rev-list', '--parents', '-n1', c).split(' ').slice(2)
+    if (merged.length) {
+      if (!merged.every((p) => tryGit(repo, 'merge-base', '--is-ancestor', p, range.base) !== null)) break
+      lead.push({ c, merge: true })
+      continue
+    }
+    const files = git(repo, 'diff-tree', '--no-commit-id', '--name-only', '-r', '--root', c).split('\n').filter(Boolean)
+    if (!files.length || files.some((f) => !f.startsWith(dir))) break
+    lead.push({ c, merge: false })
+  }
+  const firstMerge = lead.findIndex((x) => x.merge)
+  const before = (firstMerge < 0 ? lead : lead.slice(0, firstMerge)).map((x) => x.c)
+  const folder = (ref) => tryGit(repo, 'rev-parse', '--verify', '--quiet', `${ref}:${dir.slice(0, -1)}`)
+  if (before.length && folder(range.base) === folder(range.fork)) return { base: range.base, specs: before, spec: true }
+  const lastMerge = lead.findLastIndex((x) => x.merge)
+  return { base: lastMerge < 0 ? range.fork : lead[lastMerge].c, specs: lead.slice(lastMerge + 1).map((x) => x.c), spec: lead.some((x) => !x.merge) }
+}
+
 /** A placed file's text, or null for a binary (a NUL in its first 8 KB) or an unreadable one — a binary is not scanned. */
 const textOf = (f) => {
   try {
@@ -284,15 +321,16 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   } catch (e) {
     return { refusals, row, failure: why(e) }
   }
-  const base = range.base
+  // the registry, from the config where the branch was cut (else where it landed): caseStart needs it to pick the base
+  const forkMd = tryGit(repo, 'show', `${range.fork}:.claude/builder.md`) ?? tryGit(repo, 'show', `${range.base}:.claude/builder.md`) ?? ''
+  const registry = /^registry:\s*(\S+)/m.exec(forkMd)?.[1] ?? 'docs/features'
+  const { base, specs, spec } = caseStart(repo, registry, feature, range)
   let baseMd
   try {
     baseMd = git(repo, 'show', `${base}:.claude/builder.md`) + '\n'
   } catch {
     return { refusals: [...refusals, `no .claude/builder.md at the base ${base.slice(0, 12)}`], row }
   }
-  const registry = /^registry:\s*(\S+)/m.exec(baseMd)?.[1] ?? 'docs/features'
-  const specs = specCommits(repo, registry, feature, range.commits)
   let verifyBlock
   if (profile.verify) {
     const f = resolve(profileDir, profile.verify)
@@ -368,8 +406,8 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)]), ...mcp].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
   const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
-  const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`
-  const specLines = specs.length ? lineCount(tryGit(repo, 'show', `${specs.at(-1)}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
+  const failure = spec ? null : `no spec-only commits lead ${feature}'s branch`
+  const specLines = spec ? lineCount(tryGit(repo, 'show', `${head}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
   return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines, target }
 }
 
@@ -396,11 +434,8 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   } catch (e) {
     return { ...none, clone: existsSync(clone) ? clone : null, failure: `could not clone the repo: ${why(e)}` }
   }
-  try {
-    git(clone, 'cherry-pick', ...specs)
-  } catch (e) {
-    return { ...none, clone, failure: `the spec commits do not apply on the base: ${why(e)}` }
-  }
+  const picked = applySpecs(clone, specs)
+  if (picked) return { ...none, clone, failure: picked }
   const exclude = join(clone, '.git', 'info', 'exclude')
   mkdirSync(dirname(exclude), { recursive: true })
   mkdirSync(join(clone, '.claude'), { recursive: true })
@@ -435,6 +470,19 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
     if (r.status !== 0) return { ...none, clone, setupPgid, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
   }
   return { clone, base, specs, refusals: [], failure: null, plan, prepped, setupPgid }
+}
+
+/** The spec commits cherry-picked onto the clone's HEAD; → null, or the failure with the files that conflicted (the cherry-pick aborted). */
+export function applySpecs(clone, specs) {
+  if (!specs.length) return null
+  try {
+    git(clone, 'cherry-pick', ...specs)
+    return null
+  } catch (e) {
+    const conflicts = (tryGit(clone, 'diff', '--name-only', '--diff-filter=U') ?? '').split('\n').filter(Boolean)
+    tryGit(clone, 'cherry-pick', '--abort')
+    return `the spec commits do not apply on the base: ${why(e)}${conflicts.length ? ` — conflicts in ${conflicts.join(', ')}` : ''}`
+  }
 }
 
 /** The most lines any version of <registry>/<feature>/PLAN.md committed in the clone after `since` (the prepped commit) had, or null. */
@@ -555,7 +603,7 @@ if (isMain) {
       `${id} (${caseDef.size}, ${caseDef.project}) — dry run, nothing is cloned or run`,
       `  clone:  ${p.clone}`,
       `  base:   ${subject(p.base)}`,
-      `  specs:  ${p.specs.map(subject).join('\n          ')}`,
+      `  specs:  ${p.specs.length ? p.specs.map(subject).join('\n          ') : '(none after the base — it holds the spec)'}`,
       '  agent_walk:',
       ...agentWalkLines(p.builderMd).map((l) => `    ${l}`),
       `  env:    ${Object.keys(p.env).length ? envLines(p.env).split('\n').join(' ') : '(none)'}`,
