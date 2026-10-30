@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, killableGroup } from '../bench-case.mjs'
+import { specCommits, killableGroup, prepareClone, finishCase } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -284,4 +284,57 @@ test('SIGTERM stops the case: its fleet, the fleet\'s session groups and the set
   assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'failed: stopped')
   assert.equal(readFileSync(join(tmp, 'teardown.txt'), 'utf8'), 'torn\n')
   await waitFor(() => ![session, fleetChild, setupSleep].some(alive))
+})
+
+/** A detached `sleep 60` — its own process group, nothing to do with any clone. */
+const outsider = () => spawn('sleep', ['60'], { stdio: 'ignore', detached: true })
+
+test('a setup that leaves nothing running records no group, so nothing is signalled after the fleet', async () => {
+  const { tmp, local, clone } = fixture()
+  const profile = JSON.parse(readFileSync(join(local, 'projects', 'p.json'), 'utf8'))
+  const env = { BENCH_FLEET: process.env.BENCH_FLEET, BENCH_INSTALLED_PLUGINS: process.env.BENCH_INSTALLED_PLUGINS }
+  Object.assign(process.env, { BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent' })
+  try {
+    const prep = await prepareClone({ profile: { ...profile, setup: 'true' }, profileDir: join(local, 'projects'), caseDef: { id: 'c1', kind: 'archived', feature: 'f' }, builder: REPO, dest: clone, out: join(tmp, 'out'), listening: [] })
+    assert.equal(prep.failure, null)
+    assert.equal(prep.setupPgid, null)
+  } finally {
+    for (const [k, v] of Object.entries(env)) v == null ? delete process.env[k] : (process.env[k] = v)
+  }
+})
+
+test('a recorded setup group with no member in the clone — its pid reused — is never signalled', async () => {
+  const { tmp, clone, run } = fixture()
+  assert.equal(run(['c1', '--builder', REPO, '--out', join(tmp, 'out')]).status, 0)
+  const other = outsider()
+  try {
+    const logged = []
+    const err = console.error
+    console.error = (...a) => logged.push(a.join(' '))
+    try {
+      await finishCase({ clone, teardown: null, setupPgid: other.pid, out: join(tmp, 'out') })
+    } finally {
+      console.error = err
+    }
+    assert.equal(alive(other.pid), true, 'an unrelated group was signalled')
+    assert.match(logged.join('\n'), new RegExp(`not signalling process group ${other.pid}: no member runs in the clone`))
+  } finally {
+    other.kill('SIGKILL')
+  }
+})
+
+test('a fleet.json pgid whose group has no member in the clone is not killed on a timeout; the fleet\'s own session group is', async () => {
+  const { out, clone, run } = fixture()
+  const other = outsider()
+  try {
+    const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_FLEET: HANG, BENCH_CASE_FLEET_TIMEOUT_MS: '1500', BENCH_CASE_KILL_GRACE_MS: '300', STUB_FLEET_PGIDS: '1', STUB_EXTRA_PGID: String(other.pid) })
+    assert.equal(r.status, 0, r.stderr)
+    const session = Number(readFileSync(join(clone, '.builder', 'fleet', 'session.pid'), 'utf8'))
+    for (let i = 0; i < 40 && alive(session); i++) await new Promise((res) => setTimeout(res, 50))
+    assert.equal(alive(session), false, 'the session group in the clone outlived the fleet')
+    assert.equal(alive(other.pid), true, 'a group outside the clone was killed')
+    assert.match(r.stderr, new RegExp(`not signalling process group ${other.pid}: no member runs in the clone`))
+  } finally {
+    other.kill('SIGKILL')
+  }
 })
