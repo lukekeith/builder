@@ -280,6 +280,39 @@ test('a profile\'s agent_walk.claude_args replaces the project\'s own, after the
   assert.doesNotMatch(d.stdout, /walk-mcp|elsewhere/)
 })
 
+test('a profile\'s replace rewrites the whole builder.md; prose that still names something of yours is a body: warning, never a refusal or a port', () => {
+  const prose = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  start: npm run dev -- --port 4917\n---\n\n## Walk readiness\n\nStart with DATABASE_URL=postgres://localhost/app_dev, then open localhost:4917 and localhost:4555.\n'
+  const { out, clone, run, writeProfile } = fixture({ md: prose })
+  writeProfile({ agent_walk: {}, replace: [['/app_dev', '/bench_p'], ['4917', '5917']] })
+  const d = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(d.status, 0, d.stderr)
+  assert.match(d.stdout, /^ {2}ports: +5917$/m) // 4555 is named only in the body
+  assert.doesNotMatch(d.stdout, /^ {2}body:/m)
+  writeProfile({ agent_walk: {}, replace: [['4917', '5917']] })
+  const w = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(w.status, 0, w.stderr)
+  assert.match(w.stdout, /^ {2}body: database app_dev is not a bench database \(bench_\*\)$/m)
+  writeProfile({ agent_walk: {}, replace: [['/app_dev', '/bench_p'], ['4917', '5917'], ['not in the file', 'x']] })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /^refused: replace: "not in the file" not found$/m)
+  assert.ok(!existsSync(clone))
+  writeProfile({ agent_walk: {}, replace: [['/app_dev', '/bench_p'], ['4917', '5917']] })
+  const ok = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(ok.status, 0, ok.stderr)
+  const md = readFileSync(join(clone, '.claude', 'builder.md'), 'utf8')
+  assert.match(md, /^ {2}start: npm run dev -- --port 5917$/m)
+  assert.match(md, /^Start with DATABASE_URL=postgres:\/\/localhost\/bench_p, then open localhost:5917 and localhost:4555\.$/m)
+})
+
+test('a replace that rewrites the runner\'s claude_args is refused', () => {
+  const { out, run, writeProfile } = fixture()
+  writeProfile({ replace: [['bypassPermissions', 'default']] })
+  const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /^refused: replace: changes agent_walk\.claude_args, which the runner sets — use the profile's agent_walk\.claude_args$/m)
+})
+
 const waitFor = async (fn, ms = 15000) => {
   for (const t0 = Date.now(); !fn(); await new Promise((res) => setTimeout(res, 50))) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${fn}`)
 }

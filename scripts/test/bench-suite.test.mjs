@@ -426,6 +426,17 @@ test('plan shows what each archived case\'s clone will touch — its dry run —
   assert.match(r.stdout, new RegExp(`clones: ${join(tmp, 'bench-suite')}/<suite-id>/<item>/clone`))
 })
 
+test('plan shows a dry run\'s body: warnings and counts them; they never refuse, and a port named only in the body never collides', () => {
+  const { suite, local } = setup()
+  const fm = '---\nagent_walk:\n  claude_args: --x\n  env: PORT=4010\n---\n'
+  put(join(local, 'projects', 'projA.json'), { db_prefix: 'bench_', builderMd: `${fm}\nWalk readiness: DATABASE_URL=postgres://localhost/app_dev, docker compose up\n` })
+  put(join(local, 'projects', 'projB.json'), { db_prefix: 'bench_', builderMd: '---\nagent_walk:\n  claude_args: --x\n---\nopen localhost:4010\n' })
+  const r = suite(['plan', 'c1,c3'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^ {2}body: database app_dev is not a bench database \(bench_\*\)$/m)
+  assert.match(r.stdout, /^dry runs: c1 ok — 2 body warnings, add a replace for each to its profile · c3 ok$/m)
+})
+
 test('the builder under test is pinned: a detached worktree at its HEAD, a dirty tree refused unless --allow-dirty, both SHAs in both reports', async () => {
   const { suite, tmp, builder, pinned, readLog, results, out, suiteJson, settled } = setup()
   const sha12 = builder.sha.slice(0, 12)

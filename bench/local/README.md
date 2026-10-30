@@ -34,6 +34,10 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 - `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet
   starts. Point the project's own scripts at the bench database here: `DATABASE_URL`, `DIRECT_URL`,
   `TEST_DATABASE_URL` and every `PG*` are never inherited from your shell, so without `env` they are unset.
+- `replace` — `[["from", "to"], …]`, literal replacements over the whole clone's `builder.md` — front matter and body —
+  after the keys above are set; each must match at least once, or the case is refused (`replace: "<from>" not found`).
+  Use it to point the body's prose (a "Walk readiness" section naming your dev database, ports or containers) at the
+  bench's. It may not change `agent_walk.claude_args` — set the profile's `agent_walk.claude_args` instead.
 - `setup` — a shell command run in the clone before the fleet (timeout 20 min); it may start what the run needs.
   Whatever it starts runs in its own process group, which is stopped once the case ends, however it ends.
 - `teardown` — a shell command run in the clone after the fleet, on every path — landed, failed, timed out or
@@ -47,6 +51,7 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
   "verify": "project-a.verify.yml",
   "files": { ".env": "project-a.env" },
   "env": { "DATABASE_URL": "postgres://localhost:5432/bench_a_main" },
+  "replace": [["localhost:3000", "localhost:4010"], ["/app_dev", "/bench_a_main"]],
   "setup": "npm ci && dropdb --if-exists bench_a_main && createdb bench_a_main",
   "teardown": "dropdb --if-exists bench_a_main"
 }
@@ -75,4 +80,8 @@ A case is refused, before anything is cloned, when the clone's config — or the
   `$BENCH_TMP`, `$TMPDIR/bench-suite` by default; results stay here);
 - the result folder (`--out`) is inside the project repo.
 
-`bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons; fix the case or profile and plan again.
+The body of the clone's `builder.md` — prose, which an agent may still run literally — is checked by the same rules,
+as warnings: the dry run lists each as a `body: …` line and the case still runs. Add a `replace` for each. Ports named
+only in the body never count toward two projects sharing a port.
+
+`bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons and warnings; fix the case or profile and plan again.

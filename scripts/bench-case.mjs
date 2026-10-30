@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cop
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -312,15 +312,20 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const settings = join(clone, '.claude', 'bench-settings.json')
   // the runner's flags first; the profile's claude_args, else the project's own (an --mcp-config, a --model), after them
   const claudeArgs = walkClaudeArgs(`--permission-mode bypassPermissions --settings ${settings} --plugin-dir ${builder}`, baseMd, profile.agent_walk?.claude_args)
-  const builderMd = applyProfile(baseMd, { agentWalk: profile.agent_walk ?? {}, verifyBlock, claudeArgs })
+  // the profile's replacements run over the whole config — front matter and the body's prose — but never rewrite the runner's flags
+  const { md: builderMd, refusals: replaceRefusals } = applyReplacements(applyProfile(baseMd, { agentWalk: profile.agent_walk ?? {}, verifyBlock, claudeArgs }), profile.replace)
+  refusals.push(...replaceRefusals)
+  if (!replaceRefusals.length && ownClaudeArgs(builderMd) !== claudeArgs) refusals.push("replace: changes agent_walk.claude_args, which the runner sets — use the profile's agent_walk.claude_args")
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
+  // the body is prose: what it names is a warning to replace, never a refusal — nor a port the plan counts
+  const warnings = bodyWarnings(builderMd, profile, { listening })
   // the env, the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
   const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)])].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
-  const ports = [...new Set([builderMd, ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
+  const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
   const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`
   const specLines = specs.length ? lineCount(tryGit(repo, 'show', `${specs.at(-1)}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
-  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
+  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
 }
 
 /**
@@ -511,6 +516,7 @@ if (isMain) {
       `  teardown: ${p.teardown ?? '(none)'}`,
       `  ports:  ${p.ports.length ? p.ports.join(' ') : '(none)'}`,
       `  fleet:  node ${p.fleet} ${p.feature} --into main --parallel 1`,
+      ...p.warnings.map((w) => `  ${w}`),
     ].join('\n'))
     process.exit(0)
   }

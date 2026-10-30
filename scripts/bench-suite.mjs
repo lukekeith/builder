@@ -783,7 +783,9 @@ if (isMain) {
       if (summaries.length) {
         console.log(`\nwhat each clone will touch — clones: ${CLONE_ROOT}/<suite-id>/<item>/clone, removed after each case unless BENCH_KEEP_CLONES=1:\n`)
         console.log(summaries.map((x) => x.text).join('\n\n'))
-        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok`).join(' · ')}`)
+        // a body: line is config prose naming something of the human's — a warning, never a refusal
+        const warned = (x) => (x.text.match(/^\s+body: /gm) ?? []).length
+        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok${warned(x) ? ` — ${warned(x)} body warning${warned(x) > 1 ? 's' : ''}, add a replace for each to its profile` : ''}`).join(' · ')}`)
       }
       process.exit(0)
     }
