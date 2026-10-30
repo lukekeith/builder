@@ -492,3 +492,62 @@ test('a second suite on one date gets its own committed report, <date>-HHMM-suit
   assert.match(rebuilt.stdout, new RegExp(`report: ${day}`))
   assert.doesNotMatch(readFileSync(day, 'utf8'), /\| c3 \|/)
 })
+
+/** A project repo in `dir` with feature f merged --no-ff (spec commit, then code) and its archive row. */
+function projectRepo(dir) {
+  mkdirSync(dir)
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: dir, encoding: 'utf8' }).trim()
+  git('init', '-q', '-b', 'main')
+  put(join(dir, '.claude', 'builder.md'), '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n---\n\n# config\n')
+  put(join(dir, '.gitignore'), '.builder/\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  git('checkout', '-qb', 'builder/f')
+  put(join(dir, 'docs', 'features', 'f', 'SPEC.md'), '# f\n\none\n')
+  git('add', '-A')
+  git('commit', '-qm', 'spec')
+  put(join(dir, 'src', 'a.js'), 'export const a = 1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'code')
+  git('checkout', '-q', 'main')
+  git('merge', '-q', '--no-ff', '-m', 'merge f', 'builder/f')
+  put(join(dir, '.builder', 'fleet', 'archive.jsonl'), JSON.stringify({ feature: 'f', merged: git('rev-parse', 'HEAD'), wallMs: 600000, costUsd: 2, timing: [] }) + '\n')
+  const state = () => [git('rev-parse', 'HEAD'), git('status', '--porcelain'), git('branch', '-a'), git('worktree', 'list'), readFileSync(join(dir, '.builder', 'fleet', 'archive.jsonl'), 'utf8')].join('\n')
+  return { dir, state }
+}
+
+test('end to end: the suite runs the real case runner on two projects in two lanes — both land, the reports are written, the repos untouched', async () => {
+  const { suite, tmp, local, out, results, suiteJson, settled } = setup()
+  const a = projectRepo(join(tmp, 'proj-a'))
+  const b = projectRepo(join(tmp, 'proj-b'))
+  put(join(local, 'projects', 'pa.json'), { repo: a.dir, db_prefix: 'bench_a_', agent_walk: { env: 'PORT=59611' } })
+  put(join(local, 'projects', 'pb.json'), { repo: b.dir, db_prefix: 'bench_b_', agent_walk: { env: 'PORT=59612' } })
+  put(join(local, 'cases', 'e1.json'), { size: 'sm', project: 'pa', feature: 'f', covers: 'one file', estimate: { minutes: 10, usd: 1 } })
+  put(join(local, 'cases', 'e2.json'), { size: 'md', project: 'pb', feature: 'f', covers: 'one file' })
+  const before = [a.state(), b.state()]
+  const env = { BENCH_CASE: '', BENCH_FLEET: join(HERE, 'fixtures', 'bench', 'stub-fleet-land.mjs'), BENCH_INSTALLED_PLUGINS: '/nonexistent', BENCH_KEEP_CLONES: '' }
+  const p = suite(['plan', 'e1,e2', '--lanes', '2'], env)
+  assert.equal(p.status, 0, p.stderr)
+  assert.match(p.stdout, /^ {4}env: PORT=59611$/m) // the agent_walk line the profile applies
+  assert.match(p.stdout, /^e2 \(md, pb\) — dry run/m)
+  assert.match(p.stdout, /dry runs: e1 ok · e2 ok/)
+  const r = suite(['run', 'e1,e2', '--lanes', '2', '--detach'], env)
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')), 60000)
+  await settled()
+  const s = suiteJson()
+  assert.deepEqual(s.items.map((i) => [i.id, i.status]).sort(), [['e1', 'done'], ['e2', 'done']])
+  assert.deepEqual(s.items.map((i) => i.lane).sort(), [1, 2]) // e2's estimate came from its archive row
+  for (const it of s.items) {
+    const res = JSON.parse(readFileSync(join(it.out, 'result.json'), 'utf8'))
+    assert.equal(res.measure.wallMs, 300000)
+    assert.equal(res.baseline.wallMs, 600000)
+    assert.ok(!existsSync(join(tmp, 'bench-suite', s.id, it.id)), `${it.id}'s clone was removed`)
+  }
+  const committed = readFileSync(join(out, `${s.id.slice(0, 10)}-suite`, 'REPORT.md'), 'utf8')
+  assert.match(committed, /\| e1 \| sm \| done \|/)
+  assert.match(committed, /\| e2 \| md \| done \|/)
+  assert.doesNotMatch(committed, /\bpa\b|\bpb\b|proj-a|proj-b|\/private|\/var\//)
+  assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), /\| e1 \| sm \| pa \| done \|/)
+  assert.deepEqual([a.state(), b.state()], before)
+})
