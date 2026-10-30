@@ -84,7 +84,8 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
   anywhere on a line with a database client or server (`mysqladmin`, `mysql`, `mysqld`, `redis-cli`, `redis-server`,
   `valkey-cli`, `mongosh` / `mongo`, `mongod`, `psql`, `pg_ctl`, `postgres`) — piped in, in a `-c` / `--eval` string,
   or as the server's own `--shutdown`;
-- a command shuts down or restarts the machine: `shutdown`, `halt`, `reboot` or `poweroff`, by any path or through `sudo`;
+- a command shuts down or restarts the machine: `shutdown`, `halt`, `reboot` or `poweroff`, by any path, after `exec`,
+  `nohup`, `env`, `command` or `time`, or through `sudo`;
 - a `docker` or `docker-compose` command names no container carrying the prefix;
 - `simctl` targets the booted simulator instead of the bench device by its prefixed name, or `simctl shutdown` names a device
   without the prefix (`simctl shutdown bench_a_iphone` is fine; `all` is not);
