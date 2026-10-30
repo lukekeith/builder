@@ -253,3 +253,18 @@ test('--brief cuts a task\'s head at **Behaviour:**, keeping a fence under Inter
   assert.doesNotMatch(b, /BEHAVIOUR_RULE|TEST_LINE/)
   assert.match(b, /\(1 step · /)
 })
+
+test('--brief: an old plan with no step markers ends its head at the first fence, and --scan still sees its body', async () => {
+  const { planBrief, planScan } = await import('../plan-slices.mjs')
+  const plan = ['# p', '', '### Task 1: a', 'App: api', '', '**Files:**', '- Create: `api/a.py`', '', '**Interfaces:**', '- Produces: `thing`', '', '```py', 'def test_old(): ...  # edit api/other.py', '```', 'Edit `api/other.py` too.'].join('\n')
+  const b = planBrief(plan)
+  assert.match(b, /`thing`/)
+  assert.doesNotMatch(b, /test_old/)
+  assert.match(planScan(plan), /steps name `api\/other\.py`, not in Files/)
+})
+
+test('--brief: the US spelling **Behavior:** ends the head too', async () => {
+  const { planBrief } = await import('../plan-slices.mjs')
+  const plan = ['# p', '', '### Task 1: a', 'App: api', '', '**Files:**', '- Create: `api/a.ts`', '', '**Interfaces:**', '- Produces: `x`', '', '**Behavior:**', '- RULE_TEXT (D1)', '', '- [ ] **Step 1: x**'].join('\n')
+  assert.doesNotMatch(planBrief(plan), /RULE_TEXT/)
+})
