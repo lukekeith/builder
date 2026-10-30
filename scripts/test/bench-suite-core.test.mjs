@@ -375,3 +375,12 @@ test('safety: shutdown, halt or reboot after exec, nohup, env, command or time i
     assert.ok(probe(s).some((x) => /^setup: shuts down or restarts the machine: /.test(x)), `${s} → ${JSON.stringify(probe(s))}`)
   assert.deepEqual(probe('exec npm start && env FOO=1 node reboot-check.js'), [])
 })
+test('safety: brew services stop|restart, mysql.server stop|restart and pg_ctlcluster stop|restart are refused', () => {
+  assert.deepEqual(probe('brew services stop postgresql@16'), ['setup: stops a service: brew services stop postgresql@16'])
+  assert.deepEqual(probe('brew services restart anything'), ['setup: stops a service: brew services restart anything'])
+  assert.deepEqual(probe('mysql.server stop'), ['setup: stops a database server: mysql.server stop'])
+  assert.deepEqual(probe('mysql.server restart'), ['setup: stops a database server: mysql.server restart'])
+  assert.deepEqual(probe('pg_ctlcluster 16 main stop'), ['setup: stops a database server: pg_ctlcluster 16 main stop'])
+  assert.deepEqual(probe('sudo pg_ctlcluster 16 main restart'), ['setup: stops a database server: sudo pg_ctlcluster 16 main restart'])
+  assert.deepEqual(probe('brew services list && brew services start bench_redis'), [])
+})
