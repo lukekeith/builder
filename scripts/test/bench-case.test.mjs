@@ -20,13 +20,13 @@ const put = (f, s) => {
 }
 const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\n---\n\n# config\n'
 
-/** A project repo with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
-function fixture() {
+/** A project repo (its builder.md `md`) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
+function fixture({ md = MD } = {}) {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-case-')))
   const repo = join(tmp, 'repo')
   mkdirSync(repo)
   git(repo, 'init', '-q', '-b', 'main')
-  put(join(repo, '.claude', 'builder.md'), MD)
+  put(join(repo, '.claude', 'builder.md'), md)
   put(join(repo, '.gitignore'), '.builder/\n')
   put(join(repo, 'README.md'), 'r\n')
   git(repo, 'add', '-A')
@@ -259,6 +259,25 @@ test('a profile\'s env is checked like the config — each reason says env: — 
   assert.equal(d.status, 0, d.stderr)
   assert.match(d.stdout, /^ {2}env: +DATABASE_URL=postgres:\/\/localhost\/bench_p API_PORT=6123$/m)
   assert.match(d.stdout, /^ {2}ports: +5999 6123$/m)
+})
+
+test('claude_args keeps the project\'s own flags after the runner\'s — never its --permission-mode, --settings or --plugin-dir', () => {
+  const own = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: --permission-mode default --mcp-config .claude/walk-mcp.json --plugin-dir /mine --settings=/x.json\n---\n\n# config\n'
+  const { out, clone, run } = fixture({ md: own })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  const settings = join(clone, '.claude', 'bench-settings.json')
+  assert.match(readFileSync(join(clone, '.claude', 'builder.md'), 'utf8'), new RegExp(`^  claude_args: --permission-mode bypassPermissions --settings ${settings} --plugin-dir ${REPO} --mcp-config \\.claude/walk-mcp\\.json$`, 'm'))
+})
+
+test('a profile\'s agent_walk.claude_args replaces the project\'s own, after the runner\'s flags', () => {
+  const own = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: --mcp-config .claude/walk-mcp.json\n---\n'
+  const { out, run, writeProfile } = fixture({ md: own })
+  writeProfile({ agent_walk: { env: 'PORT=5999', claude_args: '--mcp-config .claude/bench-mcp.json --plugin-dir /elsewhere' } })
+  const d = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(d.status, 0, d.stderr)
+  assert.match(d.stdout, new RegExp(`^ {4}claude_args: --permission-mode bypassPermissions --settings \\S+ --plugin-dir ${REPO} --mcp-config \\.claude/bench-mcp\\.json$`, 'm'))
+  assert.doesNotMatch(d.stdout, /walk-mcp|elsewhere/)
 })
 
 const waitFor = async (fn, ms = 15000) => {

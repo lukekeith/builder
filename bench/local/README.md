@@ -26,7 +26,9 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 
 - `repo` (required) — the project's git repo, relative to this file or absolute. It is only read; the case runs in a clone.
 - `db_prefix` (required) — the prefix every bench database carries, such as `bench_a_`.
-- `agent_walk` — keys set under `agent_walk:` in the clone's `.claude/builder.md` (`claude_args` is always set by the runner).
+- `agent_walk` — keys set under `agent_walk:` in the clone's `.claude/builder.md`. `claude_args` starts with the runner's
+  `--permission-mode`, `--settings` and `--plugin-dir`, which it owns; after them come the profile's `claude_args` when it
+  sets one, else the project's own (an `--mcp-config`, a `--model`) — either without those three flags.
 - `verify` — a file whose `verify:` block replaces the clone's.
 - `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
 - `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet

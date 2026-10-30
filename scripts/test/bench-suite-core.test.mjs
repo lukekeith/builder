@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -265,4 +265,14 @@ test('safety: only Postgres clients\' -p is the shared server\'s; server-stoppin
   has('  stop: pg_ctl -D /data -o "-p 5432" stop', [5432], /^port 5432 is in use now$/)
   has('  stop: pg_ctl -D /data restart', [], /^stops a database server: pg_ctl -D \/data restart$/)
   assert.deepEqual(refuse('  start: psql -p 5432 bench_a_x -c "select 1"', [5432]), [])
+})
+
+test('walkClaudeArgs: the runner\'s flags, then the profile\'s claude_args when set, else the project\'s own — the runner\'s flags never twice', () => {
+  const runner = '--permission-mode bypassPermissions --settings /c/s.json --plugin-dir /b'
+  const md = (ca) => `---\nagent_walk:\n  env: A=1\n  claude_args: ${ca}  # walk sessions\n---\n`
+  assert.equal(walkClaudeArgs(runner, md('--mcp-config .claude/walk-mcp.json')), `${runner} --mcp-config .claude/walk-mcp.json`)
+  assert.equal(walkClaudeArgs(runner, md('--permission-mode=plan --mcp-config m.json --settings s.json --plugin-dir /p --model x')), `${runner} --mcp-config m.json --model x`)
+  assert.equal(walkClaudeArgs(runner, md('{claude_args}')), runner)
+  assert.equal(walkClaudeArgs(runner, '---\nproject: p\n---\n'), runner)
+  assert.equal(walkClaudeArgs(runner, md('--mcp-config own.json'), '--mcp-config bench.json --plugin-dir /x'), `${runner} --mcp-config bench.json`)
 })

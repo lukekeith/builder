@@ -150,6 +150,30 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
   return `---\n${fm.join('\n')}\n---${tail}${rest}`
 }
 
+/** A config's agent_walk.claude_args (its comment dropped), or '' when it has none. */
+const ownClaudeArgs = (md) => {
+  const { fm } = splitFm(normalize(md))
+  const at = fm.findIndex((l) => /^agent_walk:/.test(l))
+  if (at < 0) return ''
+  return fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)?.[1]).find((x) => x != null) ?? ''
+}
+/** The flags the runner owns — a session's permissions, settings and plugins — and the unset placeholder, dropped from a claude_args. */
+const RUNNER_FLAG = /^--(?:permission-mode|settings|plugin-dir)$/
+const withoutRunnerFlags = (args) => {
+  const words = String(args ?? '').split(/\s+/).filter(Boolean)
+  const out = []
+  for (let i = 0; i < words.length; i++) {
+    if (RUNNER_FLAG.test(words[i])) i++
+    else if (!/^--(?:permission-mode|settings|plugin-dir)=/.test(words[i]) && words[i] !== '{claude_args}') out.push(words[i])
+  }
+  return out.join(' ')
+}
+/** The clone's agent_walk.claude_args: the runner's flags, then the profile's claude_args when set, else the project's own in `baseMd` — either without the runner's flags. */
+export function walkClaudeArgs(runner, baseMd, profileArgs) {
+  const rest = withoutRunnerFlags(profileArgs != null && String(profileArgs).trim() ? profileArgs : ownClaudeArgs(baseMd))
+  return rest ? `${runner} ${rest}` : runner
+}
+
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
 /** PGDATABASE, DATABASE and any *_DATABASE set to a name (DATABASE_URL is a URL, checked above). */
 const DB_VAR = /\b(?:[A-Z0-9]+_)*(?:PG)?DATABASE=(['"]?)([^\s'";&|()]*)/g

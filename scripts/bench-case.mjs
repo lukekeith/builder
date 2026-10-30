@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cop
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -310,7 +310,8 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const { env, refusals: envRefusals } = profileEnv(profile.env)
   refusals.push(...envRefusals)
   const settings = join(clone, '.claude', 'bench-settings.json')
-  const claudeArgs = `--permission-mode bypassPermissions --settings ${settings} --plugin-dir ${builder}`
+  // the runner's flags first; the profile's claude_args, else the project's own (an --mcp-config, a --model), after them
+  const claudeArgs = walkClaudeArgs(`--permission-mode bypassPermissions --settings ${settings} --plugin-dir ${builder}`, baseMd, profile.agent_walk?.claude_args)
   const builderMd = applyProfile(baseMd, { agentWalk: profile.agent_walk ?? {}, verifyBlock, claudeArgs })
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
   // the env, the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
