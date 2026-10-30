@@ -1,5 +1,6 @@
 // Benchmark suite core: case catalogue, estimates, lane packing, budget fill. Pure — no I/O.
 import { runTotals, median } from './bench-core.mjs'
+import { duration, formatTokens } from './fleet-core.mjs'
 
 export const SIZES = ['xs', 'sm', 'md', 'lg', 'xl']
 
@@ -7,13 +8,19 @@ export const SIZES = ['xs', 'sm', 'md', 'lg', 'xl']
 const cents = (n) => Math.round(n * 100) / 100
 const sum = (xs) => xs.reduce((a, x) => a + x, 0)
 
-/** An archive row's estimate: wallMs (else Σ timing ms) → whole minutes up; costUsd (else Σ timing cost) → cents. */
-export function estimateFromRow(row) {
+/** A row's wall ms (else Σ timing ms) and cost (else Σ timing cost); each null when it has no source. */
+function wallCost(row) {
   const timing = row.timing ?? []
   const ms = row.wallMs > 0 ? row.wallMs : sum(timing.map((t) => t.ms ?? 0))
-  if (!(ms > 0)) return null
   const tc = sum(timing.map((t) => t.tokens?.costUsd ?? 0))
   const usd = row.costUsd > 0 ? row.costUsd : tc > 0 ? tc : null
+  return { ms: ms > 0 ? ms : null, usd }
+}
+
+/** An archive row's estimate: wallMs (else Σ timing ms) → whole minutes up; costUsd (else Σ timing cost) → cents. */
+export function estimateFromRow(row) {
+  const { ms, usd } = wallCost(row)
+  if (ms == null) return null
   return { minutes: Math.ceil(ms / 60000), usd: usd == null ? null : cents(usd) }
 }
 
@@ -155,4 +162,122 @@ export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
   const ca = at < 0 ? undefined : fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)).find(Boolean)
   if (!ca || !ca[1] || ca[1] === '{claude_args}') add("agent_walk.claude_args is not set — sessions would load the user's plugins")
   return out
+}
+
+// ── results and the report ──
+const num = (x) => (Number.isFinite(x) ? x : null)
+const anyOf = (xs) => (xs.some((x) => x != null) ? sum(xs.map((x) => x ?? 0)) : null)
+
+/** An archive row as a Measure; a field with no source is null. */
+export function measureFromRow(row) {
+  const { ms, usd } = wallCost(row)
+  const t = row.tokens
+  const kinds = Object.values(row.byKind ?? {})
+  const own = t ? sum([t.input, t.output, t.cacheRead, t.cacheCreation].map((x) => x ?? 0)) : null
+  const ctx = row.byKind ? sum(kinds.map((k) => k.sumCtx ?? 0)) : null
+  const turnsOwn = num(row.orchestrator?.turns)
+  const turnsKinds = row.byKind ? sum(kinds.map((k) => k.turns ?? 0)) : null
+  return {
+    wallMs: ms,
+    costUsd: usd,
+    turns: anyOf([turnsOwn, turnsKinds]),
+    tokens: anyOf([own, ctx]),
+    stages: row.stages ?? null,
+    byKind: row.byKind ?? null,
+    quality: row.quality ?? null,
+  }
+}
+
+/** A runs.json's median done run as a Measure; stages are session totals.ms keyed by session name minus its trailing number. */
+export function measureFromRuns(runsJson, config = 'builder') {
+  const done = (runsJson?.runs ?? []).filter((r) => r.config === config && r.status === 'done').sort((a, b) => (a.ms ?? 0) - (b.ms ?? 0))
+  if (!done.length) return { wallMs: null, costUsd: null, turns: null, tokens: null, stages: null, byKind: null, quality: null }
+  const run = done[done.length >> 1]
+  const sessions = run.sessions ?? []
+  const t = runTotals(sessions)
+  const stages = {}
+  for (const s of sessions) {
+    const k = String(s.name ?? '').replace(/\s+\d+$/, '')
+    stages[k] = (stages[k] ?? 0) + (s.totals?.ms ?? 0)
+  }
+  const tok = t.tokens.input + t.tokens.output + t.tokens.cacheRead
+  return {
+    wallMs: run.ms > 0 ? run.ms : null,
+    costUsd: t.costUsd > 0 ? t.costUsd : null,
+    turns: sessions.length ? t.turns : null,
+    tokens: sessions.length ? tok : null,
+    stages: sessions.length ? stages : null,
+    byKind: null,
+    quality: null,
+  }
+}
+
+/** The places the most minutes (stages) and tokens (dispatch kinds) went, controls left out. */
+export function topSpend(results, n = 5) {
+  const mins = {}
+  const toks = {}
+  for (const r of results) {
+    if (r.control || !r.measure) continue
+    for (const [k, ms] of Object.entries(r.measure.stages ?? {})) mins[k] = (mins[k] ?? 0) + (ms ?? 0)
+    for (const [k, v] of Object.entries(r.measure.byKind ?? {})) toks[`${k} dispatches`] = (toks[`${k} dispatches`] ?? 0) + (v.sumCtx ?? 0)
+  }
+  const top = (o, key, f) => Object.entries(o).map(([where, v]) => ({ where, [key]: f(v) })).filter((x) => x[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, n)
+  return { minutes: top(mins, 'minutes', (ms) => Math.round(ms / 60000)), tokens: top(toks, 'tokens', (v) => v) }
+}
+
+const STAGE_COLUMNS = ['brainstorm', 'spec', 'audit', 'plan', 'build', 'finalReview', 'endGates', 'walk', 'verify', 'ship', 'merge', 'parked']
+const DASH = '—'
+const cell = (s) => String(s ?? DASH).replace(/\|/g, '\\|')
+const table = (head, rows) => [`| ${head.join(' | ')} |`, `|${head.map(() => ' --- ').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n')
+const delta = (v, base) => (v == null || base == null || !(base > 0) ? DASH : `${v >= base ? '+' : '-'}${Math.round((Math.abs(v - base) / base) * 100)}%`)
+const dur = (ms) => (ms == null ? DASH : duration(ms))
+const usd = (x) => (x == null ? DASH : `$${x.toFixed(2)}`)
+const count = (x) => (x == null ? DASH : String(x))
+const tokStr = (x) => (x == null ? DASH : formatTokens(x))
+
+/** The estimate against the measured wall: within ±25% / over / under. */
+function estimateVerdict(r) {
+  const est = r.estimate
+  const ms = r.measure?.wallMs
+  if (!est?.minutes || ms == null) return DASH
+  const ratio = ms / (est.minutes * 60000)
+  return `${duration(est.minutes * 60000)} ${Math.abs(ratio - 1) <= 0.25 ? 'within ±25%' : ratio > 1 ? 'over' : 'under'}`
+}
+
+const METRICS = [['wallMs', dur], ['tokens', tokStr], ['turns', count], ['costUsd', usd]]
+
+/** The suite report as markdown; with names: false a result's project never appears. */
+export function renderSuiteReport(results, { names = false } = {}) {
+  const controlOf = (r) => results.find((c) => c.control && c !== r && c.id.startsWith(`${r.id}@`))
+  const out = ['# Benchmark suite report', '']
+  const head = ['id', 'size', ...(names ? ['project'] : []), 'status', 'wall', 'tokens', 'turns', 'cost', 'Δ wall vs baseline', 'Δ tokens vs baseline', 'Δ turns vs baseline', 'Δ cost vs baseline', 'Δ wall vs control', 'Δ tokens vs control', 'Δ turns vs control', 'Δ cost vs control', 'estimate']
+  const rows = results.map((r) => {
+    const m = r.measure
+    const ctl = r.control ? null : controlOf(r)?.measure
+    return [
+      r.id, r.size, ...(names ? [r.project] : []), r.status,
+      ...METRICS.map(([k, f]) => f(m?.[k])),
+      ...METRICS.map(([k]) => delta(m?.[k], r.baseline?.[k])),
+      ...METRICS.map(([k]) => delta(m?.[k], ctl?.[k])),
+      estimateVerdict(r),
+    ]
+  })
+  out.push('## Cases', '', table(head, rows), '')
+
+  out.push('## Stages', '', table(['id', ...STAGE_COLUMNS], results.map((r) => [r.id, ...STAGE_COLUMNS.map((k) => (r.measure?.stages?.[k] > 0 ? duration(r.measure.stages[k]) : DASH))])), '')
+
+  const ratio = (r) => (r.specLines > 0 && r.planLines != null ? (r.planLines / r.specLines).toFixed(1) : DASH)
+  out.push('## Plan format', '', table(['id', 'spec lines', 'plan lines', 'plan ÷ spec', 'fix rounds'], results.map((r) => [r.id, count(r.specLines), count(r.planLines), ratio(r), count(r.measure?.quality?.fixRounds)])), '')
+
+  const gate = (r) => {
+    const s = r.measure?.stages
+    const w = r.measure?.wallMs
+    if (!s || !(w > 0) || (s.endGates == null && s.verify == null)) return DASH
+    return `${Math.round((((s.endGates ?? 0) + (s.verify ?? 0)) / w) * 100)}%`
+  }
+  out.push('## Gate share', '', table(['id', 'endGates + verify ÷ wall'], results.map((r) => [r.id, gate(r)])), '')
+
+  const top = topSpend(results, 5)
+  out.push('## Top 5', '', 'Minutes by stage', '', table(['where', 'minutes'], top.minutes.map((x) => [x.where, x.minutes])), '', 'Tokens by dispatch kind', '', table(['where', 'tokens'], top.tokens.map((x) => [x.where, formatTokens(x.tokens)])), '')
+  return out.join('\n')
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -128,4 +128,44 @@ test('applyProfile: throws without claudeArgs', () => assert.throws(() => applyP
 test('applyProfile: agent_walk with a comment or {} stays one key', () => {
   assert.equal(applyProfile('---\nagent_walk: # x\n  env: A=1\n---\n', { agentWalk: { env: 'A=2' }, claudeArgs: '--a' }), '---\nagent_walk: # x\n  env: A=2\n  claude_args: --a\n---\n')
   assert.equal(applyProfile('---\nagent_walk: {}\nz: 1\n---\n', { agentWalk: { env: 'A=2' }, claudeArgs: '--a' }), '---\nagent_walk:\n  env: A=2\n  claude_args: --a\nz: 1\n---\n')
+})
+
+// results and the report tables
+const row = (wallMin, cost, stages) => ({ wallMs: wallMin * 60000, costUsd: cost, tokens: { input: 10, output: 5, cacheRead: 100, cacheCreation: 0 }, orchestrator: { turns: 4 }, byKind: { implementer: { turns: 20, sumCtx: 1000 }, reviewer: { turns: 6, sumCtx: 400 } }, stages, quality: { fixRounds: 2 } })
+test('measureFromRow', () => {
+  const m = measureFromRow(row(60, 9, { build: 3600000 }))
+  assert.equal(m.tokens, 1515); assert.equal(m.turns, 30); assert.equal(m.wallMs, 3600000)
+})
+test('measureFromRow: an old row has nulls, not zeros', () => {
+  const m = measureFromRow({ feature: 'x' })
+  assert.deepEqual([m.wallMs, m.costUsd, m.tokens, m.turns], [null, null, null, null])
+})
+test('measureFromRuns: the median done run, session numbers dropped from stage names', () => {
+  const run = (ms, st) => ({ config: 'builder', status: 'done', ms, sessions: st.map(([name, t]) => ({ name, totals: { ms: t, turns: 2, tokens: { input: 1, output: 1, cacheRead: 2 }, costUsd: 1 } })) })
+  const m = measureFromRuns({ runs: [run(10, [['a', 1]]), run(300, [['fleet 01', 100], ['fleet 02', 50], ['walk', 5]]), run(900, [['a', 1]]), { config: 'builder', status: 'failed', ms: 1, sessions: [] }] })
+  assert.equal(m.wallMs, 300); assert.deepEqual(m.stages, { fleet: 150, walk: 5 }); assert.equal(m.tokens, 12); assert.equal(m.turns, 6)
+  assert.equal(measureFromRuns({ runs: [] }).wallMs, null)
+})
+test('topSpend: by stage minutes and by dispatch kind, controls left out', () => {
+  const r = (id, stages, control = false) => ({ id, control, measure: measureFromRow(row(1, 1, stages)) })
+  const t = topSpend([r('a', { build: 60 * 60000, plan: 10 * 60000 }), r('b', { build: 30 * 60000, walk: 20 * 60000 }), r('a@main', { build: 999 * 60000 }, true)], 2)
+  assert.deepEqual(t.minutes, [{ where: 'build', minutes: 90 }, { where: 'walk', minutes: 20 }])
+  assert.deepEqual(t.tokens, [{ where: 'implementer dispatches', tokens: 2000 }, { where: 'reviewer dispatches', tokens: 800 }])
+})
+test('renderSuiteReport: no project names in the committed report, — for missing numbers', () => {
+  const res = [{ id: 'c1', size: 'md', kind: 'archived', project: 'secretproj', control: false, status: 'done', measure: measureFromRow(row(50, 8, { build: 1 })), baseline: measureFromRow({ feature: 'x' }), specLines: 120, planLines: 300 }]
+  const md = renderSuiteReport(res, { names: false })
+  assert.doesNotMatch(md, /secretproj/)
+  assert.match(md, /\| c1 \| md \|/)
+  assert.match(md, /—/)
+  assert.doesNotMatch(md, /NaN|undefined/)
+  assert.match(renderSuiteReport(res, { names: true }), /secretproj/)
+})
+test('renderSuiteReport: deltas against baseline and control, the estimate verdict, sections in order', () => {
+  const mk = (id, min, control, extra = {}) => ({ id, size: 'sm', project: 'p', control, status: 'done', measure: measureFromRow(row(min, 10, { endGates: min * 6000, verify: min * 4000 })), baseline: measureFromRow(row(100, 20, {})), specLines: 10, planLines: 25, ...extra })
+  const md = renderSuiteReport([mk('c1', 50, false, { estimate: { minutes: 45, usd: 5 } }), mk('c1@main', 100, true)], { names: false })
+  assert.match(md, /-50%/); assert.match(md, /within ±25%/); assert.match(md, /2\.5/); assert.match(md, /17%/)
+  const at = ['## Cases', '## Stages', '## Plan format', '## Gate share', '## Top 5'].map((h) => md.indexOf(h))
+  assert.deepEqual([...at].sort((a, b) => a - b), at); assert.ok(at[0] >= 0)
+  assert.doesNotMatch(md, /NaN|undefined|\bp\b \|/)
 })
