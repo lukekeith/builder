@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cop
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -319,8 +319,21 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
   // the body is prose: what it names is a warning to replace, never a refusal — nor a port the plan counts
   const warnings = bodyWarnings(builderMd, profile, { listening })
-  // the env, the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
-  const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)])].filter(([, t]) => t != null)
+  // every MCP config a session loads: the profile's placed file at that path, else the project's at the spec commits
+  const mcp = []
+  for (const v of mcpConfigs(ownClaudeArgs(builderMd))) {
+    const rel = relative(clone, resolve(clone, v))
+    if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+      refusals.push(`mcp: --mcp-config ${v} is outside the clone`)
+      continue
+    }
+    const placed = files.find((f) => f.to === rel)
+    const text = placed ? textOf(placed.from) : tryGit(repo, 'show', `${specs.at(-1) ?? base}:${rel.split(sep).join('/')}`)
+    if (text == null) refusals.push(`mcp: --mcp-config ${v} is not in the clone — place it with the profile's files`)
+    else mcp.push(['mcp', mcpScanText(text)])
+  }
+  // the env, the setup, the teardown, every placed text file and MCP config run or are read in the clone too: the same rules, each reason saying where
+  const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)]), ...mcp].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
   const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
   const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`

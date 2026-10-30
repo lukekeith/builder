@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -357,4 +357,12 @@ test('safety: the machine\'s shutdown, halt or reboot — by path, through sudo 
   for (const s of ['/sbin/shutdown -h now', 'sudo -n shutdown -r now', 'sudo -u root /sbin/halt', 'sudo --non-interactive reboot', 'halt', 'npm ci && /usr/sbin/reboot'])
     assert.ok(probe(s).some((x) => /^setup: shuts down or restarts the machine: /.test(x)), `${s} → ${JSON.stringify(probe(s))}`)
   assert.deepEqual(probe('npm run shutdown-hooks && echo reboot later'), [])
+})
+test('mcpConfigs and mcpScanText: every --mcp-config value; a JSON config\'s leaves read as KEY=value', () => {
+  assert.deepEqual(mcpConfigs('--plugin-dir /b --mcp-config a.json b.json --model x --mcp-config=c.json'), ['a.json', 'b.json', 'c.json'])
+  assert.deepEqual(mcpConfigs('--model x'), [])
+  const text = JSON.stringify({ mcpServers: { db: { args: ['--port', 3000], env: { POSTGRES_DB: 'app_dev' } } } })
+  assert.deepEqual(probe(mcpScanText(text)), ['setup: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(textRefusals('mcp', mcpScanText(text), P, { listening: [3000] }), ['mcp: database app_dev is not a bench database (bench_*)', 'mcp: port 3000 is in use now'])
+  assert.equal(mcpScanText('not json'), 'not json')
 })

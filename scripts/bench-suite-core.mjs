@@ -190,6 +190,32 @@ export function applyReplacements(md, replace) {
   return { md, refusals }
 }
 
+/** The values of every --mcp-config in a claude_args: `--mcp-config a.json b.json` and `--mcp-config=a.json`. */
+export function mcpConfigs(args) {
+  const words = String(args ?? '').split(/\s+/).filter(Boolean)
+  const out = []
+  for (let i = 0; i < words.length; i++) {
+    if (words[i].startsWith('--mcp-config=')) out.push(words[i].slice('--mcp-config='.length))
+    else if (words[i] === '--mcp-config') while (i + 1 < words.length && !words[i + 1].startsWith('-')) out.push(words[++i])
+  }
+  return out.filter(Boolean)
+}
+/** An MCP config as the safety rules read it: its text, then each JSON leaf as KEY=value and each array as one line — `"PGDATABASE": "x"` is PGDATABASE=x. */
+export function mcpScanText(text) {
+  const lines = []
+  const walk = (v, k) => {
+    if (Array.isArray(v)) {
+      lines.push(v.filter((x) => typeof x !== 'object').join(' '))
+      v.forEach((x) => walk(x))
+    } else if (v && typeof v === 'object') for (const [kk, x] of Object.entries(v)) walk(x, kk)
+    else if (k != null && v != null) lines.push(`${k}=${v}`)
+  }
+  try {
+    walk(JSON.parse(text))
+  } catch {}
+  return [text, ...lines].join('\n')
+}
+
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
 /** PGDATABASE, DATABASE, any *_DATABASE, *POSTGRES_DB and PGSERVICE set to a name (DATABASE_URL is a URL, checked above). */
 const DB_VAR = /\b((?:[A-Z0-9]+_)*(?:(?:PG)?DATABASE|POSTGRES_DB)|PGSERVICE)=(['"]?)([^\s'";&|()]*)/g

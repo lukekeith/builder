@@ -62,7 +62,8 @@ The clone is removed once its `result.json` is written (the logs stay); `BENCH_K
 ## Safety rules
 
 A case is refused, before anything is cloned, when the clone's config — or the profile's `env`, `setup`, its
-`teardown`, or any text file it places (each reason says which: `env: …`, `setup: …`, `files/.env: …`) — would touch something of yours:
+`teardown`, any text file it places, or an MCP config `agent_walk.claude_args` names with `--mcp-config` (each reason
+says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would touch something of yours:
 
 - the profile has no `db_prefix`, or a database URL (its path or a `?dbname=` / `&dbname=`), `PGDATABASE` / `*_DATABASE`,
   `POSTGRES_DB`, `PGSERVICE`, or a `createdb` / `dropdb` names a database that does not start with it
@@ -85,7 +86,9 @@ A case is refused, before anything is cloned, when the clone's config — or the
 - the feature has no merged archive row, no spec-only commits at the head of its branch, or the clone or builder path contains whitespace;
 - the clone's path is inside the project repo or any other git repo, or already exists (clones go under
   `$BENCH_TMP`, `$TMPDIR/bench-suite` by default; results stay here);
-- the result folder (`--out`) is inside the project repo.
+- the result folder (`--out`) is inside the project repo;
+- a `--mcp-config` path is outside the clone, or is in neither the profile's `files` nor the project at the spec commits
+  (the placed file wins; a JSON config's keys are read as `KEY=value`, so `"PGDATABASE": "…"` is checked too).
 
 The body of the clone's `builder.md` — prose, which an agent may still run literally — is checked by the same rules,
 as warnings: the dry run lists each as a `body: …` line and the case still runs. Add a `replace` for each. Ports named
