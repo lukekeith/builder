@@ -1,0 +1,255 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO = realpathSync(join(HERE, '..', '..'))
+const SUITE = join(REPO, 'scripts', 'bench-suite.mjs')
+const STUB = join(HERE, 'fixtures', 'bench', 'stub-case.mjs')
+const put = (f, s) => {
+  mkdirSync(dirname(f), { recursive: true })
+  writeFileSync(f, typeof s === 'string' ? s : JSON.stringify(s))
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+async function until(fn, ms = 20000) {
+  const t0 = Date.now()
+  for (;;) {
+    try {
+      if (fn()) return
+    } catch {}
+    if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${fn}`)
+    await sleep(25)
+  }
+}
+
+/** A tmp BENCH_LOCAL with c1, c2 (project projA: 30m, 10m) and c3 (projB: 20m), a tmp BENCH_SUITE_OUT, and the stub as the case runner. */
+function setup() {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-suite-')))
+  const local = join(tmp, 'local')
+  const out = join(tmp, 'out')
+  const state = join(tmp, 'state')
+  mkdirSync(state)
+  const writeCase = (id, o = {}) => put(join(local, 'cases', `${id}.json`), { id, size: 'sm', kind: 'archived', project: 'projA', feature: id, covers: 'x', estimate: { minutes: 10, usd: 1 }, ...o })
+  writeCase('c1', { size: 'md', estimate: { minutes: 30, usd: 2 } })
+  writeCase('c2', { estimate: { minutes: 10, usd: 1 } })
+  writeCase('c3', { project: 'projB', estimate: { minutes: 20, usd: 1.5 } })
+  put(join(local, 'projects', 'projA.json'), {})
+  put(join(local, 'projects', 'projB.json'), {})
+  put(join(local, 'projects', 'unsafe.json'), { db_prefix: 'bench_', builderMd: '---\nverify:\n  db: DATABASE_URL=postgres://localhost/prod_db npm test\nagent_walk:\n  claude_args: --x\n---\n' })
+  const suite = (args, env = {}) => spawnSync('node', [SUITE, ...args], { cwd: tmp, encoding: 'utf8', env: { ...process.env, TMPDIR: tmp, BENCH_LOCAL: local, BENCH_SUITE_OUT: out, BENCH_CASE: STUB, STUB_STATE: state, STUB_CASE_MS: '20', ...env } })
+  const readLog = () => {
+    const f = join(state, 'case.log')
+    const lines = existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => l.split(' ')) : []
+    const of = (kind, id) => lines.filter((l) => l[0] === kind && l[1] === id)
+    return {
+      lines,
+      start: (id) => Number(of('start', id)[0]?.[3]),
+      end: (id) => Number(of('end', id)[0]?.[2]),
+      ended: (id) => of('end', id).length > 0,
+      starts: (id) => of('start', id).length,
+      ends: (id) => of('end', id).length,
+      builders: (id) => of('builder', id).map((l) => l[2]),
+    }
+  }
+  const results = join(local, 'results')
+  const suiteJson = () => {
+    const id = readdirSync(results).filter((n) => existsSync(join(results, n, 'suite.json'))).sort().at(-1)
+    return JSON.parse(readFileSync(join(results, id, 'suite.json'), 'utf8'))
+  }
+  const dateDir = () => `${suiteJson().id.slice(0, 10)}-suite`
+  const settled = () => until(() => !existsSync(join(results, 'lock')))
+  return { tmp, local, out, state, writeCase, suite, readLog, suiteJson, dateDir, results, settled }
+}
+
+test('list shows fixtures and local cases with size and estimate', () => {
+  const { suite } = setup()
+  const r = suite(['list'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^sm · tags — one app, one feature · /m)
+  assert.match(r.stdout, /^xs · edit — one small command, built in the chat · /m)
+  assert.match(r.stdout, /^md · c1 — x · ~30m · ~\$2$/m)
+  const lines = r.stdout.trim().split('\n')
+  assert.ok(lines.findIndex((l) => l.startsWith('xs ')) < lines.findIndex((l) => l.startsWith('sm ')))
+  assert.ok(lines.indexOf(lines.find((l) => l.includes(' c2 '))) < lines.indexOf(lines.find((l) => l.includes(' c3 '))))
+  const json = JSON.parse(suite(['list', '--json']).stdout)
+  assert.deepEqual(json.find((c) => c.id === 'tags').project, 'fixtures')
+  assert.deepEqual(json.find((c) => c.id === 'c3').estimate, { minutes: 20, usd: 1.5 })
+})
+
+test('a case with an unknown size is listed and skipped, never run', () => {
+  const { suite, writeCase } = setup()
+  writeCase('odd', { size: 'huge' })
+  assert.match(suite(['list']).stdout, /odd — x · unknown size/)
+  const r = suite(['plan', '--all', '--lanes', '2'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /skipped: .*odd — unknown size/)
+  assert.doesNotMatch(r.stdout, /lane \d:.* odd /)
+})
+
+test('plan: --budget fits, refuses an unsafe case, recommends controls', () => {
+  const { suite, writeCase } = setup()
+  const p = suite(['plan', '--budget', '2h', '--lanes', '2'])
+  assert.equal(p.status, 0, p.stderr)
+  assert.match(p.stdout, /lane 1:.*\n.*ends ~\d\d:\d\d · ~\$/)
+  assert.match(p.stdout, /controls recommended.*c2.*c1/)
+  assert.doesNotMatch(suite(['plan', 'c1', '--control', 'c1']).stdout, /controls recommended/)
+  writeCase('bad', { project: 'unsafe' })
+  const r = suite(['plan', 'bad'])
+  assert.equal(r.status, 2)
+  assert.match(r.stdout + r.stderr, /not a bench database/)
+})
+
+test('plan and run refuse a bad --lanes, an unknown case and a control outside the selection', () => {
+  const { suite, local } = setup()
+  for (const lanes of ['0', 'x', '1.5']) {
+    const r = suite(['plan', 'c1', '--lanes', lanes])
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /--lanes must be a whole number of 1 or more/)
+  }
+  assert.match(suite(['plan', 'nope']).stderr, /no case 'nope'/)
+  assert.match(suite(['plan', 'c1', '--control', 'c2']).stderr, /control c2 is not in the selection/)
+  assert.equal(suite(['run', 'c1', '--lanes', '0', '--detach']).status, 2)
+  assert.equal(existsSync(join(local, 'results')), false)
+})
+
+test('run refuses before it launches anything when a dry run refuses', () => {
+  const { suite, writeCase, readLog, local } = setup()
+  writeCase('bad', { project: 'unsafe' })
+  const r = suite(['run', 'c1,bad', '--detach'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /not a bench database/)
+  assert.equal(readLog().lines.length, 0)
+  assert.equal(existsSync(join(local, 'results')), false)
+})
+
+test('run: two lanes, never two of one project at once, report at the end with no project names', async () => {
+  // c1, c2 project A (30m, 10m); c3 project B (20m); STUB_CASE_MS=20 → 1 estimated minute = 20 ms
+  const { suite, readLog, out, dateDir, suiteJson, results, settled } = setup()
+  const r = suite(['run', 'c1,c2,c3', '--lanes', '2', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^suite started detached \(pid \d+\) — \S+-suite · \/builder:benchmark --status$/m)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  const log = readLog()
+  assert.ok(log.end('c1') <= log.start('c2')) // same project, serialized
+  assert.ok(log.start('c3') < log.end('c1')) // other project, in parallel
+  const committed = readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8')
+  assert.doesNotMatch(committed, /projA|projB/)
+  assert.match(committed, /\| c1 \| md \| done \|/)
+  const s = suiteJson()
+  assert.deepEqual(s.items.map((i) => [i.id, i.lane, i.status]), [['c1', 1, 'done'], ['c2', 1, 'done'], ['c3', 2, 'done']])
+  assert.ok(s.items.every((i) => i.startedAt > 0 && i.endedAt >= i.startedAt && i.out === join(results, s.id, i.id)))
+  assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), /\| c1 \| md \| projA \| done \|/)
+  const st = suite(['status']).stdout
+  assert.match(st, /lane 1: done c1 · done c2/)
+  assert.doesNotMatch(st, /⚠/)
+})
+
+test('the project mutex holds when a case runs long', async () => {
+  // packed: lane 1 c3 (B, 4m) then c2 (A, 1m) at 4m; lane 2 c1 (A, 3m) then c4 (C, 2m). c1 runs 10× its estimate,
+  // so lane 1 reaches c2 while c1 still runs — only the mutex keeps them apart
+  const { suite, writeCase, readLog, out, dateDir, suiteJson, settled } = setup()
+  writeCase('c1', { estimate: { minutes: 3, usd: 1 } })
+  writeCase('c2', { estimate: { minutes: 1, usd: 1 } })
+  writeCase('c3', { project: 'projB', estimate: { minutes: 4, usd: 1 } })
+  writeCase('c4', { project: 'projC', estimate: { minutes: 2, usd: 1 } })
+  const r = suite(['run', 'c1,c2,c3,c4', '--lanes', '2', '--detach'], { STUB_CASE_LONG: 'c1' })
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  assert.deepEqual(suiteJson().items.map((i) => [i.id, i.lane]), [['c3', 1], ['c2', 1], ['c1', 2], ['c4', 2]])
+  const log = readLog()
+  assert.ok(log.end('c3') < log.end('c1')) // lane 1 was free for c2 before c1 ended
+  assert.ok(log.end('c1') <= log.start('c2'))
+})
+
+test('a case process that dies leaves its item failed and the suite goes on', async () => {
+  const { suite, out, dateDir, suiteJson, settled } = setup()
+  suite(['run', 'c1,c3', '--lanes', '1', '--detach'], { STUB_CASE_DIE: 'c1' })
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  assert.deepEqual(suiteJson().items.map((i) => [i.id, i.status]), [['c1', 'failed: case process died'], ['c3', 'done']])
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c1 \| md \| failed: case process died \|/)
+})
+
+test('status after the suite process dies; --resume runs only the rest', async () => {
+  const { suite, readLog, out, dateDir, suiteJson, results, settled } = setup()
+  suite(['run', 'c1,c2,c3', '--lanes', '1', '--detach'])
+  // packed c1 (30m), c3 (20m), c2 (10m) on one lane; kill once c3 is recorded done
+  await until(() => suiteJson().items.find((i) => i.id === 'c3').status === 'done')
+  const { pid, id } = suiteJson()
+  process.kill(-pid, 'SIGKILL')
+  await until(() => {
+    try {
+      process.kill(pid, 0)
+      return false
+    } catch {
+      return true
+    }
+  })
+  const st = suite(['status']).stdout
+  assert.match(st, /⚠ suite stopped mid-run — 1 unfinished; \/builder:benchmark --resume \S+ runs them/)
+  assert.match(st, /lane 1: .*done c1 · done c3/)
+  const r = suite(['run', '--resume', id, '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  const log = readLog()
+  assert.equal(log.starts('c1'), 1)
+  assert.equal(log.starts('c3'), 1)
+  assert.equal(log.ends('c2'), 1) // c2 may have started before the kill; it finishes exactly once
+  const c2 = suiteJson().items.find((i) => i.id === 'c2')
+  assert.equal(c2.status, 'done')
+  if (log.starts('c2') === 2) assert.equal(c2.out, join(results, id, 'c2-2'))
+  assert.match(suite(['status']).stdout, /lane 1: done c1 · done c3 · done c2/)
+})
+
+test('a control runs the same case on a main checkout, serialized with it, as <id>@main', async () => {
+  const { suite, tmp, readLog, local, results, suiteJson, settled } = setup()
+  const main = join(tmp, 'bench-builder-main')
+  mkdirSync(main)
+  const r = suite(['run', 'c2', '--control', 'c2', '--lanes', '2', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const s = suiteJson()
+  assert.deepEqual(s.items.map((i) => i.id).sort(), ['c2', 'c2@main'])
+  const log = readLog()
+  assert.deepEqual(log.builders('c2').sort(), [REPO, main].sort())
+  const t = log.lines.filter((l) => l[1] === 'c2' && l[0] !== 'builder').map((l) => l[0])
+  assert.deepEqual(t, ['start', 'end', 'start', 'end'])
+  const ctl = JSON.parse(readFileSync(join(results, s.id, 'c2@main', 'result.json'), 'utf8'))
+  assert.equal(ctl.id, 'c2@main')
+  assert.equal(ctl.control, true)
+  assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), /\| c2@main \|/)
+  assert.ok(existsSync(join(local, 'results', s.id, 'c2', 'result.json')))
+})
+
+test('a fixture case runs bench.mjs in the checkout and measures its newest runs.json against the one before', async () => {
+  const { suite, tmp, results, suiteJson, readLog, settled } = setup()
+  const checkout = join(tmp, 'checkout')
+  put(join(checkout, 'bench', 'results', '2000-01-01-0000-edit', 'runs.json'), { feature: 'edit', runs: [{ config: 'builder', status: 'done', ms: 600000, sessions: [] }] })
+  const r = suite(['run', 'edit', '--builder', checkout, '--detach'], { BENCH_FIXTURE_RUNNER: STUB })
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  assert.deepEqual(readLog().builders('edit'), [checkout])
+  const res = JSON.parse(readFileSync(join(results, suiteJson().id, 'edit', 'result.json'), 'utf8'))
+  assert.deepEqual({ id: res.id, size: res.size, kind: res.kind, project: res.project, control: res.control, status: res.status }, { id: 'edit', size: 'xs', kind: 'fixture', project: 'fixtures', control: false, status: 'done' })
+  assert.equal(res.measure.wallMs, 180000)
+  assert.equal(res.baseline.wallMs, 600000)
+})
+
+test('a second run waits for nothing: it refuses while a suite holds the lock', async () => {
+  const { suite, out, dateDir, settled } = setup()
+  suite(['run', 'c1', '--detach'], { STUB_CASE_MS: '100' })
+  const r = suite(['run', 'c3', '--detach'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /a suite is running \(pid \d+, \S+\) — \/builder:benchmark --status/)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+})
