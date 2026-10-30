@@ -65,14 +65,15 @@ re-runs that suite's waiting, cut-off and refused items (parked and timed-out on
 
 When a suite is running or the newest run, `--status` shows `node <builder>/scripts/bench-suite.mjs status`
 (and `--report <suite-id>` runs `bench-suite.mjs report <suite-id>`); otherwise today's:
-**`--stop`** — after one **Stop it** / **Not now** — runs `node <builder>/scripts/bench-suite.mjs stop` in the foreground: each running
-case stops cleanly and is marked `stopped`, nothing more starts, the reports are written; `--resume` runs the rest.
 
 `node <builder>/scripts/bench.mjs status` — reply with its contents as markdown. Running: the
 summary so far and the config and session it is on. Finished: the summary table and the report's
 path. `⚠ benchmark stopped mid-run` means its process is gone; the finished configs are kept, and
 `--only` runs the rest. **`--report <run-id>`**: `node <builder>/scripts/bench.mjs report <run-id>`,
 then its table and the path.
+
+**`--stop`** — after one **Stop it** / **Not now** — runs `node <builder>/scripts/bench-suite.mjs stop` in the foreground: each running
+case stops cleanly and is marked `stopped`, nothing more starts, the reports are written; `--resume` runs the rest.
 
 ## 2. Pre-flight
 
