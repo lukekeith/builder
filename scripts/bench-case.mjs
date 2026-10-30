@@ -11,9 +11,10 @@
  * refusal comes before the clone is made, and nothing ever writes into the project repo.
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_FLEET (the fleet script — tests point it at a stub),
- * BENCH_CASE_TIMEOUT_MS (24h, the fleet's whole run), BENCH_INSTALLED_PLUGINS (as bench.mjs).
+ * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run), BENCH_SETUP_TIMEOUT_MS (20 min, the
+ * profile's setup), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout), BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve, relative, isAbsolute, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +23,9 @@ import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
 
-const TIMEOUT_MS = Number(process.env.BENCH_CASE_TIMEOUT_MS) || 24 * 60 * 60 * 1000
+const FLEET_TIMEOUT_MS = Number(process.env.BENCH_CASE_FLEET_TIMEOUT_MS) || 24 * 60 * 60 * 1000
+const SETUP_TIMEOUT_MS = Number(process.env.BENCH_SETUP_TIMEOUT_MS) || 20 * 60 * 1000
+const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
 const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const git = (cwd, ...a) => sh('git', ['-c', 'user.name=bench', '-c', 'user.email=bench@localhost', ...a], cwd)
 const tryGit = (cwd, ...a) => {
@@ -61,6 +64,48 @@ export function listeningPorts() {
   const r = spawnSync('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], { encoding: 'utf8' })
   if (r.error || !r.stdout) return []
   return [...new Set([...r.stdout.matchAll(/:(\d+) \(LISTEN\)/g)].map((m) => Number(m[1])))]
+}
+
+const killGroup = (pgid, sig) => {
+  try {
+    process.kill(-pgid, sig)
+  } catch {}
+}
+
+/**
+ * A command in its own process group, awaited, its output in `log`. Past timeoutMs the group gets
+ * SIGTERM, then SIGKILL after the grace period; `onTimeout` runs at the SIGKILL. With `reap`, whatever
+ * the group still holds when the command exits is killed too. → { status, timedOut, error }
+ */
+export function runGroup(cmd, args, { cwd, env, log, timeoutMs, reap = false, onTimeout = () => {} }) {
+  return new Promise((done) => {
+    const fd = openSync(log, 'w')
+    let timedOut = false
+    let settled = false
+    let grace = null
+    const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', fd, fd], detached: true })
+    const hardKill = () => {
+      killGroup(child.pid, 'SIGKILL')
+      onTimeout()
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      killGroup(child.pid, 'SIGTERM')
+      grace = setTimeout(hardKill, KILL_GRACE_MS)
+    }, timeoutMs)
+    const finish = (status, error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      clearTimeout(grace)
+      if (timedOut) hardKill()
+      else if (reap) killGroup(child.pid, 'SIGKILL')
+      closeSync(fd)
+      done({ status, timedOut, error })
+    }
+    child.on('error', (e) => finish(null, e))
+    child.on('exit', (code) => finish(timedOut ? null : (code ?? 1)))
+  })
 }
 
 /** The leading commits of `commits` whose changed files are all under <registry>/<feature>/, stopping at the first that touches anything else. */
@@ -158,16 +203,20 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, li
  * profile applied and committed, its files placed and its setup run. Refuses before it clones.
  * → { clone, base, specs, refusals, failure, plan }; clone is null when nothing was made.
  */
-export function prepareClone({ profile, profileDir, caseDef, builder, dest, listening = [] }) {
+export async function prepareClone({ profile, profileDir, caseDef, builder, dest, listening = [] }) {
   const plan = planCase({ profile, profileDir, caseDef, builder, dest, listening })
   const none = { clone: null, base: plan.base ?? null, specs: plan.specs ?? [], refusals: plan.refusals, failure: plan.failure ?? null, plan }
   if (plan.refusals.length || plan.failure) return none
   const { repo, clone, base, specs } = plan
   mkdirSync(dirname(clone), { recursive: true })
   try {
-    git(dirname(clone), 'clone', '--no-local', '-q', repo, clone)
+    git(dirname(clone), 'clone', '--no-local', '--no-tags', '-q', repo, clone)
     git(clone, 'remote', 'remove', 'origin')
     git(clone, 'checkout', '-q', '-B', 'main', base)
+    // only main stays: no other branch or tag may carry the original run's history into what is measured
+    for (const ref of git(clone, 'for-each-ref', '--format=%(refname)').split('\n').filter(Boolean)) {
+      if (ref !== 'refs/heads/main') git(clone, 'update-ref', '-d', ref)
+    }
   } catch (e) {
     return { ...none, clone: existsSync(clone) ? clone : null, failure: `could not clone the repo: ${why(e)}` }
   }
@@ -193,19 +242,20 @@ export function prepareClone({ profile, profileDir, caseDef, builder, dest, list
   } catch (e) {
     return { ...none, clone, failure: `could not commit the profile: ${why(e)}` }
   }
+  const prepped = git(clone, 'rev-parse', 'HEAD')
   if (plan.setup) {
-    const log = openSync(join(dirname(clone), 'setup.out'), 'w')
-    const r = spawnSync('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, stdio: ['ignore', log, log] })
-    closeSync(log)
+    // not reaped on exit: a setup may start what the run needs (a bench database, a server)
+    const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(dirname(clone), 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
+    if (r.timedOut) return { ...none, clone, failure: 'setup timed out' }
     if (r.status !== 0) return { ...none, clone, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
   }
-  return { clone, base, specs, refusals: [], failure: null, plan }
+  return { clone, base, specs, refusals: [], failure: null, plan, prepped }
 }
 
-/** The most lines any committed version of <registry>/<feature>/PLAN.md had in the clone, or null. */
-export function maxPlanLines(clone, registry, feature) {
+/** The most lines any version of <registry>/<feature>/PLAN.md committed in the clone after `since` (the prepped commit) had, or null. */
+export function maxPlanLines(clone, registry, feature, since) {
   const path = `${registry.replace(/\/+$/, '')}/${feature}/PLAN.md`
-  const shas = (tryGit(clone, 'log', '--all', '--format=%H', '--', path) ?? '').split('\n').filter(Boolean)
+  const shas = (tryGit(clone, 'log', '--all', '--format=%H', '--not', since, '--', path) ?? '').split('\n').filter(Boolean)
   let max = null
   for (const c of shas) {
     const text = tryGit(clone, 'show', `${c}:${path}`)
@@ -214,19 +264,34 @@ export function maxPlanLines(clone, registry, feature) {
   return max
 }
 
-/** The fleet on the case's feature in the clone, to its end; → the case's status and the landed row. */
-export function runCaseFleet({ clone, feature, fleet, out }) {
+/** The process groups a fleet records for its sessions and dev envs (each runs in its own group). */
+const fleetPgids = (clone) => {
+  const f = readJson(join(clone, '.builder', 'fleet', 'fleet.json'))
+  return [...Object.values(f?.features ?? {}), f?.walkBatch, f?.envCheck].flatMap((x) => [x?.pgid, x?.startPgid]).filter((p) => Number.isInteger(p) && p > 0)
+}
+
+/**
+ * The fleet on the case's feature in the clone, awaited in its own process group; → the case's
+ * status and the landed row. Past the timeout the fleet gets SIGTERM (it stops its own sessions and
+ * dev envs), then SIGKILL for its group and every group its fleet.json still names.
+ */
+export async function runCaseFleet({ clone, feature, fleet, out }) {
   const before = JSON.stringify(landedRow(clone, feature))
-  const log = openSync(join(out, 'fleet.out'), 'w')
-  const r = spawnSync(process.execPath, [fleet, feature, '--into', 'main', '--parallel', '1'], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, stdio: ['ignore', log, log], timeout: TIMEOUT_MS, killSignal: 'SIGKILL' })
-  closeSync(log)
+  const r = await runGroup(process.execPath, [fleet, feature, '--into', 'main', '--parallel', '1'], {
+    cwd: clone,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: clone },
+    log: join(out, 'fleet.out'),
+    timeoutMs: FLEET_TIMEOUT_MS,
+    reap: true,
+    onTimeout: () => fleetPgids(clone).forEach((p) => killGroup(p, 'SIGKILL')),
+  })
   const after = landedRow(clone, feature)
   const landed = after && JSON.stringify(after) !== before ? after : null
   const sessions = join(out, 'sessions')
   mkdirSync(sessions, { recursive: true })
   // fleetRecord copies the fleet's session logs beside the result; with no new landing its exit status is not enough
-  const rec = fleetRecord({ copy: clone, feature, outDir: sessions, r })
-  const status = landed ? 'done' : rec.status === 'done' ? 'failed: the fleet landed nothing' : rec.status
+  const rec = fleetRecord({ copy: clone, feature, outDir: sessions, r: { status: r.status, error: r.error } })
+  const status = landed ? 'done' : r.timedOut ? `failed: the fleet timed out after ${Math.round(FLEET_TIMEOUT_MS / 1000)}s` : rec.status === 'done' ? 'failed: the fleet landed nothing' : rec.status
   return { status, landed }
 }
 
@@ -290,7 +355,7 @@ if (isMain) {
     process.exit(0)
   }
 
-  const prep = prepareClone(args)
+  const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
   const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null) }
@@ -298,10 +363,10 @@ if (isMain) {
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`
   } else {
-    const { status, landed } = runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out })
+    const { status, landed } = await runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out })
     result.status = status
     result.measure = landed ? measureFromRow(landed) : null
-    result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature)
+    result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature, prep.prepped)
   }
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
   console.log(`${result.id}: ${result.status} — ${join(out, 'result.json')}`)

@@ -12,6 +12,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = realpathSync(join(HERE, '..', '..'))
 const CASE = join(REPO, 'scripts', 'bench-case.mjs')
 const STUB = join(HERE, 'fixtures', 'bench', 'stub-fleet-land.mjs')
+const HANG = join(HERE, 'fixtures', 'bench', 'stub-fleet-hang.mjs')
 const git = (cwd, ...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd, encoding: 'utf8' }).trim()
 const put = (f, s) => {
   mkdirSync(dirname(f), { recursive: true })
@@ -38,9 +39,14 @@ function fixture() {
   put(join(repo, 'src', 'a.js'), 'export const a = 1\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'code')
+  // the original run's plan, longer than any the stub writes: it must never be counted
+  put(join(repo, 'docs', 'features', 'f', 'PLAN.md'), Array.from({ length: 30 }, (_, i) => `old ${i}`).join('\n') + '\n')
+  git(repo, 'add', '-A')
+  git(repo, 'commit', '-qm', 'plan')
   git(repo, 'checkout', '-q', 'main')
   git(repo, 'merge', '-q', '--no-ff', '-m', 'merge f', 'builder/f')
   const merged = git(repo, 'rev-parse', 'HEAD')
+  git(repo, 'tag', 'v1.0.0', merged)
   const setRow = (o = {}) => put(join(repo, '.builder', 'fleet', 'archive.jsonl'), JSON.stringify({ feature: 'f', merged, wallMs: 600000, costUsd: 2, timing: [], ...o }) + '\n')
   setRow()
   const local = join(tmp, 'local')
@@ -48,7 +54,7 @@ function fixture() {
   writeProfile()
   put(join(local, 'cases', 'c1.json'), JSON.stringify({ id: 'c1', size: 'sm', kind: 'archived', project: 'p', feature: 'f', covers: 'one file' }))
   const out = join(tmp, 'out')
-  const run = (args) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent' } })
+  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
   return { tmp, repo, merged, setRow, writeProfile, out, run, range: featureRange(repo, merged) }
 }
 
@@ -123,4 +129,44 @@ test('--dry-run prints what the clone will touch and runs nothing', () => {
   assert.match(r.stdout, /PORT=5999/)
   assert.ok(!existsSync(join(out, 'result.json')))
   assert.ok(!existsSync(join(out, 'clone')))
+})
+
+test('planLines counts only plans made after prep — not the original run\'s, reachable from a tag or another branch', () => {
+  const { out, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).planLines, 10)
+  const clone = join(out, 'clone')
+  assert.equal(git(clone, 'tag'), '')
+  assert.equal(git(clone, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags'), 'refs/heads/main')
+})
+
+test('a setup that runs past BENCH_SETUP_TIMEOUT_MS fails prep: setup timed out', () => {
+  const { out, run, writeProfile } = fixture()
+  writeProfile({ setup: 'sleep 5' })
+  const t0 = Date.now()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_SETUP_TIMEOUT_MS: '300' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(Date.now() - t0 < 4500, 'the setup was not cut short')
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'failed: setup timed out')
+})
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+
+test('a fleet that runs past its timeout is killed with everything it started', async () => {
+  const { out, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_FLEET: HANG, BENCH_CASE_FLEET_TIMEOUT_MS: '1500' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: .*timed out/)
+  const pid = Number(readFileSync(join(out, 'clone', '.builder', 'fleet', 'child.pid'), 'utf8'))
+  assert.ok(pid > 0)
+  for (let i = 0; i < 40 && alive(pid); i++) await new Promise((res) => setTimeout(res, 50))
+  assert.equal(alive(pid), false, `the fleet's child ${pid} outlived it`)
 })
