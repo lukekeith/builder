@@ -349,6 +349,10 @@ test('run: gsd — four sessions in order, REQUEST.md in the copy, the version r
   const id = readdirSync(dir).find((n) => n.endsWith('-tags'))
   const data = JSON.parse(readFileSync(join(dir, id, 'runs.json'), 'utf8'))
   assert.equal(data.versions.gsd, '1.7.0')
+  // the builder under test: its version and commit, not the version alone — unreleased work reads as itself
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim().slice(0, 7)
+  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: REPO, encoding: 'utf8' }).trim() ? '-dirty' : ''
+  assert.equal(data.versions.builder, `${JSON.parse(readFileSync(join(REPO, '.claude-plugin', 'plugin.json'), 'utf8')).version}+${sha}${dirty}`)
   assert.equal(data.runs[0].sessions[1].steps[0].name, '/gsd-plan-phase')
   assert.ok(existsSync(join(root, 'tmp', id, 'gsd', 'REQUEST.md')))
   assert.ok(data.runs[0].installMs >= 0)

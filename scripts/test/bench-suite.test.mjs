@@ -33,6 +33,8 @@ function builderRepo(tmp) {
   const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: repo, encoding: 'utf8' })
   git('init', '-q', '-b', 'main')
   writeFileSync(join(repo, 'README.md'), 'b\n')
+  mkdirSync(join(repo, '.claude-plugin'))
+  writeFileSync(join(repo, '.claude-plugin', 'plugin.json'), '{ "name": "builder", "version": "9.9.9" }\n')
   git('add', '-A')
   git('commit', '-qm', 'init')
   return { repo, git, sha: git('rev-parse', 'HEAD').trim() }
@@ -454,9 +456,11 @@ test('run prints each case\'s body warnings as plan does, and records them in su
   assert.deepEqual(JSON.parse(readFileSync(join(c1.out, 'result.json'), 'utf8')).warnings, lines)
 })
 
-test('the builder under test is pinned: a detached worktree at its HEAD, a dirty tree refused unless --allow-dirty, both SHAs in both reports', async () => {
+test('the builder under test is pinned: a detached worktree at its HEAD, a dirty tree refused unless --allow-dirty, both SHAs and version labels in both reports', async () => {
   const { suite, tmp, builder, pinned, readLog, results, out, suiteJson, settled } = setup()
   const sha12 = builder.sha.slice(0, 12)
+  const label = `9.9.9+${builder.sha.slice(0, 7)}`
+  const re = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   writeFileSync(join(builder.repo, 'README.md'), 'changed\n')
   for (const cmd of [['plan', 'c2'], ['run', 'c2', '--detach']]) {
     const r = suite(cmd)
@@ -470,15 +474,16 @@ test('the builder under test is pinned: a detached worktree at its HEAD, a dirty
   await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
   await settled()
   const s = suiteJson()
-  assert.deepEqual(s.treatment, { sha: builder.sha, dirty: false })
+  assert.deepEqual(s.treatment, { sha: builder.sha, dirty: false, label })
   assert.equal(s.mainSha, builder.sha)
+  assert.equal(s.mainLabel, label)
   assert.deepEqual(readLog().builders('c2').sort(), [pinned, join(tmp, 'bench-builder-main')].sort())
   assert.ok(!existsSync(pinned), 'the pinned worktree is removed when the suite ends')
   assert.doesNotMatch(builder.git('worktree', 'list'), new RegExp(`bench-builder-${sha12}`))
   const committed = readFileSync(join(out, `${s.id.slice(0, 10)}-suite`, 'REPORT.md'), 'utf8')
   for (const md of [committed, readFileSync(join(results, s.id, 'REPORT.md'), 'utf8')]) {
-    assert.match(md, new RegExp(`^builder under test: ${sha12}$`, 'm'))
-    assert.match(md, new RegExp(`^builder main \\(controls\\): ${sha12}$`, 'm'))
+    assert.match(md, new RegExp(`^builder under test: ${re(label)} \\(${sha12}\\)$`, 'm'))
+    assert.match(md, new RegExp(`^builder main \\(controls\\): ${re(label)} \\(${sha12}\\)$`, 'm'))
   }
   // --allow-dirty runs the tree as it is, unpinned, and says so
   writeFileSync(join(builder.repo, 'README.md'), 'changed\n')
@@ -486,10 +491,10 @@ test('the builder under test is pinned: a detached worktree at its HEAD, a dirty
   assert.equal(d.status, 0, d.stderr)
   await until(() => suiteJson().id !== s.id && existsSync(join(results, suiteJson().id, 'REPORT.md')))
   await settled()
-  assert.deepEqual(suiteJson().treatment, { sha: builder.sha, dirty: true })
+  assert.deepEqual(suiteJson().treatment, { sha: builder.sha, dirty: true, label: `${label}-dirty` })
   assert.deepEqual(readLog().builders('c3'), [builder.repo])
   assert.match(suite(['run', '--resume', s.id, '--allow-dirty', '--detach']).stderr, /--resume takes only the suite id/)
-  assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), new RegExp(`^builder under test: ${sha12} \\+ uncommitted changes \\(unpinned\\)$`, 'm'))
+  assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), new RegExp(`^builder under test: ${re(label)}-dirty \\(${sha12} \\+ uncommitted changes \\(unpinned\\)\\)$`, 'm'))
 })
 
 test('plan notes when this shell sets a database variable (DATABASE_URL, PG*, REDIS_URL, DB_*…) — no case inherits them', () => {

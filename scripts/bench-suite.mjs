@@ -32,7 +32,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions, strippedEnv } from './bench-suite-core.mjs'
 import { landedRow, duration } from './fleet-core.mjs'
-import { BUILDER, runId } from './bench.mjs'
+import { BUILDER, runId, builderLabel } from './bench.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const LOCAL = process.env.BENCH_LOCAL || join(BUILDER, 'bench', 'local')
@@ -453,10 +453,10 @@ function treatmentOf(builder, allowDirty) {
   const changes = sha == null ? null : tryGitIn(builder, 'status', '--porcelain', '--untracked-files=no')
   if (changes == null) {
     if (!allowDirty) die(`--builder ${builder} is not a git checkout — the suite pins the builder under test to a commit; --allow-dirty runs it as it is`)
-    return { sha: null, dirty: true }
+    return { sha: null, dirty: true, label: builderLabel(builder) }
   }
   if (changes && !allowDirty) die(`the builder checkout ${builder} has uncommitted changes — commit or stash them, or pass --allow-dirty to run the tree as it is (unpinned)`)
-  return { sha, dirty: !!changes }
+  return { sha, dirty: !!changes, label: builderLabel(builder) }
 }
 
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
@@ -511,6 +511,7 @@ async function runSuite(id) {
     try {
       main = mainCheckout(s.builder)
       s.mainSha = tryGitIn(main, 'rev-parse', 'HEAD')
+      s.mainLabel = builderLabel(main)
     } catch (e) {
       for (const it of s.items) if (it.control && unfinished(it)) Object.assign(it, { status: `failed: no main checkout for controls: ${firstLine(e.stderr || e.message)}`, endedAt: Date.now() })
     }
@@ -608,7 +609,7 @@ function writeReports(id) {
   }
   const committed = join(SUITE_OUT, s.report, 'REPORT.md')
   const named = join(suiteDir(id), 'REPORT.md')
-  const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null }
+  const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null, mainLabel: s.mainLabel ?? null }
   mkdirSync(dirname(committed), { recursive: true })
   writeFileSync(committed, renderSuiteReport(results, { names: false, builder }))
   writeFileSync(named, renderSuiteReport(results, { names: true, builder }))
