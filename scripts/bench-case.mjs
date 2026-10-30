@@ -439,6 +439,16 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   }
   const picked = applySpecs(clone, specs)
   if (picked) return { ...none, clone, failure: picked }
+  // the reflog still holds the source's tip — the landed feature — and `clone: from <the project's path>`:
+  // an agent could check out HEAD@{1}. Once the spec commits are in, the reflog goes and every object
+  // no ref reaches is pruned (after the cherry-pick: the spec commits were reachable only through it).
+  try {
+    for (const f of ['ORIG_HEAD', 'FETCH_HEAD']) rmSync(join(clone, '.git', f), { force: true })
+    git(clone, 'reflog', 'expire', '--expire=now', '--expire-unreachable=now', '--all')
+    git(clone, 'gc', '--prune=now', '-q')
+  } catch (e) {
+    return { ...none, clone, failure: `could not clear the clone's history of the source: ${why(e)}` }
+  }
   const exclude = join(clone, '.git', 'info', 'exclude')
   mkdirSync(dirname(exclude), { recursive: true })
   mkdirSync(join(clone, '.claude'), { recursive: true })
