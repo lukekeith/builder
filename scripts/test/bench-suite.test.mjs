@@ -54,6 +54,7 @@ function setup() {
       ends: (id) => of('end', id).length,
       builders: (id) => of('builder', id).map((l) => l[2]),
       timeouts: (id) => of('timeout', id).map((l) => l[2]),
+      cloneRoots: (id) => of('clone-root', id).map((l) => l[2]),
     }
   }
   const results = join(local, 'results')
@@ -129,7 +130,7 @@ test('run refuses before it launches anything when a dry run refuses', () => {
 
 test('run: two lanes, never two of one project at once, report at the end with no project names', async () => {
   // c1, c2 project A (30m, 10m); c3 project B (20m); STUB_CASE_MS=20 → 1 estimated minute = 20 ms
-  const { suite, readLog, out, dateDir, suiteJson, results, settled } = setup()
+  const { suite, tmp, readLog, out, dateDir, suiteJson, results, settled } = setup()
   const r = suite(['run', 'c1,c2,c3', '--lanes', '2', '--detach'])
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stdout, /^suite started detached \(pid \d+\) — \S+-suite · \/builder:benchmark --status$/m)
@@ -150,6 +151,8 @@ test('run: two lanes, never two of one project at once, report at the end with n
   assert.doesNotMatch(st, /⚠/)
   // each case's fleet timeout: 3× its estimate, at least an hour
   assert.deepEqual([log.timeouts('c1'), log.timeouts('c2')], [[String(90 * 60000)], [String(60 * 60000)]])
+  // each clone under $TMPDIR/bench-suite/<suite>/<item>, outside every repo; result.json stays under results
+  assert.deepEqual(log.cloneRoots('c1'), [join(tmp, 'bench-suite', s.id, 'c1')])
 })
 
 test('the project mutex holds when a case runs long', async () => {
@@ -224,7 +227,7 @@ test('a control runs the same case on a main checkout, serialized with it, as <i
   assert.deepEqual(s.items.map((i) => i.id).sort(), ['c2', 'c2@main'])
   const log = readLog()
   assert.deepEqual(log.builders('c2').sort(), [REPO, main].sort())
-  const t = log.lines.filter((l) => l[1] === 'c2' && l[0] !== 'builder').map((l) => l[0])
+  const t = log.lines.filter((l) => l[1] === 'c2' && ['start', 'end'].includes(l[0])).map((l) => l[0])
   assert.deepEqual(t, ['start', 'end', 'start', 'end'])
   const ctl = JSON.parse(readFileSync(join(results, s.id, 'c2@main', 'result.json'), 'utf8'))
   assert.equal(ctl.id, 'c2@main')

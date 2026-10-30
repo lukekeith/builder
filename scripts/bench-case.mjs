@@ -4,19 +4,22 @@
  * fleet, in a scratch clone of its project at the feature's base commit, on the builder under test.
  * Design: docs/specs/2026-10-29-benchmark-suite-design.md.
  *
- *   node scripts/bench-case.mjs <case-id> --builder <checkout> --out <dir> [--dry-run]
+ *   node scripts/bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run]
  *
  * Reads $BENCH_LOCAL/cases/<id>.json and $BENCH_LOCAL/projects/<project>.json. Writes <out>/result.json
  * and exits 0 whether the case landed or not; exits 2 on a refusal, the reasons on stderr. Every
- * refusal comes before the clone is made, and nothing ever writes into the project repo.
+ * refusal comes before the clone is made, and nothing ever writes into the project repo. The clone is
+ * <clone-root>/clone, outside every repo (a repo's CLAUDE.md would load into every session); the
+ * clone root defaults to $BENCH_TMP/<out's parent's name>/<out's name>.
  *
- * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_FLEET (the fleet script — tests point it at a stub),
+ * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_TMP ($TMPDIR/bench-suite), BENCH_FLEET (the fleet script — tests point it at a stub),
  * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run), BENCH_SETUP_TIMEOUT_MS (20 min, the
  * profile's setup), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout), BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync } from 'node:fs'
-import { join, dirname, resolve, relative, isAbsolute, sep } from 'node:path'
+import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
@@ -58,6 +61,14 @@ function real(p) {
   return join(realpathSync.native(head), ...tail)
 }
 const within = (child, parent) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep)
+/** The root clones go under: $BENCH_TMP, else $TMPDIR/bench-suite — outside every repo. */
+export const benchTmp = () => process.env.BENCH_TMP || join(tmpdir(), 'bench-suite')
+/** The git work tree a path (which may not exist yet) would be inside, or null. */
+function gitTop(p) {
+  let head = p
+  while (!existsSync(head) && dirname(head) !== head) head = dirname(head)
+  return tryGit(head, 'rev-parse', '--show-toplevel')
+}
 
 /** The TCP ports listening now; no lsof or no output is []. */
 export function listeningPorts() {
@@ -166,7 +177,7 @@ const agentWalkLines = (md) => {
  * Everything a case needs, worked out from the repo without writing anything: refusals (the run must
  * not start), else a prep failure (the merge can't be resolved), else the plan for the clone.
  */
-export function planCase({ profile, profileDir = '.', caseDef, builder, dest, listening = [] }) {
+export function planCase({ profile, profileDir = '.', caseDef, builder, dest, out, listening = [] }) {
   const refusals = []
   const feature = caseDef?.feature
   if (!feature) refusals.push('case has no feature')
@@ -178,7 +189,12 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, li
   const clone = real(dest)
   if (/\s/.test(clone)) refusals.push(`the clone's path must contain no whitespace (the fleet splits claude_args on whitespace): ${clone}`)
   if (/\s/.test(builder)) refusals.push(`the builder's path must contain no whitespace (the fleet splits claude_args on whitespace): ${builder}`)
-  if (within(clone, root)) refusals.push(`the clone ${clone} is inside the project repo — pick an --out outside it`)
+  if (within(clone, root)) refusals.push(`the clone ${clone} is inside the project repo — pick a --clone-root outside it`)
+  else {
+    const top = gitTop(clone)
+    if (top) refusals.push(`the clone ${clone} would be inside the git repo ${top} — its CLAUDE.md would load into every session; pick a --clone-root outside any repo`)
+  }
+  if (out && within(real(out), root)) refusals.push(`the --out ${real(out)} is inside the project repo — pick an --out outside it`)
   if (within(root, clone)) refusals.push(`the project repo is inside the clone's path ${clone}`)
   if (existsSync(clone)) refusals.push(`${clone} already exists — pick a fresh --out`)
   const fleet = process.env.BENCH_FLEET || join(builder, 'scripts', 'fleet.mjs')
@@ -236,8 +252,9 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, li
  * profile applied and committed, its files placed and its setup run. Refuses before it clones.
  * → { clone, base, specs, refusals, failure, plan }; clone is null when nothing was made.
  */
-export async function prepareClone({ profile, profileDir, caseDef, builder, dest, listening = [] }) {
-  const plan = planCase({ profile, profileDir, caseDef, builder, dest, listening })
+export async function prepareClone({ profile, profileDir, caseDef, builder, dest, out, listening = [] }) {
+  const plan = planCase({ profile, profileDir, caseDef, builder, dest, out, listening })
+  const logDir = out ?? dirname(dest)
   const none = { clone: null, base: plan.base ?? null, specs: plan.specs ?? [], refusals: plan.refusals, failure: plan.failure ?? null, plan }
   if (plan.refusals.length || plan.failure) return none
   const { repo, clone, base, specs } = plan
@@ -278,7 +295,8 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   const prepped = git(clone, 'rev-parse', 'HEAD')
   if (plan.setup) {
     // not reaped on exit: a setup may start what the run needs (a bench database, a server)
-    const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(dirname(clone), 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
+    mkdirSync(logDir, { recursive: true })
+    const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(logDir, 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
     if (r.timedOut) return { ...none, clone, failure: 'setup timed out' }
     if (r.status !== 0) return { ...none, clone, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
   }
@@ -339,7 +357,7 @@ const isMain = (() => {
 })()
 
 if (isMain) {
-  const USAGE = 'usage: bench-case.mjs <case-id> --builder <checkout> --out <dir> [--dry-run]'
+  const USAGE = 'usage: bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run]'
   const refuse = (reasons) => {
     for (const r of [].concat(reasons)) console.error(`refused: ${r}`)
     process.exit(2)
@@ -351,11 +369,12 @@ if (isMain) {
   }
   const id = argv[0]
   const dryRun = argv.includes('--dry-run')
-  const known = new Set(['--builder', '--out', '--dry-run'])
-  const unknown = argv.filter((a, i) => a.startsWith('--') && !known.has(a) && !['--builder', '--out'].includes(argv[i - 1]))
-  if (!id || id.startsWith('--') || unknown.length || !opt('--out') || (argv.includes('--builder') && !opt('--builder'))) refuse(USAGE)
+  const known = new Set(['--builder', '--out', '--clone-root', '--dry-run'])
+  const unknown = argv.filter((a, i) => a.startsWith('--') && !known.has(a) && !['--builder', '--out', '--clone-root'].includes(argv[i - 1]))
+  if (!id || id.startsWith('--') || unknown.length || !opt('--out') || ['--builder', '--clone-root'].some((f) => argv.includes(f) && !opt(f))) refuse(USAGE)
   const builder = resolve(opt('--builder') ?? BUILDER)
   const out = resolve(opt('--out'))
+  const cloneRoot = resolve(opt('--clone-root') ?? join(benchTmp(), basename(dirname(out)), basename(out)))
   const local = process.env.BENCH_LOCAL || join(BUILDER, 'bench', 'local')
   const caseFile = join(local, 'cases', `${id}.json`)
   const caseDef = readJson(caseFile)
@@ -364,7 +383,7 @@ if (isMain) {
   const profileFile = join(local, 'projects', `${caseDef.project}.json`)
   const profile = readJson(profileFile)
   if (!profile) refuse(`no profile ${profileFile} (or it is not JSON)`)
-  const args = { profile, profileDir: dirname(profileFile), caseDef, builder, dest: join(out, 'clone'), listening: listeningPorts() }
+  const args = { profile, profileDir: dirname(profileFile), caseDef, builder, dest: join(cloneRoot, 'clone'), out, listening: listeningPorts() }
 
   if (dryRun) {
     const p = planCase(args)

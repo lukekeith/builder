@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execFileSync } from 'node:child_process'
@@ -54,8 +54,11 @@ function fixture() {
   writeProfile()
   put(join(local, 'cases', 'c1.json'), JSON.stringify({ id: 'c1', size: 'sm', kind: 'archived', project: 'p', feature: 'f', covers: 'one file' }))
   const out = join(tmp, 'out')
-  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
-  return { tmp, repo, merged, setRow, writeProfile, out, run, range: featureRange(repo, merged) }
+  const clones = join(tmp, 'clones')
+  // the clone for --out <tmp>/out: $BENCH_TMP/<out's parent's name>/<out's name>/clone
+  const clone = join(clones, basename(tmp), 'out', 'clone')
+  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: clones, BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
+  return { tmp, repo, merged, setRow, writeProfile, out, clone, run, range: featureRange(repo, merged) }
 }
 
 test('specCommits: the leading spec-only commits', () => {
@@ -64,7 +67,7 @@ test('specCommits: the leading spec-only commits', () => {
 })
 
 test('a case runs in a clone and never touches the repo', () => {
-  const { repo, out, run } = fixture()
+  const { repo, out, clone, run } = fixture()
   const before = git(repo, 'rev-parse', 'HEAD') + git(repo, 'status', '--porcelain')
   const r = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(r.status, 0, r.stderr)
@@ -77,7 +80,6 @@ test('a case runs in a clone and never touches the repo', () => {
   assert.equal(res.planLines, 10)
   assert.deepEqual({ id: res.id, size: res.size, kind: res.kind, project: res.project, control: res.control }, { id: 'c1', size: 'sm', kind: 'archived', project: 'p', control: false })
   assert.deepEqual(res.estimate, { minutes: 10, usd: 2 })
-  const clone = join(out, 'clone')
   assert.equal(git(clone, 'remote'), '')
   assert.match(readFileSync(join(clone, '.claude', 'builder.md'), 'utf8'), /claude_args: --permission-mode bypassPermissions --settings \S+ --plugin-dir /)
   assert.ok(!existsSync(join(clone, 'src', 'a.js'))) // the code commit is not in the clone's start
@@ -87,12 +89,12 @@ test('a case runs in a clone and never touches the repo', () => {
 })
 
 test('an unsafe profile is refused before a clone is made', () => {
-  const { out, run, writeProfile } = fixture()
+  const { out, clone, run, writeProfile } = fixture()
   writeProfile({ agent_walk: { env: 'DATABASE_URL=postgres://localhost/app_dev' } })
   const r = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(r.status, 2)
   assert.match(r.stderr, /database app_dev is not a bench database/)
-  assert.ok(!existsSync(join(out, 'clone')))
+  assert.ok(!existsSync(clone))
 })
 
 test('an --out inside the project repo is refused, and the repo is untouched', () => {
@@ -114,29 +116,47 @@ test('a missing case or profile is a refusal', () => {
 })
 
 test('a squash-merged feature fails prep with the reason, exit 0, status failed', () => {
-  const { repo, out, run, setRow } = fixture()
+  const { repo, out, clone, run, setRow } = fixture()
   setRow({ merged: git(repo, 'rev-parse', 'HEAD~1') })
   const r = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(r.status, 0, r.stderr)
   assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: .*not a merge commit/)
-  assert.ok(!existsSync(join(out, 'clone')))
+  assert.ok(!existsSync(clone))
 })
 
 test('--dry-run prints what the clone will touch and runs nothing', () => {
-  const { out, run } = fixture()
+  const { out, clone, run } = fixture()
   const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stdout, /PORT=5999/)
   assert.ok(!existsSync(join(out, 'result.json')))
-  assert.ok(!existsSync(join(out, 'clone')))
+  assert.ok(!existsSync(clone))
+})
+
+test('the clone lives outside every repo, under BENCH_TMP — never under the builder repo — and result.json and the logs stay in --out', () => {
+  const { tmp, out, clone, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_KEEP_CLONES: '1' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(existsSync(join(out, 'result.json')))
+  assert.ok(existsSync(join(out, 'fleet.out')))
+  assert.ok(existsSync(join(clone, '.git')))
+  assert.ok(!clone.startsWith(REPO + sep))
+  // with no BENCH_TMP: $TMPDIR/bench-suite/<suite>/<item>/clone
+  const d = run(['c1', '--builder', REPO, '--out', join(tmp, 's1', 'it'), '--dry-run'], { BENCH_TMP: '', TMPDIR: join(tmp, 't') })
+  assert.equal(d.status, 0, d.stderr)
+  assert.match(d.stdout, new RegExp(`clone: +${join(tmp, 't', 'bench-suite', 's1', 'it', 'clone')}$`, 'm'))
+  // --clone-root names it; one inside any git repo is refused
+  const x = run(['c1', '--builder', REPO, '--out', join(tmp, 'o3'), '--clone-root', join(REPO, 'bench', 'local', 'results', 'x')])
+  assert.equal(x.status, 2)
+  assert.match(x.stderr, /refused: the clone .* would be inside the git repo /)
+  assert.ok(!existsSync(join(REPO, 'bench', 'local', 'results', 'x')))
 })
 
 test('planLines counts only plans made after prep — not the original run\'s, reachable from a tag or another branch', () => {
-  const { out, run } = fixture()
+  const { out, clone, run } = fixture()
   const r = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(r.status, 0, r.stderr)
   assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).planLines, 10)
-  const clone = join(out, 'clone')
   assert.equal(git(clone, 'tag'), '')
   assert.equal(git(clone, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags'), 'refs/heads/main')
 })
@@ -161,11 +181,11 @@ const alive = (pid) => {
 }
 
 test('a fleet that runs past its timeout is killed with everything it started', async () => {
-  const { out, run } = fixture()
+  const { out, clone, run } = fixture()
   const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_FLEET: HANG, BENCH_CASE_FLEET_TIMEOUT_MS: '1500' })
   assert.equal(r.status, 0, r.stderr)
   assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: .*timed out/)
-  const pid = Number(readFileSync(join(out, 'clone', '.builder', 'fleet', 'child.pid'), 'utf8'))
+  const pid = Number(readFileSync(join(clone, '.builder', 'fleet', 'child.pid'), 'utf8'))
   assert.ok(pid > 0)
   for (let i = 0; i < 40 && alive(pid); i++) await new Promise((res) => setTimeout(res, 50))
   assert.equal(alive(pid), false, `the fleet's child ${pid} outlived it`)
@@ -181,11 +201,11 @@ test('killableGroup: never pgid ≤ 1, this process\'s own group or its parent\'
 })
 
 test('a timed-out fleet\'s recorded groups are killed — but never pgid 1 or the runner\'s own group', async () => {
-  const { out, run } = fixture()
+  const { out, clone, run } = fixture()
   const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_FLEET: HANG, BENCH_CASE_FLEET_TIMEOUT_MS: '1500', STUB_FLEET_PGIDS: '1', STUB_EXTRA_PGID: String(pgidOf(process.pid)) })
   assert.equal(r.status, 0, r.stderr)
   assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: .*timed out/)
-  const session = Number(readFileSync(join(out, 'clone', '.builder', 'fleet', 'session.pid'), 'utf8'))
+  const session = Number(readFileSync(join(clone, '.builder', 'fleet', 'session.pid'), 'utf8'))
   for (let i = 0; i < 40 && alive(session); i++) await new Promise((res) => setTimeout(res, 50))
   assert.equal(alive(session), false, `the session group ${session} outlived the fleet`)
   // still here: neither pgid 1 nor this runner's group was signalled

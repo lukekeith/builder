@@ -17,7 +17,7 @@
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
  * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
- * <checkout>/scripts/bench.mjs), TMPDIR (where the main checkout for controls goes).
+ * <checkout>/scripts/bench.mjs), BENCH_TMP (where clones go; $TMPDIR/bench-suite), TMPDIR (where the main checkout for controls goes).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, renameSync, openSync, closeSync, realpathSync, statSync } from 'node:fs'
@@ -32,6 +32,8 @@ const SELF = fileURLToPath(import.meta.url)
 const LOCAL = process.env.BENCH_LOCAL || join(BUILDER, 'bench', 'local')
 const SUITE_OUT = process.env.BENCH_SUITE_OUT || join(BUILDER, 'bench', 'results')
 const CASE_RUNNER = process.env.BENCH_CASE || join(BUILDER, 'scripts', 'bench-case.mjs')
+/** Where each archived case's clone goes — <root>/<suite-id>/<item>/clone — outside every repo, so no repo's CLAUDE.md loads into its sessions. */
+const CLONE_ROOT = process.env.BENCH_TMP || join(tmpdir(), 'bench-suite')
 const RESULTS = join(LOCAL, 'results')
 const LOCK = join(RESULTS, 'lock')
 const FEATURES = join(BUILDER, 'bench', 'features')
@@ -347,11 +349,12 @@ function mainCheckout(builder) {
 
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
 
-/** An archived item: bench-case in a fresh --out, its fleet timeout from its estimate; a control's result is rewritten as <id>@main. → its status */
-async function runArchived(it, builder, out) {
+/** An archived item: bench-case in a fresh --out, its clone under CLONE_ROOT, its fleet timeout from its estimate; a control's result is rewritten as <id>@main. → its status */
+async function runArchived(it, builder, out, suiteId) {
   const errFile = join(out, 'case.err')
   const env = { ...process.env, BENCH_CASE_FLEET_TIMEOUT_MS: String(caseFleetTimeoutMs(it.estimate)) }
-  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out], { cwd: out, env, outFile: join(out, 'case.out'), errFile })
+  const cloneRoot = join(CLONE_ROOT, suiteId, basename(out))
+  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out, '--clone-root', cloneRoot], { cwd: out, env, outFile: join(out, 'case.out'), errFile })
   const resFile = join(out, 'result.json')
   const res = readJson(resFile)
   if (!res) return refusedOrDied(r, errFile)
@@ -418,7 +421,7 @@ async function runSuite(id) {
       Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out })
       saveSuite(s)
       const checkout = it.control ? main : s.builder
-      status = it.kind === 'fixture' ? await runFixture(it, checkout, out) : await runArchived(it, checkout, out)
+      status = it.kind === 'fixture' ? await runFixture(it, checkout, out) : await runArchived(it, checkout, out, id)
     } catch (e) {
       status = `failed: ${firstLine(e.message)}`
     }
