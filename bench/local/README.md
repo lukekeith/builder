@@ -101,7 +101,9 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
 - a `--mcp-config` path is outside the clone, or is neither tracked by the project nor placed at an untracked path by
   the profile's `files` and listed in `agent_walk.copy`. A tracked one is always checked as committed — that is what
   worktrees load. A JSON config's keys are read as `KEY=value`, so `"PGDATABASE": "…"` is checked too;
-- a profile `files` entry is a path the project tracks.
+- a profile `files` entry is a path the project tracks;
+- an `agent_walk.copy` entry (the project's or the profile's) is absolute or contains `..` — the fleet would copy a
+  file from outside the clone into the worktrees.
 
 The body of the clone's `builder.md` — prose, which an agent may still run literally — is checked by the same rules,
 as warnings: the dry run lists each as a `body: …` line and the case still runs. Add a `replace` for each. Ports named

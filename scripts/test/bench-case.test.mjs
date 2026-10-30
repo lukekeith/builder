@@ -369,6 +369,17 @@ test('a placed --mcp-config file must be in agent_walk.copy; another placed file
   assert.doesNotMatch(ok.stdout, /not in agent_walk\.copy/)
 })
 
+test('an agent_walk.copy entry that is absolute or climbs out with .. is refused — the fleet would copy it into the worktrees', () => {
+  const { out, run, writeProfile } = fixture()
+  writeProfile({ agent_walk: { env: 'PORT=5999', copy: '/etc/hosts, ../secret.env, .claude/../../x, .env, ./certs' } })
+  const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(r.status, 2)
+  const refused = r.stderr.split('\n').filter((l) => l.startsWith('refused: agent_walk.copy'))
+  assert.deepEqual(refused, ['refused: agent_walk.copy: /etc/hosts reaches outside the clone', 'refused: agent_walk.copy: ../secret.env reaches outside the clone', 'refused: agent_walk.copy: .claude/../../x reaches outside the clone'])
+  writeProfile({ agent_walk: { env: 'PORT=5999', copy: '.env, ./certs' } })
+  assert.equal(run(['c1', '--builder', REPO, '--out', out, '--dry-run']).status, 0)
+})
+
 const waitFor = async (fn, ms = 15000) => {
   for (const t0 = Date.now(); !fn(); await new Promise((res) => setTimeout(res, 50))) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${fn}`)
 }

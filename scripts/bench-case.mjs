@@ -325,7 +325,10 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   // the body is prose: what it names is a warning to replace, never a refusal — nor a port the plan counts
   const warnings = bodyWarnings(builderMd, profile, { listening })
   // a placed (untracked) file reaches a worktree only through agent_walk.copy — a path or a folder above it
-  const copy = agentWalkValue(builderMd, 'copy').split(',').map((c) => c.trim().replace(/^['"]|['"]$/g, '').replace(/^\.\//, '').replace(/\/+$/, '')).filter(Boolean)
+  const copyEntries = agentWalkValue(builderMd, 'copy').split(',').map((c) => c.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  // the fleet copies each entry from the clone into every worktree: one outside the clone would carry the human's file in
+  for (const c of copyEntries) if (isAbsolute(c) || c.split(/[/\\]/).includes('..')) refusals.push(`agent_walk.copy: ${c} reaches outside the clone`)
+  const copy = copyEntries.map((c) => c.replace(/^\.\//, '').replace(/\/+$/, ''))
   const copied = (p) => copy.some((c) => p === c || p.startsWith(`${c}/`))
   // every MCP config a session loads: the committed file when the project tracks the path, else the profile's placed one
   const mcp = []
