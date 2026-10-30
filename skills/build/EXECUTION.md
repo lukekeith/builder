@@ -72,8 +72,8 @@ ledger file, not only in todos.**
    round is mid-loop — resume the loop at the next round.
 5. **Read the plan's outline once — not the plan:** `node <plugin>/scripts/plan-slices.mjs <folder> --brief`
    prints the header (Global Constraints, the `## Phases` table) and every task's head — `App:`,
-   `Phase:`, `Recipe:`, **Files**, **Interfaces** — with a count of its steps and tests. The steps
-   and their code are the implementers' (each brief carries its own block); holding all of them
+   `Phase:`, `Recipe:`, **Files**, **Interfaces** — with a count of its steps and tests. The
+   steps and tests are the implementers' (each brief carries its own block); holding all of them
    here costs the whole plan on every turn of the build, and one measured plan was 386KB. Read one
    task's block (`<plugin>/scripts/task-brief <folder>/PLAN.md N <WS>/task-N-brief.md`, or the brief
    once rendered) only when a ruling needs it. Create a todo per task. Read the SPEC too: it is the
@@ -118,7 +118,7 @@ most capable and most expensive — which silently defeats this section.
 
 **Turn count beats token price.** Wall-clock and context cost scale with how many turns a subagent
 takes, and the cheapest models routinely take 2–3× the turns on multi-step work. Use a mid-tier model
-as the floor for reviewers and for implementers working from prose.
+as the floor for reviewers, and for implementers whose block leaves an algorithm or a multi-file choice open.
 
 ---
 

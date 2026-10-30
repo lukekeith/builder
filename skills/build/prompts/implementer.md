@@ -25,10 +25,11 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     ## What the plan gives you
 
     The plan gives each task Files (path and responsibility), Interfaces,
-    Behaviour, an optional Pattern and Tests, in words. Behaviour rules
-    are what the code must do; you write the bodies to them, and any body
-    the plan does give is a starting point you make pass. Write the
-    listed tests with their given assertions, as written. Follow a Pattern
+    Behaviour, an optional Pattern and Tests. The tests come with their assertions as code;
+    the rest is words. Behaviour rules are what the code must do; you write the bodies to them. A plan written before this format
+    (a task with no **Behaviour** block) may give whole bodies: those are a
+    starting point you make pass. Write the listed tests with their given
+    assertions, as written. Follow a Pattern
     by reading the file at its `file:line`, not by copying it. The code the
     plan gives where it must be opinionated is the decision, not a sketch:
     exact copy the spec fixes (a message, a migration, a config value) you

@@ -62,7 +62,7 @@ Read `.builder/fleet/fleet.json`. When `features[<feature>]` is there with a `st
 
 | The manifest says | The complete write-back |
 |---|---|
-| **before the go-ahead** — `state:` `spec` · `aligned` · `audited` · `planned` with `go-ahead: none` | Nothing is built yet, so edit the docs directly. A ruling → a §Decisions row written as an implementable statement. If `PLAN.md` exists and the change alters what gets built, amend the affected task block — and SPEC §Plan's index gains or loses a line only when a task is added or dropped; if the `## Phases` table changed shape, re-present it and re-take the go-ahead. If the audit already ran and a **contract** changed, re-check that one contract against the code — never a fresh pass |
+| **before the go-ahead** — `state:` `spec` · `aligned` · `audited` · `planned` with `go-ahead: none` | Nothing is built yet, so edit the docs directly. A ruling → a §Decisions row written as an implementable statement. If `PLAN.md` exists and the change alters what gets built, amend the affected task block (written in [PLAN-FORMAT.md](../plan/PLAN-FORMAT.md)'s task shape — Recipe, Files, Interfaces, Behaviour citing the new §Decisions row, Pattern if useful, Tests with fenced assertions (`plan-slices` counts tests from fences), Steps) — and SPEC §Plan's index gains or loses a line only when a task is added or dropped; if the `## Phases` table changed shape, re-present it and re-take the go-ahead. If the audit already ran and a **contract** changed, re-check that one contract against the code — never a fresh pass |
 | **after the go-ahead** (`planned` with a go-ahead · `building` · `built`) — **a bug** (code wrong, spec right or silent) | the fix + its test, **in the one app that has the bug**. **No doc edit.** Never "spec" a bug fix — a section describing behaviour that was always intended adds a page every later step must read |
 | **after the go-ahead — a human ruling** | one §Decisions row (an implementable statement) + the fix, or the `PLAN.md` task block that carries it |
 | **after the go-ahead — something a future phase must know** | one §Findings & risks row |
@@ -88,14 +88,14 @@ and one of them may ship in a released artifact**. The complete write-back:
    so it does not disagree with itself.
 3. **A §Decisions row for the ruling**, written as an implementable statement.
 4. **Amend the affected `PLAN.md` task blocks** the ledger does **not** mark `Task N: complete` — in
-   every app, not only the one that raised it. The §Plan index moves only if a task is added or
+   every app, not only the one that raised it — each in [PLAN-FORMAT.md](../plan/PLAN-FORMAT.md)'s task shape — Recipe, Files, Interfaces, Behaviour citing the new §Decisions row, Pattern if useful, Tests with fenced assertions (`plan-slices` counts tests from fences), Steps. The §Plan index moves only if a task is added or
    dropped.
 5. **If the manifest reads `contract: frozen`, re-open it deliberately:** set
    `contract: open (reopened <YYYY-MM-DD>)`, say which producer work re-closes it, and 🔴 **name every
    consumer task that must be re-checked against the new shape** — a frozen contract exists so
    consumers can stop looking, and re-opening it means they must look again.
 6. **Owed rework on ALREADY-BUILT consumer code** is a new task block at the end of `PLAN.md` (before
-   sign-off), numbered on from the last task and carrying its `App:` and `Phase:` lines — or a `- [ ]`
+   sign-off), in [PLAN-FORMAT.md](../plan/PLAN-FORMAT.md)'s task shape — Recipe, Files, Interfaces, Behaviour citing the new §Decisions row, Pattern if useful, Tests with fenced assertions (`plan-slices` counts tests from fences), Steps, numbered on from the last task and carrying its `App:` and `Phase:` lines — or a `- [ ]`
    under `## Fixes` naming its app (after sign-off).
 7. **If the phase table changed shape, re-take the go-ahead.** Adding a phase changes what was
    approved.

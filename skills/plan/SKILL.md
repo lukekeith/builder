@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Turns an audited spec into a committed PLAN.md — ordered phases, one app per phase, each task with its test code, signatures and the values the spec pins — and takes the build go-ahead with its test plan. Use when asked to plan a spec's implementation.
+description: Turns an audited spec into a committed PLAN.md — ordered phases, one app per phase, each task with its test code, signatures and the values the spec pins (the frozen contract, algorithm bodies, migrations and security mechanisms too) — and takes the build go-ahead with its test plan. Use when asked to plan a spec's implementation.
 ---
 
 # `/builder:plan` — the audited spec becomes phases
@@ -44,7 +44,7 @@ task** so it arrives with the work.
 
 ## What the plan is
 
-One committed file, `<folder>/PLAN.md`, holding the tasks **and what they pin — test code, signatures, the spec's values, Interfaces** — the human
+One committed file, `<folder>/PLAN.md`, holding the tasks **and what they pin — test code, signatures, the spec's values, Interfaces, the frozen contract, algorithm bodies, migrations and security mechanisms** — the human
 reads it at the go-ahead, a reviewer sees it in the PR, and the sign-off condense deletes it with
 `git log` keeping it. The plan is never inside the SPEC: the SPEC gets a §Plan index only.
 
@@ -163,7 +163,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    writer boundary**, same-app ones included.
 
    **Every writer, in every mode, reads `<WS>/audit-digest.md` first** (audit §Exit) — where the
-   code it builds on is, and what is there — and opens a file to copy what it changes, not to
+   code it builds on is, and what is there — and opens a file to cite file:line, not to
    rediscover what the audit read. No digest (an audit from before it existed) → read as before.
 3. **The checks before anything is committed:**
    - every `### Task N` block opens with an `App:` line and a `Phase:` line matching its table row;
@@ -175,7 +175,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    - every §Findings row marked `build-time risk` is **copied onto the task that settles it**;
    - **the producer phase's last task records the freeze** — a step writing `contract: frozen <date>`
      to the manifest, so no consumer task starts against an open contract;
-   - then PLAN-FORMAT's own §No placeholders and the §Self-review Step scan, run over the finished file.
+   - then PLAN-FORMAT's own §No placeholders and the whole §Self-review, run over the finished file.
 
 🔴 **Nothing follows the last task block** — no footer, no closing section, no summary, no separator.
 `task-brief` reads the last task from its heading to **end of file**. The resume footer at the end of

@@ -18,7 +18,7 @@ not ask you what you meant unless you left it no choice.
 
 **A step is unambiguous, not complete.** It is done when the implementer can write exactly one
 reasonable thing from it. A task is six parts (Files, Interfaces, Behaviour, Pattern, Tests, Steps),
-all in words except the tests:
+in words, test assertions, and the opinionated code below:
 
 - **Tests keep their assertions, as code,** with the spec's exact values in them. The plan writer pins
   what each test checks; the implementer does not decide it. A stronger test is the point.
@@ -29,11 +29,17 @@ all in words except the tests:
   their commands. **The implementer writes the body.**
 - **Code also where the plan must be opinionated** — where a wrong body could still pass the tests, so the
   implementer must not choose:
-  - **exact copy the spec fixes** — a message, a migration, a config value, a regex;
+  - **exact copy the spec fixes** — a message, a config value, a regex; short copy is quoted inline
+    ("at most 10 tags"), longer copy gets a code block;
+  - **a migration** — the migration's DDL and any backfill, whenever the task writes one (nullability,
+    defaults, FK on-delete, unique constraints, indexes);
   - **the frozen contract** — a cross-app wire type, schema or event shape, verbatim from SPEC §Contract,
-    in the task that produces it (a consumer's task names it in Interfaces instead);
+    as a fence under **Interfaces** of the task that produces it (a consumer's task names it in
+    Interfaces instead);
   - **an algorithm the signature and tests don't determine** — a ranking, a parser, a state machine's
-    transitions, a retry or locking rule: the body, or the pseudo-code that fixes it.
+    transitions, a retry or locking rule, a transaction boundary: the body, or the pseudo-code that fixes it;
+  - **a security-sensitive mechanism** — the authorization rule (who may do what), constant-time comparison,
+    hashing and token parameters, and a public response's exact fields (what it may expose).
   Nowhere else. A body the signature and tests already determine is a transcript.
 - **A reference to another task:** that task's **Interfaces** block says what to use; the plan does
   not repeat that task's code.
@@ -199,9 +205,9 @@ Every step decides something, and no step transcribes. These are **plan failures
 - "Similar to Task N" — name the Interfaces entry you mean; the implementer never sees Task N
 - a step that names neither the file nor the Interfaces names it implements
 - references to types, functions or methods not defined in any task
-- a Behaviour line with no decision it comes from
+- a Behaviour line with no decision it comes from — a (D<n>), a (T<n>) findings row, an (SC<n>) schema change, or a global constraint
 - a Test line that doesn't say what it proves
-- a code block in a task other than test assertions, exact spec copy, the frozen contract or an algorithm the tests don't determine
+- a code block in a task other than test assertions, exact spec copy, a migration, the frozen contract, a security mechanism or an algorithm the tests don't determine
 - a Pattern entry with code pasted instead of `file:line`
 - an Interfaces name not in backticks
 
@@ -225,8 +231,8 @@ checklist you run yourself — not a subagent dispatch.
    that matches its phase's row.
 6. **One app per phase.** Every `## Phases` row names one app, and every task in it is that app's.
 7. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
-   is a transcript of the program. The plan is words plus test assertions: if code blocks
-   beyond the tests are most of the document, replace them with words, and re-check each step is
+   is a transcript of the program. The plan is words, test assertions, and the opinionated code above: if code blocks
+   beyond those are most of the document, replace them with words, and re-check each step is
    still unambiguous. A guide, not a hard limit.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
