@@ -18,7 +18,7 @@ import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve, relative, isAbsolute, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, measureFromRow, estimateFromRow } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -139,6 +139,16 @@ export function specCommits(repo, registry, feature, commits) {
   return out
 }
 
+/** A placed file's text, or null for a binary (a NUL in its first 8 KB) or an unreadable one — a binary is not scanned. */
+const textOf = (f) => {
+  try {
+    const b = readFileSync(f)
+    return b.subarray(0, 8192).includes(0) ? null : b.toString('utf8')
+  } catch {
+    return null
+  }
+}
+
 /** The agent_walk block of a config's front matter, as its lines. */
 const agentWalkLines = (md) => {
   const fm = (/^---\n([\s\S]*?)\n---/.exec(md)?.[1] ?? '').split('\n')
@@ -212,9 +222,13 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, li
   const claudeArgs = `--permission-mode bypassPermissions --settings ${settings} --plugin-dir ${builder}`
   const builderMd = applyProfile(baseMd, { agentWalk: profile.agent_walk ?? {}, verifyBlock, claudeArgs })
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
+  // the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
+  const texts = [['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)])].filter(([, t]) => t != null)
+  for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
+  const ports = [...new Set([builderMd, ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
   const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`
   const specLines = specs.length ? lineCount(tryGit(repo, 'show', `${specs.at(-1)}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
-  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, files, setup: profile.setup ?? null, fleet, specLines }
+  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, files, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
 }
 
 /**

@@ -190,3 +190,17 @@ test('a timed-out fleet\'s recorded groups are killed — but never pgid 1 or th
   assert.equal(alive(session), false, `the session group ${session} outlived the fleet`)
   // still here: neither pgid 1 nor this runner's group was signalled
 })
+
+test('setup, teardown and every placed file are checked like the config, each reason saying where', () => {
+  const { tmp, out, run, writeProfile } = fixture()
+  put(join(tmp, 'local', 'projects', 'bench.env'), 'PORT=5999\nDATABASE_URL=postgres://localhost/app_dev\n')
+  put(join(tmp, 'local', 'projects', 'tool.bin'), Buffer.from([0x7f, 0x45, 0x00, 0x01]).toString('latin1') + 'postgres://localhost/app_dev')
+  writeProfile({ setup: 'docker compose up -d', teardown: 'dropdb app_dev', files: { '.env': 'bench.env', 'bin/tool': 'tool.bin' } })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /refused: setup: docker command names no bench_ container: docker compose up -d/)
+  assert.match(r.stderr, /refused: teardown: database app_dev is not a bench database/)
+  assert.match(r.stderr, /refused: files\/\.env: database app_dev is not a bench database/)
+  assert.doesNotMatch(r.stderr, /bin\/tool/) // a binary is not read as text
+  assert.ok(!existsSync(join(out, 'result.json')))
+})
