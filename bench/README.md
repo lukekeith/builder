@@ -70,7 +70,10 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   change in the day. Controls fill lanes but do not count against `--budget`'s pick.
 - **Running.** `plan` shows the schedule and dry-runs every archived case; `run … --detach` launches it (a suite outlives the
   session; `run` without `--detach` is refused); `run --resume <suite-id> --detach` re-runs waiting, cut-off and refused
-  items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands.
+  items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands. `stop` stops a running
+  suite safely: each running case stops its fleet, the fleet's sessions and what its setup started, runs its teardown and
+  is marked `stopped`; nothing more starts; the reports are written and the lock released. `--resume` re-runs stopped
+  items, and refuses while a case an earlier attempt started is still alive.
 - **Results.** `bench/local/results/<suite-id>/` (git-ignored) holds `suite.json`, one folder per attempt and the named
   `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids and sizes only.
 - **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no

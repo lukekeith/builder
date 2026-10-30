@@ -6,7 +6,8 @@
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
 // Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log;
-// case mode also `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`.
+// case mode also `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
+// SIGTERM writes result.json `failed: stopped`, logs `stopped <id> <t>` and exits 0.
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { safetyRefusals } from '../../../bench-suite-core.mjs'
@@ -46,6 +47,13 @@ if (argv.includes('--dry-run')) {
   process.exit(0)
 }
 const out = opt('--out')
+// like bench-case: SIGTERM writes result.json `failed: stopped` and exits 0
+process.on('SIGTERM', () => {
+  mkdirSync(out, { recursive: true })
+  writeFileSync(join(out, 'result.json'), JSON.stringify({ id, size: c.size, kind: 'archived', project: c.project, control: false, status: 'failed: stopped', measure: null, baseline: null, specLines: null, planLines: null, estimate: c.estimate ?? null }))
+  log(`stopped ${id} ${Date.now()}`)
+  process.exit(0)
+})
 log(`start ${id} ${c.project} ${Date.now()}`)
 log(`builder ${id} ${opt('--builder')}`)
 log(`timeout ${id} ${process.env.BENCH_CASE_FLEET_TIMEOUT_MS ?? '-'}`)

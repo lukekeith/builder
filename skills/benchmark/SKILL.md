@@ -8,7 +8,7 @@ description: Maintainer tool — runs a fixture feature through builder, superpo
 
 Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id>]`**
 for one fixture feature, or **`/builder:benchmark`** with no feature for the suite picker (§Picker), which also takes
-**`--all`**, **`--budget <h>`**, **`--lanes N`**, **`--control <ids>`** and **`--resume <suite-id>`**.
+**`--all`**, **`--budget <h>`**, **`--lanes N`**, **`--control <ids>`**, **`--resume <suite-id>`** and **`--stop`**.
 `/builder:benchmark tags` is the quick fixture run the no-feature path used to start.
 
 The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it and reports. Resolve
@@ -65,6 +65,8 @@ re-runs that suite's waiting, cut-off and refused items (parked and timed-out on
 
 When a suite is running or the newest run, `--status` shows `node <builder>/scripts/bench-suite.mjs status`
 (and `--report <suite-id>` runs `bench-suite.mjs report <suite-id>`); otherwise today's:
+**`--stop`** — after one **Stop it** / **Not now** — runs `node <builder>/scripts/bench-suite.mjs stop` in the foreground: each running
+case stops cleanly and is marked `stopped`, nothing more starts, the reports are written; `--resume` runs the rest.
 
 `node <builder>/scripts/bench.mjs status` — reply with its contents as markdown. Running: the
 summary so far and the config and session it is on. Finished: the summary table and the report's
