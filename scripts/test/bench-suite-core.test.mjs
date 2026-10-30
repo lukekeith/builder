@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -194,4 +194,52 @@ test('caseFleetTimeoutMs: 3× the estimate, at least an hour; no estimate is 6 h
   assert.equal(caseFleetTimeoutMs({ minutes: 10, usd: 1 }), 60 * 60000)
   assert.equal(caseFleetTimeoutMs(null), 6 * 60 * 60000)
   assert.equal(caseFleetTimeoutMs({ minutes: 0 }), 6 * 60 * 60000)
+})
+test('safety: every form that names a port in use — docker -p, any-host and IPv6 binds, lsof and fuser forms', () => {
+  const inUse = (s) => refuse(s, [3141])
+  const m = ['port 3141 is in use now']
+  for (const s of [
+    '  start: docker run --name bench_db -p 3141:5432 postgres',
+    '  start: docker run --name bench_db -p 127.0.0.1:3141:5432 postgres',
+    '  start: docker run --name bench_db --publish=3141:5432 postgres',
+    '  start: node server.js --host 0.0.0.0:3141',
+    '  start: curl http://[::1]:3141/health',
+    '  stop: lsof -nP -tiTCP:3141 -sTCP:LISTEN | xargs kill',
+    '  stop: lsof -iTCP:3141 | xargs kill',
+    '  stop: lsof -i tcp:3141 | xargs kill',
+    '  stop: lsof -t -i :3141 | xargs kill',
+    '  stop: lsof -ti:3141 | xargs kill',
+    '  stop: fuser -k 3141/tcp',
+    '  stop: npx kill-port 3141',
+  ]) assert.deepEqual(inUse(s), m, s)
+  assert.deepEqual(refuse('  stop: lsof -nP -tiTCP:3142 | xargs kill', [3141]), [])
+  assert.deepEqual(refuse('  start: mkdir -p tmp && npm start', [3141]), [])
+})
+test('safety: PGDATABASE and *_DATABASE must name a bench database', () => {
+  assert.deepEqual(refuse('  env: PGDATABASE=app_dev'), ['database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(refuse("  env: MYSQL_DATABASE='app'"), ['database app is not a bench database (bench_*)'])
+  assert.deepEqual(refuse('  env: DB_DATABASE=bench_p PGDATABASE=bench_q'), [])
+})
+test('safety: createdb and dropdb must name a bench database', () => {
+  assert.deepEqual(refuse('  start: dropdb --if-exists -h localhost app_dev && createdb bench_p'), ['database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(refuse('  start: dropdb --if-exists -U me bench_p && createdb -O me bench_p'), [])
+})
+test('textRefusals: setup, teardown and a placed file are scanned, each reason says where', () => {
+  const t = (where, text, listening = []) => textRefusals(where, text, P, { listening })
+  assert.deepEqual(t('setup', 'npm ci && docker compose up -d'), ['setup: docker command names no bench_ container: docker compose up -d'])
+  assert.deepEqual(t('teardown', 'dropdb app_dev'), ['teardown: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(t('files/.env', '# a comment: PORT=3141\nPORT=3141\nDATABASE_URL=postgres://localhost/app_dev\nPGDATABASE=app_dev\n', [3141]), ['files/.env: database app_dev is not a bench database (bench_*)', 'files/.env: port 3141 is in use now'])
+  assert.deepEqual(t('setup', 'createdb bench_p && npm ci'), [])
+  assert.deepEqual(textRefusals('setup', 'docker compose up', {}, { listening: [] }), [])
+})
+test('portsNamed: the ports a text names, database URLs and comments left out', () => {
+  assert.deepEqual(portsNamed('---\nagent_walk:\n  env: PORT=4010 DATABASE_URL=postgres://localhost:5432/bench_p\n  # PORT=9999\n  stop: lsof -ti:4011 | xargs kill\n---\n'), [4010, 4011])
+})
+test('safety: a database client\'s -p / --port is the shared server\'s, like a database URL\'s port', () => {
+  assert.deepEqual(refuse('  start: createdb -p 5432 bench_p && psql -p 5432 bench_p -c "select 1" && PORT=4010 npm start', [5432]), [])
+  assert.deepEqual(refuse('  start: psql --port=5432 bench_p; docker run --name bench_x -p 5432:5432 pg', [5432]), ['port 5432 is in use now'])
+})
+test('safety: a database server\'s port variable (PGPORT, DB_PORT…) is the shared server\'s too; an app\'s is not', () => {
+  assert.deepEqual(refuse('  env: PGPORT=5432 DB_PORT=5432 POSTGRES_PORT=5432', [5432]), [])
+  assert.deepEqual(refuse('  env: API_PORT=5432', [5432]), ['port 5432 is in use now'])
 })

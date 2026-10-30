@@ -143,33 +143,80 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
 }
 
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
+/** PGDATABASE, DATABASE and any *_DATABASE set to a name (DATABASE_URL is a URL, checked above). */
+const DB_VAR = /\b(?:[A-Z0-9]+_)*(?:PG)?DATABASE=(['"]?)([^\s'";&|()]*)/g
+/** createdb / dropdb options that take a value; the first other word is the database. */
+const PG_VALUE_OPTS = new Set(['-h', '-p', '-U', '-O', '-T', '-E', '-l', '-D', '-S', '--host', '--port', '--username', '--owner', '--template', '--encoding', '--locale', '--tablespace', '--maintenance-db', '--strategy', '--icu-locale', '--locale-provider'])
+/** Every form a line names a port in: *PORT=, --port, a localhost / any-host / IPv6 bind, docker -p, and lsof / fuser / kill-port targets. */
+const PORT_RES = [
+  /(?<![A-Z0-9_])(?!(?:PG|DB|DATABASE|POSTGRES|MYSQL|REDIS|MONGO)_?PORT=)[A-Z0-9_]*PORT=['"]?(\d+)/g,
+  /--port[= ]['"]?(\d+)/g,
+  /(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d+)/g,
+  /(?:^|\s)(?:-p|--publish)[\s=]+(?:\d{1,3}(?:\.\d{1,3}){3}:)?(\d+)/g,
+  /(?:tcp|udp):(\d+)/gi,
+  /(?:^|\s)-[a-zA-Z]*i\s*:(\d+)/g,
+  /\b(\d+)\/(?:tcp|udp)\b/g,
+  /\bkill-port\s+(\d+)/g,
+]
+const uncommented = (lines) => lines.filter((l) => !l.trim().startsWith('#'))
+const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
 
-/** Why a clone's config must not run: it would touch something of the human's. Empty means safe. `builderMd` is the text after applyProfile; `listening` the TCP ports now listening. */
-export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
-  const prefix = profile?.db_prefix
-  if (!prefix) return ['profile has no db_prefix']
-  const { fm, bare } = splitFm(builderMd.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'))
-  if (bare) return ['no front matter — cannot check the config']
-  const lines = fm.filter((l) => !l.trim().startsWith('#'))
+/** A database client: its -p / --port is the shared database server's. */
+const DB_CLIENT = /\b(?:psql|createdb|dropdb|pg_dump|pg_restore|pg_isready|mysql|mysqladmin|mysqldump|redis-cli|mongosh)\b/
+const OPT_PORT = new Set([PORT_RES[1], PORT_RES[3]])
+/** The ports named in lines, database URLs and a database client's -p / --port left out (a shared database server's port is fine). */
+const portsIn = (lines) => [...new Set(lines.flatMap((l) => l.replace(DB_URL, ' ').split(/&&|\|\||;|\|/).flatMap((seg) =>
+  PORT_RES.filter((re) => !(DB_CLIENT.test(seg) && OPT_PORT.has(re))).flatMap((re) => [...seg.matchAll(re)].map((m) => Number(m[1]))))))]
+
+/** The ports a text names (comments and database URLs left out). */
+export function portsNamed(text) {
+  return portsIn(uncommented(normalize(text).split('\n')))
+}
+
+/** Why lines would touch something of the human's: a database not carrying the prefix, a port in use, docker on a non-bench container, the booted simulator. */
+function lineRefusals(lines, prefix, inUse) {
   const out = []
   const add = (m) => { if (!out.includes(m)) out.push(m) }
-  const inUse = new Set(listening.map(Number))
+  const notBench = (name) => add(`database ${name || '(default)'} is not a bench database (${prefix}*)`)
   for (const l of lines) for (const u of l.match(DB_URL) ?? []) {
     const name = /^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || ''
-    if (!name.startsWith(prefix)) add(`database ${name || '(default)'} is not a bench database (${prefix}*)`)
+    if (!name.startsWith(prefix)) notBench(name)
   }
-  for (const l of lines) {
-    const bare = l.replace(DB_URL, ' ')
-    for (const m of bare.matchAll(/[A-Z_]*PORT=(\d+)|--port[= ](\d+)|(?:localhost|127\.0\.0\.1):(\d+)/g)) {
-      const port = Number(m[1] ?? m[2] ?? m[3])
-      if (inUse.has(port)) add(`port ${port} is in use now`)
+  for (const l of lines) for (const m of l.replace(DB_URL, ' ').matchAll(DB_VAR)) if (!m[2].startsWith(prefix)) notBench(m[2])
+  for (const l of lines) for (const seg of l.split(/&&|\|\||;|\|/)) {
+    const words = /\b(?:createdb|dropdb)\b(.*)/.exec(seg)?.[1].trim().split(/\s+/).filter(Boolean)
+    if (!words) continue
+    let name = null
+    for (let i = 0; i < words.length && name == null; i++) {
+      if (PG_VALUE_OPTS.has(words[i])) i++
+      else if (!words[i].startsWith('-')) name = words[i].replace(/^['"]|['"]$/g, '')
     }
+    if (name == null || !name.startsWith(prefix)) notBench(name)
   }
+  for (const port of portsIn(lines)) if (inUse.has(port)) add(`port ${port} is in use now`)
   for (const l of lines) for (const seg of l.split(/&&|;|\|/)) {
     const m = /(?:^|[\s(:])(docker-compose\b.*|docker\s+(?:start|stop|restart|kill|pause|unpause|exec|run|rm|rmi|compose|volume|network|container|system|prune)\b.*)/.exec(seg)
     if (m && !m[1].includes(prefix)) add(`docker command names no ${prefix} container: ${m[1].trim()}`)
   }
   if (lines.some((l) => /\bsimctl\b.*\bbooted\b/.test(l))) add('simctl targets the booted simulator — name a bench device UDID')
+  return out
+}
+
+/** The same rules over a profile's other text — its setup, teardown or a placed file — each reason prefixed with where it was found. Empty without a db_prefix (safetyRefusals says so). */
+export function textRefusals(where, text, profile, { listening = [] } = {}) {
+  const prefix = profile?.db_prefix
+  if (!prefix || text == null) return []
+  return lineRefusals(uncommented(normalize(text).split('\n')), prefix, new Set(listening.map(Number))).map((m) => `${where}: ${m}`)
+}
+
+/** Why a clone's config must not run: it would touch something of the human's. Empty means safe. `builderMd` is the text after applyProfile; `listening` the TCP ports now listening. */
+export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
+  const prefix = profile?.db_prefix
+  if (!prefix) return ['profile has no db_prefix']
+  const { fm, bare } = splitFm(normalize(builderMd))
+  if (bare) return ['no front matter — cannot check the config']
+  const out = lineRefusals(uncommented(fm), prefix, new Set(listening.map(Number)))
+  const add = (m) => { if (!out.includes(m)) out.push(m) }
   const at = fm.findIndex((l) => /^agent_walk:/.test(l))
   const ca = at < 0 ? undefined : fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)).find(Boolean)
   if (!ca || !ca[1] || ca[1] === '{claude_args}') add("agent_walk.claude_args is not set — sessions would load the user's plugins")

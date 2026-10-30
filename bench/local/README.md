@@ -44,10 +44,13 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 
 ## Safety rules
 
-A case is refused, before anything is cloned, when the clone's config would touch something of yours:
+A case is refused, before anything is cloned, when the clone's config — or the profile's `setup`, its
+`teardown`, or any text file it places (each reason says which: `setup: …`, `files/.env: …`) — would touch something of yours:
 
-- the profile has no `db_prefix`, or a database URL in the config names a database that does not start with it;
-- a port the config uses is listening now;
+- the profile has no `db_prefix`, or a database URL, `PGDATABASE` / `*_DATABASE`, or a `createdb` / `dropdb` names a database that does not start with it;
+- a port named is listening now — `*PORT=`, `--port`, `localhost:` / `0.0.0.0:` / `[::1]:`, `docker -p`, and the
+  `lsof -iTCP:N` / `-ti:N` / `-i :N`, `fuser N/tcp` and `kill-port N` forms (a database URL's port, a database
+  client's `-p`, and `PGPORT` / `DB_PORT` are the shared database server's, and are not);
 - a `docker` or `docker-compose` command names no container carrying the prefix;
 - `simctl` targets the booted simulator instead of a named bench device;
 - `agent_walk.claude_args` is not set, so sessions would load your own plugins (the runner sets it);
