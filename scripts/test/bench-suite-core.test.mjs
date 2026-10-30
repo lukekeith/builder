@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -168,4 +168,19 @@ test('renderSuiteReport: deltas against baseline and control, the estimate verdi
   const at = ['## Cases', '## Stages', '## Plan format', '## Gate share', '## Top 5'].map((h) => md.indexOf(h))
   assert.deepEqual([...at].sort((a, b) => a - b), at); assert.ok(at[0] >= 0)
   assert.doesNotMatch(md, /NaN|undefined|\bp\b \|/)
+})
+
+// final fix wave
+test('renderSuiteReport: names: false prints only the status category — a status\'s detail stays in the named report', () => {
+  const r = (id, status) => ({ id, size: 'sm', project: 'secretproj', control: false, status, measure: null })
+  const res = [r('a', 'done'), r('b', 'failed: could not clone the repo: /Users/x/secretproj does not exist'), r('c', 'refused: the clone /Users/x/secretproj/clone is inside the project repo'), r('d', 'parked: spec leaves secretproj\'s auth open'), r('e', 'failed: the fleet timed out after 3600s'), r('f', 'timed out'), r('g', 'stopped'), r('h', 'waiting'), r('i', 'failed: setup timed out')]
+  const md = renderSuiteReport(res, { names: false })
+  assert.doesNotMatch(md, /secretproj|\/Users/)
+  const statusOf = (id) => new RegExp(`^\\| ${id} \\| sm \\| ([^|]+) \\|`, 'm').exec(md)[1].trim()
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].map(statusOf), ['done', 'failed', 'refused', 'parked', 'timed out', 'timed out', 'stopped', 'waiting', 'timed out'])
+  assert.match(renderSuiteReport(res, { names: true }), /could not clone the repo: \/Users\/x\/secretproj does not exist/)
+})
+test('statusCategory: an unknown status is failed, never its text', () => {
+  assert.equal(statusCategory('something odd /Users/x'), 'failed')
+  assert.equal(statusCategory(undefined), 'failed')
 })

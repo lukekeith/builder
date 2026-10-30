@@ -168,12 +168,13 @@ test('the project mutex holds when a case runs long', async () => {
 })
 
 test('a case process that dies leaves its item failed and the suite goes on', async () => {
-  const { suite, out, dateDir, suiteJson, settled } = setup()
+  const { suite, out, dateDir, suiteJson, results, settled } = setup()
   suite(['run', 'c1,c3', '--lanes', '1', '--detach'], { STUB_CASE_DIE: 'c1' })
   await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
   await settled()
   assert.deepEqual(suiteJson().items.map((i) => [i.id, i.status]), [['c1', 'failed: case process died'], ['c3', 'done']])
-  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c1 \| md \| failed: case process died \|/)
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c1 \| md \| failed \|/)
+  assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), /\| c1 \| md \| projA \| failed: case process died \|/)
 })
 
 test('status after the suite process dies; --resume runs only the rest', async () => {
@@ -277,7 +278,8 @@ test('a throw inside one item fails that item; its lane goes on and the reports 
   assert.equal(by.c1, 'done')
   assert.equal(by.c3, 'done')
   assert.match(by.c2, /^failed: .*ENOENT/)
-  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c2 \| sm \| failed: /)
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c2 \| sm \| failed \|/)
+  assert.doesNotMatch(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /ENOENT|nonexistent/)
 })
 
 /** A builder checkout in tmp: a git repo on main with one commit. */
