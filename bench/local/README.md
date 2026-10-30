@@ -55,6 +55,8 @@ A case is refused, before anything is cloned, when the clone's config — or the
 - `simctl` targets the booted simulator instead of a named bench device;
 - `agent_walk.claude_args` is not set, so sessions would load your own plugins (the runner sets it);
 - the feature has no merged archive row, no spec-only commits at the head of its branch, or the clone or builder path contains whitespace;
-- the clone's path is inside the project repo, or already exists.
+- the clone's path is inside the project repo or any other git repo, or already exists (clones go under
+  `$BENCH_TMP`, `$TMPDIR/bench-suite` by default; results stay here);
+- the result folder (`--out`) is inside the project repo.
 
 `bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons; fix the case or profile and plan again.

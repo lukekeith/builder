@@ -73,5 +73,7 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands.
 - **Results.** `bench/local/results/<suite-id>/` (git-ignored) holds `suite.json`, one folder per attempt and the named
   `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids and sizes only.
-- **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs);
+- **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no
+  repo's `CLAUDE.md` loads into a case's sessions; a clone inside any git repo is refused.
+- **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`;
   `BENCH_SETUP_TIMEOUT_MS` (20 min), `BENCH_CASE_FLEET_TIMEOUT_MS` (24 h), `BENCH_CASE_KILL_GRACE_MS` (10 s).
