@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { spawnSync, execFileSync } from 'node:child_process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = realpathSync(join(HERE, '..', '..'))
@@ -252,4 +252,73 @@ test('a second run waits for nothing: it refuses while a suite holds the lock', 
   assert.match(r.stderr, /a suite is running \(pid \d+, \S+\) — \/builder:benchmark --status/)
   await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
   await settled()
+})
+
+test('run without --detach is refused — a suite outlives this session', () => {
+  const { suite, readLog, local } = setup()
+  for (const args of [['run', 'c1'], ['run', '--resume', 'x']]) {
+    const r = suite(args)
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /run needs --detach — a suite outlives this session/)
+  }
+  assert.equal(readLog().lines.length, 0)
+  assert.equal(existsSync(join(local, 'results')), false)
+})
+
+test('a throw inside one item fails that item; its lane goes on and the reports are still written', async () => {
+  const { suite, out, dateDir, suiteJson, results, settled } = setup()
+  // lane 1: c1 (30m) then c2; lane 2: c3. c2's out path becomes a dangling symlink while c1 runs, so its folder can't be made
+  const r = suite(['run', 'c1,c2,c3', '--lanes', '2', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  symlinkSync('/nonexistent/bench-suite-out', join(results, suiteJson().id, 'c2'))
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  const by = Object.fromEntries(suiteJson().items.map((i) => [i.id, i.status]))
+  assert.equal(by.c1, 'done')
+  assert.equal(by.c3, 'done')
+  assert.match(by.c2, /^failed: .*ENOENT/)
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c2 \| sm \| failed: /)
+})
+
+/** A builder checkout in tmp: a git repo on main with one commit. */
+function builderRepo(tmp) {
+  const repo = join(tmp, 'builder')
+  mkdirSync(repo)
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: repo, encoding: 'utf8' })
+  git('init', '-q', '-b', 'main')
+  writeFileSync(join(repo, 'README.md'), 'b\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  return { repo, git }
+}
+
+test('a control still runs after $TMPDIR was purged under a registered main worktree', async () => {
+  const { suite, tmp, readLog, results, suiteJson, settled } = setup()
+  const { repo, git } = builderRepo(tmp)
+  const main = join(tmp, 'bench-builder-main')
+  git('worktree', 'add', '-q', '--detach', main, 'main')
+  rmSync(main, { recursive: true, force: true })
+  const r = suite(['run', 'c2', '--control', 'c2', '--builder', repo, '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  assert.deepEqual(suiteJson().items.map((i) => [i.id, i.status]), [['c2', 'done'], ['c2@main', 'done']])
+  assert.ok(readLog().builders('c2').includes(main))
+  assert.ok(existsSync(join(main, 'README.md')))
+})
+
+test('a reused main checkout that cannot check out main fails the control, not runs it on a stale commit', async () => {
+  const { suite, tmp, readLog, results, suiteJson, settled } = setup()
+  const { repo } = builderRepo(tmp)
+  const main = join(tmp, 'bench-builder-main')
+  mkdirSync(main)
+  writeFileSync(join(main, '.git'), 'gitdir: /nonexistent/worktree\n')
+  const r = suite(['run', 'c2', '--control', 'c2', '--builder', repo, '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const by = Object.fromEntries(suiteJson().items.map((i) => [i.id, i.status]))
+  assert.equal(by.c2, 'done')
+  assert.match(by['c2@main'], /^failed: no main checkout for controls: .+/)
+  assert.deepEqual(readLog().builders('c2'), [repo])
 })

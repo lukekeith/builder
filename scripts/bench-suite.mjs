@@ -328,15 +328,20 @@ function freshOut(dir, id) {
   return p
 }
 
-/** The checkout of builder's main a control runs on: $TMPDIR/bench-builder-main, made with `git worktree add` or reused. */
+/**
+ * The checkout of builder's main a control runs on: $TMPDIR/bench-builder-main, reused when present (moved
+ * to main's tip when it is a git checkout; a failed checkout throws, so no control runs on a stale commit),
+ * else made with `git worktree add` after a prune — macOS purges $TMPDIR and leaves the worktree registered.
+ */
 function mainCheckout(builder) {
   const dir = join(tmpdir(), 'bench-builder-main')
+  const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   if (existsSync(dir)) {
-    // only our own worktree is moved to main's tip; a directory without .git is used as it is
-    if (existsSync(join(dir, '.git'))) spawnSync('git', ['-C', dir, 'checkout', '-q', '--detach', 'main'], { encoding: 'utf8' })
+    if (existsSync(join(dir, '.git'))) git('-C', dir, 'checkout', '-q', '--detach', 'main')
     return dir
   }
-  execFileSync('git', ['-C', builder, 'worktree', 'add', '-q', '--detach', dir, 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  git('-C', builder, 'worktree', 'prune')
+  git('-C', builder, 'worktree', 'add', '-q', '--detach', dir, 'main')
   return dir
 }
 
@@ -403,20 +408,25 @@ async function runSuite(id) {
       release()
     }
   }
+  // anything an item throws fails that item alone: its lane goes on and the reports are still written
   const runItem = (it) => exclusive(it.project, async () => {
-    const out = freshOut(suiteDir(id), it.id)
-    mkdirSync(out, { recursive: true })
-    Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out })
-    saveSuite(s)
-    const checkout = it.control ? main : s.builder
     let status
     try {
+      const out = freshOut(suiteDir(id), it.id)
+      mkdirSync(out, { recursive: true })
+      Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out })
+      saveSuite(s)
+      const checkout = it.control ? main : s.builder
       status = it.kind === 'fixture' ? await runFixture(it, checkout, out) : await runArchived(it, checkout, out)
     } catch (e) {
       status = `failed: ${firstLine(e.message)}`
     }
     Object.assign(it, { status, endedAt: Date.now() })
-    saveSuite(s)
+    try {
+      saveSuite(s)
+    } catch (e) {
+      console.error(`${new Date().toISOString()} could not save suite.json: ${firstLine(e.message)}`)
+    }
     console.log(`${new Date().toISOString()} ${it.id}: ${status}`)
   })
   const lanes = [...new Set(s.items.map((it) => it.lane))]
@@ -558,6 +568,8 @@ if (isMain) {
   }
 
   if (cmd === 'plan' || cmd === 'run') {
+    // a suite runs only detached; the detached process itself is the internal `_run <id>`
+    if (cmd === 'run' && !args.opts['--detach']) die('run needs --detach — a suite outlives this session')
     const resume = cmd === 'run' ? args.opts['--resume'] : undefined
     if (resume != null) {
       const id = plainId(resume)
@@ -576,15 +588,7 @@ if (isMain) {
         printRefusals(refusals)
         process.exit(2)
       }
-      if (args.opts['--detach']) launch(id)
-      else {
-        if (!acquireLock(process.pid, id)) die(busy(lockState()))
-        try {
-          await runSuite(id)
-        } finally {
-          releaseLock()
-        }
-      }
+      launch(id)
       process.exit(0)
     }
 
@@ -619,15 +623,7 @@ if (isMain) {
     const id = newSuiteId()
     mkdirSync(suiteDir(id), { recursive: true })
     saveSuite({ id, builder, lanes, createdAt: Date.now(), pid: null, items: scheduleItems(items, packed), skipped })
-    if (args.opts['--detach']) launch(id)
-    else {
-      if (!acquireLock(process.pid, id)) die(busy(lockState()))
-      try {
-        await runSuite(id)
-      } finally {
-        releaseLock()
-      }
-    }
+    launch(id)
     process.exit(0)
   }
 
