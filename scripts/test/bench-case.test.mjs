@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpathSync, symlinkSync } from 'node:fs'
 import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -643,6 +643,23 @@ test('saveEvidence: a .jsonl transcript has its own, larger cap; past the total 
   assert.deepEqual(res.skipped.sort(), ['fleet/logs/a-01.log (300 bytes)', 'fleet/z.json (150 bytes, past the 400-byte total)'])
   assert.equal(res.bytes, 300)
   assert.equal(res.error, undefined)
+})
+
+test('saveEvidence never follows a symlinked .builder root — the clone\'s or a worktree\'s — and names it', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-ev-')))
+  put(join(tmp, 'elsewhere', 'secret.txt'), 'not the run\'s\n')
+  const clone = join(tmp, 'clone')
+  mkdirSync(clone)
+  symlinkSync(join(tmp, 'elsewhere'), join(clone, '.builder'))
+  mkdirSync(join(`${clone}.fleet`, 'f'), { recursive: true })
+  symlinkSync(join(tmp, 'elsewhere'), join(`${clone}.fleet`, 'f', '.builder'))
+  put(join(`${clone}.fleet`, 'g', '.builder', 'g', 'ledger.md'), 'l\n')
+  const res = saveEvidence(clone, join(tmp, 'out'))
+  assert.ok(!existsSync(join(tmp, 'out', 'builder', 'secret.txt')))
+  assert.ok(!existsSync(join(tmp, 'out', 'builder', 'worktrees', 'f')))
+  assert.ok(existsSync(join(tmp, 'out', 'builder', 'worktrees', 'g', 'g', 'ledger.md')))
+  assert.deepEqual(res.skipped.sort(), ['.builder (a symlink, not followed)', 'worktrees/f (a symlink, not followed)'])
+  assert.equal(res.files, 1)
 })
 
 test('SIGTERM stops the case: its fleet, the fleet\'s session groups and the setup\'s, the teardown run, result.json failed: stopped', async () => {
