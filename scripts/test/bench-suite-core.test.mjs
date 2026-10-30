@@ -370,3 +370,8 @@ test('caseEnv: no database variable is inherited — DATABASE_URL, DIRECT_URL, T
   const shell = { PATH: '/bin', HOME: '/h', DATABASE_URL: 'x', DIRECT_URL: 'x', TEST_DATABASE_URL: 'x', PGHOST: 'x', REDIS_URL: 'x', MONGODB_URI: 'x', MONGO_URL: 'x', MYSQL_PWD: 'x', MYSQL_HOST: 'x', DB_HOST: 'x', DB_DATABASE: 'x', REDIS_URL_OTHER: 'kept', MYDB_HOST: 'kept' }
   assert.deepEqual(caseEnv(shell, { DB_DATABASE: ':memory:' }, '/c'), { PATH: '/bin', HOME: '/h', REDIS_URL_OTHER: 'kept', MYDB_HOST: 'kept', DB_DATABASE: ':memory:', CLAUDE_PROJECT_DIR: '/c' })
 })
+test('safety: shutdown, halt or reboot after exec, nohup, env, command or time is the machine\'s', () => {
+  for (const s of ['exec /sbin/reboot', 'nohup shutdown -h now', 'env shutdown -h now', 'env -i PATH=/bin shutdown -h now', 'command halt', 'time reboot', 'nohup sudo -n /sbin/shutdown -r now', 'FORCE=1 reboot'])
+    assert.ok(probe(s).some((x) => /^setup: shuts down or restarts the machine: /.test(x)), `${s} → ${JSON.stringify(probe(s))}`)
+  assert.deepEqual(probe('exec npm start && env FOO=1 node reboot-check.js'), [])
+})

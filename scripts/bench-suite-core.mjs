@@ -252,11 +252,16 @@ const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill
  */
 const DB_TOOL = /(?:^|[\s(/])(?:mysqladmin|mysql|mysqld|redis-cli|redis-server|valkey-cli|mongosh|mongo|mongod|psql|pg_ctl|postgres)(?=\s|$)/
 const SHUTDOWN = /\bshutdown(?:Server)?\b/i
-/** The machine's own shutdown, halt, reboot or poweroff — by path, or through sudo with its flags. */
+/** The machine's own shutdown, halt, reboot or poweroff — by path, after VAR=value words and exec / nohup / env / command / time and their flags, or anywhere after sudo. */
 const HALT = /^(?:\S*\/)?(?:shutdown|halt|reboot|poweroff)$/
+const WRAPPER = /^(?:\S*\/)?(?:exec|nohup|env|command|time)$/
 const haltsMachine = (seg) => {
   const words = seg.split(/\s+/).filter(Boolean)
-  return HALT.test(words[0] ?? '') || (/^(?:\S*\/)?sudo$/.test(words[0] ?? '') && words.slice(1).some((w) => HALT.test(w)))
+  const skip = (w) => w != null && (/^-/.test(w) || /^[A-Za-z_]\w*=/.test(w))
+  let i = 0
+  while (skip(words[i])) i++
+  while (WRAPPER.test(words[i] ?? '')) for (i++; skip(words[i]); ) i++
+  return HALT.test(words[i] ?? '') || (/^(?:\S*\/)?sudo$/.test(words[i] ?? '') && words.slice(i + 1).some((w) => HALT.test(w)))
 }
 const OPT_PORT = new Set([PORT_RES[1], PORT_RES[3]])
 /** The ports named in lines, database URLs and a database client's -p / --port left out (a shared database server's port is fine). */
