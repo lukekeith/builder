@@ -70,7 +70,7 @@ function configDir() {
 }
 
 /** Every plugin a session would load from user scope, set to false — so only the pipeline under test (--plugin-dir) is loaded. */
-function disabledPlugins() {
+export function disabledPlugins() {
   const file = process.env.BENCH_INSTALLED_PLUGINS || join(configDir(), 'plugins', 'installed_plugins.json')
   try {
     const plugins = JSON.parse(readFileSync(file, 'utf8')).plugins ?? {}
