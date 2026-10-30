@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -50,3 +50,43 @@ test('recommendControls: the shortest archived case per size', () => {
   const c = (id, size, minutes, kind = 'archived') => ({ id, size, kind, estimate: { minutes, usd: 1 } })
   assert.deepEqual(recommendControls([c('a', 'md', 90), c('b', 'md', 60), c('c', 'lg', 200), c('f', 'sm', 5, 'fixture')]), ['b', 'c'])
 })
+
+// profile application, safety check
+const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\nverify:\n  workers: 2\n---\n\n# body\nverify: stays\n'
+test('applyProfile: replaces and appends agent_walk keys, sets claude_args, swaps verify', () => {
+  const out = applyProfile(MD, { agentWalk: { env: 'PORT=5917 DATABASE_URL=postgres://localhost/bench_p', start: 'npm start' }, verifyBlock: 'verify:\n  workers: 1\n', claudeArgs: '--plugin-dir /b' })
+  assert.match(out, /^  env: PORT=5917 DATABASE_URL=postgres:\/\/localhost\/bench_p$/m)
+  assert.match(out, /^  start: npm start$/m)
+  assert.match(out, /^  claude_args: --plugin-dir \/b$/m)
+  assert.match(out, /^verify:\n  workers: 1\n---/m)
+  assert.ok(out.endsWith('# body\nverify: stays\n'))
+})
+test('applyProfile: no agent_walk map yet', () =>
+  assert.match(applyProfile('---\nproject: p\n---\n', { agentWalk: { env: 'X=1' }, claudeArgs: '--a' }), /^agent_walk:\n  env: X=1\n  claude_args: --a\n---/m))
+test('applyProfile: unknown front matter survives — lists, nested maps, keys after verify', () => {
+  const md = '---\nagent_walk:\n  env: A=1\nlist:\n- a\n- b\nverify:\n  gates:\n    web: npm test\n  skip:\n  - x\nafter: kept\n---\nbody\n'
+  const out = applyProfile(md, { agentWalk: { env: 'A=2' }, verifyBlock: 'verify:\n  workers: 1', claudeArgs: '--a' })
+  assert.equal(out, '---\nagent_walk:\n  env: A=2\n  claude_args: --a\nlist:\n- a\n- b\nverify:\n  workers: 1\nafter: kept\n---\nbody\n')
+})
+test('applyProfile: verify appended before the closing rule when missing', () =>
+  assert.match(applyProfile('---\nproject: p\n---\n', { agentWalk: {}, verifyBlock: 'verify:\n  workers: 1\n', claudeArgs: '--a' }), /^verify:\n  workers: 1\n---\n$/m))
+const P = { db_prefix: 'bench_' }
+const walk = (s) => `---\nagent_walk:\n  claude_args: --plugin-dir /b\n${s}\n---\n`
+test('safety: a bench database and a free port pass', () =>
+  assert.deepEqual(safetyRefusals(walk('  env: PORT=5917 DATABASE_URL=postgres://u@localhost:5432/bench_p'), P, { listening: [5432] }), []))
+test('safety: a database that is not the bench\'s', () =>
+  assert.deepEqual(safetyRefusals(walk('  env: DATABASE_URL=postgresql://localhost:5432/app_dev'), P, { listening: [5432] }), ['database app_dev is not a bench database (bench_*)']))
+test('safety: a port something already listens on', () =>
+  assert.deepEqual(safetyRefusals(walk('  env: PORT=3000'), P, { listening: [3000] }), ['port 3000 is in use now']))
+test('safety: docker against a container that is not the bench\'s', () =>
+  assert.deepEqual(safetyRefusals(walk('  start: docker start app-db'), P, { listening: [] }), ['docker command names no bench_ container: docker start app-db']))
+test('safety: the booted simulator', () =>
+  assert.deepEqual(safetyRefusals(walk('  start: xcrun simctl launch booted com.x'), P, { listening: [] }), ['simctl targets the booted simulator — name a bench device UDID']))
+test('safety: claude_args still the placeholder', () =>
+  assert.deepEqual(safetyRefusals('---\nagent_walk:\n  claude_args: {claude_args}\n---\n', P, { listening: [] }), ['agent_walk.claude_args is not set — sessions would load the user\'s plugins']))
+test('safety: no db_prefix', () =>
+  assert.deepEqual(safetyRefusals(walk(''), {}, { listening: [] }), ['profile has no db_prefix']))
+test('safety: scans only the front matter', () =>
+  assert.deepEqual(safetyRefusals(walk('  env: PORT=5917') + '\ndocker rm app localhost:3000\n', P, { listening: [3000] }), []))
+test('safety: a shared db server port is fine, an app port on it is not', () =>
+  assert.deepEqual(safetyRefusals(walk('  env: PORT=5432 DATABASE_URL=postgres://localhost:5432/bench_p'), P, { listening: [5432] }), ['port 5432 is in use now']))
