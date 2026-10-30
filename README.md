@@ -56,7 +56,7 @@ recommendation, or pick another.
 |---|---|
 | **spec** | `SPEC.md` — what the feature is and why, written once and kept |
 | **manifest** | `MANIFEST.md` — a ~12-line file that says where the feature stands; how resuming works |
-| **plan** | `PLAN.md` — the build, step by step, with the code and tests |
+| **plan** | `PLAN.md` — the build, task by task: files, interfaces, behaviour, the tests' assertions |
 | **walk** | trying the finished feature yourself in the running app |
 | **sign-off** | `/builder:signoff` — your verdict after the walk |
 | **verify** | the final full check before a PR |

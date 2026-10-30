@@ -27,7 +27,14 @@ all in words except the tests:
 - **Everything else is words:** files with their one responsibility, interfaces (exact names in backticks,
   parameters and return types described), behaviour rules citing their decision, a pattern as `file:line`, steps with
   their commands. **The implementer writes the body.**
-- **The only other code is exact copy the spec fixes** (a message, a migration, a config value).
+- **Code also where the plan must be opinionated** — where a wrong body could still pass the tests, so the
+  implementer must not choose:
+  - **exact copy the spec fixes** — a message, a migration, a config value, a regex;
+  - **the frozen contract** — a cross-app wire type, schema or event shape, verbatim from SPEC §Contract,
+    in the task that produces it (a consumer's task names it in Interfaces instead);
+  - **an algorithm the signature and tests don't determine** — a ranking, a parser, a state machine's
+    transitions, a retry or locking rule: the body, or the pseudo-code that fixes it.
+  Nowhere else. A body the signature and tests already determine is a transcript.
 - **A reference to another task:** that task's **Interfaces** block says what to use; the plan does
   not repeat that task's code.
 
@@ -194,7 +201,7 @@ Every step decides something, and no step transcribes. These are **plan failures
 - references to types, functions or methods not defined in any task
 - a Behaviour line with no decision it comes from
 - a Test line that doesn't say what it proves
-- a code block in a task other than test assertions or exact spec copy
+- a code block in a task other than test assertions, exact spec copy, the frozen contract or an algorithm the tests don't determine
 - a Pattern entry with code pasted instead of `file:line`
 - an Interfaces name not in backticks
 
