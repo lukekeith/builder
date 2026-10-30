@@ -309,6 +309,7 @@ const METRICS = [['wallMs', dur], ['tokens', tokStr], ['turns', count], ['costUs
 export function statusCategory(status) {
   const s = String(status ?? '')
   if (/^(done|stopped|waiting|running)$/.test(s)) return s
+  if (s === 'failed: stopped') return 'stopped'
   if (/^timed out\b/.test(s) || /^failed:.*\btimed out\b/.test(s)) return 'timed out'
   const head = /^(failed|refused|parked)\b/.exec(s)?.[1]
   return head ?? 'failed'

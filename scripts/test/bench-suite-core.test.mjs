@@ -183,6 +183,7 @@ test('renderSuiteReport: names: false prints only the status category — a stat
 test('statusCategory: an unknown status is failed, never its text', () => {
   assert.equal(statusCategory('something odd /Users/x'), 'failed')
   assert.equal(statusCategory(undefined), 'failed')
+  assert.equal(statusCategory('failed: stopped'), 'stopped')
 })
 test('estimateFromRow: human wait — stages.parked and walkQueueMs — is left out, never below Σ timing ms', () => {
   assert.deepEqual(estimateFromRow({ wallMs: 120 * 60000, stages: { build: 30 * 60000, parked: 50 * 60000 }, walkQueueMs: 10 * 60000, costUsd: 1 }), { minutes: 60, usd: 1 })

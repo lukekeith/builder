@@ -8,12 +8,14 @@
  *   node scripts/bench-suite.mjs run  <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] --detach
  *   node scripts/bench-suite.mjs run --resume <suite-id> --detach
  *   node scripts/bench-suite.mjs status
+ *   node scripts/bench-suite.mjs stop
  *   node scripts/bench-suite.mjs report <suite-id>
  *
  * Fixture cases are bench/features/<f>/feature.json (`size`, `covers`; project `fixtures`); archived
  * cases are $BENCH_LOCAL/cases/<id>.json. A suite lives in $BENCH_LOCAL/results/<suite-id>/ (suite.json,
  * one folder per item attempt, the named REPORT.md); the committed report, with no project names, is
- * $BENCH_SUITE_OUT/<date>-suite/REPORT.md. Two items of one project never run at once.
+ * $BENCH_SUITE_OUT/<date>-suite/REPORT.md. Two items of one project never run at once. `stop` (or a SIGTERM
+ * to the suite) stops each running case cleanly, starts nothing more, writes the reports and releases the lock.
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
  * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
@@ -39,7 +41,9 @@ const LOCK = join(RESULTS, 'lock')
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURE_RESULTS = join(BUILDER, 'bench', 'results')
 const DEFAULT_LANES = 3
-const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] | run <same> --detach | run --resume <suite-id> --detach | status | report <suite-id>'
+const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
+const STOP_WAIT_MS = Number(process.env.BENCH_STOP_WAIT_MS) || 120 * 1000
+const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
 
 const die = (msg) => {
   console.error(msg)
@@ -69,6 +73,29 @@ const alive = (pid) => {
 }
 const cents = (n) => Math.round(n * 100) / 100
 const firstLine = (s) => String(s ?? '').trim().split('\n')[0] ?? ''
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/** A process's command line, or '' when it is gone. */
+const commandOf = (pid) => spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim() ?? ''
+/** True when the case process an item's attempt recorded is still alive — and is that case (its command line names the attempt), not a process that reused the pid. */
+export function caseAlive(it) {
+  if (!Number.isInteger(it.pid) || it.pid <= 1 || !alive(it.pid)) return false
+  const cmd = commandOf(it.pid)
+  return it.kind === 'fixture' ? cmd.includes(` run ${it.case} --only builder`) : !!it.out && cmd.includes(it.out)
+}
+/** A process and every descendant, SIGTERM then SIGKILL after the grace period — for a fixture runner, which handles no signal itself. */
+async function killTree(pid) {
+  const tree = () => {
+    const rows = (spawnSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' }).stdout ?? '').trim().split('\n').map((l) => l.trim().split(/\s+/).map(Number))
+    const out = [pid]
+    for (let i = 0; i < out.length; i++) for (const [p, pp] of rows) if (pp === out[i] && p !== process.pid && !out.includes(p)) out.push(p)
+    return out.filter(alive)
+  }
+  const signal = (sig) => tree().forEach((p) => { try { process.kill(p, sig) } catch {} })
+  signal('SIGTERM')
+  for (const t0 = Date.now(); tree().length && Date.now() - t0 < KILL_GRACE_MS; ) await sleep(100)
+  signal('SIGKILL')
+}
 
 // ---- the catalogue ---------------------------------------------------------------------------------
 
@@ -274,8 +301,8 @@ function saveSuite(s) {
   renameSync(`${f}.tmp`, f)
 }
 const latestSuite = () => (isDir(RESULTS) ? readdirSync(RESULTS).filter((n) => existsSync(join(RESULTS, n, 'suite.json'))).sort().at(-1) ?? null : null)
-/** An item a run (or a resume) still has to run: never started, cut off mid-run, or refused at its start. */
-const unfinished = (it) => it.status === 'waiting' || it.status === 'running' || it.status.startsWith('refused')
+/** An item a run (or a resume) still has to run: never started, cut off mid-run, stopped, or refused at its start. */
+const unfinished = (it) => it.status === 'waiting' || it.status === 'running' || it.status === 'stopped' || it.status.startsWith('refused')
 
 /** { pid, suiteId, live } of the suite lock, or null. */
 function lockState() {
@@ -304,8 +331,8 @@ const releaseLock = () => {
 
 // ---- running a suite -------------------------------------------------------------------------------
 
-/** A child awaited in this process group (a SIGKILL of the suite's group takes it too), its output in files. → { code, error } */
-function spawnWait(cmd, args, { cwd, env, outFile, errFile }) {
+/** A child awaited in this process group (a SIGKILL of the suite's group takes it too), its output in files; `onSpawn` gets the child. → { code, error } */
+function spawnWait(cmd, args, { cwd, env, outFile, errFile, onSpawn = () => {} }) {
   return new Promise((done) => {
     const out = openSync(outFile, 'a')
     const err = openSync(errFile, 'a')
@@ -320,7 +347,28 @@ function spawnWait(cmd, args, { cwd, env, outFile, errFile }) {
     const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', out, err] })
     child.on('error', (e) => finish(null, e))
     child.on('exit', (code) => finish(code))
+    if (child.pid) onSpawn(child)
   })
+}
+
+// ---- stopping: `stop` sends the suite SIGTERM; each running case is stopped, nothing more starts ----
+let stopping = false
+const liveCases = new Map()
+/** Stop every running case: an archived one by SIGTERM (bench-case stops its fleet, tears down and writes `failed: stopped`), a fixture runner with its whole tree. */
+function stopCases() {
+  stopping = true
+  for (const { child, kind } of liveCases.values()) {
+    if (kind === 'fixture') killTree(child.pid)
+    else child.kill('SIGTERM')
+  }
+}
+/** Record a running item's case process: in suite.json (so --resume and stop can find it) and here (so a stop reaches it). */
+const tracker = (s, it) => (child) => {
+  it.pid = child.pid
+  liveCases.set(it.id, { child, kind: it.kind })
+  child.on('exit', () => liveCases.delete(it.id))
+  saveSuite(s)
+  if (stopping) stopCases()
 }
 
 /** <suite>/<item id>, or -2, -3… when an earlier attempt left that folder. */
@@ -350,11 +398,11 @@ function mainCheckout(builder) {
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
 
 /** An archived item: bench-case in a fresh --out, its clone under CLONE_ROOT, its fleet timeout from its estimate; a control's result is rewritten as <id>@main. → its status */
-async function runArchived(it, builder, out, suiteId) {
+async function runArchived(it, builder, out, suiteId, onSpawn) {
   const errFile = join(out, 'case.err')
   const env = { ...process.env, BENCH_CASE_FLEET_TIMEOUT_MS: String(caseFleetTimeoutMs(it.estimate)) }
   const cloneRoot = join(CLONE_ROOT, suiteId, basename(out))
-  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out, '--clone-root', cloneRoot], { cwd: out, env, outFile: join(out, 'case.out'), errFile })
+  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out, '--clone-root', cloneRoot], { cwd: out, env, outFile: join(out, 'case.out'), errFile, onSpawn })
   const resFile = join(out, 'result.json')
   const res = readJson(resFile)
   if (!res) return refusedOrDied(r, errFile)
@@ -363,14 +411,14 @@ async function runArchived(it, builder, out, suiteId) {
 }
 
 /** A fixture item: bench.mjs run <feature> --only builder in the checkout; measured from the run it made, against the one before. → its status */
-async function runFixture(it, checkout, out) {
+async function runFixture(it, checkout, out, onSpawn) {
   const results = join(checkout, 'bench', 'results')
   const before = fixtureRunDirs(results, it.case)
   const script = process.env.BENCH_FIXTURE_RUNNER || join(checkout, 'scripts', 'bench.mjs')
   const env = { ...process.env, CLAUDE_PROJECT_DIR: checkout }
   delete env.BENCH_RUN_ID
   const errFile = join(out, 'case.err')
-  const r = await spawnWait(process.execPath, [script, 'run', it.case, '--only', 'builder'], { cwd: checkout, env, outFile: join(out, 'case.out'), errFile })
+  const r = await spawnWait(process.execPath, [script, 'run', it.case, '--only', 'builder'], { cwd: checkout, env, outFile: join(out, 'case.out'), errFile, onSpawn })
   const fresh = fixtureRunDirs(results, it.case).filter((d) => !before.includes(d)).at(-1)
   if (!fresh) return refusedOrDied(r, errFile)
   const runs = readJson(join(fresh, 'runs.json'))
@@ -414,17 +462,21 @@ async function runSuite(id) {
   }
   // anything an item throws fails that item alone: its lane goes on and the reports are still written
   const runItem = (it) => exclusive(it.project, async () => {
+    if (stopping) return
     let status
     try {
       const out = freshOut(suiteDir(id), it.id)
       mkdirSync(out, { recursive: true })
-      Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out })
+      Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out, pid: null })
       saveSuite(s)
       const checkout = it.control ? main : s.builder
-      status = it.kind === 'fixture' ? await runFixture(it, checkout, out) : await runArchived(it, checkout, out, id)
+      const onSpawn = tracker(s, it)
+      status = it.kind === 'fixture' ? await runFixture(it, checkout, out, onSpawn) : await runArchived(it, checkout, out, id, onSpawn)
     } catch (e) {
       status = `failed: ${firstLine(e.message)}`
     }
+    // a case cut short by a stop is `stopped`, so --resume runs it again
+    if (stopping && status !== 'done') status = 'stopped'
     Object.assign(it, { status, endedAt: Date.now() })
     try {
       saveSuite(s)
@@ -435,10 +487,13 @@ async function runSuite(id) {
   })
   const lanes = [...new Set(s.items.map((it) => it.lane))]
   await Promise.all(lanes.map(async (lane) => {
-    for (const it of s.items.filter((x) => x.lane === lane && unfinished(x))) await runItem(it)
+    for (const it of s.items.filter((x) => x.lane === lane && unfinished(x))) {
+      if (stopping) break
+      await runItem(it)
+    }
   }))
   const paths = writeReports(id)
-  console.log(`${new Date().toISOString()} suite ${id} finished — ${paths.named}`)
+  console.log(`${new Date().toISOString()} suite ${id} ${stopping ? 'stopped' : 'finished'} — ${paths.named}`)
 }
 
 // ---- the report ------------------------------------------------------------------------------------
@@ -490,6 +545,27 @@ export function renderStatus(s, { live, now = Date.now() }) {
   if (!live && left) out.push('', `⚠ suite stopped mid-run — ${left} unfinished; /builder:benchmark --resume ${s.id} runs them`)
   if (!live && !left) out.push('', `report: ${join(suiteDir(s.id), 'REPORT.md')}`)
   return out.join('\n')
+}
+
+/** Stop the running suite (SIGTERM; it stops its cases, writes the reports, releases the lock) and wait for it; with no live suite, stop any case the newest suite's attempts left alive. */
+async function stop() {
+  const lock = lockState()
+  if (lock?.live) {
+    process.kill(lock.pid, 'SIGTERM')
+    for (const t0 = Date.now(); alive(lock.pid) && Date.now() - t0 < STOP_WAIT_MS; ) await sleep(100)
+    if (alive(lock.pid)) return console.log(`suite ${lock.suiteId} is still stopping (pid ${lock.pid}) — /builder:benchmark --status`)
+    return console.log(`suite ${lock.suiteId} stopped — /builder:benchmark --status; --resume ${lock.suiteId} runs what is left`)
+  }
+  const id = latestSuite()
+  const left = id ? readSuite(id).items.filter(caseAlive) : []
+  if (!left.length) return console.log('no suite is running')
+  for (const it of left) {
+    if (it.kind === 'fixture') await killTree(it.pid)
+    else process.kill(it.pid, 'SIGTERM')
+  }
+  for (const t0 = Date.now(); left.some(caseAlive) && Date.now() - t0 < STOP_WAIT_MS; ) await sleep(100)
+  const still = left.filter(caseAlive)
+  console.log(still.length ? `still stopping: ${still.map((it) => `${it.id} (pid ${it.pid})`).join(', ')}` : `stopped the cases suite ${id} left running: ${left.map((it) => it.id).join(', ')}`)
 }
 
 function status() {
@@ -553,6 +629,11 @@ if (isMain) {
     process.exit(0)
   }
 
+  if (cmd === 'stop') {
+    await stop()
+    process.exit(0)
+  }
+
   if (cmd === 'report') {
     const id = plainId(args.pos[0])
     const { committed, named } = writeReports(id)
@@ -562,6 +643,7 @@ if (isMain) {
 
   if (cmd === '_run') {
     const id = plainId(args.pos[0])
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, stopCases)
     if (!acquireLock(process.pid, id)) die(busy(lockState()))
     try {
       await runSuite(id)
@@ -581,6 +663,8 @@ if (isMain) {
       const held = lockState()
       if (held?.live) die(busy(held))
       const s = readSuite(id)
+      const running = s.items.filter(caseAlive)
+      if (running.length) die(running.map((it) => `${it.id} is still running (pid ${it.pid}) — /builder:benchmark --stop stops it`).join('\n'))
       const left = s.items.filter(unfinished)
       if (!left.length) {
         const { named } = writeReports(id)

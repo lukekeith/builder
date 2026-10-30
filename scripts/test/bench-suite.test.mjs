@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpa
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = realpathSync(join(HERE, '..', '..'))
@@ -329,4 +329,60 @@ test('a reused main checkout that cannot check out main fails the control, not r
   assert.equal(by.c2, 'done')
   assert.match(by['c2@main'], /^failed: no main checkout for controls: .+/)
   assert.deepEqual(readLog().builders('c2'), [repo])
+})
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+
+test('stop: the running case is stopped, nothing more starts, the reports are written and the lock released', async () => {
+  const { suite, readLog, out, dateDir, suiteJson, results } = setup()
+  // one lane: c1 (30m = 6 s at 200 ms a minute), then c3, then c2
+  const r = suite(['run', 'c1,c2,c3', '--lanes', '1', '--detach'], { STUB_CASE_MS: '200' })
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => suiteJson().items[0].pid > 0 && readLog().starts('c1') === 1)
+  const { pid, items } = suiteJson()
+  const casePid = items[0].pid
+  const st = suite(['stop'])
+  assert.equal(st.status, 0, st.stderr)
+  assert.match(st.stdout, /suite \S+ stopped/)
+  assert.equal(alive(pid), false)
+  assert.equal(alive(casePid), false)
+  assert.equal(existsSync(join(results, 'lock')), false)
+  assert.deepEqual(suiteJson().items.map((i) => [i.id, i.status]), [['c1', 'stopped'], ['c3', 'waiting'], ['c2', 'waiting']])
+  const log = readLog()
+  assert.equal(log.lines.filter((l) => l[0] === 'stopped' && l[1] === 'c1').length, 1)
+  assert.equal(log.starts('c3') + log.starts('c2'), 0)
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c1 \| md \| stopped \|/)
+  assert.match(suite(['status']).stdout, /⚠ suite stopped mid-run — 3 unfinished; \/builder:benchmark --resume \S+ runs them/)
+  assert.match(suite(['stop']).stdout, /no suite is running/)
+})
+
+test('--resume refuses while a case a recorded attempt started is still alive', async () => {
+  const { suite, suiteJson, results, settled } = setup()
+  assert.equal(suite(['run', 'c2', '--detach']).status, 0)
+  await until(() => suiteJson().items[0].status === 'done')
+  await settled()
+  const s = suiteJson()
+  // a case process outliving its suite (the suite was SIGKILLed): its command line names its --out
+  const orphan = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', s.items[0].out], { stdio: 'ignore' })
+  try {
+    s.items[0] = { ...s.items[0], status: 'running', pid: orphan.pid }
+    writeFileSync(join(results, s.id, 'suite.json'), JSON.stringify(s))
+    const r = suite(['run', '--resume', s.id, '--detach'])
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, new RegExp(`c2 is still running \\(pid ${orphan.pid}\\) — /builder:benchmark --stop`))
+    // a recorded pid now held by an unrelated process is not the case's
+    s.items[0].pid = process.pid
+    writeFileSync(join(results, s.id, 'suite.json'), JSON.stringify(s))
+    assert.doesNotMatch(suite(['run', '--resume', s.id, '--detach']).stderr, /still running/)
+    await settled()
+  } finally {
+    orphan.kill('SIGKILL')
+  }
 })
