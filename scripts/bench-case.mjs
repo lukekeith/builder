@@ -473,6 +473,8 @@ if (isMain) {
       ...agentWalkLines(p.builderMd).map((l) => `    ${l}`),
       `  files:  ${p.files.length ? p.files.map((f) => `${f.to} ← ${f.from}`).join('\n          ') : '(none)'}`,
       `  setup:  ${p.setup ?? '(none)'}`,
+      `  teardown: ${p.teardown ?? '(none)'}`,
+      `  ports:  ${p.ports.length ? p.ports.join(' ') : '(none)'}`,
       `  fleet:  node ${p.fleet} ${p.feature} --into main --parallel 1`,
     ].join('\n'))
     process.exit(0)

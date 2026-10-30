@@ -90,6 +90,14 @@ export function fillBudget(cases, { minutes, lanes }) {
   return { picked, skipped }
 }
 
+/** Two picked projects whose profiles name one port may run at once: one reason per shared port. `ports` maps project → ports. */
+export function portCollisions(ports) {
+  const by = new Map()
+  for (const [project, ps] of ports) for (const p of ps) by.set(p, [...(by.get(p) ?? []), project])
+  return [...by].filter(([, ps]) => new Set(ps).size > 1).sort((a, b) => a[0] - b[0])
+    .map(([port, ps]) => { const u = [...new Set(ps)].sort(); return `projects ${u.slice(0, -1).join(', ')} and ${u.at(-1)} both use port ${port} — they may run at once` })
+}
+
 // ── controls ──
 /** Per size, in SIZES order, the archived case with the smallest estimate. */
 export function recommendControls(cases) {

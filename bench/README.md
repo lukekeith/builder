@@ -68,7 +68,8 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
 - **Baseline vs control.** The baseline is what the case measured when it first landed. A control runs a picked case again
   on builder's `main` (`--control <id,…>`) beside the builder under test, so a change in the number can be told from a
   change in the day. Controls fill lanes but do not count against `--budget`'s pick.
-- **Running.** `plan` shows the schedule and dry-runs every archived case; `run … --detach` launches it (a suite outlives the
+- **Running.** `plan` shows the schedule and every archived case's dry run — what its clone will touch — and refuses two
+  picked projects whose profiles name one port (they may run at once); `run … --detach` launches it (a suite outlives the
   session; `run` without `--detach` is refused); `run --resume <suite-id> --detach` re-runs waiting, cut-off and refused
   items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands. `stop` stops a running
   suite safely: each running case stops its fleet, the fleet's sessions and what its setup started, runs its teardown and

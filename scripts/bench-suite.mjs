@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs } from './bench-suite-core.mjs'
+import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions } from './bench-suite-core.mjs'
 import { landedRow, duration } from './fleet-core.mjs'
 import { BUILDER, runId } from './bench.mjs'
 
@@ -270,18 +270,31 @@ function scheduleItems(items, packed) {
 
 // ---- dry runs: the refusals before launch ----------------------------------------------------------
 
-/** Each archived case's `--dry-run` (once per case, controls included) → [{ id, reasons }] for every refusal. */
+/**
+ * Each archived case's `--dry-run` (once per case, controls included) → { refusals: [{ id, reasons }], summaries: [{ id, text }] };
+ * two picked projects whose dry runs name one port are a refusal too — they may run at once.
+ */
 function dryRuns(items, builder) {
   const refusals = []
-  const ids = [...new Set(items.filter((i) => i.kind === 'archived').map((i) => i.case ?? i.id))]
-  for (const id of ids) {
+  const summaries = []
+  const ports = new Map()
+  const cases = [...new Map(items.filter((i) => i.kind === 'archived').map((i) => [i.case ?? i.id, i.project])).entries()]
+  for (const [id, project] of cases) {
     const r = spawnSync(process.execPath, [CASE_RUNNER, id, '--builder', builder, '--out', join(tmpdir(), 'bench-suite-dry', id), '--dry-run'], { encoding: 'utf8' })
-    if (r.status === 0) continue
+    if (r.status === 0) {
+      const text = String(r.stdout ?? '').replace(/\n+$/, '')
+      summaries.push({ id, text })
+      const named = /^\s*ports:\s+(.*)$/m.exec(text)?.[1].split(/\s+/).map(Number).filter((n) => n > 0) ?? []
+      ports.set(project, [...new Set([...(ports.get(project) ?? []), ...named])])
+      continue
+    }
     const lines = String(r.stderr ?? '').trim().split('\n').filter(Boolean)
     const reasons = r.status === 2 ? lines.map((l) => l.replace(/^refused:\s*/, '')) : [`dry run failed (${r.error ? r.error.message : `exit ${r.status}`})${lines.length ? `: ${lines[0]}` : ''}`]
     refusals.push({ id, reasons: reasons.length ? reasons : ['refused (no reason given)'] })
   }
-  return refusals
+  const clash = portCollisions(ports)
+  if (clash.length) refusals.push({ id: 'the selection', reasons: clash })
+  return { refusals, summaries }
 }
 const printRefusals = (refusals) => {
   for (const { id, reasons } of refusals) {
@@ -671,7 +684,7 @@ if (isMain) {
         console.log(`suite ${id} has nothing left to run — report: ${named}`)
         process.exit(0)
       }
-      const refusals = dryRuns(left, s.builder)
+      const { refusals } = dryRuns(left, s.builder)
       if (refusals.length) {
         printRefusals(refusals)
         process.exit(2)
@@ -691,19 +704,22 @@ if (isMain) {
     if (cmd === 'plan') {
       const recommended = controlsGiven ? [] : recommendControls(picked)
       console.log(renderSchedule({ packed, items, skipped, recommended, lanes }))
-      const refusals = dryRuns(items, builder)
+      const { refusals, summaries } = dryRuns(items, builder)
       if (refusals.length) {
         printRefusals(refusals)
         process.exit(2)
       }
-      const checked = [...new Set(items.filter((i) => i.kind === 'archived').map((i) => i.case ?? i.id))]
-      if (checked.length) console.log(`dry runs: ${checked.map((id) => `${id} ok`).join(' · ')}`)
+      if (summaries.length) {
+        console.log(`\nwhat each clone will touch — clones: ${CLONE_ROOT}/<suite-id>/<item>/clone, removed after each case unless BENCH_KEEP_CLONES=1:\n`)
+        console.log(summaries.map((x) => x.text).join('\n\n'))
+        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok`).join(' · ')}`)
+      }
       process.exit(0)
     }
 
     const held = lockState()
     if (held?.live) die(busy(held))
-    const refusals = dryRuns(items, builder)
+    const { refusals } = dryRuns(items, builder)
     if (refusals.length) {
       printRefusals(refusals)
       process.exit(2)
