@@ -12,8 +12,9 @@
  * <clone-root>/clone, outside every repo (a repo's CLAUDE.md would load into every session); the
  * clone root defaults to $BENCH_TMP/<out's parent's name>/<out's name>.
  *
- * After the fleet — on every path — the profile's `teardown` runs in the clone and whatever its `setup`
- * started is stopped; once result.json is written the clone is removed (BENCH_KEEP_CLONES=1 keeps it).
+ * Setup, fleet and teardown run in the profile's `env`, never the shell's DATABASE_URL, DIRECT_URL,
+ * TEST_DATABASE_URL or PG*. After the fleet — on every path — the profile's `teardown` runs in the clone
+ * and whatever its `setup` started is stopped; once result.json is written the clone is removed (BENCH_KEEP_CLONES=1 keeps it).
  * SIGTERM stops the case: the fleet and every group it records, the setup's group, then the teardown,
  * and result.json says `failed: stopped`.
  *
@@ -27,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cop
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -306,17 +307,19 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
     else if (!existsSync(src)) refusals.push(`profile file source ${src} is missing`)
     else files.push({ to: rel, from: src })
   }
+  const { env, refusals: envRefusals } = profileEnv(profile.env)
+  refusals.push(...envRefusals)
   const settings = join(clone, '.claude', 'bench-settings.json')
   const claudeArgs = `--permission-mode bypassPermissions --settings ${settings} --plugin-dir ${builder}`
   const builderMd = applyProfile(baseMd, { agentWalk: profile.agent_walk ?? {}, verifyBlock, claudeArgs })
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
-  // the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
-  const texts = [['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)])].filter(([, t]) => t != null)
+  // the env, the setup, the teardown and every placed text file run or are read in the clone too: the same rules, each reason saying where
+  const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)])].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
   const ports = [...new Set([builderMd, ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
   const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`
   const specLines = specs.length ? lineCount(tryGit(repo, 'show', `${specs.at(-1)}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
-  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, files, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
+  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
 }
 
 /**
@@ -370,7 +373,7 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   if (plan.setup) {
     // not reaped on exit: a setup may start what the run needs (a bench database, a server); its group is stopped after the fleet
     mkdirSync(logDir, { recursive: true })
-    const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(logDir, 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
+    const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: caseEnv(process.env, plan.env, clone), log: join(logDir, 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
     // an empty group is no group: its id may be reused by the time the case ends
     setupPgid = r.pgid && groupAlive(r.pgid) ? r.pgid : null
     if (r.stopped) return { ...none, clone, setupPgid, failure: 'stopped' }
@@ -399,15 +402,16 @@ const fleetPgids = (clone) => {
 }
 
 /**
- * The fleet on the case's feature in the clone, awaited in its own process group; → the case's
- * status and the landed row. Past the timeout the fleet gets SIGTERM (it stops its own sessions and
- * dev envs), then SIGKILL for its group and every group its fleet.json still names.
+ * The fleet on the case's feature in the clone, awaited in its own process group, in the case's
+ * environment (caseEnv — every session it starts inherits it); → the case's status and the landed row.
+ * Past the timeout the fleet gets SIGTERM (it stops its own sessions and dev envs), then SIGKILL for its
+ * group and every group its fleet.json still names.
  */
-export async function runCaseFleet({ clone, feature, fleet, out }) {
+export async function runCaseFleet({ clone, feature, fleet, out, env = {} }) {
   const before = JSON.stringify(landedRow(clone, feature))
   const r = await runGroup(process.execPath, [fleet, feature, '--into', 'main', '--parallel', '1'], {
     cwd: clone,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: clone },
+    env: caseEnv(process.env, env, clone),
     log: join(out, 'fleet.out'),
     timeoutMs: FLEET_TIMEOUT_MS,
     reap: true,
@@ -427,11 +431,11 @@ export async function runCaseFleet({ clone, feature, fleet, out }) {
  * After the fleet, on every path: the profile's teardown in the clone (its own group, reaped, with the
  * setup's timeout), then whatever the setup started is stopped. → the teardown's outcome, or null with none.
  */
-export async function finishCase({ clone, teardown, setupPgid, out }) {
+export async function finishCase({ clone, teardown, setupPgid, out, env = {} }) {
   let outcome = null
   if (teardown && clone && existsSync(clone)) {
     mkdirSync(out, { recursive: true })
-    const r = await runGroup('sh', ['-c', teardown], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(out, 'teardown.out'), timeoutMs: SETUP_TIMEOUT_MS, reap: true })
+    const r = await runGroup('sh', ['-c', teardown], { cwd: clone, env: caseEnv(process.env, env, clone), log: join(out, 'teardown.out'), timeoutMs: SETUP_TIMEOUT_MS, reap: true })
     outcome = r.status === 0 ? 'done' : r.stopped ? 'stopped' : r.timedOut ? 'timed out' : `failed (${r.error ? r.error.message : `exit ${r.status}`}) — see teardown.out`
   }
   if (setupPgid) await stopGroup(setupPgid, clone)
@@ -500,6 +504,7 @@ if (isMain) {
       `  specs:  ${p.specs.map(subject).join('\n          ')}`,
       '  agent_walk:',
       ...agentWalkLines(p.builderMd).map((l) => `    ${l}`),
+      `  env:    ${Object.keys(p.env).length ? envLines(p.env).split('\n').join(' ') : '(none)'}`,
       `  files:  ${p.files.length ? p.files.map((f) => `${f.to} ← ${f.from}`).join('\n          ') : '(none)'}`,
       `  setup:  ${p.setup ?? '(none)'}`,
       `  teardown: ${p.teardown ?? '(none)'}`,
@@ -518,13 +523,13 @@ if (isMain) {
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`
   } else {
-    const { status, landed } = await runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out })
+    const { status, landed } = await runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out, env: plan.env })
     result.status = status
     result.measure = landed ? measureFromRow(landed) : null
     result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature, prep.prepped)
   }
   if (stopRequested() && result.status !== 'done') result.status = 'failed: stopped'
-  const teardown = await finishCase({ clone: prep.clone, teardown: plan.teardown, setupPgid: prep.setupPgid, out })
+  const teardown = await finishCase({ clone: prep.clone, teardown: plan.teardown, setupPgid: prep.setupPgid, out, env: plan.env })
   if (teardown) result.teardown = teardown
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
   if (prep.clone && !process.env.BENCH_KEEP_CLONES) removeClone(prep.clone)

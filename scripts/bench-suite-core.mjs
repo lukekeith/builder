@@ -224,6 +224,31 @@ export function textRefusals(where, text, profile, { listening = [] } = {}) {
   return lineRefusals(uncommented(normalize(text).split('\n')), prefix, new Set(listening.map(Number))).map((m) => `${where}: ${m}`)
 }
 
+/** A variable a case never inherits from the shell — a database named there is the human's; only a profile's `env` sets one. */
+export const strippedEnv = (k) => k === 'DATABASE_URL' || k === 'DIRECT_URL' || k === 'TEST_DATABASE_URL' || /^PG[A-Z0-9_]+$/.test(k)
+
+/** A profile's `env` checked for shape → { env: { NAME: 'value' }, refusals }; numbers and booleans become strings. */
+export function profileEnv(env) {
+  if (env == null) return { env: {}, refusals: [] }
+  if (typeof env !== 'object' || Array.isArray(env)) return { env: {}, refusals: ['env must be { "NAME": "value" }'] }
+  const out = {}
+  const refusals = []
+  for (const [k, v] of Object.entries(env)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) refusals.push(`env: ${k} is not a variable name`)
+    else if (['string', 'number', 'boolean'].includes(typeof v)) out[k] = String(v)
+    else refusals.push(`env: ${k} must be a string`)
+  }
+  return { env: out, refusals }
+}
+
+/** The environment of a case's setup, teardown and fleet: the shell's without strippedEnv, the profile's env over it, CLAUDE_PROJECT_DIR the clone. */
+export function caseEnv(base, env, clone) {
+  return { ...Object.fromEntries(Object.entries(base).filter(([k]) => !strippedEnv(k))), ...env, CLAUDE_PROJECT_DIR: clone }
+}
+
+/** A profile's env as the NAME=value lines the safety rules scan. */
+export const envLines = (env) => Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n')
+
 /** Why a clone's config must not run: it would touch something of the human's. Empty means safe. `builderMd` is the text after applyProfile; `listening` the TCP ports now listening. */
 export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
   const prefix = profile?.db_prefix

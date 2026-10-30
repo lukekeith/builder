@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A fleet that lands the feature: an archive row, a 10-line PLAN.md committed, and the args it got.
+// A fleet that lands the feature: an archive row, a 10-line PLAN.md committed, and the args (and database environment) it got.
 import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -7,7 +7,8 @@ const feature = process.argv[2]
 const root = process.cwd()
 const fleet = join(root, '.builder', 'fleet')
 mkdirSync(fleet, { recursive: true })
-writeFileSync(join(fleet, 'stub-args.json'), JSON.stringify({ argv: process.argv.slice(2), projectDir: process.env.CLAUDE_PROJECT_DIR }))
+const env = Object.fromEntries(['DATABASE_URL', 'DIRECT_URL', 'TEST_DATABASE_URL', 'PGHOST', 'PGDATABASE', 'BENCH_MARK'].map((k) => [k, process.env[k]]))
+writeFileSync(join(fleet, 'stub-args.json'), JSON.stringify({ argv: process.argv.slice(2), projectDir: process.env.CLAUDE_PROJECT_DIR, env }))
 const plan = join(root, 'docs', 'features', feature, 'PLAN.md')
 mkdirSync(join(root, 'docs', 'features', feature), { recursive: true })
 writeFileSync(plan, Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n') + '\n')

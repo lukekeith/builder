@@ -30,7 +30,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions } from './bench-suite-core.mjs'
+import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions, strippedEnv } from './bench-suite-core.mjs'
 import { landedRow, duration } from './fleet-core.mjs'
 import { BUILDER, runId } from './bench.mjs'
 
@@ -772,9 +772,9 @@ if (isMain) {
     if (cmd === 'plan') {
       const recommended = controlsGiven ? [] : recommendControls(picked)
       console.log(renderSchedule({ packed, items, skipped, recommended, lanes }))
-      // a case's setup, fleet and sessions inherit this shell's environment: a database here is the human's
-      const inherited = Object.keys(process.env).filter((k) => k === 'DATABASE_URL' || /^PG[A-Z]+$/.test(k)).sort()
-      if (inherited.length) console.log(`⚠ this shell sets ${inherited.join(', ')} — every case's setup, fleet and sessions inherit them; unset them before run`)
+      // a database named in this shell is the human's: bench-case strips these from every case's setup, teardown and fleet
+      const stripped = Object.keys(process.env).filter(strippedEnv).sort()
+      if (stripped.length) console.log(`this shell sets ${stripped.join(', ')} — no case inherits them: setup, teardown and the fleet start without them, and a profile's env sets its own`)
       const { refusals, summaries } = dryRuns(items, builder)
       if (refusals.length) {
         printRefusals(refusals)
