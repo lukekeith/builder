@@ -899,7 +899,7 @@ test('the plan format keeps code where the plan must be opinionated: the contrac
   assert.match(fmt, /the frozen contract/)
   assert.match(fmt, /an algorithm the signature and tests don't determine/)
   assert.match(fmt, /exact copy the spec fixes/)
-  assert.match(read('skills/build/prompts/implementer.md'), /frozen contract or an algorithm's body/)
+  assert.match(read('skills/build/prompts/implementer.md'), /the frozen contract,\s+an\s+algorithm's body/)
 })
 
 test('opinionated code is the decision: format, implementer, reviewer, execution, revise and plan agree', () => {
@@ -919,6 +919,9 @@ test('opinionated code is the decision: format, implementer, reviewer, execution
   assert.doesNotMatch(impl, /any body the plan does give is a starting point/)
   assert.match(impl, /\*\*Behaviour\*\* block/)
   assert.match(impl, /tests come with their assertions as code/)
+  assert.match(impl, /migration's DDL and backfill/)
+  assert.match(impl, /security mechanism/)
+  assert.doesNotMatch(impl, /a message, a migration/)
   const rev = read('skills/build/prompts/task-reviewer.md')
   assert.match(rev, /opinionated code the plan gave/i)
   assert.match(rev, /none weakened or dropped/)

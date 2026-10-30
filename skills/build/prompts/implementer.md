@@ -32,9 +32,11 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     assertions, as written. Follow a Pattern
     by reading the file at its `file:line`, not by copying it. The code the
     plan gives where it must be opinionated is the decision, not a sketch:
-    exact copy the spec fixes (a message, a migration, a config value) you
-    keep word for word, and the frozen contract or an algorithm's body you
-    implement as written — report a step that can't be.
+    exact copy the spec fixes (a message, a config value) you keep word for
+    word; a migration's DDL and backfill, the frozen contract, an
+    algorithm's body and a security mechanism (who may do what, comparison,
+    hashing, a public response's fields) you implement as written — report
+    a step that can't be.
 
     A reasonable choice the plan leaves open is yours: naming of locals,
     structure inside the body. A real design choice is not: a new interface,

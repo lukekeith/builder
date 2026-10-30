@@ -122,12 +122,13 @@ export function taskHeads(planText) {
     // written neither way — the first code fence. The head ends at whichever comes first.
     // The head also ends at **Behaviour:**; a fence under **Interfaces** (the frozen contract) stays in it.
     if (!inside && (STEP.test(line) || STEP_LOOSE.test(line))) { cur.open = false; cur.steps += 1 }
-    else if (cur.open && !inside && /^\s*\**Behaviour:?\**:?\s*$/i.test(line)) { cur.open = false; cur.behaviour = true }
+    else if (cur.open && !inside && /^\s*\**Behaviou?r:?\**:?\s*$/i.test(line)) { cur.open = false; cur.behaviour = true }
     else if (cur.open && inside && part !== 'interfaces') cur.open = false
+    else if (cur.open && inside && cur.fenceAt == null) cur.fenceAt = cur.head.length
     if (cur.open) {
       cur.head.push(line)
-      if (/^\s*\**Files:?\**:?\s*$/i.test(line)) part = 'files'
-      else if (/^\s*\**Interfaces:?\**:?\s*$/i.test(line)) part = 'interfaces'
+      const label = /^\s*\**(Files|Interfaces|Behaviou?r|Pattern|Tests|Steps):?\**:?\s*$/i.exec(line)
+      if (label) part = label[1].toLowerCase()
       const f = FILE_LINE.exec(line)
       if (f && part === 'files') cur.files.push({ kind: f[1], path: f[2].replace(/:\d+(?:-\d+)?$/, '') })
       // A Consumes/Produces bullet owns its own line and the sub-bullets indented under it.
@@ -137,7 +138,9 @@ export function taskHeads(planText) {
       if (part === 'interfaces' && cur.io) cur[cur.io.key].push(...[...(io ? io[3] : line).matchAll(/`([^`]+)`/g)].map((m) => ident(m[1])).filter(Boolean))
     } else if (cur.steps > 0 || !cur.behaviour) cur.stepText.push(line)
   }
-  return out.map(({ open, io, behaviour, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
+  // A fence under Interfaces is the frozen contract only when a Behaviour block follows; in a plan without one it starts the body.
+  for (const t of out) if (!t.behaviour && t.fenceAt != null) { t.stepText.unshift(...t.head.splice(t.fenceAt)) }
+  return out.map(({ open, io, behaviour, fenceAt, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
 }
 
 /** --brief: the header verbatim, then per task its head (App/Phase/Recipe/Files/Interfaces) and a count of its steps and tests. */
