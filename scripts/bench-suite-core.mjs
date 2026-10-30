@@ -308,7 +308,7 @@ function lineRefusals(lines, prefix, inUse) {
     const m = /(?:^|[\s(:])(docker-compose\b.*|docker\s+(?:start|stop|restart|kill|pause|unpause|exec|run|rm|rmi|compose|volume|network|container|system|prune)\b.*)/.exec(seg)
     if (m && !m[1].includes(prefix)) add(`docker command names no ${prefix} container: ${m[1].trim()}`)
   }
-  if (lines.some((l) => /\bsimctl\b.*\bbooted\b/.test(l))) add('simctl targets the booted simulator — name a bench device UDID')
+  if (lines.some((l) => /\bsimctl\b.*\bbooted\b/.test(l))) add(`simctl targets the booted simulator — name the bench device by its ${prefix} name`)
   return out
 }
 

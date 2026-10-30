@@ -42,7 +42,8 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 - `setup` — a shell command run in the clone before the fleet (timeout 20 min); it may start what the run needs.
   Whatever it starts runs in its own process group, which is stopped once the case ends, however it ends.
 - `teardown` — a shell command run in the clone after the fleet, on every path — landed, failed, timed out or
-  stopped (timeout 20 min): drop the bench database, stop a container.
+  stopped (timeout 20 min): drop the bench database, stop a container, shut a simulator down by its prefixed name
+  (`xcrun simctl shutdown bench_a_iphone` — never `booted`, `all` or a UDID, which carries no prefix).
 
 ```json
 {
@@ -81,7 +82,7 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
   or as the server's own `--shutdown`;
 - a command shuts down or restarts the machine: `shutdown`, `halt`, `reboot` or `poweroff`, by any path or through `sudo`;
 - a `docker` or `docker-compose` command names no container carrying the prefix;
-- `simctl` targets the booted simulator instead of a named bench device, or `simctl shutdown` names a device
+- `simctl` targets the booted simulator instead of the bench device by its prefixed name, or `simctl shutdown` names a device
   without the prefix (`simctl shutdown bench_a_iphone` is fine; `all` is not);
 - `agent_walk.claude_args` is not set, so sessions would load your own plugins (the runner sets it);
 - the feature has no merged archive row, no spec-only commits at the head of its branch, or the clone or builder path contains whitespace;
