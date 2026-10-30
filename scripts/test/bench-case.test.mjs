@@ -227,6 +227,40 @@ test('setup, teardown and every placed file are checked like the config, each re
   assert.ok(!existsSync(join(out, 'result.json')))
 })
 
+test('a profile\'s env reaches setup, teardown and the fleet; the shell\'s DATABASE_URL, DIRECT_URL, TEST_DATABASE_URL and PG* never do', () => {
+  const { tmp, out, clone, run, writeProfile } = fixture()
+  const keys = 'DATABASE_URL DIRECT_URL TEST_DATABASE_URL PGHOST PGDATABASE BENCH_MARK'
+  const dump = (f) => `for k in ${keys}; do printf '%s=%s\\n' "$k" "$(printenv $k)"; done > ${join(tmp, f)}`
+  writeProfile({ env: { BENCH_MARK: 'on', DATABASE_URL: 'postgres://localhost:5432/bench_p' }, setup: dump('setup.env'), teardown: dump('teardown.env') })
+  const shell = { DATABASE_URL: 'postgres://localhost/app_dev', DIRECT_URL: 'postgres://localhost/app_dev', TEST_DATABASE_URL: 'postgres://localhost/app_test', PGHOST: 'localhost', PGDATABASE: 'app_dev' }
+  const r = run(['c1', '--builder', REPO, '--out', out], shell)
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  const want = 'DATABASE_URL=postgres://localhost:5432/bench_p\nDIRECT_URL=\nTEST_DATABASE_URL=\nPGHOST=\nPGDATABASE=\nBENCH_MARK=on\n'
+  assert.equal(readFileSync(join(tmp, 'setup.env'), 'utf8'), want)
+  assert.equal(readFileSync(join(tmp, 'teardown.env'), 'utf8'), want)
+  const { env } = JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8'))
+  assert.deepEqual(env, { DATABASE_URL: 'postgres://localhost:5432/bench_p', BENCH_MARK: 'on' })
+})
+
+test('a profile\'s env is checked like the config — each reason says env: — and the dry run shows it', () => {
+  const { out, clone, run, writeProfile } = fixture()
+  writeProfile({ env: { DATABASE_URL: 'postgres://localhost/app_dev', API_PORT: 6123 } })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /^refused: env: database app_dev is not a bench database \(bench_\*\)$/m)
+  assert.ok(!existsSync(clone))
+  writeProfile({ env: { NESTED: { a: 1 } } })
+  assert.match(run(['c1', '--builder', REPO, '--out', out]).stderr, /^refused: env: NESTED must be a string$/m)
+  writeProfile({ env: ['DATABASE_URL=x'] })
+  assert.match(run(['c1', '--builder', REPO, '--out', out]).stderr, /^refused: env must be \{ "NAME": "value" \}$/m)
+  writeProfile({ env: { DATABASE_URL: 'postgres://localhost/bench_p', API_PORT: 6123 } })
+  const d = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(d.status, 0, d.stderr)
+  assert.match(d.stdout, /^ {2}env: +DATABASE_URL=postgres:\/\/localhost\/bench_p API_PORT=6123$/m)
+  assert.match(d.stdout, /^ {2}ports: +5999 6123$/m)
+})
+
 const waitFor = async (fn, ms = 15000) => {
   for (const t0 = Date.now(); !fn(); await new Promise((res) => setTimeout(res, 50))) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${fn}`)
 }

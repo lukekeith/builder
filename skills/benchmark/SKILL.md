@@ -51,7 +51,7 @@ It refuses while a case of that suite is still alive; offer `--stop`.
 5. `node <builder>/scripts/bench-suite.mjs plan <ids|--all|--budget …> [--lanes N] [--control <ids>]`,
    shown as a plain review, not a path: the cases and controls, each lane with start and end times,
    when all lanes end, the cost, what was skipped and why, and — summarised from each archived case's dry
-   run — what its clone will touch: the `agent_walk` lines applied, the files placed, the setup and
+   run — what its clone will touch: the `agent_walk` lines applied, the `env` set, the files placed, the setup and
    teardown, the ports, and where clones go (outside every repo, removed after each case).
    Exit 2 is shown as its reasons (a refusal names what to fix; two projects naming one port is one) and nothing launches.
 6. One AskUserQuestion — **Run it** / **Not now** — saying it runs on its own, outlives this session

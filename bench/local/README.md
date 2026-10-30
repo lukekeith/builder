@@ -29,6 +29,9 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 - `agent_walk` — keys set under `agent_walk:` in the clone's `.claude/builder.md` (`claude_args` is always set by the runner).
 - `verify` — a file whose `verify:` block replaces the clone's.
 - `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
+- `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet
+  starts. Point the project's own scripts at the bench database here: `DATABASE_URL`, `DIRECT_URL`,
+  `TEST_DATABASE_URL` and every `PG*` are never inherited from your shell, so without `env` they are unset.
 - `setup` — a shell command run in the clone before the fleet (timeout 20 min); it may start what the run needs.
   Whatever it starts runs in its own process group, which is stopped once the case ends, however it ends.
 - `teardown` — a shell command run in the clone after the fleet, on every path — landed, failed, timed out or
@@ -41,6 +44,7 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
   "agent_walk": { "start": "npm run dev -- --port 4010" },
   "verify": "project-a.verify.yml",
   "files": { ".env": "project-a.env" },
+  "env": { "DATABASE_URL": "postgres://localhost:5432/bench_a_main" },
   "setup": "npm ci && dropdb --if-exists bench_a_main && createdb bench_a_main",
   "teardown": "dropdb --if-exists bench_a_main"
 }
@@ -50,8 +54,8 @@ The clone is removed once its `result.json` is written (the logs stay); `BENCH_K
 
 ## Safety rules
 
-A case is refused, before anything is cloned, when the clone's config — or the profile's `setup`, its
-`teardown`, or any text file it places (each reason says which: `setup: …`, `files/.env: …`) — would touch something of yours:
+A case is refused, before anything is cloned, when the clone's config — or the profile's `env`, `setup`, its
+`teardown`, or any text file it places (each reason says which: `env: …`, `setup: …`, `files/.env: …`) — would touch something of yours:
 
 - the profile has no `db_prefix`, or a database URL, `PGDATABASE` / `*_DATABASE`, or a `createdb` / `dropdb` names a database that does not start with it
   (a Postgres or MySQL URL with no name is the default database, and refused; a Redis URL with no path or a numbered
