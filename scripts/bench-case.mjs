@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url'
 import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, agentWalkValue } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
+import { parseManifest, isSet } from './manifest.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
 
 const FLEET_TIMEOUT_MS = Number(process.env.BENCH_CASE_FLEET_TIMEOUT_MS) || 24 * 60 * 60 * 1000
@@ -300,6 +301,12 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   }
   // sessions run in fleet worktrees checked out from commits: a tracked path there is the committed file, whatever is placed in the clone
   const head = specs.at(-1) ?? base
+  // The branch the case lands on. The manifest's go-ahead at the last spec commit wins: the fleet
+  // refuses a run --into any branch but the one it names. Without one, the archive row's target
+  // (where the original landed), else main.
+  const mfTarget = String(parseManifest(tryGit(repo, 'show', `${head}:${registry}/${feature}/MANIFEST.md`) ?? '').target ?? '').replace(/^"(.*)"$/, '$1')
+  const target = isSet(mfTarget) ? mfTarget : row.target || 'main'
+  if (spawnSync('git', ['check-ref-format', '--branch', target], { encoding: 'utf8' }).status !== 0 || /\s/.test(target)) refusals.push(`the target branch ${target} is not a valid branch name`)
   const posix = (p) => p.split(sep).join('/')
   const tracked = new Set((tryGit(repo, 'ls-tree', '-r', '--name-only', head) ?? '').split('\n').filter(Boolean))
   const files = []
@@ -363,11 +370,11 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
   const failure = specs.length ? null : `no spec-only commits lead ${feature}'s branch`
   const specLines = specs.length ? lineCount(tryGit(repo, 'show', `${specs.at(-1)}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
-  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines }
+  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines, target }
 }
 
 /**
- * The scratch clone: base checked out as main, the spec commits cherry-picked, origin removed, the
+ * The scratch clone: base checked out as the target branch, the spec commits cherry-picked, origin removed, the
  * profile applied and committed, its files placed and its setup run. Refuses before it clones.
  * → { clone, base, specs, refusals, failure, plan }; clone is null when nothing was made.
  */
@@ -376,15 +383,15 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   const logDir = out ?? dirname(dest)
   const none = { clone: null, base: plan.base ?? null, specs: plan.specs ?? [], refusals: plan.refusals, failure: plan.failure ?? null, plan }
   if (plan.refusals.length || plan.failure) return none
-  const { repo, clone, base, specs } = plan
+  const { repo, clone, base, specs, target } = plan
   mkdirSync(dirname(clone), { recursive: true })
   try {
     git(dirname(clone), 'clone', '--no-local', '--no-tags', '-q', repo, clone)
     git(clone, 'remote', 'remove', 'origin')
-    git(clone, 'checkout', '-q', '-B', 'main', base)
-    // only main stays: no other branch or tag may carry the original run's history into what is measured
+    git(clone, 'checkout', '-q', '-B', target, base)
+    // only the target stays: no other branch or tag may carry the original run's history into what is measured
     for (const ref of git(clone, 'for-each-ref', '--format=%(refname)').split('\n').filter(Boolean)) {
-      if (ref !== 'refs/heads/main') git(clone, 'update-ref', '-d', ref)
+      if (ref !== `refs/heads/${target}`) git(clone, 'update-ref', '-d', ref)
     }
   } catch (e) {
     return { ...none, clone: existsSync(clone) ? clone : null, failure: `could not clone the repo: ${why(e)}` }
@@ -412,6 +419,9 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
     return { ...none, clone, failure: `could not commit the profile: ${why(e)}` }
   }
   const prepped = git(clone, 'rev-parse', 'HEAD')
+  // main kept beside a working-branch target, at the prepped commit: a config whose base_branch is
+  // main (the default) still resolves, and it carries nothing the target doesn't
+  if (target !== 'main') git(clone, 'branch', '-f', 'main', prepped)
   if (stopping) return { ...none, clone, failure: 'stopped' }
   let setupPgid = null
   if (plan.setup) {
@@ -451,9 +461,9 @@ const fleetPgids = (clone) => {
  * Past the timeout the fleet gets SIGTERM (it stops its own sessions and dev envs), then SIGKILL for its
  * group and every group its fleet.json still names.
  */
-export async function runCaseFleet({ clone, feature, fleet, out, env = {} }) {
+export async function runCaseFleet({ clone, feature, fleet, out, env = {}, target = 'main' }) {
   const before = JSON.stringify(landedRow(clone, feature))
-  const r = await runGroup(process.execPath, [fleet, feature, '--into', 'main', '--parallel', '1'], {
+  const r = await runGroup(process.execPath, [fleet, feature, '--into', target, '--parallel', '1'], {
     cwd: clone,
     env: caseEnv(process.env, env, clone),
     log: join(out, 'fleet.out'),
@@ -553,7 +563,7 @@ if (isMain) {
       `  setup:  ${p.setup ?? '(none)'}`,
       `  teardown: ${p.teardown ?? '(none)'}`,
       `  ports:  ${p.ports.length ? p.ports.join(' ') : '(none)'}`,
-      `  fleet:  node ${p.fleet} ${p.feature} --into main --parallel 1`,
+      `  fleet:  node ${p.fleet} ${p.feature} --into ${p.target} --parallel 1`,
       ...p.warnings.map((w) => `  ${w}`),
     ].join('\n'))
     process.exit(0)
@@ -568,7 +578,7 @@ if (isMain) {
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`
   } else {
-    const { status, landed } = await runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out, env: plan.env })
+    const { status, landed } = await runCaseFleet({ clone: prep.clone, feature: plan.feature, fleet: plan.fleet, out, env: plan.env, target: plan.target })
     result.status = status
     result.measure = landed ? measureFromRow(landed) : null
     result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature, prep.prepped)

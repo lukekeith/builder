@@ -21,7 +21,7 @@ const put = (f, s) => {
 const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\n---\n\n# config\n'
 
 /** A project repo (its builder.md `md`, and `base`'s files in its first commit) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
-function fixture({ md = MD, base = {} } = {}) {
+function fixture({ md = MD, base = {}, into = 'main', mfTarget } = {}) {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-case-')))
   const repo = join(tmp, 'repo')
   mkdirSync(repo)
@@ -32,9 +32,16 @@ function fixture({ md = MD, base = {} } = {}) {
   put(join(repo, 'README.md'), 'r\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'init')
+  // a feature merged into a working branch: `into` is cut from main and gets a commit of its own
+  if (into !== 'main') {
+    git(repo, 'checkout', '-qb', into)
+    put(join(repo, 'work.txt'), 'w\n')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-qm', 'work')
+  }
   git(repo, 'checkout', '-qb', 'builder/f')
   put(join(repo, 'docs', 'features', 'f', 'SPEC.md'), '# f\n\none\ntwo\n')
-  put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), 'size: sm\n')
+  put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), `size: sm\n${mfTarget ? `target: ${mfTarget}\n` : ''}`)
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'spec')
   put(join(repo, 'src', 'a.js'), 'export const a = 1\n')
@@ -44,11 +51,12 @@ function fixture({ md = MD, base = {} } = {}) {
   put(join(repo, 'docs', 'features', 'f', 'PLAN.md'), Array.from({ length: 30 }, (_, i) => `old ${i}`).join('\n') + '\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'plan')
-  git(repo, 'checkout', '-q', 'main')
+  git(repo, 'checkout', '-q', into)
   git(repo, 'merge', '-q', '--no-ff', '-m', 'merge f', 'builder/f')
   const merged = git(repo, 'rev-parse', 'HEAD')
   git(repo, 'tag', 'v1.0.0', merged)
-  const setRow = (o = {}) => put(join(repo, '.builder', 'fleet', 'archive.jsonl'), JSON.stringify({ feature: 'f', merged, wallMs: 600000, costUsd: 2, timing: [], ...o }) + '\n')
+  git(repo, 'checkout', '-q', 'main')
+  const setRow = (o = {}) => put(join(repo, '.builder', 'fleet', 'archive.jsonl'), JSON.stringify({ feature: 'f', merged, target: into, wallMs: 600000, costUsd: 2, timing: [], ...o }) + '\n')
   setRow()
   const local = join(tmp, 'local')
   const writeProfile = (o = {}) => put(join(local, 'projects', 'p.json'), JSON.stringify({ repo, agent_walk: { env: 'PORT=5999' }, db_prefix: 'bench_', ...o }))
@@ -87,6 +95,47 @@ test('a case runs in a clone and never touches the repo', () => {
   const args = JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8'))
   assert.deepEqual(args.argv, ['f', '--into', 'main', '--parallel', '1'])
   assert.equal(args.projectDir, clone)
+})
+
+test('a feature merged into a working branch runs --into that branch: the clone works on it, main kept beside it at the same commit', () => {
+  const { out, clone, run } = fixture({ into: 'feature/x' })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  const args = JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8'))
+  assert.deepEqual(args.argv, ['f', '--into', 'feature/x', '--parallel', '1'])
+  assert.equal(git(clone, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags'), 'refs/heads/feature/x\nrefs/heads/main')
+  assert.ok(existsSync(join(clone, 'work.txt')), 'the clone starts from the working branch, not main')
+  assert.equal(git(clone, 'log', '-1', '--format=%s', 'feature/x~1'), 'bench: profile')
+  assert.equal(git(clone, 'rev-parse', 'main'), git(clone, 'rev-parse', 'feature/x~1'), 'main sits at the prepped commit, under the landing')
+  const d = run(['c1', '--builder', REPO, '--out', join(dirname(out), 'dry'), '--dry-run'])
+  assert.match(d.stdout, /fleet: +node \S+ f --into feature\/x --parallel 1/)
+})
+
+test('the manifest\'s go-ahead target at the last spec commit wins over the archive row\'s — the fleet refuses any other --into', () => {
+  const { out, clone, run, setRow } = fixture({ into: 'feature/x', mfTarget: 'feature/x' })
+  setRow({ target: 'feature/old' })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  const args = JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8'))
+  assert.deepEqual(args.argv, ['f', '--into', 'feature/x', '--parallel', '1'])
+})
+
+test('a row with no target lands on main', () => {
+  const { out, clone, run, setRow } = fixture()
+  setRow({ target: undefined })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8')).argv, ['f', '--into', 'main', '--parallel', '1'])
+})
+
+test('a target that is not a valid branch name is refused before a clone is made', () => {
+  const { out, clone, run, setRow } = fixture()
+  setRow({ target: 'bad..name' })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /refused: .*bad\.\.name/)
+  assert.ok(!existsSync(clone))
 })
 
 test('an unsafe profile is refused before a clone is made', () => {
