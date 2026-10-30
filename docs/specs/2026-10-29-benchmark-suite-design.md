@@ -77,7 +77,7 @@ tokens went; adding a case is one file.
 |---|---|
 | `skills/benchmark/SKILL.md` | §Picker (D6), `--budget`, `--all`, `--lanes`, `--control`, `--status` per lane; the fixture flow unchanged |
 | `scripts/bench-suite.mjs` (new) | `list` (catalogue + estimates), `plan` (schedule into lanes, the review), `run --detach`, `status`, `report`; cases resolved from `bench/features/` and `bench/local/` |
-| `scripts/bench-case.mjs` (new) | one archived case end to end: clone, base + spec commits, profile applied, `fleet.mjs <feature> --into main`, archive row collected (from `e2e-prep.mjs`) |
+| `scripts/bench-case.mjs` (new) | one archived case end to end: clone, base + spec commits, profile applied, `fleet.mjs <feature> --into <target>` (the go-ahead's branch, else the archive row's, else main), archive row collected (from `e2e-prep.mjs`) |
 | `scripts/bench-suite-core.mjs` (new) | pure parts: estimates, lane packing, budget fill, report tables — unit-tested |
 | `bench/local/README.md` (new, committed) + `.gitignore` | how to add a case and a profile; `bench/local/*` ignored except the README |
 | `bench/README.md` | the suite |
