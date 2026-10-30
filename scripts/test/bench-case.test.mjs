@@ -251,6 +251,24 @@ test('maxPlanLines: a case that started planned and never committed a new plan c
   assert.equal(maxPlanLines(none.r, 'docs/features', 'f', none.prepped), null)
 })
 
+test('the clone keeps no trace of the source: no reflog entry, no object of the source tip (the landed feature), no source path in its config, no remote or alternates', () => {
+  const { repo, out, clone, run } = fixture({ into: 'feature/x' })
+  // the landing (the merge) and the original branch's tip — main here is the init commit, under the base
+  const tips = ['feature/x', 'builder/f'].map((b) => git(repo, 'rev-parse', b))
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  const reflog = git(clone, 'reflog', '--all', '--format=%H %gs')
+  assert.doesNotMatch(reflog, /clone: from/)
+  for (const t of tips) {
+    assert.ok(!reflog.includes(t), `the reflog names ${t}`)
+    assert.equal(spawnSync('git', ['cat-file', '-e', `${t}^{commit}`], { cwd: clone }).status, 128, `${t} is still in the clone`)
+  }
+  assert.equal(git(clone, 'remote'), '')
+  assert.ok(!git(clone, 'config', '--list', '--local').includes(repo), 'the config names the source')
+  assert.ok(!existsSync(join(clone, '.git', 'objects', 'info', 'alternates')))
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+})
+
 test('an unsafe profile is refused before a clone is made', () => {
   const { out, clone, run, writeProfile } = fixture()
   writeProfile({ agent_walk: { env: 'DATABASE_URL=postgres://localhost/app_dev' } })
