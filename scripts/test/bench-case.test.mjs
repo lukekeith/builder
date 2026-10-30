@@ -264,7 +264,7 @@ test('a profile\'s env is checked like the config — each reason says env: — 
 
 test('claude_args keeps the project\'s own flags after the runner\'s — never its --permission-mode, --settings or --plugin-dir', () => {
   const own = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: --permission-mode default --mcp-config .claude/walk-mcp.json --plugin-dir /mine --settings=/x.json\n---\n\n# config\n'
-  const { out, clone, run } = fixture({ md: own })
+  const { out, clone, run } = fixture({ md: own, base: { '.claude/walk-mcp.json': '{}\n' } })
   const r = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(r.status, 0, r.stderr)
   const settings = join(clone, '.claude', 'bench-settings.json')
@@ -273,7 +273,7 @@ test('claude_args keeps the project\'s own flags after the runner\'s — never i
 
 test('a profile\'s agent_walk.claude_args replaces the project\'s own, after the runner\'s flags', () => {
   const own = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: --mcp-config .claude/walk-mcp.json\n---\n'
-  const { out, run, writeProfile } = fixture({ md: own })
+  const { out, run, writeProfile } = fixture({ md: own, base: { '.claude/walk-mcp.json': '{}\n', '.claude/bench-mcp.json': '{}\n' } })
   writeProfile({ agent_walk: { env: 'PORT=5999', claude_args: '--mcp-config .claude/bench-mcp.json --plugin-dir /elsewhere' } })
   const d = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
   assert.equal(d.status, 0, d.stderr)
