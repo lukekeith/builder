@@ -13,7 +13,7 @@
  * clone root defaults to $BENCH_TMP/<out's parent's name>/<out's name>.
  *
  * Setup, fleet and teardown run in the profile's `env`, never the shell's DATABASE_URL, DIRECT_URL,
- * TEST_DATABASE_URL or PG*. After the fleet — on every path — the profile's `teardown` runs in the clone
+ * TEST_DATABASE_URL, REDIS_URL, MONGODB_URI, MONGO_URL, PG*, MYSQL_* or DB_*. After the fleet — on every path — the profile's `teardown` runs in the clone
  * and whatever its `setup` started is stopped; once result.json is written the clone is removed (BENCH_KEEP_CLONES=1 keeps it).
  * SIGTERM stops the case: the fleet and every group it records, the setup's group, then the teardown,
  * and result.json says `failed: stopped`.

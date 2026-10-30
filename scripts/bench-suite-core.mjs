@@ -320,7 +320,7 @@ export function textRefusals(where, text, profile, { listening = [] } = {}) {
 }
 
 /** A variable a case never inherits from the shell — a database named there is the human's; only a profile's `env` sets one. */
-export const strippedEnv = (k) => k === 'DATABASE_URL' || k === 'DIRECT_URL' || k === 'TEST_DATABASE_URL' || /^PG[A-Z0-9_]+$/.test(k)
+export const strippedEnv = (k) => ['DATABASE_URL', 'DIRECT_URL', 'TEST_DATABASE_URL', 'REDIS_URL', 'MONGODB_URI', 'MONGO_URL'].includes(k) || /^(?:PG|MYSQL_|DB_)[A-Z0-9_]+$/.test(k)
 
 /** A profile's `env` checked for shape → { env: { NAME: 'value' }, refusals }; numbers and booleans become strings. */
 export function profileEnv(env) {

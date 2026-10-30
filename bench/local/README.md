@@ -33,7 +33,8 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 - `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
 - `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet
   starts. Point the project's own scripts at the bench database here: `DATABASE_URL`, `DIRECT_URL`,
-  `TEST_DATABASE_URL` and every `PG*` are never inherited from your shell, so without `env` they are unset.
+  `TEST_DATABASE_URL`, `REDIS_URL`, `MONGODB_URI`, `MONGO_URL` and every `PG*`, `MYSQL_*` and `DB_*` are never
+  inherited from your shell, so without `env` they are unset.
 - `replace` — `[["from", "to"], …]`, literal replacements over the whole clone's `builder.md` — front matter and body —
   after the keys above are set; each must match at least once, or the case is refused (`replace: "<from>" not found`).
   Use it to point the body's prose (a "Walk readiness" section naming your dev database, ports or containers) at the
