@@ -320,3 +320,26 @@ test('safety: shutdown is refused only with a database client or server in the s
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown "My iPhone"'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown "My iPhone"'])
   assert.deepEqual(refuse('  stop: sudo shutdown -h now'), ['shuts down the machine: sudo shutdown -h now'])
 })
+
+// review round: probes through textRefusals, db_prefix bench_, 5432 / 3306 / 6379 listening
+const probe = (text) => textRefusals('setup', text, P, { listening: [5432, 3306, 6379] })
+test('safety: only :memory: or a relative SQLite path is exempt — never an absolute, ~ or .. path, never PG* or POSTGRES_DB', () => {
+  const not = (name) => [`setup: database ${name} is not a bench database (bench_*)`]
+  assert.deepEqual(probe('DB_DATABASE=/Users/me/www/proj/database/database.sqlite'), not('/Users/me/www/proj/database/database.sqlite'))
+  assert.deepEqual(probe('DB_DATABASE=~/proj/dev.sqlite3'), not('~/proj/dev.sqlite3'))
+  assert.deepEqual(probe('DB_DATABASE=../proj/dev.db'), not('../proj/dev.db'))
+  assert.deepEqual(probe('DB_DATABASE=tmp/../../proj/dev.db'), not('tmp/../../proj/dev.db'))
+  assert.deepEqual(probe('DB_DATABASE=$HOME/dev.db'), not('$HOME/dev.db'))
+  assert.deepEqual(probe('PGDATABASE=app_dev.db'), not('app_dev.db'))
+  assert.deepEqual(probe('POSTGRES_DB=app_dev.db'), not('app_dev.db'))
+  assert.deepEqual(probe('DB_DATABASE=:memory: SQLITE_DATABASE=storage/test.sqlite DATABASE=tmp/app.db'), [])
+})
+test('safety: POSTGRES_DB, PGSERVICE and a URL\'s ?dbname= / &dbname= name a database too', () => {
+  assert.deepEqual(probe('POSTGRES_DB=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(probe('TEST_POSTGRES_DB=app_test'), ['setup: database app_test is not a bench database (bench_*)'])
+  assert.deepEqual(probe('PGSERVICE=dev'), ['setup: database dev is not a bench database (bench_*)'])
+  assert.deepEqual(probe('DATABASE_URL=postgres://h/bench_x?dbname=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(probe('DATABASE_URL=postgres://h/bench_x?sslmode=off&dbname=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(probe('REDIS_URL=redis://h:6379/0?dbname=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(probe('POSTGRES_DB=bench_x PGSERVICE=bench_svc DATABASE_URL=postgres://h/bench_x?dbname=bench_y'), [])
+})

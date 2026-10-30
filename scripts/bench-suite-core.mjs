@@ -191,10 +191,13 @@ export function applyReplacements(md, replace) {
 }
 
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
-/** PGDATABASE, DATABASE and any *_DATABASE set to a name (DATABASE_URL is a URL, checked above). */
-const DB_VAR = /\b(?:[A-Z0-9]+_)*(?:PG)?DATABASE=(['"]?)([^\s'";&|()]*)/g
-/** A SQLite database — in memory or a file — is not a server database's name. */
-const SQLITE = /^:memory:$|\.(?:sqlite3?|db)$/
+/** PGDATABASE, DATABASE, any *_DATABASE, *POSTGRES_DB and PGSERVICE set to a name (DATABASE_URL is a URL, checked above). */
+const DB_VAR = /\b((?:[A-Z0-9]+_)*(?:(?:PG)?DATABASE|POSTGRES_DB)|PGSERVICE)=(['"]?)([^\s'";&|()]*)/g
+/**
+ * A SQLite database is not a server database's name — but only in memory, or a file at a relative path inside
+ * the clone: an absolute, ~, $VAR or .. path may be the human's own file. Never for a Postgres variable.
+ */
+const sqliteInClone = (variable, v) => !/^PG|POSTGRES_DB$/.test(variable) && (v === ':memory:' || (/\.(?:sqlite3?|db)$/.test(v) && !/^[/~$]/.test(v) && !v.split('/').includes('..')))
 /** createdb / dropdb options that take a value; the first other word is the database. */
 const PG_VALUE_OPTS = new Set(['-h', '-p', '-U', '-O', '-T', '-E', '-l', '-D', '-S', '--host', '--port', '--username', '--owner', '--template', '--encoding', '--locale', '--tablespace', '--maintenance-db', '--strategy', '--icu-locale', '--locale-provider'])
 /** Every form a line names a port in: *PORT=, --port, a localhost / any-host / IPv6 bind, docker -p, and lsof / fuser / kill-port targets. */
@@ -238,11 +241,13 @@ function lineRefusals(lines, prefix, inUse) {
   for (const l of lines) for (const u of l.match(DB_URL) ?? []) {
     // a URL in prose may end a sentence or a clause: its trailing punctuation is not the name's
     const name = (/^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || '').replace(/[,.;:)\]`]+$/, '')
+    // a dbname in the query names the database as much as the path does
+    for (const q of u.matchAll(/[?&]dbname=([^&\s'"#]*)/g)) if (!q[1].startsWith(prefix)) notBench(q[1])
     // Redis databases are numbered, not named: no path, or a number, names none of the human's
     if (/^rediss?:/i.test(u) && /^\d*$/.test(name)) continue
     if (!name.startsWith(prefix)) notBench(name)
   }
-  for (const l of lines) for (const m of l.replace(DB_URL, ' ').matchAll(DB_VAR)) if (!m[2].startsWith(prefix) && !SQLITE.test(m[2])) notBench(m[2])
+  for (const l of lines) for (const m of l.replace(DB_URL, ' ').matchAll(DB_VAR)) if (!m[3].startsWith(prefix) && !sqliteInClone(m[1], m[3])) notBench(m[3])
   for (const l of lines) for (const seg of l.split(/&&|\|\||;|\|/)) {
     const words = /\b(?:createdb|dropdb)\b(.*)/.exec(seg)?.[1].trim().split(/\s+/).filter(Boolean)
     if (!words) continue
