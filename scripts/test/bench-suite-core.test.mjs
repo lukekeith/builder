@@ -318,7 +318,7 @@ test('safety: shutdown is refused only with a database client or server in the s
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown booted'), ['simctl targets the booted simulator — name a bench device UDID'])
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown all'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown all'])
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown "My iPhone"'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown "My iPhone"'])
-  assert.deepEqual(refuse('  stop: sudo shutdown -h now'), ['shuts down the machine: sudo shutdown -h now'])
+  assert.deepEqual(refuse('  stop: sudo shutdown -h now'), ['shuts down or restarts the machine: sudo shutdown -h now'])
 })
 
 // review round: probes through textRefusals, db_prefix bench_, 5432 / 3306 / 6379 listening
@@ -342,4 +342,19 @@ test('safety: POSTGRES_DB, PGSERVICE and a URL\'s ?dbname= / &dbname= name a dat
   assert.deepEqual(probe('DATABASE_URL=postgres://h/bench_x?sslmode=off&dbname=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
   assert.deepEqual(probe('REDIS_URL=redis://h:6379/0?dbname=app_dev'), ['setup: database app_dev is not a bench database (bench_*)'])
   assert.deepEqual(probe('POSTGRES_DB=bench_x PGSERVICE=bench_svc DATABASE_URL=postgres://h/bench_x?dbname=bench_y'), [])
+})
+test('safety: SHUTDOWN piped into a database client, and a server binary\'s own shutdown, are refused', () => {
+  const stops = (s) => assert.ok(probe(s).some((x) => x.startsWith('setup: stops a database server: ')), `${s} → ${JSON.stringify(probe(s))}`)
+  stops("printf 'SHUTDOWN\\n' | redis-cli")
+  stops('echo "SHUTDOWN;" | mysql -u root')
+  stops('mongod --shutdown --dbpath /data/db')
+  stops('/usr/sbin/mysqld --shutdown')
+  stops('redis-server --port 6380 && redis-cli -p 6380 shutdown')
+  stops('postgres -D /data & kill -INT $! && echo shutdown')
+  assert.deepEqual(probe('xcrun simctl shutdown bench_iphone && psql bench_p -c "select 1"'), [])
+})
+test('safety: the machine\'s shutdown, halt or reboot — by path, through sudo with flags — is refused', () => {
+  for (const s of ['/sbin/shutdown -h now', 'sudo -n shutdown -r now', 'sudo -u root /sbin/halt', 'sudo --non-interactive reboot', 'halt', 'npm ci && /usr/sbin/reboot'])
+    assert.ok(probe(s).some((x) => /^setup: shuts down or restarts the machine: /.test(x)), `${s} → ${JSON.stringify(probe(s))}`)
+  assert.deepEqual(probe('npm run shutdown-hooks && echo reboot later'), [])
 })

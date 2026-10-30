@@ -74,8 +74,10 @@ A case is refused, before anything is cloned, when the clone's config — or the
   client's `-p` — `psql`, `createdb`, `dropdb`, `pg_dump`, `pg_restore`, whose database is checked — and `PGPORT` /
   `DB_PORT` are the shared database server's, and are not);
 - a command stops or empties a database server: `flushall`, `flushdb`, `pg_ctl … stop|restart|kill`, and `shutdown`
-  beside a database client or server (`mysqladmin`, `mysql`, `redis-cli`, `valkey-cli`, `mongosh` / `mongo`, `psql`,
-  `pg_ctl`) or as SQL in a `-c` / `-e` / `--eval` string; a bare `shutdown` (the machine's) is refused too;
+  anywhere on a line with a database client or server (`mysqladmin`, `mysql`, `mysqld`, `redis-cli`, `redis-server`,
+  `valkey-cli`, `mongosh` / `mongo`, `mongod`, `psql`, `pg_ctl`, `postgres`) — piped in, in a `-c` / `--eval` string,
+  or as the server's own `--shutdown`;
+- a command shuts down or restarts the machine: `shutdown`, `halt`, `reboot` or `poweroff`, by any path or through `sudo`;
 - a `docker` or `docker-compose` command names no container carrying the prefix;
 - `simctl` targets the booted simulator instead of a named bench device, or `simctl shutdown` names a device
   without the prefix (`simctl shutdown bench_a_iphone` is fine; `all` is not);
