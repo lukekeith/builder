@@ -48,3 +48,30 @@ against the untouched fixture.
 Add a fixture: a new directory under `fixtures/` with a complete `.claude/builder.md` (its
 `agent_walk.claude_args` is `{claude_args}`, filled per run), no dependencies, and tests under
 `*.test.mjs`.
+
+## Suite
+
+`/builder:benchmark` with no feature opens the suite: `scripts/bench-suite.mjs`, a catalogue of sized
+cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benchmark-suite-design.md`.
+
+- **Two kinds of case.** A *fixture* case is a `features/<name>/` directory (its `feature.json` carries
+  `size` and `covers`) run through `bench.mjs` on its fixture. An *archived* case is a feature a real
+  project already merged: its spec is run again through the fleet in a scratch `git clone --no-local`
+  of the project at the feature's base commit, with `origin` removed, on the builder under test.
+  Nothing is ever written into the project repo. Archived cases live in `bench/local/` (see its README).
+- **Sizes** are `xs`, `sm`, `md`, `lg`, `xl`, in that order; the picker explains each and the plan sorts by it.
+- **Lanes.** Cases are packed longest first into `--lanes N` lanes (default 3), each starting on the lane that is free
+  earliest; two cases of one project never run at the same time, and all fixture cases count as one project
+  (`bench.mjs` holds one global lock). `--budget 12h` (a night) picks cases round-robin across sizes while the packed wall time fits.
+- **Estimates** come from the newest fixture run, or from the case's archive row; a case with none is skipped
+  by `--budget`. A result within 25% of its estimate is on target.
+- **Baseline vs control.** The baseline is what the case measured when it first landed. A control runs a picked case again
+  on builder's `main` (`--control <id,…>`) beside the builder under test, so a change in the number can be told from a
+  change in the day. Controls fill lanes but do not count against `--budget`'s pick.
+- **Running.** `plan` shows the schedule and dry-runs every archived case; `run … --detach` launches it (a suite outlives the
+  session; `run` without `--detach` is refused); `run --resume <suite-id> --detach` re-runs waiting, cut-off and refused
+  items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands.
+- **Results.** `bench/local/results/<suite-id>/` (git-ignored) holds `suite.json`, one folder per attempt and the named
+  `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids and sizes only.
+- **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs);
+  `BENCH_SETUP_TIMEOUT_MS` (20 min), `BENCH_CASE_FLEET_TIMEOUT_MS` (24 h), `BENCH_CASE_KILL_GRACE_MS` (10 s).

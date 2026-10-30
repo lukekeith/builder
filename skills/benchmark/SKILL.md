@@ -6,7 +6,10 @@ description: Maintainer tool — runs a fixture feature through builder, superpo
 
 # `/builder:benchmark` — where the time goes
 
-Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id>]`**.
+Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id>]`**
+for one fixture feature, or **`/builder:benchmark`** with no feature for the suite picker (§Picker), which also takes
+**`--all`**, **`--budget <h>`**, **`--lanes N`**, **`--control <ids>`** and **`--resume <suite-id>`**.
+`/builder:benchmark tags` is the quick fixture run the no-feature path used to start.
 
 The work is `scripts/bench.mjs`; this skill checks, confirms once, launches it and reports. Resolve
 `<builder>` per [REFERENCE](../resume/REFERENCE.md) §The scripts. Design and the report's meaning:
@@ -25,7 +28,43 @@ the feature's hidden acceptance tests score what landed. Configs run one at a ti
 parallel — so one never skews another. Nothing in the user's Claude home changes: plugins load with
 `--plugin-dir` for the session only, and GSD installs into the copy.
 
+## Picker (no feature)
+
+`/builder:benchmark` with no `<feature>` runs the suite (`scripts/bench-suite.mjs`; `bench/README.md`
+§Suite): a catalogue of sized cases, scheduled into lanes that fit a night. It never starts a run
+without asking. `--resume <suite-id>` skips the picker: `node <builder>/scripts/bench-suite.mjs run --resume <suite-id> --detach`
+re-runs that suite's waiting, cut-off and refused items (parked and timed-out ones are final), after a confirmation as in step 5.
+
+1. `node <builder>/scripts/bench-suite.mjs list --json` — the catalogue: fixture cases and any archived
+   cases under `bench/local/`. A case with a `problem` is shown with it and cannot be picked.
+2. **Above the picker, in prose** (one menu per screen): what each size bucket is for — `xs` a small
+   change built in the chat, `sm` one app and one feature, `md` several slices or apps, `lg` and `xl`
+   the long, costly runs — and the recommended set: what `plan --budget 12h` picks (run it and read its
+   schedule) with its recommended controls, and why: it takes the sizes in turn so one night covers
+   them all, and a control runs a case again on builder's main so a change in the number can be told from
+   a change in the day. No lettered list beside the picker.
+3. **One multi-select** of every case, each labelled with its `pickLabel` (`size · id — covers · ~minutes · ~$cost`, or `no estimate yet`).
+4. **One question for the options**: lanes (default 3), controls (none, or the recommended ones),
+   budget (none, or `--budget <h>` in place of a hand pick).
+5. `node <builder>/scripts/bench-suite.mjs plan <ids|--all|--budget …> [--lanes N] [--control <ids>]`,
+   shown as a plain review, not a path: the cases and controls, each lane with start and end times,
+   when all lanes end, the cost, what was skipped and why, and that each archived case ran a dry run.
+   Exit 2 is shown as its reasons (a refusal names what to fix) and nothing launches.
+6. One AskUserQuestion — **Run it** / **Not now** — saying it runs on its own, outlives this session
+   and writes only under `bench/local/results/` and `bench/results/`. On yes, **in the foreground**:
+   `node <builder>/scripts/bench-suite.mjs run <the same selection> --detach` (`run` without
+   `--detach` is refused; `🔴 never` launch it as a background task of this session).
+
+`--builder <checkout>` points the suite at another builder; the default is this checkout. Footer:
+
+~~~
+▶ benchmark suite: <n> case(s) in <lanes> lanes, ends ~<time> — next: /builder:benchmark --status
+~~~
+
 ## 1. `--status` and `--report`
+
+When a suite is running or the newest run, `--status` shows `node <builder>/scripts/bench-suite.mjs status`
+(and `--report <suite-id>` runs `bench-suite.mjs report <suite-id>`); otherwise today's:
 
 `node <builder>/scripts/bench.mjs status` — reply with its contents as markdown. Running: the
 summary so far and the config and session it is on. Finished: the summary table and the report's
@@ -36,10 +75,9 @@ then its table and the path.
 ## 2. Pre-flight
 
 - `claude` on the PATH (`which claude`); if not, stop and say so.
-- The feature: `<feature>` if given, else `tags`. `bench/features/` has `tags` (one app, small — the
+- The feature: `<feature>`; with none, this section does not apply — see §Picker. `bench/features/` has `tags` (one app, small — the
   quick run) and `share` (two apps on the `notes-hub` fixture, ~10–12 slices and ~30 s test suites —
-  where the test-plan levers have something to save; a run takes far longer). With no `<feature>`,
-  run `tags` without asking. An unknown one is refused by the script with the list.
+  where the test-plan levers have something to save; a run takes far longer). An unknown one is refused by the script with the list.
 - Superpowers in the plugin cache: the script's dry run names the `--plugin-dir` it found; if the
   `superpowers` line has none, say that row will run without the plugin and offer `--only` without it.
 - No run in progress: `status` says `running:` → offer `--status` and stop. The launch itself also refuses with `a benchmark is running (pid N, …)`
@@ -84,3 +122,5 @@ notified when it ends. Footer:
 - Run a config in the foreground of this session, or run two benchmarks at once.
 - Edit `runs.json` or a report by hand; `--report` rebuilds one from `runs.json`.
 - Change how builder, superpowers or GSD behave to make a number better.
+- Name a consuming project in anything committed — cases, profiles and results stay under the git-ignored `bench/local/`.
+- Launch a suite without `--detach`, or from a background task of this session.

@@ -11,5 +11,9 @@
 /bench/results/lock
 /bench/results/bench.out
 
+# benchmark suite: real-project cases, profiles and results stay on this machine
+/bench/local/*
+!/bench/local/README.md
+
 # plugin eval results
 /evals/results/
