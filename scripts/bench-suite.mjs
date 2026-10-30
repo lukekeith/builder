@@ -24,7 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport } from './bench-suite-core.mjs'
+import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs } from './bench-suite-core.mjs'
 import { landedRow, duration } from './fleet-core.mjs'
 import { BUILDER, runId } from './bench.mjs'
 
@@ -347,10 +347,11 @@ function mainCheckout(builder) {
 
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
 
-/** An archived item: bench-case in a fresh --out; a control's result is rewritten as <id>@main. → its status */
+/** An archived item: bench-case in a fresh --out, its fleet timeout from its estimate; a control's result is rewritten as <id>@main. → its status */
 async function runArchived(it, builder, out) {
   const errFile = join(out, 'case.err')
-  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out], { cwd: out, env: process.env, outFile: join(out, 'case.out'), errFile })
+  const env = { ...process.env, BENCH_CASE_FLEET_TIMEOUT_MS: String(caseFleetTimeoutMs(it.estimate)) }
+  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out], { cwd: out, env, outFile: join(out, 'case.out'), errFile })
   const resFile = join(out, 'result.json')
   const res = readJson(resFile)
   if (!res) return refusedOrDied(r, errFile)

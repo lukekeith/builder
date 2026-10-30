@@ -5,7 +5,8 @@
 // STUB_CASE_MS × the case's estimated minutes (10× for an id in STUB_CASE_LONG), then writes
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
-// Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log.
+// Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log;
+// case mode also `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>`.
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { safetyRefusals } from '../../../bench-suite-core.mjs'
@@ -47,6 +48,7 @@ if (argv.includes('--dry-run')) {
 const out = opt('--out')
 log(`start ${id} ${c.project} ${Date.now()}`)
 log(`builder ${id} ${opt('--builder')}`)
+log(`timeout ${id} ${process.env.BENCH_CASE_FLEET_TIMEOUT_MS ?? '-'}`)
 const minutes = c.estimate?.minutes ?? 1
 await sleep(unit * minutes * (ids(process.env.STUB_CASE_LONG).includes(id) ? 10 : 1))
 if (ids(process.env.STUB_CASE_DIE).includes(id)) process.exit(1)

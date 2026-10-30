@@ -39,6 +39,12 @@ export function estimateFromRuns(runsJson, config = 'builder') {
   return { minutes: Math.ceil(ms / 60000), usd: usd > 0 ? cents(usd) : null }
 }
 
+/** The fleet timeout the suite gives a case: 3× its estimate, at least an hour; with no estimate, 6 h — a hung case never holds its lane for the case runner's 24 h. */
+export function caseFleetTimeoutMs(estimate) {
+  const m = estimate?.minutes
+  return (m > 0 ? Math.max(3 * m, 60) : 6 * 60) * 60000
+}
+
 /** One pick line for a case. */
 export function pickLabel(c) {
   const head = `${c.size} · ${c.id} — ${c.covers}`

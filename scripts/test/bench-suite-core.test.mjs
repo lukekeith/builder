@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -188,4 +188,10 @@ test('estimateFromRow: human wait — stages.parked and walkQueueMs — is left 
   assert.deepEqual(estimateFromRow({ wallMs: 120 * 60000, stages: { build: 30 * 60000, parked: 50 * 60000 }, walkQueueMs: 10 * 60000, costUsd: 1 }), { minutes: 60, usd: 1 })
   assert.deepEqual(estimateFromRow({ wallMs: 100 * 60000, stages: { parked: 90 * 60000 }, timing: [{ ms: 40 * 60000 }], costUsd: 1 }), { minutes: 40, usd: 1 })
   assert.deepEqual(estimateFromRow({ wallMs: 61 * 60000, costUsd: 1 }), { minutes: 61, usd: 1 })
+})
+test('caseFleetTimeoutMs: 3× the estimate, at least an hour; no estimate is 6 h', () => {
+  assert.equal(caseFleetTimeoutMs({ minutes: 30, usd: 1 }), 90 * 60000)
+  assert.equal(caseFleetTimeoutMs({ minutes: 10, usd: 1 }), 60 * 60000)
+  assert.equal(caseFleetTimeoutMs(null), 6 * 60 * 60000)
+  assert.equal(caseFleetTimeoutMs({ minutes: 0 }), 6 * 60 * 60000)
 })
