@@ -80,7 +80,8 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
   `lsof -iTCP:N` / `-ti:N` / `-i :N`, `fuser N/tcp` and `kill-port N` forms (a database URL's port, a Postgres
   client's `-p` — `psql`, `createdb`, `dropdb`, `pg_dump`, `pg_restore`, whose database is checked — and `PGPORT` /
   `DB_PORT` are the shared database server's, and are not);
-- a command stops or empties a database server: `flushall`, `flushdb`, `pg_ctl … stop|restart|kill`, and `shutdown`
+- a command stops or empties a database server or service: `flushall`, `flushdb`, `pg_ctl` / `pg_ctlcluster … stop|restart|kill`,
+  `mysql.server stop|restart`, `brew services stop|restart|kill` (whatever it names), and `shutdown`
   anywhere on a line with a database client or server (`mysqladmin`, `mysql`, `mysqld`, `redis-cli`, `redis-server`,
   `valkey-cli`, `mongosh` / `mongo`, `mongod`, `psql`, `pg_ctl`, `postgres`) — piped in, in a `-c` / `--eval` string,
   or as the server's own `--shutdown`;

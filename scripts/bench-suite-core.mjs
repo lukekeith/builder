@@ -245,7 +245,9 @@ const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g
 /** A Postgres client whose database name is checked: its -p / --port is the shared database server's. No other client is exempt. */
 const DB_CLIENT = /(?:^|[\s(])(?:psql|createdb|dropdb|pg_dump|pg_restore)(?=\s|$)/
 /** A command that empties or stops a database server outright — never the bench's to run, whatever port it names. */
-const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill)\b/i
+const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl(?:cluster)?\b.*\b(?:stop|restart|kill)\b|\bmysql\.server\s+(?:stop|restart)\b/i
+/** brew services stop|restart|kill — whatever it names, the service is the human's. */
+const BREW_STOP = /\bbrew\s+services\s+(?:stop|restart|kill)\b/
 /**
  * `shutdown` stops a database server only on a line with one of its clients or servers — piped in, in a -c / --eval
  * string, or as the server's own flag (`simctl shutdown` is a simulator's, and is left out of the line).
@@ -306,6 +308,7 @@ function lineRefusals(lines, prefix, inUse) {
     if (SHUTDOWN.test(unsim) && DB_TOOL.test(unsim)) add(`stops a database server: ${bare(l)}`)
     for (const seg of segs) {
       if (SERVER_STOP.test(seg)) add(`stops a database server: ${bare(seg)}`)
+      if (BREW_STOP.test(seg)) add(`stops a service: ${bare(seg)}`)
       if (haltsMachine(bare(seg))) add(`shuts down or restarts the machine: ${bare(seg)}`)
       const sim = /\bsimctl\s+shutdown\s+(\S+)/.exec(seg)?.[1]
       if (sim && sim !== 'booted' && !sim.includes(prefix)) add(`simctl shutdown names no ${prefix} device: ${bare(seg)}`)
