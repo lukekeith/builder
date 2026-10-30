@@ -53,6 +53,7 @@ function setup() {
       starts: (id) => of('start', id).length,
       ends: (id) => of('end', id).length,
       builders: (id) => of('builder', id).map((l) => l[2]),
+      timeouts: (id) => of('timeout', id).map((l) => l[2]),
     }
   }
   const results = join(local, 'results')
@@ -147,6 +148,8 @@ test('run: two lanes, never two of one project at once, report at the end with n
   const st = suite(['status']).stdout
   assert.match(st, /lane 1: done c1 · done c2/)
   assert.doesNotMatch(st, /⚠/)
+  // each case's fleet timeout: 3× its estimate, at least an hour
+  assert.deepEqual([log.timeouts('c1'), log.timeouts('c2')], [[String(90 * 60000)], [String(60 * 60000)]])
 })
 
 test('the project mutex holds when a case runs long', async () => {
