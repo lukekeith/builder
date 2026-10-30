@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -275,4 +275,26 @@ test('walkClaudeArgs: the runner\'s flags, then the profile\'s claude_args when 
   assert.equal(walkClaudeArgs(runner, md('{claude_args}')), runner)
   assert.equal(walkClaudeArgs(runner, '---\nproject: p\n---\n'), runner)
   assert.equal(walkClaudeArgs(runner, md('--mcp-config own.json'), '--mcp-config bench.json --plugin-dir /x'), `${runner} --mcp-config bench.json`)
+})
+
+test('applyReplacements: literal, every occurrence, front matter and body; each must match once', () => {
+  const md = '---\nagent_walk:\n  start: npm run dev -- --port 3000\n---\nWalk readiness: open localhost:3000 ($& stays) and psql app_dev.\n'
+  const r = applyReplacements(md, [['3000', '4010'], ['psql app_dev', 'psql bench_p'], ['($& stays)', '(a.b*)']])
+  assert.deepEqual(r.refusals, [])
+  assert.equal(r.md, '---\nagent_walk:\n  start: npm run dev -- --port 4010\n---\nWalk readiness: open localhost:4010 (a.b*) and psql bench_p.\n')
+  assert.deepEqual(applyReplacements(md, [['nope', 'x'], ['3000', '4010']]).refusals, ['replace: "nope" not found'])
+  assert.deepEqual(applyReplacements(md, undefined), { md, refusals: [] })
+  for (const bad of [{ a: 'b' }, [['a']], [['', 'x']], [['a', 1]], 'a']) assert.deepEqual(applyReplacements(md, bad).refusals, ['replace must be [["from", "to"], …] — each from a non-empty string, each to a string'], JSON.stringify(bad))
+})
+test('bodyWarnings: the same rules over the body, each reason body: — the front matter left to safetyRefusals', () => {
+  const md = walk('  env: PORT=5917') + '\n## Walk readiness\n\nRun `docker compose up -d`, then DATABASE_URL=postgres://localhost/app_dev npm run dev on localhost:3000.\n'
+  assert.deepEqual(bodyWarnings(md, P, { listening: [3000, 5917] }), ['body: database app_dev is not a bench database (bench_*)', 'body: port 3000 is in use now', 'body: docker command names no bench_ container: docker compose up -d , then DATABASE_URL=postgres://localhost/app_dev npm run dev on localhost:3000.'])
+  assert.deepEqual(safetyRefusals(md, P, { listening: [3000] }), [])
+  assert.deepEqual(bodyWarnings(walk(''), P), [])
+  assert.deepEqual(bodyWarnings(md, {}), [])
+})
+test('frontMatterText: only the front matter — ports named in the body never count', () => {
+  const md = walk('  env: PORT=5917') + '\nopen localhost:3000\n'
+  assert.deepEqual(portsNamed(frontMatterText(md)), [5917])
+  assert.equal(frontMatterText('no front matter\nlocalhost:3000\n'), '')
 })

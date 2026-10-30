@@ -151,7 +151,7 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
 }
 
 /** A config's agent_walk.claude_args (its comment dropped), or '' when it has none. */
-const ownClaudeArgs = (md) => {
+export const ownClaudeArgs = (md) => {
   const { fm } = splitFm(normalize(md))
   const at = fm.findIndex((l) => /^agent_walk:/.test(l))
   if (at < 0) return ''
@@ -172,6 +172,22 @@ const withoutRunnerFlags = (args) => {
 export function walkClaudeArgs(runner, baseMd, profileArgs) {
   const rest = withoutRunnerFlags(profileArgs != null && String(profileArgs).trim() ? profileArgs : ownClaudeArgs(baseMd))
   return rest ? `${runner} ${rest}` : runner
+}
+
+/** A config's front matter alone (without its `---` rules), '' with none — what a port is taken from; the body is prose. */
+export const frontMatterText = (md) => splitFm(normalize(md)).fm.join('\n')
+
+/** A profile's `replace` — [["from", "to"], …] — applied in order to the whole builder.md as literal text; each must match at least once. → { md, refusals } */
+export function applyReplacements(md, replace) {
+  if (replace == null) return { md, refusals: [] }
+  const ok = Array.isArray(replace) && replace.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === 'string' && p[0] !== '' && typeof p[1] === 'string')
+  if (!ok) return { md, refusals: ['replace must be [["from", "to"], …] — each from a non-empty string, each to a string'] }
+  const refusals = []
+  for (const [from, to] of replace) {
+    if (!md.includes(from)) refusals.push(`replace: "${from}" not found`)
+    else md = md.split(from).join(to)
+  }
+  return { md, refusals }
 }
 
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
@@ -215,7 +231,8 @@ function lineRefusals(lines, prefix, inUse) {
   const add = (m) => { if (!out.includes(m)) out.push(m) }
   const notBench = (name) => add(`database ${name || '(default)'} is not a bench database (${prefix}*)`)
   for (const l of lines) for (const u of l.match(DB_URL) ?? []) {
-    const name = /^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || ''
+    // a URL in prose may end a sentence or a clause: its trailing punctuation is not the name's
+    const name = (/^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || '').replace(/[,.;:)\]`]+$/, '')
     // Redis databases are numbered, not named: no path, or a number, names none of the human's
     if (/^rediss?:/i.test(u) && /^\d*$/.test(name)) continue
     if (!name.startsWith(prefix)) notBench(name)
@@ -285,6 +302,16 @@ export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
   const ca = at < 0 ? undefined : fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)).find(Boolean)
   if (!ca || !ca[1] || ca[1] === '{claude_args}') add("agent_walk.claude_args is not set — sessions would load the user's plugins")
   return out
+}
+
+/** The same rules over the config's body — prose an agent may still run literally — as warnings, each `body: …`; the profile's `replace` rewrites what they name. */
+export function bodyWarnings(builderMd, profile, { listening = [] } = {}) {
+  const prefix = profile?.db_prefix
+  if (!prefix) return []
+  const { rest, bare } = splitFm(normalize(builderMd))
+  if (bare) return []
+  // markdown's inline code marks are not part of a command: `docker compose up` is docker compose up
+  return lineRefusals(rest.split('\n').map((l) => l.replace(/`/g, ' ')), prefix, new Set(listening.map(Number))).map((m) => `body: ${m}`)
 }
 
 // ── results and the report ──
