@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, realpa
 import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { spawnSync, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { specCommits, killableGroup } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
@@ -57,8 +57,8 @@ function fixture() {
   const clones = join(tmp, 'clones')
   // the clone for --out <tmp>/out: $BENCH_TMP/<out's parent's name>/<out's name>/clone
   const clone = join(clones, basename(tmp), 'out', 'clone')
-  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: clones, BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
-  return { tmp, repo, merged, setRow, writeProfile, out, clone, run, range: featureRange(repo, merged) }
+  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: clones, BENCH_KEEP_CLONES: '1', BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
+  return { tmp, local, repo, merged, setRow, writeProfile, out, clone, run, range: featureRange(repo, merged) }
 }
 
 test('specCommits: the leading spec-only commits', () => {
@@ -223,4 +223,63 @@ test('setup, teardown and every placed file are checked like the config, each re
   assert.match(r.stderr, /refused: files\/\.env: database app_dev is not a bench database/)
   assert.doesNotMatch(r.stderr, /bin\/tool/) // a binary is not read as text
   assert.ok(!existsSync(join(out, 'result.json')))
+})
+
+const waitFor = async (fn, ms = 15000) => {
+  for (const t0 = Date.now(); !fn(); await new Promise((res) => setTimeout(res, 50))) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${fn}`)
+}
+
+test('whatever the setup started is stopped after the case, and the teardown runs in the clone', async () => {
+  const { tmp, out, run, writeProfile } = fixture()
+  const pidFile = join(tmp, 'setup-sleep.pid')
+  writeProfile({ setup: `sleep 60 & echo $! > ${pidFile}`, teardown: `pwd > ${join(tmp, 'teardown.txt')}` })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  await waitFor(() => !alive(pid))
+  assert.match(readFileSync(join(tmp, 'teardown.txt'), 'utf8'), /\/out\/clone\n$/)
+  assert.ok(existsSync(join(out, 'teardown.out')))
+})
+
+test('a setup that fails still has what it started stopped', async () => {
+  const { tmp, out, run, writeProfile } = fixture()
+  const pidFile = join(tmp, 'setup-sleep.pid')
+  writeProfile({ setup: `sleep 60 & echo $! > ${pidFile}; exit 3` })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: setup failed \(exit 3\)/)
+  const pid = Number(readFileSync(pidFile, 'utf8'))
+  await waitFor(() => !alive(pid))
+})
+
+test('the clone is removed once result.json is written — the logs stay — unless BENCH_KEEP_CLONES=1', () => {
+  const { tmp, out, clone, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_KEEP_CLONES: '' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(existsSync(join(out, 'result.json')))
+  assert.ok(existsSync(join(out, 'fleet.out')))
+  assert.ok(!existsSync(clone))
+  assert.ok(!existsSync(dirname(clone)), 'the empty clone root is removed too')
+  const kept = run(['c1', '--builder', REPO, '--out', join(tmp, 'out2')], { BENCH_KEEP_CLONES: '1' })
+  assert.equal(kept.status, 0, kept.stderr)
+  assert.ok(existsSync(join(tmp, 'clones', basename(tmp), 'out2', 'clone', '.git')))
+})
+
+test('SIGTERM stops the case: its fleet, the fleet\'s session groups and the setup\'s, the teardown run, result.json failed: stopped', async () => {
+  const { tmp, local, out, clone, writeProfile } = fixture()
+  const pidFile = join(tmp, 'setup-sleep.pid')
+  writeProfile({ setup: `sleep 60 & echo $! > ${pidFile}`, teardown: `echo torn > ${join(tmp, 'teardown.txt')}` })
+  const child = spawn('node', [CASE, 'c1', '--builder', REPO, '--out', out], { stdio: 'ignore', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: join(tmp, 'clones'), BENCH_KEEP_CLONES: '1', BENCH_FLEET: HANG, BENCH_INSTALLED_PLUGINS: '/nonexistent', BENCH_CASE_KILL_GRACE_MS: '500', STUB_FLEET_PGIDS: '1', STUB_EXTRA_PGID: String(pgidOf(process.pid)) } })
+  const exited = new Promise((res) => child.on('exit', res))
+  const sessionFile = join(clone, '.builder', 'fleet', 'session.pid')
+  await waitFor(() => existsSync(sessionFile) && readFileSync(sessionFile, 'utf8').length > 0)
+  const session = Number(readFileSync(sessionFile, 'utf8'))
+  const fleetChild = Number(readFileSync(join(clone, '.builder', 'fleet', 'child.pid'), 'utf8'))
+  const setupSleep = Number(readFileSync(pidFile, 'utf8'))
+  child.kill('SIGTERM')
+  assert.equal(await exited, 0)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'failed: stopped')
+  assert.equal(readFileSync(join(tmp, 'teardown.txt'), 'utf8'), 'torn\n')
+  await waitFor(() => ![session, fleetChild, setupSleep].some(alive))
 })

@@ -12,12 +12,18 @@
  * <clone-root>/clone, outside every repo (a repo's CLAUDE.md would load into every session); the
  * clone root defaults to $BENCH_TMP/<out's parent's name>/<out's name>.
  *
+ * After the fleet — on every path — the profile's `teardown` runs in the clone and whatever its `setup`
+ * started is stopped; once result.json is written the clone is removed (BENCH_KEEP_CLONES=1 keeps it).
+ * SIGTERM stops the case: the fleet and every group it records, the setup's group, then the teardown,
+ * and result.json says `failed: stopped`.
+ *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_TMP ($TMPDIR/bench-suite), BENCH_FLEET (the fleet script — tests point it at a stub),
- * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run), BENCH_SETUP_TIMEOUT_MS (20 min, the
- * profile's setup), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout), BENCH_INSTALLED_PLUGINS (as bench.mjs).
+ * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run; the suite passes 3× the estimate), BENCH_SETUP_TIMEOUT_MS (20 min, the
+ * profile's setup and teardown), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout or a stop),
+ * BENCH_KEEP_CLONES, BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync } from 'node:fs'
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -101,16 +107,44 @@ const killGroup = (pgid, sig) => {
     process.kill(-pgid, sig)
   } catch {}
 }
+/** True while a process group still has a member. */
+const groupAlive = (pgid) => {
+  try {
+    process.kill(-pgid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+/** A group stopped: SIGTERM, then SIGKILL once the grace period passes with any member left. Behind killableGroup like every group kill. */
+async function stopGroup(pgid) {
+  if (!killableGroup(pgid) || !groupAlive(pgid)) return
+  killGroup(pgid, 'SIGTERM')
+  for (const t0 = Date.now(); groupAlive(pgid) && Date.now() - t0 < KILL_GRACE_MS; ) await new Promise((r) => setTimeout(r, 100))
+  killGroup(pgid, 'SIGKILL')
+}
+
+// ---- stopping: SIGTERM (bench-suite.mjs stop) stops every group running now ----
+let stopping = false
+const running = new Set()
+/** True once this process got SIGTERM: nothing new starts but the teardown. */
+export const stopRequested = () => stopping
+/** SIGTERM / SIGINT / SIGHUP: stop each running group (as a timeout would) — the CLI then tears down and writes `failed: stopped`. */
+export function onStopSignal() {
+  stopping = true
+  for (const stop of [...running]) stop()
+}
 
 /**
- * A command in its own process group, awaited, its output in `log`. Past timeoutMs the group gets
- * SIGTERM, then SIGKILL after the grace period; `onTimeout` runs at the SIGKILL. With `reap`, whatever
- * the group still holds when the command exits is killed too. → { status, timedOut, error }
+ * A command in its own process group, awaited, its output in `log`. Past timeoutMs, or on a stop, the
+ * group gets SIGTERM, then SIGKILL after the grace period; `onTimeout` runs at the SIGKILL. With `reap`,
+ * whatever the group still holds when the command exits is killed too. → { status, timedOut, stopped, error, pgid }
  */
 export function runGroup(cmd, args, { cwd, env, log, timeoutMs, reap = false, onTimeout = () => {} }) {
   return new Promise((done) => {
     const fd = openSync(log, 'w')
     let timedOut = false
+    let stopped = false
     let settled = false
     let grace = null
     const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', fd, fd], detached: true })
@@ -118,23 +152,33 @@ export function runGroup(cmd, args, { cwd, env, log, timeoutMs, reap = false, on
       killGroup(child.pid, 'SIGKILL')
       onTimeout()
     }
-    const timer = setTimeout(() => {
-      timedOut = true
+    const cut = () => {
+      if (settled || grace) return
       killGroup(child.pid, 'SIGTERM')
       grace = setTimeout(hardKill, KILL_GRACE_MS)
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      cut()
     }, timeoutMs)
+    const stop = () => {
+      stopped = true
+      cut()
+    }
+    running.add(stop)
     const finish = (status, error) => {
       if (settled) return
       settled = true
+      running.delete(stop)
       clearTimeout(timer)
       clearTimeout(grace)
-      if (timedOut) hardKill()
+      if (timedOut || stopped) hardKill()
       else if (reap) killGroup(child.pid, 'SIGKILL')
       closeSync(fd)
-      done({ status, timedOut, error })
+      done({ status, timedOut, stopped, error, pgid: child.pid })
     }
     child.on('error', (e) => finish(null, e))
-    child.on('exit', (code) => finish(timedOut ? null : (code ?? 1)))
+    child.on('exit', (code) => finish(timedOut || stopped ? null : (code ?? 1)))
   })
 }
 
@@ -293,14 +337,18 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
     return { ...none, clone, failure: `could not commit the profile: ${why(e)}` }
   }
   const prepped = git(clone, 'rev-parse', 'HEAD')
+  if (stopping) return { ...none, clone, failure: 'stopped' }
+  let setupPgid = null
   if (plan.setup) {
-    // not reaped on exit: a setup may start what the run needs (a bench database, a server)
+    // not reaped on exit: a setup may start what the run needs (a bench database, a server); its group is stopped after the fleet
     mkdirSync(logDir, { recursive: true })
     const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(logDir, 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
-    if (r.timedOut) return { ...none, clone, failure: 'setup timed out' }
-    if (r.status !== 0) return { ...none, clone, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
+    setupPgid = r.pgid ?? null
+    if (r.stopped) return { ...none, clone, setupPgid, failure: 'stopped' }
+    if (r.timedOut) return { ...none, clone, setupPgid, failure: 'setup timed out' }
+    if (r.status !== 0) return { ...none, clone, setupPgid, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
   }
-  return { clone, base, specs, refusals: [], failure: null, plan, prepped }
+  return { clone, base, specs, refusals: [], failure: null, plan, prepped, setupPgid }
 }
 
 /** The most lines any version of <registry>/<feature>/PLAN.md committed in the clone after `since` (the prepped commit) had, or null. */
@@ -342,8 +390,31 @@ export async function runCaseFleet({ clone, feature, fleet, out }) {
   mkdirSync(sessions, { recursive: true })
   // fleetRecord copies the fleet's session logs beside the result; with no new landing its exit status is not enough
   const rec = fleetRecord({ copy: clone, feature, outDir: sessions, r: { status: r.status, error: r.error } })
-  const status = landed ? 'done' : r.timedOut ? `failed: the fleet timed out after ${Math.round(FLEET_TIMEOUT_MS / 1000)}s` : rec.status === 'done' ? 'failed: the fleet landed nothing' : rec.status
+  const status = landed ? 'done' : r.stopped ? 'failed: stopped' : r.timedOut ? `failed: the fleet timed out after ${Math.round(FLEET_TIMEOUT_MS / 1000)}s` : rec.status === 'done' ? 'failed: the fleet landed nothing' : rec.status
   return { status, landed }
+}
+
+/**
+ * After the fleet, on every path: the profile's teardown in the clone (its own group, reaped, with the
+ * setup's timeout), then whatever the setup started is stopped. → the teardown's outcome, or null with none.
+ */
+export async function finishCase({ clone, teardown, setupPgid, out }) {
+  let outcome = null
+  if (teardown && clone && existsSync(clone)) {
+    mkdirSync(out, { recursive: true })
+    const r = await runGroup('sh', ['-c', teardown], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(out, 'teardown.out'), timeoutMs: SETUP_TIMEOUT_MS, reap: true })
+    outcome = r.status === 0 ? 'done' : r.stopped ? 'stopped' : r.timedOut ? 'timed out' : `failed (${r.error ? r.error.message : `exit ${r.status}`}) — see teardown.out`
+  }
+  if (setupPgid) await stopGroup(setupPgid)
+  return outcome
+}
+
+/** The clone and the fleet's worktrees beside it (<clone>.fleet) removed, then the clone root when that leaves it empty. */
+export function removeClone(clone) {
+  for (const p of [clone, `${clone}.fleet`]) rmSync(p, { recursive: true, force: true })
+  try {
+    rmdirSync(dirname(clone))
+  } catch {}
 }
 
 // ---- the CLI --------------------------------------------------------------------------------------
@@ -407,6 +478,7 @@ if (isMain) {
     process.exit(0)
   }
 
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, onStopSignal)
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
@@ -420,7 +492,11 @@ if (isMain) {
     result.measure = landed ? measureFromRow(landed) : null
     result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature, prep.prepped)
   }
+  if (stopRequested() && result.status !== 'done') result.status = 'failed: stopped'
+  const teardown = await finishCase({ clone: prep.clone, teardown: plan.teardown, setupPgid: prep.setupPgid, out })
+  if (teardown) result.teardown = teardown
   writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
+  if (prep.clone && !process.env.BENCH_KEEP_CLONES) removeClone(prep.clone)
   console.log(`${result.id}: ${result.status} — ${join(out, 'result.json')}`)
   process.exit(0)
 }

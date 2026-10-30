@@ -30,6 +30,9 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 - `verify` — a file whose `verify:` block replaces the clone's.
 - `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
 - `setup` — a shell command run in the clone before the fleet (timeout 20 min); it may start what the run needs.
+  Whatever it starts runs in its own process group, which is stopped once the case ends, however it ends.
+- `teardown` — a shell command run in the clone after the fleet, on every path — landed, failed, timed out or
+  stopped (timeout 20 min): drop the bench database, stop a container.
 
 ```json
 {
@@ -38,9 +41,12 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
   "agent_walk": { "start": "npm run dev -- --port 4010" },
   "verify": "project-a.verify.yml",
   "files": { ".env": "project-a.env" },
-  "setup": "npm ci && createdb bench_a_main"
+  "setup": "npm ci && dropdb --if-exists bench_a_main && createdb bench_a_main",
+  "teardown": "dropdb --if-exists bench_a_main"
 }
 ```
+
+The clone is removed once its `result.json` is written (the logs stay); `BENCH_KEEP_CLONES=1` keeps it to look into.
 
 ## Safety rules
 
