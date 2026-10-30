@@ -246,7 +246,16 @@ function estimateVerdict(r) {
 
 const METRICS = [['wallMs', dur], ['tokens', tokStr], ['turns', count], ['costUsd', usd]]
 
-/** The suite report as markdown; with names: false a result's project never appears. */
+/** A status as its category alone — done, failed, refused, parked, timed out, stopped, waiting, running — never its detail (git stderr, paths, refusal text). */
+export function statusCategory(status) {
+  const s = String(status ?? '')
+  if (/^(done|stopped|waiting|running)$/.test(s)) return s
+  if (/^timed out\b/.test(s) || /^failed:.*\btimed out\b/.test(s)) return 'timed out'
+  const head = /^(failed|refused|parked)\b/.exec(s)?.[1]
+  return head ?? 'failed'
+}
+
+/** The suite report as markdown; with names: false a result's project never appears, nor its status's detail. */
 export function renderSuiteReport(results, { names = false } = {}) {
   const controlOf = (r) => results.find((c) => c.control && c !== r && c.id.startsWith(`${r.id}@`))
   const out = ['# Benchmark suite report', '']
@@ -255,7 +264,7 @@ export function renderSuiteReport(results, { names = false } = {}) {
     const m = r.measure
     const ctl = r.control ? null : controlOf(r)?.measure
     return [
-      r.id, r.size, ...(names ? [r.project] : []), r.status,
+      r.id, r.size, ...(names ? [r.project] : []), names ? r.status : statusCategory(r.status),
       ...METRICS.map(([k, f]) => f(m?.[k])),
       ...METRICS.map(([k]) => delta(m?.[k], r.baseline?.[k])),
       ...METRICS.map(([k]) => delta(m?.[k], ctl?.[k])),
