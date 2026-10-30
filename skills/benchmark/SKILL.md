@@ -53,8 +53,8 @@ It refuses while a case of that suite is still alive; offer `--stop`.
    when all lanes end, the cost, what was skipped and why, and — summarised from each archived case's dry
    run — what its clone will touch: the `agent_walk` lines applied, the `env` set, the files placed, the setup and
    teardown, the ports, and where clones go (outside every repo, removed after each case).
-   A dry run's `body:` lines are warnings, not refusals — the config's prose names something of the human's; show
-   each and say a profile `replace` rewrites it.
+   A dry run's `body:` and `files: … not in agent_walk.copy` lines are warnings, not refusals; show each and say
+   the profile fix (a `replace`, an `agent_walk.copy` entry).
    Exit 2 is shown as its reasons (a refusal names what to fix; two projects naming one port is one) and nothing launches.
 6. One AskUserQuestion — **Run it** / **Not now** — saying it runs on its own, outlives this session
    and writes only under `bench/local/results/` and `bench/results/`. On yes, **in the foreground**:

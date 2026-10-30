@@ -300,11 +300,12 @@ function dryRuns(items, builder) {
   if (clash.length) refusals.push({ id: 'the selection', reasons: clash })
   return { refusals, summaries }
 }
-/** A dry run's body: lines — config prose naming something of the human's — by case id; a case with none is left out. */
-const warningsOf = (summaries) => new Map(summaries.map((x) => [x.id, x.text.split('\n').filter((l) => /^\s+body: /.test(l)).map((l) => l.trim())]).filter(([, w]) => w.length))
+/** A dry run's warnings by case id — body: (config prose naming something of the human's) and files: (a placed file worktrees won't get); a case with none is left out. */
+const warningsOf = (summaries) => new Map(summaries.map((x) => [x.id, x.text.split('\n').filter((l) => /^\s+(?:body: |files: \S+ is placed but not in agent_walk\.copy)/.test(l)).map((l) => l.trim())]).filter(([, w]) => w.length))
+const WARNING_FIX = 'a replace (body:) or an agent_walk.copy entry (files:) in its profile fixes each'
 const printWarnings = (warnings) => {
   for (const [id, ws] of warnings) {
-    console.log(`${id}: ${ws.length} body warning${ws.length > 1 ? 's' : ''} — the config's prose names something of yours; add a replace for each to its profile`)
+    console.log(`${id}: ${ws.length} warning${ws.length > 1 ? 's' : ''} — ${WARNING_FIX}`)
     for (const w of ws) console.log(`  ${w}`)
   }
 }
@@ -798,9 +799,9 @@ if (isMain) {
       if (summaries.length) {
         console.log(`\nwhat each clone will touch — clones: ${CLONE_ROOT}/<suite-id>/<item>/clone, removed after each case unless BENCH_KEEP_CLONES=1:\n`)
         console.log(summaries.map((x) => x.text).join('\n\n'))
-        // a body: line is config prose naming something of the human's — a warning, never a refusal
-        const warned = (x) => (x.text.match(/^\s+body: /gm) ?? []).length
-        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok${warned(x) ? ` — ${warned(x)} body warning${warned(x) > 1 ? 's' : ''}, add a replace for each to its profile` : ''}`).join(' · ')}`)
+        // a body: or files: line is a warning, never a refusal: prose naming something of the human's, a placed file worktrees won't get
+        const warned = (x) => warningsOf([x]).get(x.id)?.length ?? 0
+        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok${warned(x) ? ` — ${warned(x)} warning${warned(x) > 1 ? 's' : ''}, ${WARNING_FIX}` : ''}`).join(' · ')}`)
       }
       process.exit(0)
     }

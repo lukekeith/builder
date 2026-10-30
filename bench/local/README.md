@@ -30,7 +30,11 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
   `--permission-mode`, `--settings` and `--plugin-dir`, which it owns; after them come the profile's `claude_args` when it
   sets one, else the project's own (an `--mcp-config`, a `--model`) — either without those three flags.
 - `verify` — a file whose `verify:` block replaces the clone's.
-- `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
+- `files` — `{ "<path in the clone>": "<source file>" }`, copied into the clone and kept out of git. Not `.git`, `builder.md`
+  or any path the project tracks: sessions run in fleet worktrees checked out from commits, which hold the committed
+  file. A placed file reaches a worktree only through `agent_walk.copy` (comma-separated paths or folders): list it
+  there. A placed `--mcp-config` file not in `copy` is refused; any other placed file the profile's `env` or `agent_walk`
+  names, a warning.
 - `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet
   starts. Point the project's own scripts at the bench database here: `DATABASE_URL`, `DIRECT_URL`,
   `TEST_DATABASE_URL`, `REDIS_URL`, `MONGODB_URI`, `MONGO_URL` and every `PG*`, `MYSQL_*` and `DB_*` are never
@@ -89,12 +93,15 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
 - the clone's path is inside the project repo or any other git repo, or already exists (clones go under
   `$BENCH_TMP`, `$TMPDIR/bench-suite` by default; results stay here);
 - the result folder (`--out`) is inside the project repo;
-- a `--mcp-config` path is outside the clone, or is in neither the profile's `files` nor the project at the spec commits
-  (the placed file wins; a JSON config's keys are read as `KEY=value`, so `"PGDATABASE": "…"` is checked too).
+- a `--mcp-config` path is outside the clone, or is neither tracked by the project nor placed at an untracked path by
+  the profile's `files` and listed in `agent_walk.copy`. A tracked one is always checked as committed — that is what
+  worktrees load. A JSON config's keys are read as `KEY=value`, so `"PGDATABASE": "…"` is checked too;
+- a profile `files` entry is a path the project tracks.
 
 The body of the clone's `builder.md` — prose, which an agent may still run literally — is checked by the same rules,
 as warnings: the dry run lists each as a `body: …` line and the case still runs. Add a `replace` for each. Ports named
-only in the body never count toward two projects sharing a port.
+only in the body never count toward two projects sharing a port. A placed file the profile names but `agent_walk.copy`
+leaves out is a `files: <path> is placed but not in agent_walk.copy` warning.
 
 `bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons and warnings; fix the case or profile and plan again.
-`run` (and `--resume`) prints each case's body warnings too, and keeps them as `warnings` in `suite.json` and in the case's `result.json`.
+`run` (and `--resume`) prints each case's warnings too, and keeps them as `warnings` in `suite.json` and in the case's `result.json`.

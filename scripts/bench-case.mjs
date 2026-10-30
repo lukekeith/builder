@@ -28,7 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cop
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText } from './bench-suite-core.mjs'
+import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, agentWalkValue } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
@@ -298,6 +298,10 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
     if (existsSync(f)) verifyBlock = readFileSync(f, 'utf8')
     else refusals.push(`profile verify file ${f} is missing`)
   }
+  // sessions run in fleet worktrees checked out from commits: a tracked path there is the committed file, whatever is placed in the clone
+  const head = specs.at(-1) ?? base
+  const posix = (p) => p.split(sep).join('/')
+  const tracked = new Set((tryGit(repo, 'ls-tree', '-r', '--name-only', head) ?? '').split('\n').filter(Boolean))
   const files = []
   for (const [to, from] of Object.entries(profile.files ?? {})) {
     const src = resolve(profileDir, from)
@@ -305,6 +309,7 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
     const rel = relative(clone, target)
     if (isAbsolute(to) || rel.startsWith('..') || !rel || rel === '.git' || rel.startsWith(`.git${sep}`) || rel === join('.claude', 'builder.md')) refusals.push(`profile file ${to} must be a path inside the clone, outside .git and builder.md`)
     else if (!existsSync(src)) refusals.push(`profile file source ${src} is missing`)
+    else if (tracked.has(posix(rel))) refusals.push(`files: ${posix(rel)} is tracked by the project — worktrees would load the committed one; place it at an untracked path, point agent_walk.claude_args at it, and list it in agent_walk.copy`)
     else files.push({ to: rel, from: src })
   }
   const { env, refusals: envRefusals } = profileEnv(profile.env)
@@ -319,18 +324,35 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   refusals.push(...safetyRefusals(builderMd, profile, { listening }))
   // the body is prose: what it names is a warning to replace, never a refusal — nor a port the plan counts
   const warnings = bodyWarnings(builderMd, profile, { listening })
-  // every MCP config a session loads: the profile's placed file at that path, else the project's at the spec commits
+  // a placed (untracked) file reaches a worktree only through agent_walk.copy — a path or a folder above it
+  const copy = agentWalkValue(builderMd, 'copy').split(',').map((c) => c.trim().replace(/^['"]|['"]$/g, '').replace(/^\.\//, '').replace(/\/+$/, '')).filter(Boolean)
+  const copied = (p) => copy.some((c) => p === c || p.startsWith(`${c}/`))
+  // every MCP config a session loads: the committed file when the project tracks the path, else the profile's placed one
   const mcp = []
+  const mcpPaths = new Set()
   for (const v of mcpConfigs(ownClaudeArgs(builderMd))) {
     const rel = relative(clone, resolve(clone, v))
     if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
       refusals.push(`mcp: --mcp-config ${v} is outside the clone`)
       continue
     }
-    const placed = files.find((f) => f.to === rel)
-    const text = placed ? textOf(placed.from) : tryGit(repo, 'show', `${specs.at(-1) ?? base}:${rel.split(sep).join('/')}`)
-    if (text == null) refusals.push(`mcp: --mcp-config ${v} is not in the clone — place it with the profile's files`)
-    else mcp.push(['mcp', mcpScanText(text)])
+    const p = posix(rel)
+    mcpPaths.add(p)
+    const placed = files.find((f) => posix(f.to) === p)
+    if (tracked.has(p)) mcp.push(['mcp', mcpScanText(tryGit(repo, 'show', `${head}:${p}`) ?? '')])
+    else if (!placed) refusals.push(`mcp: --mcp-config ${v} is not in the clone — place it at an untracked path with the profile's files and list it in agent_walk.copy`)
+    else {
+      if (!copied(p)) refusals.push(`mcp: ${p} is placed but not in agent_walk.copy — worktrees won't have it`)
+      const text = textOf(placed.from)
+      if (text != null) mcp.push(['mcp', mcpScanText(text)])
+    }
+  }
+  // any other placed file the profile's env or agent_walk names by its path: a worktree without it is a warning, not a refusal
+  const named = [...Object.values(env), ...Object.entries(profile.agent_walk ?? {}).filter(([k]) => k !== 'copy').map(([, v]) => String(v))].join('\n')
+  for (const f of files) {
+    const p = posix(f.to)
+    const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (!mcpPaths.has(p) && !copied(p) && new RegExp(`(?:^|[\\s=:'"])(?:\\./)?${esc}(?=$|[\\s'";,])`, 'm').test(named)) warnings.push(`files: ${p} is placed but not in agent_walk.copy — worktrees won't have it`)
   }
   // the env, the setup, the teardown, every placed text file and MCP config run or are read in the clone too: the same rules, each reason saying where
   const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)]), ...mcp].filter(([, t]) => t != null)

@@ -323,28 +323,50 @@ test('a replace that rewrites the runner\'s claude_args is refused', () => {
   assert.match(r.stderr, /^refused: replace: changes agent_walk\.claude_args, which the runner sets — use the profile's agent_walk\.claude_args$/m)
 })
 
-test('every --mcp-config file is read like a placed file — mcp: reasons — and one outside the clone, or missing, is refused', () => {
+test('a tracked --mcp-config file is always scanned as committed — worktrees load it — and one outside the clone, or missing, is refused', () => {
   const md = (args) => `---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: ${args}\n---\n`
   const unsafe = JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['db-mcp'], env: { PGDATABASE: 'app_dev' } } } }, null, 2)
   const own = fixture({ md: md('--mcp-config .claude/walk-mcp.json'), base: { '.claude/walk-mcp.json': unsafe } })
   const r = own.run(['c1', '--builder', REPO, '--out', own.out, '--dry-run'])
   assert.equal(r.status, 2)
   assert.match(r.stderr, /^refused: mcp: database app_dev is not a bench database \(bench_\*\)$/m)
-  // a profile's placed file is the one the sessions load
-  put(join(own.local, 'projects', 'bench-mcp.json'), JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['db-mcp', '--port', '6123'], env: { PGDATABASE: 'bench_p' } } } }))
+  // a "safe" copy placed over the tracked file changes nothing a worktree loads: the placement is refused, the committed file still scanned
+  put(join(own.local, 'projects', 'bench-mcp.json'), JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['db-mcp'], env: { PGDATABASE: 'bench_p' } } } }))
   own.writeProfile({ files: { '.claude/walk-mcp.json': 'bench-mcp.json' } })
-  const ok = own.run(['c1', '--builder', REPO, '--out', own.out, '--dry-run'])
-  assert.equal(ok.status, 0, ok.stderr)
+  const over = own.run(['c1', '--builder', REPO, '--out', own.out, '--dry-run'])
+  assert.equal(over.status, 2)
+  assert.match(over.stderr, /^refused: files: \.claude\/walk-mcp\.json is tracked by the project — worktrees would load the committed one; place it at an untracked path, point agent_walk\.claude_args at it, and list it in agent_walk\.copy$/m)
+  assert.match(over.stderr, /^refused: mcp: database app_dev is not a bench database \(bench_\*\)$/m)
   for (const [args, m] of [
     ['--mcp-config ../outside.json', /^refused: mcp: --mcp-config \.\.\/outside\.json is outside the clone$/m],
     ['--mcp-config=/etc/mcp.json', /^refused: mcp: --mcp-config \/etc\/mcp\.json is outside the clone$/m],
-    ['--mcp-config .claude/none.json', /^refused: mcp: --mcp-config \.claude\/none\.json is not in the clone — place it with the profile's files$/m],
+    ['--mcp-config .claude/none.json', /^refused: mcp: --mcp-config \.claude\/none\.json is not in the clone — place it at an untracked path with the profile's files and list it in agent_walk\.copy$/m],
   ]) {
     const f = fixture({ md: md(args) })
     const x = f.run(['c1', '--builder', REPO, '--out', f.out, '--dry-run'])
     assert.equal(x.status, 2, args)
     assert.match(x.stderr, m)
   }
+})
+
+test('a placed --mcp-config file must be in agent_walk.copy; another placed file the profile names is a warning without it', () => {
+  const { local, out, run, writeProfile } = fixture()
+  put(join(local, 'projects', 'bench-mcp.json'), JSON.stringify({ mcpServers: { db: { env: { PGDATABASE: 'bench_p' } } } }))
+  put(join(local, 'projects', 'bench.env'), 'PGDATABASE=bench_p\n')
+  const files = { '.claude/bench-mcp.json': 'bench-mcp.json', '.env.bench': 'bench.env' }
+  const aw = (o) => ({ env: 'PORT=5999 DOTENV_CONFIG_PATH=.env.bench', claude_args: '--mcp-config .claude/bench-mcp.json', ...o })
+  writeProfile({ files, agent_walk: aw({}) })
+  const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /^refused: mcp: \.claude\/bench-mcp\.json is placed but not in agent_walk\.copy — worktrees won't have it$/m)
+  writeProfile({ files, agent_walk: aw({ copy: '.claude/bench-mcp.json' }) })
+  const w = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(w.status, 0, w.stderr)
+  assert.match(w.stdout, /^ {2}files: \.env\.bench is placed but not in agent_walk\.copy — worktrees won't have it$/m)
+  writeProfile({ files, agent_walk: aw({ copy: '.claude, .env.bench' }) })
+  const ok = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
+  assert.equal(ok.status, 0, ok.stderr)
+  assert.doesNotMatch(ok.stdout, /not in agent_walk\.copy/)
 })
 
 const waitFor = async (fn, ms = 15000) => {
