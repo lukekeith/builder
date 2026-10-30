@@ -95,3 +95,4 @@ as warnings: the dry run lists each as a `body: …` line and the case still run
 only in the body never count toward two projects sharing a port.
 
 `bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons and warnings; fix the case or profile and plan again.
+`run` (and `--resume`) prints each case's body warnings too, and keeps them as `warnings` in `suite.json` and in the case's `result.json`.

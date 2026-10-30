@@ -538,7 +538,7 @@ if (isMain) {
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
-  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null) }
+  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [] }
   mkdirSync(out, { recursive: true })
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`

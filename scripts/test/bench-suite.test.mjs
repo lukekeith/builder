@@ -437,6 +437,23 @@ test('plan shows a dry run\'s body: warnings and counts them; they never refuse,
   assert.match(r.stdout, /^dry runs: c1 ok — 2 body warnings, add a replace for each to its profile · c3 ok$/m)
 })
 
+test('run prints each case\'s body warnings as plan does, and records them in suite.json and the case\'s result.json', async () => {
+  const { suite, local, suiteJson, settled } = setup()
+  put(join(local, 'projects', 'projA.json'), { db_prefix: 'bench_', builderMd: '---\nagent_walk:\n  claude_args: --x\n---\nWalk readiness: DATABASE_URL=postgres://localhost/app_dev, docker compose up\n' })
+  const r = suite(['run', 'c1,c3', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  const lines = ['body: database app_dev is not a bench database (bench_*)', 'body: docker command names no bench_ container: docker compose up']
+  assert.match(r.stdout, /^c1: 2 body warnings — the config's prose names something of yours; add a replace for each to its profile$/m)
+  for (const l of lines) assert.ok(r.stdout.includes(`\n  ${l}\n`), r.stdout)
+  assert.doesNotMatch(r.stdout, /^c3: /m)
+  await settled()
+  const s = suiteJson()
+  const c1 = s.items.find((it) => it.id === 'c1')
+  assert.deepEqual(c1.warnings, lines)
+  assert.equal(s.items.find((it) => it.id === 'c3').warnings, undefined)
+  assert.deepEqual(JSON.parse(readFileSync(join(c1.out, 'result.json'), 'utf8')).warnings, lines)
+})
+
 test('the builder under test is pinned: a detached worktree at its HEAD, a dirty tree refused unless --allow-dirty, both SHAs in both reports', async () => {
   const { suite, tmp, builder, pinned, readLog, results, out, suiteJson, settled } = setup()
   const sha12 = builder.sha.slice(0, 12)

@@ -302,8 +302,17 @@ test('a profile\'s replace rewrites the whole builder.md; prose that still names
   const ok = run(['c1', '--builder', REPO, '--out', out])
   assert.equal(ok.status, 0, ok.stderr)
   const md = readFileSync(join(clone, '.claude', 'builder.md'), 'utf8')
+  assert.deepEqual(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).warnings, [])
   assert.match(md, /^ {2}start: npm run dev -- --port 5917$/m)
   assert.match(md, /^Start with DATABASE_URL=postgres:\/\/localhost\/bench_p, then open localhost:5917 and localhost:4555\.$/m)
+})
+
+test('a run\'s result.json records the config body\'s warnings', () => {
+  const prose = MD + '\nStart with DATABASE_URL=postgres://localhost/app_dev first.\n'
+  const { out, run } = fixture({ md: prose })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.deepEqual(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).warnings, ['body: database app_dev is not a bench database (bench_*)'])
 })
 
 test('a replace that rewrites the runner\'s claude_args is refused', () => {
