@@ -153,6 +153,8 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
 const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
 /** PGDATABASE, DATABASE and any *_DATABASE set to a name (DATABASE_URL is a URL, checked above). */
 const DB_VAR = /\b(?:[A-Z0-9]+_)*(?:PG)?DATABASE=(['"]?)([^\s'";&|()]*)/g
+/** A SQLite database — in memory or a file — is not a server database's name. */
+const SQLITE = /^:memory:$|\.(?:sqlite3?|db)$/
 /** createdb / dropdb options that take a value; the first other word is the database. */
 const PG_VALUE_OPTS = new Set(['-h', '-p', '-U', '-O', '-T', '-E', '-l', '-D', '-S', '--host', '--port', '--username', '--owner', '--template', '--encoding', '--locale', '--tablespace', '--maintenance-db', '--strategy', '--icu-locale', '--locale-provider'])
 /** Every form a line names a port in: *PORT=, --port, a localhost / any-host / IPv6 bind, docker -p, and lsof / fuser / kill-port targets. */
@@ -190,9 +192,11 @@ function lineRefusals(lines, prefix, inUse) {
   const notBench = (name) => add(`database ${name || '(default)'} is not a bench database (${prefix}*)`)
   for (const l of lines) for (const u of l.match(DB_URL) ?? []) {
     const name = /^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || ''
+    // Redis databases are numbered, not named: no path, or a number, names none of the human's
+    if (/^rediss?:/i.test(u) && /^\d*$/.test(name)) continue
     if (!name.startsWith(prefix)) notBench(name)
   }
-  for (const l of lines) for (const m of l.replace(DB_URL, ' ').matchAll(DB_VAR)) if (!m[2].startsWith(prefix)) notBench(m[2])
+  for (const l of lines) for (const m of l.replace(DB_URL, ' ').matchAll(DB_VAR)) if (!m[2].startsWith(prefix) && !SQLITE.test(m[2])) notBench(m[2])
   for (const l of lines) for (const seg of l.split(/&&|\|\||;|\|/)) {
     const words = /\b(?:createdb|dropdb)\b(.*)/.exec(seg)?.[1].trim().split(/\s+/).filter(Boolean)
     if (!words) continue
