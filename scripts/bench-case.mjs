@@ -488,16 +488,23 @@ export function applySpecs(clone, specs) {
   }
 }
 
-/** The most lines any version of <registry>/<feature>/PLAN.md committed in the clone after `since` (the prepped commit) had, or null. */
+/**
+ * The most lines any version of <registry>/<feature>/PLAN.md committed in the clone after `since` (the
+ * prepped commit) had; with none, the prepped plan's (a case that started planned); else null.
+ * --full-history: the landed branch is deleted and the ship condenses PLAN.md away, so the default
+ * simplification would follow the merge's first parent, where PLAN.md never changed, and find nothing.
+ */
 export function maxPlanLines(clone, registry, feature, since) {
   const path = `${registry.replace(/\/+$/, '')}/${feature}/PLAN.md`
-  const shas = (tryGit(clone, 'log', '--all', '--format=%H', '--not', since, '--', path) ?? '').split('\n').filter(Boolean)
+  const shas = (tryGit(clone, 'log', '--all', '--full-history', '--format=%H', '--not', since, '--', path) ?? '').split('\n').filter(Boolean)
   let max = null
   for (const c of shas) {
     const text = tryGit(clone, 'show', `${c}:${path}`)
     if (text != null) max = Math.max(max ?? 0, lineCount(text))
   }
-  return max
+  if (max != null) return max
+  const prepped = tryGit(clone, 'show', `${since}:${path}`)
+  return prepped != null ? lineCount(prepped) : null
 }
 
 /** The process groups a fleet records for its sessions and dev envs (each runs in its own group). */

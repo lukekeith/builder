@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, killableGroup, prepareClone, finishCase, applySpecs } from '../bench-case.mjs'
+import { specCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -212,6 +212,43 @@ test('applySpecs: spec commits that conflict fail with the files that conflicted
   assert.match(failure, /^the spec commits do not apply on the base: .* — conflicts in docs\/features\/f\/SPEC\.md$/)
   assert.equal(git(c, 'status', '--porcelain'), '')
   assert.equal(applySpecs(c, []), null)
+})
+
+/** A repo whose prepped commit (on main) is followed by builder/f: an optional plan, code, and a ship that condenses PLAN.md away, merged --no-ff and the branch deleted. */
+function landedRepo({ prepPlan = 0, buildPlan = 0 } = {}) {
+  const r = realpathSync(mkdtempSync(join(tmpdir(), 'bench-plan-')))
+  git(r, 'init', '-q', '-b', 'main')
+  const commit = (files, msg) => {
+    for (const [f, t] of Object.entries(files)) {
+      if (t == null) git(r, 'rm', '-q', f)
+      else put(join(r, f), t)
+    }
+    git(r, 'add', '-A')
+    git(r, 'commit', '-qm', msg)
+  }
+  const lines = (n) => Array.from({ length: n }, (_, i) => `l${i}`).join('\n') + '\n'
+  commit({ 'docs/features/f/SPEC.md': 's\n', ...(prepPlan ? { 'docs/features/f/PLAN.md': lines(prepPlan) } : {}) }, 'prepped')
+  const prepped = git(r, 'rev-parse', 'HEAD')
+  git(r, 'checkout', '-qb', 'builder/f')
+  if (buildPlan) commit({ 'docs/features/f/PLAN.md': lines(buildPlan) }, 'plan')
+  commit({ 'src/a.js': 'a\n' }, 'code')
+  if (prepPlan || buildPlan) commit({ 'docs/features/f/PLAN.md': null }, 'ship: condense')
+  git(r, 'checkout', '-q', 'main')
+  git(r, 'merge', '-q', '--no-ff', '-m', 'merge f', 'builder/f')
+  git(r, 'branch', '-D', 'builder/f')
+  return { r, prepped }
+}
+
+test('maxPlanLines finds the build\'s plan through the merge once the branch is deleted and the ship condensed PLAN.md away', () => {
+  const { r, prepped } = landedRepo({ buildPlan: 12 })
+  assert.equal(maxPlanLines(r, 'docs/features', 'f', prepped), 12)
+})
+
+test('maxPlanLines: a case that started planned and never committed a new plan counts the prepped plan', () => {
+  const { r, prepped } = landedRepo({ prepPlan: 7 })
+  assert.equal(maxPlanLines(r, 'docs/features', 'f', prepped), 7)
+  const none = landedRepo()
+  assert.equal(maxPlanLines(none.r, 'docs/features', 'f', none.prepped), null)
 })
 
 test('an unsafe profile is refused before a clone is made', () => {
