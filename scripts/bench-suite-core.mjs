@@ -218,11 +218,18 @@ const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g
 const DB_CLIENT = /(?:^|[\s(])(?:psql|createdb|dropdb|pg_dump|pg_restore)(?=\s|$)/
 /** A command that empties or stops a database server outright — never the bench's to run, whatever port it names. */
 const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill)\b/i
-/** `shutdown` stops a database server only beside one of its clients or servers (`simctl shutdown` is a simulator's). */
-const DB_TOOL = /(?:^|[\s(/])(?:mysqladmin|mysql|redis-cli|valkey-cli|mongosh|mongo|psql|pg_ctl)(?=\s|$)/
+/**
+ * `shutdown` stops a database server only on a line with one of its clients or servers — piped in, in a -c / --eval
+ * string, or as the server's own flag (`simctl shutdown` is a simulator's, and is left out of the line).
+ */
+const DB_TOOL = /(?:^|[\s(/])(?:mysqladmin|mysql|mysqld|redis-cli|redis-server|valkey-cli|mongosh|mongo|mongod|psql|pg_ctl|postgres)(?=\s|$)/
 const SHUTDOWN = /\bshutdown(?:Server)?\b/i
-/** SHUTDOWN as SQL or a shell eval in a client's -c / -e / --eval string, wherever the line's `;` falls. */
-const SQL_SHUTDOWN = /(?:^|\s)(?:-c|-e|--eval|--command|--execute)[\s=]*(['"])(?:(?!\1).)*\bshutdown(?:Server)?\b/i
+/** The machine's own shutdown, halt, reboot or poweroff — by path, or through sudo with its flags. */
+const HALT = /^(?:\S*\/)?(?:shutdown|halt|reboot|poweroff)$/
+const haltsMachine = (seg) => {
+  const words = seg.split(/\s+/).filter(Boolean)
+  return HALT.test(words[0] ?? '') || (/^(?:\S*\/)?sudo$/.test(words[0] ?? '') && words.slice(1).some((w) => HALT.test(w)))
+}
 const OPT_PORT = new Set([PORT_RES[1], PORT_RES[3]])
 /** The ports named in lines, database URLs and a database client's -p / --port left out (a shared database server's port is fine). */
 const portsIn = (lines) => [...new Set(lines.flatMap((l) => l.replace(DB_URL, ' ').split(/&&|\|\||;|\|/).flatMap((seg) =>
@@ -261,10 +268,12 @@ function lineRefusals(lines, prefix, inUse) {
   for (const port of portsIn(lines)) if (inUse.has(port)) add(`port ${port} is in use now`)
   const bare = (seg) => seg.replace(/^\s*[\w-]+:\s+/, '').trim()
   for (const l of lines) {
-    if (SQL_SHUTDOWN.test(l) && DB_TOOL.test(l)) add(`stops a database server: ${bare(l)}`)
-    for (const seg of l.split(/&&|\|\||;|\|/)) {
-      if (SERVER_STOP.test(seg) || (SHUTDOWN.test(seg) && DB_TOOL.test(seg))) add(`stops a database server: ${bare(seg)}`)
-      if (/^(?:sudo\s+)?shutdown\b/.test(bare(seg))) add(`shuts down the machine: ${bare(seg)}`)
+    const segs = l.split(/&&|\|\||;|\|/)
+    const unsim = segs.filter((seg) => !/\bsimctl\s+shutdown\b/.test(seg)).join(' ; ')
+    if (SHUTDOWN.test(unsim) && DB_TOOL.test(unsim)) add(`stops a database server: ${bare(l)}`)
+    for (const seg of segs) {
+      if (SERVER_STOP.test(seg)) add(`stops a database server: ${bare(seg)}`)
+      if (haltsMachine(bare(seg))) add(`shuts down or restarts the machine: ${bare(seg)}`)
       const sim = /\bsimctl\s+shutdown\s+(\S+)/.exec(seg)?.[1]
       if (sim && sim !== 'booted' && !sim.includes(prefix)) add(`simctl shutdown names no ${prefix} device: ${bare(seg)}`)
     }
