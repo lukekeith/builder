@@ -81,6 +81,7 @@ then its table and the path.
 
 **`--stop`** — after one **Stop it** / **Not now** — runs `node <builder>/scripts/bench-suite.mjs stop` in the foreground: each running
 case stops cleanly and is marked `stopped`, nothing more starts, the reports are written; `--resume` runs the rest.
+Stop a suite this way (or `bench-suite.mjs stop`), never `kill -9`: a SIGKILL can't be trapped and leaves each running case's fleet going.
 
 ## 2. Pre-flight
 
