@@ -95,7 +95,18 @@ test('safety: a shared db server port is fine, an app port on it is not', () =>
 const refuse = (s, listening = []) => safetyRefusals(walk(s), P, { listening })
 test('safety: a database URL with no name is the default database', () => {
   assert.deepEqual(refuse('  env: DATABASE_URL=postgres://localhost:5432'), ['database (default) is not a bench database (bench_*)'])
-  assert.deepEqual(refuse('  env: REDIS_URL=redis://h:6379'), ['database (default) is not a bench database (bench_*)'])
+})
+test('safety: a Redis URL names no database — none, or a numbered one, passes; its port rule still applies', () => {
+  assert.deepEqual(refuse('  env: REDIS_URL=redis://h:6379'), [])
+  assert.deepEqual(refuse('  env: REDIS_URL=redis://h:6379/ CACHE_URL=rediss://u:p@h:6380/2'), [])
+  assert.deepEqual(refuse('  env: REDIS_URL=redis://h:6379/app_cache'), ['database app_cache is not a bench database (bench_*)'])
+  assert.deepEqual(refuse('  env: REDIS_URL=redis://localhost:6379 PORT=6379', [6379]), ['port 6379 is in use now'])
+  assert.deepEqual(refuse('  env: DATABASE_URL=mysql://localhost:3306'), ['database (default) is not a bench database (bench_*)'])
+})
+test('safety: SQLite — :memory: and a .sqlite / .db file — is not a Postgres database name', () => {
+  assert.deepEqual(refuse('  env: DB_DATABASE=:memory:'), [])
+  assert.deepEqual(refuse('  env: DB_DATABASE=storage/test.sqlite DATABASE=tmp/app.db'), [])
+  assert.deepEqual(refuse('  env: DB_DATABASE=app_dev'), ['database app_dev is not a bench database (bench_*)'])
 })
 test('safety: driver-suffixed and mysql2 schemes are database URLs', () => {
   assert.deepEqual(refuse('  env: U=postgresql+asyncpg://u@h/app_dev'), ['database app_dev is not a bench database (bench_*)'])

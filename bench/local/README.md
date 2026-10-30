@@ -53,7 +53,9 @@ The clone is removed once its `result.json` is written (the logs stay); `BENCH_K
 A case is refused, before anything is cloned, when the clone's config — or the profile's `setup`, its
 `teardown`, or any text file it places (each reason says which: `setup: …`, `files/.env: …`) — would touch something of yours:
 
-- the profile has no `db_prefix`, or a database URL, `PGDATABASE` / `*_DATABASE`, or a `createdb` / `dropdb` names a database that does not start with it;
+- the profile has no `db_prefix`, or a database URL, `PGDATABASE` / `*_DATABASE`, or a `createdb` / `dropdb` names a database that does not start with it
+  (a Postgres or MySQL URL with no name is the default database, and refused; a Redis URL with no path or a numbered
+  one names no database, and SQLite's `:memory:` or a `*.sqlite` / `*.db` file is not a server database's name);
 - a port named is listening now — `*PORT=`, `--port`, `localhost:` / `0.0.0.0:` / `[::1]:`, `docker -p`, and the
   `lsof -iTCP:N` / `-ti:N` / `-i :N`, `fuser N/tcp` and `kill-port N` forms (a database URL's port, a Postgres
   client's `-p` — `psql`, `createdb`, `dropdb`, `pg_dump`, `pg_restore`, whose database is checked — and `PGPORT` /
