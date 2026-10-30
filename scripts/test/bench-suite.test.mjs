@@ -386,3 +386,29 @@ test('--resume refuses while a case a recorded attempt started is still alive', 
     orphan.kill('SIGKILL')
   }
 })
+
+test('plan and run refuse two picked projects whose profiles name the same port — they may run at once', () => {
+  const { suite, local, readLog } = setup()
+  const md = (port) => `---\nagent_walk:\n  claude_args: --x\n  env: PORT=${port}\n---\n`
+  put(join(local, 'projects', 'projA.json'), { db_prefix: 'bench_', builderMd: md(4010) })
+  put(join(local, 'projects', 'projB.json'), { db_prefix: 'bench_', builderMd: md(4010) })
+  for (const cmd of [['plan', 'c1,c3'], ['run', 'c1,c3', '--detach']]) {
+    const r = suite(cmd)
+    assert.equal(r.status, 2, cmd.join(' '))
+    assert.match(r.stderr, /projects projA and projB both use port 4010 — they may run at once/)
+  }
+  assert.equal(readLog().lines.length, 0)
+  assert.equal(suite(['plan', 'c1,c2']).status, 0) // one project's cases never overlap
+  put(join(local, 'projects', 'projB.json'), { db_prefix: 'bench_', builderMd: md(4020) })
+  assert.equal(suite(['plan', 'c1,c3']).status, 0)
+})
+
+test('plan shows what each archived case\'s clone will touch — its dry run — and where clones go', () => {
+  const { suite, tmp, local } = setup()
+  put(join(local, 'projects', 'projA.json'), { db_prefix: 'bench_', builderMd: '---\nagent_walk:\n  claude_args: --x\n  env: PORT=4010\n---\n' })
+  const r = suite(['plan', 'c1,c3'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^c1 — dry run\n {2}ports: {2}4010$/m)
+  assert.match(r.stdout, /^c3 — dry run$/m)
+  assert.match(r.stdout, new RegExp(`clones: ${join(tmp, 'bench-suite')}/<suite-id>/<item>/clone`))
+})

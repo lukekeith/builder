@@ -129,6 +129,8 @@ test('--dry-run prints what the clone will touch and runs nothing', () => {
   const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stdout, /PORT=5999/)
+  assert.match(r.stdout, /^ {2}teardown: \(none\)$/m)
+  assert.match(r.stdout, /^ {2}ports: +5999$/m)
   assert.ok(!existsSync(join(out, 'result.json')))
   assert.ok(!existsSync(clone))
 })

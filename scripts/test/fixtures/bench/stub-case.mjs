@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for bench-case.mjs (and, given `run <feature> --only builder`, for bench.mjs on a fixture).
 // Case mode: `<id> --builder <b> --out <dir> [--dry-run]` reads $BENCH_LOCAL/cases/<id>.json. A dry run
-// refuses (exit 2) on the safety check of its profile's `builderMd`, if it has one. A run sleeps
+// refuses (exit 2) on the safety check of its profile's `builderMd`, if it has one, else prints the ports it names. A run sleeps
 // STUB_CASE_MS × the case's estimated minutes (10× for an id in STUB_CASE_LONG), then writes
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
@@ -10,7 +10,7 @@
 // SIGTERM writes result.json `failed: stopped`, logs `stopped <id> <t>` and exits 0.
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { safetyRefusals } from '../../../bench-suite-core.mjs'
+import { safetyRefusals, portsNamed } from '../../../bench-suite-core.mjs'
 
 const argv = process.argv.slice(2)
 const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : undefined)
@@ -43,7 +43,8 @@ if (argv.includes('--dry-run')) {
     for (const r of refusals) console.error(`refused: ${r}`)
     process.exit(2)
   }
-  console.log(`${id} — dry run`)
+  const ports = portsNamed(profile.builderMd ?? '')
+  console.log(`${id} — dry run\n  ports:  ${ports.length ? ports.join(' ') : '(none)'}`)
   process.exit(0)
 }
 const out = opt('--out')
