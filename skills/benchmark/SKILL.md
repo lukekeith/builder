@@ -57,7 +57,10 @@ re-runs that suite's waiting, cut-off and refused items (parked and timed-out on
    `node <builder>/scripts/bench-suite.mjs run <the same selection> --detach` (`run` without
    `--detach` is refused; `🔴 never` launch it as a background task of this session).
 
-`--builder <checkout>` points the suite at another builder; the default is this checkout. Footer:
+`--builder <checkout>` points the suite at another builder; the default is this checkout. The suite pins it: it runs
+on a detached worktree at its HEAD, so a commit made overnight changes nothing that runs, and both reports name
+that SHA and main's. A checkout with uncommitted changes is refused; say so, and offer committing them or
+`--allow-dirty` (runs the tree as it is, unpinned). Footer:
 
 ~~~
 ▶ benchmark suite: <n> case(s) in <lanes> lanes, ends ~<time> — next: /builder:benchmark --status

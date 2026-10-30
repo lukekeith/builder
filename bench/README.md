@@ -75,8 +75,13 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   suite safely: each running case stops its fleet, the fleet's sessions and what its setup started, runs its teardown and
   is marked `stopped`; nothing more starts; the reports are written and the lock released. `--resume` re-runs stopped
   items, and refuses while a case an earlier attempt started is still alive.
+- **The builder under test is pinned.** The suite runs on a detached worktree at `--builder`'s HEAD
+  (`$TMPDIR/bench-builder-<sha12>`, removed when the suite ends); a checkout with uncommitted changes to tracked files is
+  refused unless `--allow-dirty`, which runs it as it is. `suite.json` and both reports' headers carry the treatment's SHA
+  and, with controls, main's.
 - **Results.** `bench/local/results/<suite-id>/` (git-ignored) holds `suite.json`, one folder per attempt and the named
-  `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids and sizes only.
+  `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids, sizes and each status's category
+  only (done, failed, refused, parked, timed out, stopped) — the detail is in the named report.
 - **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no
   repo's `CLAUDE.md` loads into a case's sessions; a clone inside any git repo is refused.
 - **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`;

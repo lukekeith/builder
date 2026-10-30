@@ -26,9 +26,27 @@ async function until(fn, ms = 20000) {
   }
 }
 
-/** A tmp BENCH_LOCAL with c1, c2 (project projA: 30m, 10m) and c3 (projB: 20m), a tmp BENCH_SUITE_OUT, and the stub as the case runner. */
+/** A builder checkout in tmp: a git repo on main with one commit. */
+function builderRepo(tmp) {
+  const repo = join(tmp, 'builder')
+  mkdirSync(repo)
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: repo, encoding: 'utf8' })
+  git('init', '-q', '-b', 'main')
+  writeFileSync(join(repo, 'README.md'), 'b\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  return { repo, git, sha: git('rev-parse', 'HEAD').trim() }
+}
+
+/**
+ * A tmp BENCH_LOCAL with c1, c2 (project projA: 30m, 10m) and c3 (projB: 20m), a tmp BENCH_SUITE_OUT, the stub as the
+ * case runner, and a tmp builder repo that plan and run get as --builder unless a test names one; the suite runs on its
+ * pinned worktree, $TMPDIR/bench-builder-<sha12>.
+ */
 function setup() {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-suite-')))
+  const builder = builderRepo(tmp)
+  const pinned = join(tmp, `bench-builder-${builder.sha.slice(0, 12)}`)
   const local = join(tmp, 'local')
   const out = join(tmp, 'out')
   const state = join(tmp, 'state')
@@ -40,7 +58,10 @@ function setup() {
   put(join(local, 'projects', 'projA.json'), {})
   put(join(local, 'projects', 'projB.json'), {})
   put(join(local, 'projects', 'unsafe.json'), { db_prefix: 'bench_', builderMd: '---\nverify:\n  db: DATABASE_URL=postgres://localhost/prod_db npm test\nagent_walk:\n  claude_args: --x\n---\n' })
-  const suite = (args, env = {}) => spawnSync('node', [SUITE, ...args], { cwd: tmp, encoding: 'utf8', env: { ...process.env, TMPDIR: tmp, BENCH_LOCAL: local, BENCH_SUITE_OUT: out, BENCH_CASE: STUB, STUB_STATE: state, STUB_CASE_MS: '20', ...env } })
+  const suite = (args, env = {}) => {
+    const withBuilder = ['plan', 'run'].includes(args[0]) && !args.includes('--builder') && !args.includes('--resume') ? [...args, '--builder', builder.repo] : args
+    return spawnSync('node', [SUITE, ...withBuilder], { cwd: tmp, encoding: 'utf8', env: { ...process.env, TMPDIR: tmp, BENCH_LOCAL: local, BENCH_SUITE_OUT: out, BENCH_CASE: STUB, STUB_STATE: state, STUB_CASE_MS: '20', ...env } })
+  }
   const readLog = () => {
     const f = join(state, 'case.log')
     const lines = existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').map((l) => l.split(' ')) : []
@@ -64,7 +85,7 @@ function setup() {
   }
   const dateDir = () => `${suiteJson().id.slice(0, 10)}-suite`
   const settled = () => until(() => !existsSync(join(results, 'lock')))
-  return { tmp, local, out, state, writeCase, suite, readLog, suiteJson, dateDir, results, settled }
+  return { tmp, builder, pinned, local, out, state, writeCase, suite, readLog, suiteJson, dateDir, results, settled }
 }
 
 test('list shows fixtures and local cases with size and estimate', () => {
@@ -216,7 +237,7 @@ test('status after the suite process dies; --resume runs only the rest', async (
 })
 
 test('a control runs the same case on a main checkout, serialized with it, as <id>@main', async () => {
-  const { suite, tmp, readLog, local, results, suiteJson, settled } = setup()
+  const { suite, tmp, pinned, readLog, local, results, suiteJson, settled } = setup()
   const main = join(tmp, 'bench-builder-main')
   mkdirSync(main)
   const r = suite(['run', 'c2', '--control', 'c2', '--lanes', '2', '--detach'])
@@ -226,7 +247,7 @@ test('a control runs the same case on a main checkout, serialized with it, as <i
   const s = suiteJson()
   assert.deepEqual(s.items.map((i) => i.id).sort(), ['c2', 'c2@main'])
   const log = readLog()
-  assert.deepEqual(log.builders('c2').sort(), [REPO, main].sort())
+  assert.deepEqual(log.builders('c2').sort(), [pinned, main].sort())
   const t = log.lines.filter((l) => l[1] === 'c2' && ['start', 'end'].includes(l[0])).map((l) => l[0])
   assert.deepEqual(t, ['start', 'end', 'start', 'end'])
   const ctl = JSON.parse(readFileSync(join(results, s.id, 'c2@main', 'result.json'), 'utf8'))
@@ -236,15 +257,19 @@ test('a control runs the same case on a main checkout, serialized with it, as <i
   assert.ok(existsSync(join(local, 'results', s.id, 'c2', 'result.json')))
 })
 
-test('a fixture case runs bench.mjs in the checkout and measures its newest runs.json against the one before', async () => {
-  const { suite, tmp, results, suiteJson, readLog, settled } = setup()
-  const checkout = join(tmp, 'checkout')
-  put(join(checkout, 'bench', 'results', '2000-01-01-0000-edit', 'runs.json'), { feature: 'edit', runs: [{ config: 'builder', status: 'done', ms: 600000, sessions: [] }] })
-  const r = suite(['run', 'edit', '--builder', checkout, '--detach'], { BENCH_FIXTURE_RUNNER: STUB })
+test('a fixture case runs bench.mjs in the pinned checkout and measures its newest runs.json against the one before', async () => {
+  const { suite, builder, pinned, results, suiteJson, readLog, settled } = setup()
+  put(join(builder.repo, 'bench', 'results', '2000-01-01-0000-edit', 'runs.json'), { feature: 'edit', runs: [{ config: 'builder', status: 'done', ms: 600000, sessions: [] }] })
+  builder.git('add', '-A')
+  builder.git('commit', '-qm', 'an earlier run')
+  const r = suite(['run', 'edit', '--detach'], { BENCH_FIXTURE_RUNNER: STUB })
   assert.equal(r.status, 0, r.stderr)
   await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
   await settled()
-  assert.deepEqual(readLog().builders('edit'), [checkout])
+  const sha12 = builder.git('rev-parse', 'HEAD').trim().slice(0, 12)
+  assert.deepEqual(readLog().builders('edit'), [pinned.replace(/[0-9a-f]{12}$/, sha12)])
+  // the run is copied back beside the builder's own results, where the next estimate reads it
+  assert.ok(existsSync(join(builder.repo, 'bench', 'results', '9999-12-31-2359-edit', 'runs.json')))
   const res = JSON.parse(readFileSync(join(results, suiteJson().id, 'edit', 'result.json'), 'utf8'))
   assert.deepEqual({ id: res.id, size: res.size, kind: res.kind, project: res.project, control: res.control, status: res.status }, { id: 'edit', size: 'xs', kind: 'fixture', project: 'fixtures', control: false, status: 'done' })
   assert.equal(res.measure.wallMs, 180000)
@@ -288,21 +313,9 @@ test('a throw inside one item fails that item; its lane goes on and the reports 
   assert.doesNotMatch(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /ENOENT|nonexistent/)
 })
 
-/** A builder checkout in tmp: a git repo on main with one commit. */
-function builderRepo(tmp) {
-  const repo = join(tmp, 'builder')
-  mkdirSync(repo)
-  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: repo, encoding: 'utf8' })
-  git('init', '-q', '-b', 'main')
-  writeFileSync(join(repo, 'README.md'), 'b\n')
-  git('add', '-A')
-  git('commit', '-qm', 'init')
-  return { repo, git }
-}
-
 test('a control still runs after $TMPDIR was purged under a registered main worktree', async () => {
-  const { suite, tmp, readLog, results, suiteJson, settled } = setup()
-  const { repo, git } = builderRepo(tmp)
+  const { suite, tmp, builder, readLog, results, suiteJson, settled } = setup()
+  const { repo, git } = builder
   const main = join(tmp, 'bench-builder-main')
   git('worktree', 'add', '-q', '--detach', main, 'main')
   rmSync(main, { recursive: true, force: true })
@@ -316,8 +329,8 @@ test('a control still runs after $TMPDIR was purged under a registered main work
 })
 
 test('a reused main checkout that cannot check out main fails the control, not runs it on a stale commit', async () => {
-  const { suite, tmp, readLog, results, suiteJson, settled } = setup()
-  const { repo } = builderRepo(tmp)
+  const { suite, tmp, builder, pinned, readLog, results, suiteJson, settled } = setup()
+  const { repo } = builder
   const main = join(tmp, 'bench-builder-main')
   mkdirSync(main)
   writeFileSync(join(main, '.git'), 'gitdir: /nonexistent/worktree\n')
@@ -328,7 +341,7 @@ test('a reused main checkout that cannot check out main fails the control, not r
   const by = Object.fromEntries(suiteJson().items.map((i) => [i.id, i.status]))
   assert.equal(by.c2, 'done')
   assert.match(by['c2@main'], /^failed: no main checkout for controls: .+/)
-  assert.deepEqual(readLog().builders('c2'), [repo])
+  assert.deepEqual(readLog().builders('c2'), [pinned])
 })
 
 const alive = (pid) => {
@@ -411,4 +424,42 @@ test('plan shows what each archived case\'s clone will touch — its dry run —
   assert.match(r.stdout, /^c1 — dry run\n {2}ports: {2}4010$/m)
   assert.match(r.stdout, /^c3 — dry run$/m)
   assert.match(r.stdout, new RegExp(`clones: ${join(tmp, 'bench-suite')}/<suite-id>/<item>/clone`))
+})
+
+test('the builder under test is pinned: a detached worktree at its HEAD, a dirty tree refused unless --allow-dirty, both SHAs in both reports', async () => {
+  const { suite, tmp, builder, pinned, readLog, results, out, suiteJson, settled } = setup()
+  const sha12 = builder.sha.slice(0, 12)
+  writeFileSync(join(builder.repo, 'README.md'), 'changed\n')
+  for (const cmd of [['plan', 'c2'], ['run', 'c2', '--detach']]) {
+    const r = suite(cmd)
+    assert.equal(r.status, 2, cmd.join(' '))
+    assert.match(r.stderr, /has uncommitted changes — commit or stash them, or pass --allow-dirty/)
+  }
+  assert.equal(readLog().lines.length, 0)
+  builder.git('checkout', '--', 'README.md')
+  const r = suite(['run', 'c2', '--control', 'c2', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const s = suiteJson()
+  assert.deepEqual(s.treatment, { sha: builder.sha, dirty: false })
+  assert.equal(s.mainSha, builder.sha)
+  assert.deepEqual(readLog().builders('c2').sort(), [pinned, join(tmp, 'bench-builder-main')].sort())
+  assert.ok(!existsSync(pinned), 'the pinned worktree is removed when the suite ends')
+  assert.doesNotMatch(builder.git('worktree', 'list'), new RegExp(`bench-builder-${sha12}`))
+  const committed = readFileSync(join(out, `${s.id.slice(0, 10)}-suite`, 'REPORT.md'), 'utf8')
+  for (const md of [committed, readFileSync(join(results, s.id, 'REPORT.md'), 'utf8')]) {
+    assert.match(md, new RegExp(`^builder under test: ${sha12}$`, 'm'))
+    assert.match(md, new RegExp(`^builder main \\(controls\\): ${sha12}$`, 'm'))
+  }
+  // --allow-dirty runs the tree as it is, unpinned, and says so
+  writeFileSync(join(builder.repo, 'README.md'), 'changed\n')
+  const d = suite(['run', 'c3', '--allow-dirty', '--detach'])
+  assert.equal(d.status, 0, d.stderr)
+  await until(() => suiteJson().id !== s.id && existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  assert.deepEqual(suiteJson().treatment, { sha: builder.sha, dirty: true })
+  assert.deepEqual(readLog().builders('c3'), [builder.repo])
+  assert.match(suite(['run', '--resume', s.id, '--allow-dirty', '--detach']).stderr, /--resume takes only the suite id/)
+  assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), new RegExp(`^builder under test: ${sha12} \\+ uncommitted changes \\(unpinned\\)$`, 'm'))
 })

@@ -323,10 +323,17 @@ export function statusCategory(status) {
   return head ?? 'failed'
 }
 
-/** The suite report as markdown; with names: false a result's project never appears, nor its status's detail. */
-export function renderSuiteReport(results, { names = false } = {}) {
+/** The builder the suite ran — `{ treatment: { sha, dirty }, mainSha }` — as the report's header lines. */
+const builderHeader = ({ treatment, mainSha } = {}) => {
+  const short = (sha) => sha.slice(0, 12)
+  const under = treatment?.sha ? `${short(treatment.sha)}${treatment.dirty ? ' + uncommitted changes (unpinned)' : ''}` : 'not a git checkout (unpinned)'
+  return [`builder under test: ${under}`, '', ...(mainSha ? [`builder main (controls): ${short(mainSha)}`, ''] : [])]
+}
+
+/** The suite report as markdown; with names: false a result's project never appears, nor its status's detail. `builder` adds the SHAs it ran on. */
+export function renderSuiteReport(results, { names = false, builder } = {}) {
   const controlOf = (r) => results.find((c) => c.control && c !== r && c.id.startsWith(`${r.id}@`))
-  const out = ['# Benchmark suite report', '']
+  const out = ['# Benchmark suite report', '', ...(builder ? builderHeader(builder) : [])]
   const head = ['id', 'size', ...(names ? ['project'] : []), 'status', 'wall', 'tokens', 'turns', 'cost', 'Δ wall vs baseline', 'Δ tokens vs baseline', 'Δ turns vs baseline', 'Δ cost vs baseline', 'Δ wall vs control', 'Δ tokens vs control', 'Δ turns vs control', 'Δ cost vs control', 'estimate']
   const rows = results.map((r) => {
     const m = r.measure
