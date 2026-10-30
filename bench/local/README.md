@@ -82,7 +82,9 @@ says which: `env: …`, `setup: …`, `files/.env: …`, `mcp: …`) — would t
   client's `-p` — `psql`, `createdb`, `dropdb`, `pg_dump`, `pg_restore`, whose database is checked — and `PGPORT` /
   `DB_PORT` are the shared database server's, and are not);
 - a command stops or empties a database server or service: `flushall`, `flushdb`, `pg_ctl` / `pg_ctlcluster … stop|restart|kill`,
-  `mysql.server stop|restart`, `brew services stop|restart|kill` (whatever it names), and `shutdown`
+  `mysql.server stop|restart`, `brew services stop|restart|kill` (whatever it names), `pkill` / `killall` of a database
+  server process (`postgres`, `mysqld`, `mariadbd`, `redis-server`, `mongod`, `valkey-server`), `launchctl
+  unload|bootout|stop|kill` of one (or of a `homebrew.mxcl.<db>` label), and `shutdown`
   anywhere on a line with a database client or server (`mysqladmin`, `mysql`, `mysqld`, `redis-cli`, `redis-server`,
   `valkey-cli`, `mongosh` / `mongo`, `mongod`, `psql`, `pg_ctl`, `postgres`) — piped in, in a `-c` / `--eval` string,
   or as the server's own `--shutdown`;
