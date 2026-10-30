@@ -434,7 +434,7 @@ test('plan shows a dry run\'s body: warnings and counts them; they never refuse,
   const r = suite(['plan', 'c1,c3'])
   assert.equal(r.status, 0, r.stderr)
   assert.match(r.stdout, /^ {2}body: database app_dev is not a bench database \(bench_\*\)$/m)
-  assert.match(r.stdout, /^dry runs: c1 ok — 2 body warnings, add a replace for each to its profile · c3 ok$/m)
+  assert.match(r.stdout, /^dry runs: c1 ok — 2 warnings, a replace \(body:\) or an agent_walk\.copy entry \(files:\) in its profile fixes each · c3 ok$/m)
 })
 
 test('run prints each case\'s body warnings as plan does, and records them in suite.json and the case\'s result.json', async () => {
@@ -443,7 +443,7 @@ test('run prints each case\'s body warnings as plan does, and records them in su
   const r = suite(['run', 'c1,c3', '--detach'])
   assert.equal(r.status, 0, r.stderr)
   const lines = ['body: database app_dev is not a bench database (bench_*)', 'body: docker command names no bench_ container: docker compose up']
-  assert.match(r.stdout, /^c1: 2 body warnings — the config's prose names something of yours; add a replace for each to its profile$/m)
+  assert.match(r.stdout, /^c1: 2 warnings — a replace \(body:\) or an agent_walk\.copy entry \(files:\) in its profile fixes each$/m)
   for (const l of lines) assert.ok(r.stdout.includes(`\n  ${l}\n`), r.stdout)
   assert.doesNotMatch(r.stdout, /^c3: /m)
   await settled()

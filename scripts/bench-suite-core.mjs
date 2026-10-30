@@ -150,13 +150,15 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
   return `---\n${fm.join('\n')}\n---${tail}${rest}`
 }
 
-/** A config's agent_walk.claude_args (its comment dropped), or '' when it has none. */
-export const ownClaudeArgs = (md) => {
+/** A one-line key under a config's agent_walk (its comment dropped), or '' when it has none. */
+export const agentWalkValue = (md, key) => {
   const { fm } = splitFm(normalize(md))
   const at = fm.findIndex((l) => /^agent_walk:/.test(l))
   if (at < 0) return ''
-  return fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)?.[1]).find((x) => x != null) ?? ''
+  return fm.slice(at + 1, blockEnd(fm, at)).map((l) => new RegExp(`^\\s+${key}:\\s*(.*?)\\s*(#.*)?$`).exec(l)?.[1]).find((x) => x != null) ?? ''
 }
+/** A config's agent_walk.claude_args, or ''. */
+export const ownClaudeArgs = (md) => agentWalkValue(md, 'claude_args')
 /** The flags the runner owns — a session's permissions, settings and plugins — and the unset placeholder, dropped from a claude_args. */
 const RUNNER_FLAG = /^--(?:permission-mode|settings|plugin-dir)$/
 const withoutRunnerFlags = (args) => {
