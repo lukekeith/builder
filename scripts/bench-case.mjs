@@ -27,7 +27,7 @@
  * same for a .jsonl transcript), BENCH_EVIDENCE_TOTAL_CAP_BYTES (2 GB, all of it), BENCH_KEEP_CLONES, BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync, readdirSync, statSync, lstatSync } from 'node:fs'
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -571,7 +571,8 @@ export async function finishCase({ clone, teardown, setupPgid, out, env = {} }) 
  * The run's evidence, saved before the clone goes: the clone's .builder/ (the fleet's logs with
  * _archive/ and the env-check logs, archive.jsonl, fleet.json, kept workspaces, the verifier's files)
  * to <out>/builder/, and the .builder/ of each worktree still standing beside it (a timeout, a stop)
- * to <out>/builder/worktrees/<name>/. Never a node_modules folder or a symlink; a file over its cap
+ * to <out>/builder/worktrees/<name>/. Never a node_modules folder or a symlink — a symlinked root
+ * either, named in `skipped`; a file over its cap
  * (`cap`, or `jsonlCap` for a .jsonl transcript — the evidence that matters most) or past the run's
  * `totalCap` is skipped and named. Never throws: a file that can't be copied is named in `skipped`,
  * and the first failure is `error`. → { files, bytes, skipped: ['<path> (<why>)'], error? }
@@ -613,13 +614,29 @@ export function saveEvidence(clone, out, { cap = envBytes('BENCH_EVIDENCE_CAP_BY
       }
     }
   }
-  try {
-    copy(join(clone, '.builder'), dest, '')
-    let worktrees = []
+  // a root is copied only when it is a real directory: a symlinked .builder (or worktrees folder) would
+  // carry in whatever it points at, outside the run
+  const root = (p, r) => {
+    let st
     try {
-      worktrees = readdirSync(`${clone}.fleet`, { withFileTypes: true }).filter((e) => e.isDirectory())
-    } catch {}
-    for (const w of worktrees) copy(join(`${clone}.fleet`, w.name, '.builder'), join(dest, 'worktrees', w.name), `worktrees/${w.name}`)
+      st = lstatSync(p)
+    } catch {
+      return false
+    }
+    if (st.isSymbolicLink()) res.skipped.push(`${r} (a symlink, not followed)`)
+    return st.isDirectory()
+  }
+  try {
+    if (root(join(clone, '.builder'), '.builder')) copy(join(clone, '.builder'), dest, '')
+    let worktrees = []
+    if (root(`${clone}.fleet`, 'worktrees'))
+      try {
+        worktrees = readdirSync(`${clone}.fleet`, { withFileTypes: true }).filter((e) => e.isDirectory())
+      } catch {}
+    for (const w of worktrees) {
+      const wb = join(`${clone}.fleet`, w.name, '.builder')
+      if (root(wb, `worktrees/${w.name}`)) copy(wb, join(dest, 'worktrees', w.name), `worktrees/${w.name}`)
+    }
   } catch (err) {
     res.error ??= err.message
   }
