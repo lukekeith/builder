@@ -4,8 +4,8 @@
  * detached, reported per case and per stage. Design: docs/specs/2026-10-29-benchmark-suite-design.md.
  *
  *   node scripts/bench-suite.mjs list [--json]
- *   node scripts/bench-suite.mjs plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>]
- *   node scripts/bench-suite.mjs run  <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] --detach
+ *   node scripts/bench-suite.mjs plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty]
+ *   node scripts/bench-suite.mjs run  <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] --detach
  *   node scripts/bench-suite.mjs run --resume <suite-id> --detach
  *   node scripts/bench-suite.mjs status
  *   node scripts/bench-suite.mjs stop
@@ -16,13 +16,17 @@
  * one folder per item attempt, the named REPORT.md); the committed report, with no project names, is
  * $BENCH_SUITE_OUT/<date>-suite/REPORT.md. Two items of one project never run at once. `stop` (or a SIGTERM
  * to the suite) stops each running case cleanly, starts nothing more, writes the reports and releases the lock.
+ * The builder under test is pinned: the suite runs on a detached worktree at --builder's HEAD
+ * ($TMPDIR/bench-builder-<sha12>, removed when it ends); a --builder with uncommitted changes to tracked
+ * files is refused unless --allow-dirty, which runs the tree as it is. suite.json and both reports carry
+ * the treatment's SHA and main's.
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
  * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
  * <checkout>/scripts/bench.mjs), BENCH_TMP (where clones go; $TMPDIR/bench-suite), TMPDIR (where the main checkout for controls goes).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, renameSync, openSync, closeSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, renameSync, openSync, closeSync, realpathSync, statSync, cpSync } from 'node:fs'
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -41,7 +45,7 @@ const LOCK = join(RESULTS, 'lock')
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURE_RESULTS = join(BUILDER, 'bench', 'results')
 const DEFAULT_LANES = 3
-const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
+const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
 const STOP_WAIT_MS = Number(process.env.BENCH_STOP_WAIT_MS) || 120 * 1000
 const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
 
@@ -164,7 +168,7 @@ const label = (c) => (c.problem ? `${c.size ?? '?'} · ${c.id} — ${c.covers} �
 // ---- selection and the schedule --------------------------------------------------------------------
 
 const VALUE_OPTS = new Set(['--lanes', '--control', '--budget', '--builder', '--resume'])
-const FLAG_OPTS = new Set(['--all', '--detach', '--json'])
+const FLAG_OPTS = new Set(['--all', '--detach', '--json', '--allow-dirty'])
 
 /** The CLI's options; an unknown flag or a flag missing its value is a usage error. */
 function parseArgs(argv) {
@@ -391,21 +395,57 @@ function freshOut(dir, id) {
   return p
 }
 
+const gitIn = (dir, ...a) => execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+const tryGitIn = (dir, ...a) => {
+  try {
+    return gitIn(dir, ...a)
+  } catch {
+    return null
+  }
+}
+
 /**
- * The checkout of builder's main a control runs on: $TMPDIR/bench-builder-main, reused when present (moved
- * to main's tip when it is a git checkout; a failed checkout throws, so no control runs on a stale commit),
- * else made with `git worktree add` after a prune — macOS purges $TMPDIR and leaves the worktree registered.
+ * A detached worktree of `builder` at `ref` in `dir`: reused when present (moved to `ref` when it is a git
+ * checkout; a failed checkout throws, so nothing runs on a stale commit), else made with `git worktree add`
+ * after a prune — macOS purges $TMPDIR and leaves the worktree registered.
  */
-function mainCheckout(builder) {
-  const dir = join(tmpdir(), 'bench-builder-main')
-  const git = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+function worktreeAt(builder, dir, ref) {
   if (existsSync(dir)) {
-    if (existsSync(join(dir, '.git'))) git('-C', dir, 'checkout', '-q', '--detach', 'main')
+    if (existsSync(join(dir, '.git'))) gitIn(dir, 'checkout', '-q', '--detach', ref)
     return dir
   }
-  git('-C', builder, 'worktree', 'prune')
-  git('-C', builder, 'worktree', 'add', '-q', '--detach', dir, 'main')
+  gitIn(builder, 'worktree', 'prune')
+  gitIn(builder, 'worktree', 'add', '-q', '--detach', dir, ref)
   return dir
+}
+/** The checkout of builder's main a control runs on: $TMPDIR/bench-builder-main. */
+const mainCheckout = (builder) => worktreeAt(builder, join(tmpdir(), 'bench-builder-main'), 'main')
+/** The builder under test pinned: $TMPDIR/bench-builder-<sha12>, a detached worktree at `sha` — anything else there throws. */
+function pinnedCheckout(builder, sha) {
+  const dir = worktreeAt(builder, join(tmpdir(), `bench-builder-${sha.slice(0, 12)}`), sha)
+  if (tryGitIn(dir, 'rev-parse', 'HEAD') !== sha) throw new Error(`${dir} is not a checkout of ${sha.slice(0, 12)}`)
+  return dir
+}
+/** A worktree this suite made, removed and unregistered. */
+function removeWorktree(builder, dir) {
+  tryGitIn(builder, 'worktree', 'remove', '--force', dir)
+  rmSync(dir, { recursive: true, force: true })
+  tryGitIn(builder, 'worktree', 'prune')
+}
+
+/**
+ * The builder under test as `run` pins it: its HEAD, and whether its tracked files differ from it. A tree
+ * with changes, or one that is not a git checkout, is refused unless allowDirty, which runs it as it is.
+ */
+function treatmentOf(builder, allowDirty) {
+  const sha = tryGitIn(builder, 'rev-parse', '--verify', 'HEAD')
+  const changes = sha == null ? null : tryGitIn(builder, 'status', '--porcelain', '--untracked-files=no')
+  if (changes == null) {
+    if (!allowDirty) die(`--builder ${builder} is not a git checkout — the suite pins the builder under test to a commit; --allow-dirty runs it as it is`)
+    return { sha: null, dirty: true }
+  }
+  if (changes && !allowDirty) die(`the builder checkout ${builder} has uncommitted changes — commit or stash them, or pass --allow-dirty to run the tree as it is (unpinned)`)
+  return { sha, dirty: !!changes }
 }
 
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
@@ -423,8 +463,8 @@ async function runArchived(it, builder, out, suiteId, onSpawn) {
   return res.status ?? 'failed: the case wrote no status'
 }
 
-/** A fixture item: bench.mjs run <feature> --only builder in the checkout; measured from the run it made, against the one before. → its status */
-async function runFixture(it, checkout, out, onSpawn) {
+/** A fixture item: bench.mjs run <feature> --only builder in the checkout; measured from the run it made, against the one before; the run is copied to `home`'s bench/results. → its status */
+async function runFixture(it, checkout, out, onSpawn, home) {
   const results = join(checkout, 'bench', 'results')
   const before = fixtureRunDirs(results, it.case)
   const script = process.env.BENCH_FIXTURE_RUNNER || join(checkout, 'scripts', 'bench.mjs')
@@ -434,6 +474,9 @@ async function runFixture(it, checkout, out, onSpawn) {
   const r = await spawnWait(process.execPath, [script, 'run', it.case, '--only', 'builder'], { cwd: checkout, env, outFile: join(out, 'case.out'), errFile, onSpawn })
   const fresh = fixtureRunDirs(results, it.case).filter((d) => !before.includes(d)).at(-1)
   if (!fresh) return refusedOrDied(r, errFile)
+  // the pinned worktree goes when the suite ends; the run is kept beside the builder's own, where the next estimate reads it
+  const keep = home && !it.control && resolve(home) !== resolve(checkout) ? join(home, 'bench', 'results', basename(fresh)) : null
+  if (keep && !existsSync(keep)) cpSync(fresh, keep, { recursive: true })
   const runs = readJson(join(fresh, 'runs.json'))
   const mine = (runs?.runs ?? []).filter((x) => x.config === 'builder')
   const first = mine[0]?.status ?? 'no builder run'
@@ -454,8 +497,21 @@ async function runSuite(id) {
   if (s.items.some((it) => it.control && unfinished(it))) {
     try {
       main = mainCheckout(s.builder)
+      s.mainSha = tryGitIn(main, 'rev-parse', 'HEAD')
     } catch (e) {
       for (const it of s.items) if (it.control && unfinished(it)) Object.assign(it, { status: `failed: no main checkout for controls: ${firstLine(e.stderr || e.message)}`, endedAt: Date.now() })
+    }
+    saveSuite(s)
+  }
+  // the builder under test, pinned to the commit `run` recorded: a commit made tonight changes nothing that runs
+  let treatment = s.builder
+  const pin = s.treatment?.sha && !s.treatment.dirty ? s.treatment.sha : null
+  if (pin && s.items.some((it) => !it.control && unfinished(it))) {
+    try {
+      treatment = pinnedCheckout(s.builder, pin)
+    } catch (e) {
+      treatment = null
+      for (const it of s.items) if (!it.control && unfinished(it)) Object.assign(it, { status: `failed: no pinned checkout of the builder under test: ${firstLine(e.stderr || e.message)}`, endedAt: Date.now() })
       saveSuite(s)
     }
   }
@@ -482,9 +538,9 @@ async function runSuite(id) {
       mkdirSync(out, { recursive: true })
       Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out, pid: null })
       saveSuite(s)
-      const checkout = it.control ? main : s.builder
+      const checkout = it.control ? main : treatment
       const onSpawn = tracker(s, it)
-      status = it.kind === 'fixture' ? await runFixture(it, checkout, out, onSpawn) : await runArchived(it, checkout, out, id, onSpawn)
+      status = it.kind === 'fixture' ? await runFixture(it, checkout, out, onSpawn, s.builder) : await runArchived(it, checkout, out, id, onSpawn)
     } catch (e) {
       status = `failed: ${firstLine(e.message)}`
     }
@@ -505,6 +561,7 @@ async function runSuite(id) {
       await runItem(it)
     }
   }))
+  if (pin && treatment) removeWorktree(s.builder, treatment)
   const paths = writeReports(id)
   console.log(`${new Date().toISOString()} suite ${id} ${stopping ? 'stopped' : 'finished'} — ${paths.named}`)
 }
@@ -529,9 +586,10 @@ function writeReports(id) {
   const results = resultsOf(s)
   const committed = join(SUITE_OUT, `${id.slice(0, 10)}-suite`, 'REPORT.md')
   const named = join(suiteDir(id), 'REPORT.md')
+  const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null }
   mkdirSync(dirname(committed), { recursive: true })
-  writeFileSync(committed, renderSuiteReport(results, { names: false }))
-  writeFileSync(named, renderSuiteReport(results, { names: true }))
+  writeFileSync(committed, renderSuiteReport(results, { names: false, builder }))
+  writeFileSync(named, renderSuiteReport(results, { names: true, builder }))
   return { committed, named }
 }
 
@@ -672,7 +730,7 @@ if (isMain) {
     const resume = cmd === 'run' ? args.opts['--resume'] : undefined
     if (resume != null) {
       const id = plainId(resume)
-      if (args.pos.length || args.opts['--all'] || args.opts['--budget'] || args.opts['--control'] || args.opts['--lanes']) die('--resume takes only the suite id (and --detach)')
+      if (args.pos.length || args.opts['--all'] || args.opts['--budget'] || args.opts['--control'] || args.opts['--lanes'] || args.opts['--builder'] || args.opts['--allow-dirty']) die('--resume takes only the suite id (and --detach)')
       const held = lockState()
       if (held?.live) die(busy(held))
       const s = readSuite(id)
@@ -695,6 +753,7 @@ if (isMain) {
 
     const lanes = lanesOf(args.opts)
     const builder = resolve(args.opts['--builder'] ?? BUILDER)
+    const treatment = treatmentOf(builder, !!args.opts['--allow-dirty'])
     const catalogue = loadCatalogue()
     const { picked, controls, skipped, controlsGiven } = select(args, catalogue, lanes)
     const items = [...picked, ...controls]
@@ -726,7 +785,7 @@ if (isMain) {
     }
     const id = newSuiteId()
     mkdirSync(suiteDir(id), { recursive: true })
-    saveSuite({ id, builder, lanes, createdAt: Date.now(), pid: null, items: scheduleItems(items, packed), skipped })
+    saveSuite({ id, builder, treatment, mainSha: null, lanes, createdAt: Date.now(), pid: null, items: scheduleItems(items, packed), skipped })
     launch(id)
     process.exit(0)
   }
