@@ -300,6 +300,16 @@ function dryRuns(items, builder) {
   if (clash.length) refusals.push({ id: 'the selection', reasons: clash })
   return { refusals, summaries }
 }
+/** A dry run's body: lines — config prose naming something of the human's — by case id; a case with none is left out. */
+const warningsOf = (summaries) => new Map(summaries.map((x) => [x.id, x.text.split('\n').filter((l) => /^\s+body: /.test(l)).map((l) => l.trim())]).filter(([, w]) => w.length))
+const printWarnings = (warnings) => {
+  for (const [id, ws] of warnings) {
+    console.log(`${id}: ${ws.length} body warning${ws.length > 1 ? 's' : ''} — the config's prose names something of yours; add a replace for each to its profile`)
+    for (const w of ws) console.log(`  ${w}`)
+  }
+}
+/** Each item its case's body warnings (none: no field). */
+const withWarnings = (items, warnings) => items.map((it) => (warnings.has(it.case ?? it.id) ? { ...it, warnings: warnings.get(it.case ?? it.id) } : it))
 const printRefusals = (refusals) => {
   for (const { id, reasons } of refusals) {
     console.error(`${id} refused:`)
@@ -459,7 +469,9 @@ async function runArchived(it, builder, out, suiteId, onSpawn) {
   const resFile = join(out, 'result.json')
   const res = readJson(resFile)
   if (!res) return refusedOrDied(r, errFile)
-  if (it.control) writeFileSync(resFile, JSON.stringify({ ...res, id: it.id, control: true }, null, 2) + '\n')
+  // a control is rewritten as <id>@main; the dry run's body warnings are kept beside the result
+  const warnings = res.warnings ?? it.warnings
+  if (it.control || (warnings && !res.warnings)) writeFileSync(resFile, JSON.stringify({ ...res, ...(it.control ? { id: it.id, control: true } : {}), ...(warnings ? { warnings } : {}) }, null, 2) + '\n')
   return res.status ?? 'failed: the case wrote no status'
 }
 
@@ -751,11 +763,14 @@ if (isMain) {
         console.log(`suite ${id} has nothing left to run — report: ${named}`)
         process.exit(0)
       }
-      const { refusals } = dryRuns(left, s.builder)
+      const { refusals, summaries } = dryRuns(left, s.builder)
       if (refusals.length) {
         printRefusals(refusals)
         process.exit(2)
       }
+      const warnings = warningsOf(summaries)
+      printWarnings(warnings)
+      saveSuite({ ...s, items: s.items.map((it) => (left.includes(it) ? withWarnings([it], warnings)[0] : it)) })
       launch(id)
       process.exit(0)
     }
@@ -792,14 +807,16 @@ if (isMain) {
 
     const held = lockState()
     if (held?.live) die(busy(held))
-    const { refusals } = dryRuns(items, builder)
+    const { refusals, summaries } = dryRuns(items, builder)
     if (refusals.length) {
       printRefusals(refusals)
       process.exit(2)
     }
+    const warnings = warningsOf(summaries)
+    printWarnings(warnings)
     const id = newSuiteId()
     mkdirSync(suiteDir(id), { recursive: true })
-    saveSuite({ id, builder, treatment, mainSha: null, lanes, createdAt: Date.now(), pid: null, items: scheduleItems(items, packed), skipped })
+    saveSuite({ id, builder, treatment, mainSha: null, lanes, createdAt: Date.now(), pid: null, items: withWarnings(scheduleItems(items, packed), warnings), skipped })
     launch(id)
     process.exit(0)
   }
