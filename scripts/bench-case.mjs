@@ -116,12 +116,40 @@ const groupAlive = (pgid) => {
     return e.code === 'EPERM'
   }
 }
-/** A group stopped: SIGTERM, then SIGKILL once the grace period passes with any member left. Behind killableGroup like every group kill. */
-async function stopGroup(pgid) {
-  if (!killableGroup(pgid) || !groupAlive(pgid)) return
-  killGroup(pgid, 'SIGTERM')
+/**
+ * True when a recorded group still belongs to this case: a member's command line or cwd is inside the
+ * clone or the fleet's worktrees (<clone>.fleet). A group that has died may have had its id reused hours
+ * later — by another lane's fleet, by the human's dev server — and must never be signalled on a record alone.
+ */
+export function groupOwnedBy(pgid, clone) {
+  if (!clone) return false
+  const roots = [clone, `${clone}.fleet`]
+  const inside = (s) => roots.some((r) => s === r || s.includes(`${r}/`) || s.endsWith(r) || s.includes(`${r} `))
+  const rows = (spawnSync('ps', ['-A', '-o', 'pid=,pgid=,command='], { encoding: 'utf8' }).stdout ?? '').split('\n')
+  for (const row of rows) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(row)
+    if (!m || Number(m[2]) !== pgid) continue
+    if (inside(m[3])) return true
+    const cwd = (spawnSync('lsof', ['-a', '-d', 'cwd', '-p', m[1], '-Fn'], { encoding: 'utf8' }).stdout ?? '').split('\n').find((l) => l.startsWith('n'))?.slice(1)
+    if (cwd && roots.some((r) => within(cwd, r))) return true
+  }
+  return false
+}
+/** A recorded group signalled only when killableGroup allows it and it still belongs to the clone; otherwise why not is logged. */
+function killOwnedGroup(pgid, sig, clone) {
+  if (!killableGroup(pgid) || !groupAlive(pgid)) return false
+  if (!groupOwnedBy(pgid, clone)) {
+    console.error(`not signalling process group ${pgid}: no member runs in the clone ${clone} — its id may have been reused`)
+    return false
+  }
+  killGroup(pgid, sig)
+  return true
+}
+/** A recorded group (never one this case spawned and still holds) stopped: SIGTERM, then SIGKILL once the grace period passes with any member left — each only while it still belongs to the clone. */
+async function stopGroup(pgid, clone) {
+  if (!killOwnedGroup(pgid, 'SIGTERM', clone)) return
   for (const t0 = Date.now(); groupAlive(pgid) && Date.now() - t0 < KILL_GRACE_MS; ) await new Promise((r) => setTimeout(r, 100))
-  killGroup(pgid, 'SIGKILL')
+  killOwnedGroup(pgid, 'SIGKILL', clone)
 }
 
 // ---- stopping: SIGTERM (bench-suite.mjs stop) stops every group running now ----
@@ -343,7 +371,8 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
     // not reaped on exit: a setup may start what the run needs (a bench database, a server); its group is stopped after the fleet
     mkdirSync(logDir, { recursive: true })
     const r = await runGroup('sh', ['-c', plan.setup], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(logDir, 'setup.out'), timeoutMs: SETUP_TIMEOUT_MS })
-    setupPgid = r.pgid ?? null
+    // an empty group is no group: its id may be reused by the time the case ends
+    setupPgid = r.pgid && groupAlive(r.pgid) ? r.pgid : null
     if (r.stopped) return { ...none, clone, setupPgid, failure: 'stopped' }
     if (r.timedOut) return { ...none, clone, setupPgid, failure: 'setup timed out' }
     if (r.status !== 0) return { ...none, clone, setupPgid, failure: `setup failed (${r.error ? r.error.message : `exit ${r.status}`}) — see setup.out` }
@@ -382,7 +411,7 @@ export async function runCaseFleet({ clone, feature, fleet, out }) {
     log: join(out, 'fleet.out'),
     timeoutMs: FLEET_TIMEOUT_MS,
     reap: true,
-    onTimeout: () => fleetPgids(clone).forEach((p) => killGroup(p, 'SIGKILL')),
+    onTimeout: () => fleetPgids(clone).forEach((p) => killOwnedGroup(p, 'SIGKILL', clone)),
   })
   const after = landedRow(clone, feature)
   const landed = after && JSON.stringify(after) !== before ? after : null
@@ -405,7 +434,7 @@ export async function finishCase({ clone, teardown, setupPgid, out }) {
     const r = await runGroup('sh', ['-c', teardown], { cwd: clone, env: { ...process.env, CLAUDE_PROJECT_DIR: clone }, log: join(out, 'teardown.out'), timeoutMs: SETUP_TIMEOUT_MS, reap: true })
     outcome = r.status === 0 ? 'done' : r.stopped ? 'stopped' : r.timedOut ? 'timed out' : `failed (${r.error ? r.error.message : `exit ${r.status}`}) — see teardown.out`
   }
-  if (setupPgid) await stopGroup(setupPgid)
+  if (setupPgid) await stopGroup(setupPgid, clone)
   return outcome
 }
 
