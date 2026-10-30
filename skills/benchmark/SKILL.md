@@ -6,7 +6,7 @@ description: Maintainer tool — runs a fixture feature through builder, superpo
 
 # `/builder:benchmark` — where the time goes
 
-Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id>]`**
+Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id|suite-id>]`**
 for one fixture feature, or **`/builder:benchmark`** with no feature for the suite picker (§Picker), which also takes
 **`--all`**, **`--budget <h>`**, **`--lanes N`**, **`--control <ids>`**, **`--resume <suite-id>`** and **`--stop`**.
 `/builder:benchmark tags` is the quick fixture run the no-feature path used to start.
@@ -32,8 +32,10 @@ parallel — so one never skews another. Nothing in the user's Claude home chang
 
 `/builder:benchmark` with no `<feature>` runs the suite (`scripts/bench-suite.mjs`; `bench/README.md`
 §Suite): a catalogue of sized cases, scheduled into lanes that fit a night. It never starts a run
-without asking. `--resume <suite-id>` skips the picker: `node <builder>/scripts/bench-suite.mjs run --resume <suite-id> --detach`
-re-runs that suite's waiting, cut-off and refused items (parked and timed-out ones are final), after a confirmation as in step 5.
+without asking. `--resume <suite-id>` skips the picker: first `node <builder>/scripts/bench-suite.mjs status`, shown as a
+plain review of which items will re-run — the waiting, cut-off, stopped and refused ones (parked, failed and timed-out
+ones are final) — then the Run it / Not now of step 6, then `node <builder>/scripts/bench-suite.mjs run --resume <suite-id> --detach`.
+It refuses while a case of that suite is still alive; offer `--stop`.
 
 1. `node <builder>/scripts/bench-suite.mjs list --json` — the catalogue: fixture cases and any archived
    cases under `bench/local/`. A case with a `problem` is shown with it and cannot be picked.
@@ -55,7 +57,7 @@ re-runs that suite's waiting, cut-off and refused items (parked and timed-out on
 6. One AskUserQuestion — **Run it** / **Not now** — saying it runs on its own, outlives this session
    and writes only under `bench/local/results/` and `bench/results/`. On yes, **in the foreground**:
    `node <builder>/scripts/bench-suite.mjs run <the same selection> --detach` (`run` without
-   `--detach` is refused; `🔴 never` launch it as a background task of this session).
+   `--detach` is refused; 🔴 **Never** launch it as a background task of this session).
 
 `--builder <checkout>` points the suite at another builder; the default is this checkout. The suite pins it: it runs
 on a detached worktree at its HEAD, so a commit made overnight changes nothing that runs, and both reports name

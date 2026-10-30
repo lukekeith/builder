@@ -580,11 +580,20 @@ function resultsOf(s) {
   return out.sort((a, b) => sz(a) - sz(b) || base(a).localeCompare(base(b)) || Number(!!a.control) - Number(!!b.control))
 }
 
-/** The committed report (no project names) and the named one beside suite.json. */
+/**
+ * The committed report (no project names) and the named one beside suite.json. The committed one is
+ * <date>-suite/REPORT.md, or <date>-HHMM-suite/ (the suite id) when another suite has that date's; the
+ * choice is kept in suite.json, so a rebuilt report stays where it was.
+ */
 function writeReports(id) {
   const s = readSuite(id)
   const results = resultsOf(s)
-  const committed = join(SUITE_OUT, `${id.slice(0, 10)}-suite`, 'REPORT.md')
+  if (!s.report) {
+    const day = `${id.slice(0, 10)}-suite`
+    s.report = existsSync(join(SUITE_OUT, day, 'REPORT.md')) ? id : day
+    saveSuite(s)
+  }
+  const committed = join(SUITE_OUT, s.report, 'REPORT.md')
   const named = join(suiteDir(id), 'REPORT.md')
   const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null }
   mkdirSync(dirname(committed), { recursive: true })
@@ -763,6 +772,9 @@ if (isMain) {
     if (cmd === 'plan') {
       const recommended = controlsGiven ? [] : recommendControls(picked)
       console.log(renderSchedule({ packed, items, skipped, recommended, lanes }))
+      // a case's setup, fleet and sessions inherit this shell's environment: a database here is the human's
+      const inherited = Object.keys(process.env).filter((k) => k === 'DATABASE_URL' || /^PG[A-Z]+$/.test(k)).sort()
+      if (inherited.length) console.log(`⚠ this shell sets ${inherited.join(', ')} — every case's setup, fleet and sessions inherit them; unset them before run`)
       const { refusals, summaries } = dryRuns(items, builder)
       if (refusals.length) {
         printRefusals(refusals)

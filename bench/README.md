@@ -81,7 +81,9 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   and, with controls, main's.
 - **Results.** `bench/local/results/<suite-id>/` (git-ignored) holds `suite.json`, one folder per attempt and the named
   `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids, sizes and each status's category
-  only (done, failed, refused, parked, timed out, stopped) — the detail is in the named report.
+  only (done, failed, refused, parked, timed out, stopped) — the detail is in the named report. A second suite on one
+  date writes `bench/results/<date>-HHMM-suite/REPORT.md` instead.
+- **Before a run** `plan` warns when the shell sets `DATABASE_URL` or `PG*`: every case's setup, fleet and sessions inherit them.
 - **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no
   repo's `CLAUDE.md` loads into a case's sessions; a clone inside any git repo is refused.
 - **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`;

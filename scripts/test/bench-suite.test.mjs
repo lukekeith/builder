@@ -463,3 +463,32 @@ test('the builder under test is pinned: a detached worktree at its HEAD, a dirty
   assert.match(suite(['run', '--resume', s.id, '--allow-dirty', '--detach']).stderr, /--resume takes only the suite id/)
   assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), new RegExp(`^builder under test: ${sha12} \\+ uncommitted changes \\(unpinned\\)$`, 'm'))
 })
+
+test('plan warns when this shell sets DATABASE_URL or PG* — every case would inherit them', () => {
+  const { suite } = setup()
+  const r = suite(['plan', 'c1'], { DATABASE_URL: 'postgres://localhost/app_dev', PGHOST: 'localhost' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /⚠ this shell sets DATABASE_URL, PGHOST — every case's setup, fleet and sessions inherit them; unset them before run/)
+})
+
+test('a second suite on one date gets its own committed report, <date>-HHMM-suite; a rebuilt report stays where it was', async () => {
+  const { suite, out, results, suiteJson, settled } = setup()
+  assert.equal(suite(['run', 'c2', '--detach']).status, 0)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const first = suiteJson().id
+  assert.equal(suite(['run', 'c3', '--detach']).status, 0)
+  await until(() => suiteJson().id !== first && existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const second = suiteJson().id
+  assert.match(second, /^\d{4}-\d\d-\d\d-\d{4}-suite(-\d+)?$/)
+  const day = join(out, `${first.slice(0, 10)}-suite`, 'REPORT.md')
+  const own = join(out, second, 'REPORT.md')
+  assert.match(readFileSync(day, 'utf8'), /\| c2 \|/)
+  assert.doesNotMatch(readFileSync(day, 'utf8'), /\| c3 \|/)
+  assert.match(readFileSync(own, 'utf8'), /\| c3 \|/)
+  const rebuilt = suite(['report', first])
+  assert.equal(rebuilt.status, 0, rebuilt.stderr)
+  assert.match(rebuilt.stdout, new RegExp(`report: ${day}`))
+  assert.doesNotMatch(readFileSync(day, 'utf8'), /\| c3 \|/)
+})
