@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, killableGroup, prepareClone, finishCase } from '../bench-case.mjs'
+import { specCommits, killableGroup, prepareClone, finishCase, applySpecs } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -21,7 +21,7 @@ const put = (f, s) => {
 const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\n---\n\n# config\n'
 
 /** A project repo (its builder.md `md`, and `base`'s files in its first commit) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
-function fixture({ md = MD, base = {}, into = 'main', mfTarget } = {}) {
+function fixture({ md = MD, base = {}, into = 'main', mfTarget, drift = false } = {}) {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-case-')))
   const repo = join(tmp, 'repo')
   mkdirSync(repo)
@@ -44,9 +44,23 @@ function fixture({ md = MD, base = {}, into = 'main', mfTarget } = {}) {
   put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), `size: sm\n${mfTarget ? `target: ${mfTarget}\n` : ''}`)
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'spec')
+  // drift: the target moves on after the branch was cut — its own copy of the feature's manifest
+  // (a go-ahead committed there) and an unrelated file — and is merged into the branch: 'before' the
+  // build began, or 'after' it, just before landing
+  const sync = () => {
+    git(repo, 'checkout', '-q', into)
+    if (drift !== 'clean') put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), 'size: sm\nstate: planned\n')
+    put(join(repo, 'later.txt'), 'l\n')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-qm', 'go-ahead on the target')
+    git(repo, 'checkout', '-q', 'builder/f')
+    git(repo, 'merge', '-q', '--no-ff', '-X', 'ours', '-m', `merge ${into} into builder/f`, into)
+  }
+  if (drift === 'before' || drift === 'clean') sync()
   put(join(repo, 'src', 'a.js'), 'export const a = 1\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-qm', 'code')
+  if (drift === 'after') sync()
   // the original run's plan, longer than any the stub writes: it must never be counted
   put(join(repo, 'docs', 'features', 'f', 'PLAN.md'), Array.from({ length: 30 }, (_, i) => `old ${i}`).join('\n') + '\n')
   git(repo, 'add', '-A')
@@ -136,6 +150,67 @@ test('a target that is not a valid branch name is refused before a clone is made
   assert.equal(r.status, 2)
   assert.match(r.stderr, /refused: .*bad\.\.name/)
   assert.ok(!existsSync(clone))
+})
+
+test('a branch the target was merged into after the build began starts from where it was cut — its spec commits apply there, and the target\'s later work is not in the start', () => {
+  const { out, clone, run } = fixture({ into: 'feature/x', drift: 'after' })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  assert.equal(readFileSync(join(clone, 'docs', 'features', 'f', 'MANIFEST.md'), 'utf8'), 'size: sm\n')
+  assert.ok(existsSync(join(clone, 'work.txt')))
+  assert.ok(!existsSync(join(clone, 'later.txt')))
+})
+
+test('a branch the target was merged into before the build began starts from that merge — the target\'s code it brought in and the folder as the branch held it', () => {
+  const { repo, out, clone, run, range } = fixture({ into: 'feature/x', drift: 'before' })
+  const sync = git(repo, 'rev-list', '--first-parent', '--merges', '-n1', range.tip)
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  assert.equal(git(clone, 'rev-parse', 'feature/x~2'), sync, 'the clone starts at the merge, the profile then the stub\'s plan on it')
+  assert.equal(readFileSync(join(clone, 'docs', 'features', 'f', 'MANIFEST.md'), 'utf8'), 'size: sm\n')
+  assert.ok(existsSync(join(clone, 'later.txt')))
+  assert.ok(!existsSync(join(clone, 'src', 'a.js')))
+  const d = run(['c1', '--builder', REPO, '--out', join(dirname(out), 'dry'), '--dry-run'])
+  assert.match(d.stdout, /specs: +\(none after the base — it holds the spec\)/)
+})
+
+test('a target merged in before the build that never touched the feature\'s folder keeps the start at the target\'s tip at the landing', () => {
+  const { out, clone, run, range } = fixture({ into: 'feature/x', drift: 'clean' })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, 'done')
+  assert.equal(git(clone, 'rev-parse', 'feature/x~3'), range.base, 'base, the spec commit, the profile, the stub\'s plan')
+  assert.ok(existsSync(join(clone, 'later.txt')))
+})
+
+test('a branch with no spec-only commit before its first merge or code still fails prep', () => {
+  const { repo, out, run, setRow } = fixture()
+  git(repo, 'checkout', '-qb', 'builder/g', 'main~1')
+  put(join(repo, 'src', 'b.js'), 'b\n')
+  git(repo, 'add', '-A')
+  git(repo, 'commit', '-qm', 'code only')
+  git(repo, 'checkout', '-q', 'main')
+  git(repo, 'merge', '-q', '--no-ff', '-m', 'merge g', 'builder/g')
+  setRow({ merged: git(repo, 'rev-parse', 'HEAD') })
+  const r = run(['c1', '--builder', REPO, '--out', out])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: no spec-only commits lead f's branch/)
+})
+
+test('applySpecs: spec commits that conflict fail with the files that conflicted, and the cherry-pick is aborted', () => {
+  const { tmp, repo, range } = fixture()
+  const c = join(tmp, 'c')
+  git(tmp, 'clone', '-q', repo, c)
+  git(c, 'checkout', '-q', '-B', 'x', range.base)
+  put(join(c, 'docs', 'features', 'f', 'SPEC.md'), 'theirs\n')
+  git(c, 'add', '-A')
+  git(c, 'commit', '-qm', 'clash')
+  const failure = applySpecs(c, [range.commits[0]])
+  assert.match(failure, /^the spec commits do not apply on the base: .* — conflicts in docs\/features\/f\/SPEC\.md$/)
+  assert.equal(git(c, 'status', '--porcelain'), '')
+  assert.equal(applySpecs(c, []), null)
 })
 
 test('an unsafe profile is refused before a clone is made', () => {

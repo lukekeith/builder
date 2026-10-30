@@ -11,7 +11,10 @@ export function featureRange(repo, merged) {
   const [, base, tip] = git(repo, 'rev-list', '--parents', '-n1', merged).split(' ')
   if (!tip) throw new Error(`${merged} is not a merge commit`)
   const commits = git(repo, 'rev-list', '--reverse', '--first-parent', `${base}..${tip}`).split('\n').filter(Boolean)
-  return { base, tip, commits }
+  // fork: where the branch was cut — the first commit's parent. It is `base` only when the target
+  // never moved on; a target merged into the branch before landing makes the two differ.
+  const fork = commits.length ? git(repo, 'rev-parse', `${commits[0]}^`) : base
+  return { base, tip, commits, fork }
 }
 
 /** An app path as the config may spell it: `apps/server/`, `./apps/server`, `.` and `./` (the root) all normalise to a bare relative path, '.' for the root. */

@@ -50,6 +50,7 @@ test('featureRange reads a merge commit', () => {
   assert.equal(r.base, base)
   assert.equal(r.tip, tip)
   assert.equal(r.commits.length, 2)
+  assert.equal(r.fork, base) // the target never moved on: the branch was cut at base
 })
 
 test('summarize: a row per feature and totals', () => {
