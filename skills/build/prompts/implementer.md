@@ -29,9 +29,11 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     are what the code must do; you write the bodies to them, and any body
     the plan does give is a starting point you make pass. Write the
     listed tests with their given assertions, as written. Follow a Pattern
-    by reading the file at its `file:line`, not by copying it. The one code
-    you keep word for word is exact copy the spec fixes (a message, a
-    migration, a config value).
+    by reading the file at its `file:line`, not by copying it. The code the
+    plan gives where it must be opinionated is the decision, not a sketch:
+    exact copy the spec fixes (a message, a migration, a config value) you
+    keep word for word, and the frozen contract or an algorithm's body you
+    implement as written — report a step that can't be.
 
     A reasonable choice the plan leaves open is yours: naming of locals,
     structure inside the body. A real design choice is not: a new interface,

@@ -59,7 +59,9 @@ and faster, and build quality (fix rounds, task-review findings, parks) does not
     code**, with the spec's exact values. The owner prefers stronger tests: the plan writer pins what
     each test checks; the implementer does not decide it. (`plan-slices.mjs` keeps counting them.)
   - **Steps:** the test-first cycle in words, with the commands and the commit message. No code in a
-    task except the test assertions and exact copy the spec fixes.
+    task except where the plan must be opinionated: the test assertions, exact copy the spec fixes, the
+    frozen contract verbatim, and an algorithm the signature and tests don't determine (owner, 2026-10-29:
+    remove the code "without sacrificing areas where the plan needs to be opinionated").
   The task reviewer checks every Behaviour line has a test that would fail without it.
 - **D2. Everything builder adds for the zero-context implementer stays:** the `App:` / `Phase:` /
   `Recipe:` lines, **Files** with exact paths (and line ranges for a modify), **Interfaces**

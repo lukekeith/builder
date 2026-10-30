@@ -893,3 +893,11 @@ test('the plan format carries decisions, not bodies', () => {
   for (const f of ['skills/plan/SKILL.md', 'skills/resume/REFERENCE.md'])
     assert.match(read(f), /\*\*Behaviour\*\*/, f)
 })
+
+test('the plan format keeps code where the plan must be opinionated: the contract and an undetermined algorithm', () => {
+  const fmt = read('skills/plan/PLAN-FORMAT.md')
+  assert.match(fmt, /the frozen contract/)
+  assert.match(fmt, /an algorithm the signature and tests don't determine/)
+  assert.match(fmt, /exact copy the spec fixes/)
+  assert.match(read('skills/build/prompts/implementer.md'), /frozen contract or an algorithm's body/)
+})

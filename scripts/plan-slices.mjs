@@ -92,7 +92,7 @@ export function slices(planText) {
 
 // ---- the build orchestrator's view of the plan ---------------------------------------------------
 //
-// The orchestrator coordinates; it never implements. Holding the whole PLAN.md — every task's code —
+// The orchestrator coordinates; it never implements. Holding the whole PLAN.md — every task's tests and steps —
 // costs it that text on every turn of the build (one measured plan was 386KB). What it needs is the
 // header (Global Constraints, the Phases table) and each task's head: App, Phase, Recipe, Files,
 // Interfaces. --brief prints exactly that; --scan prints the pre-flight conflict scan's mechanical
@@ -145,7 +145,7 @@ export function planBrief(planText) {
   const header = (firstTask < 0 ? lines : lines.slice(0, firstTask)).join('\n').replace(/\s+$/, '')
   const counts = new Map(slices(planText).map((x) => [x.n, x.tests]))
   const heads = taskHeads(planText)
-  const out = [header, '', `<!-- plan-slices --brief: each task's head; its steps and code are in PLAN.md (task-brief <plan> <N> <file> cuts one) -->`]
+  const out = [header, '', `<!-- plan-slices --brief: each task's head; its behaviour, tests and steps are in PLAN.md (task-brief <plan> <N> <file> cuts one) -->`]
   for (const t of heads) out.push('', t.head, `(${plural(t.steps, 'step')} · ${plural(counts.get(t.n) ?? 0, 'test case')} in the block)`)
   return out.join('\n') + '\n'
 }
