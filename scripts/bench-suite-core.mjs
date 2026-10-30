@@ -213,8 +213,13 @@ const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g
 
 /** A Postgres client whose database name is checked: its -p / --port is the shared database server's. No other client is exempt. */
 const DB_CLIENT = /(?:^|[\s(])(?:psql|createdb|dropdb|pg_dump|pg_restore)(?=\s|$)/
-/** A command that stops or empties a database server — never the bench's to run, whatever port it names. */
-const SERVER_STOP = /\b(?:shutdown|flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill)\b/i
+/** A command that empties or stops a database server outright — never the bench's to run, whatever port it names. */
+const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill)\b/i
+/** `shutdown` stops a database server only beside one of its clients or servers (`simctl shutdown` is a simulator's). */
+const DB_TOOL = /(?:^|[\s(/])(?:mysqladmin|mysql|redis-cli|valkey-cli|mongosh|mongo|psql|pg_ctl)(?=\s|$)/
+const SHUTDOWN = /\bshutdown(?:Server)?\b/i
+/** SHUTDOWN as SQL or a shell eval in a client's -c / -e / --eval string, wherever the line's `;` falls. */
+const SQL_SHUTDOWN = /(?:^|\s)(?:-c|-e|--eval|--command|--execute)[\s=]*(['"])(?:(?!\1).)*\bshutdown(?:Server)?\b/i
 const OPT_PORT = new Set([PORT_RES[1], PORT_RES[3]])
 /** The ports named in lines, database URLs and a database client's -p / --port left out (a shared database server's port is fine). */
 const portsIn = (lines) => [...new Set(lines.flatMap((l) => l.replace(DB_URL, ' ').split(/&&|\|\||;|\|/).flatMap((seg) =>
@@ -249,7 +254,16 @@ function lineRefusals(lines, prefix, inUse) {
     if (name == null || !name.startsWith(prefix)) notBench(name)
   }
   for (const port of portsIn(lines)) if (inUse.has(port)) add(`port ${port} is in use now`)
-  for (const l of lines) for (const seg of l.split(/&&|\|\||;|\|/)) if (SERVER_STOP.test(seg)) add(`stops a database server: ${seg.replace(/^\s*[\w-]+:\s+/, '').trim()}`)
+  const bare = (seg) => seg.replace(/^\s*[\w-]+:\s+/, '').trim()
+  for (const l of lines) {
+    if (SQL_SHUTDOWN.test(l) && DB_TOOL.test(l)) add(`stops a database server: ${bare(l)}`)
+    for (const seg of l.split(/&&|\|\||;|\|/)) {
+      if (SERVER_STOP.test(seg) || (SHUTDOWN.test(seg) && DB_TOOL.test(seg))) add(`stops a database server: ${bare(seg)}`)
+      if (/^(?:sudo\s+)?shutdown\b/.test(bare(seg))) add(`shuts down the machine: ${bare(seg)}`)
+      const sim = /\bsimctl\s+shutdown\s+(\S+)/.exec(seg)?.[1]
+      if (sim && sim !== 'booted' && !sim.includes(prefix)) add(`simctl shutdown names no ${prefix} device: ${bare(seg)}`)
+    }
+  }
   for (const l of lines) for (const seg of l.split(/&&|;|\|/)) {
     const m = /(?:^|[\s(:])(docker-compose\b.*|docker\s+(?:start|stop|restart|kill|pause|unpause|exec|run|rm|rmi|compose|volume|network|container|system|prune)\b.*)/.exec(seg)
     if (m && !m[1].includes(prefix)) add(`docker command names no ${prefix} container: ${m[1].trim()}`)
