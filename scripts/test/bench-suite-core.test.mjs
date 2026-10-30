@@ -81,7 +81,7 @@ test('safety: a port something already listens on', () =>
 test('safety: docker against a container that is not the bench\'s', () =>
   assert.deepEqual(safetyRefusals(walk('  start: docker start app-db'), P, { listening: [] }), ['docker command names no bench_ container: docker start app-db']))
 test('safety: the booted simulator', () =>
-  assert.deepEqual(safetyRefusals(walk('  start: xcrun simctl launch booted com.x'), P, { listening: [] }), ['simctl targets the booted simulator — name a bench device UDID']))
+  assert.deepEqual(safetyRefusals(walk('  start: xcrun simctl launch booted com.x'), P, { listening: [] }), ['simctl targets the booted simulator — name the bench device by its bench_ name']))
 test('safety: claude_args still the placeholder', () =>
   assert.deepEqual(safetyRefusals('---\nagent_walk:\n  claude_args: {claude_args}\n---\n', P, { listening: [] }), ['agent_walk.claude_args is not set — sessions would load the user\'s plugins']))
 test('safety: no db_prefix', () =>
@@ -315,7 +315,7 @@ test('safety: shutdown is refused only with a database client or server in the s
   ]) stops(s)
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown bench_iphone'), [])
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown bench_iphone && xcrun simctl delete bench_iphone'), [])
-  assert.deepEqual(refuse('  stop: xcrun simctl shutdown booted'), ['simctl targets the booted simulator — name a bench device UDID'])
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown booted'), ['simctl targets the booted simulator — name the bench device by its bench_ name'])
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown all'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown all'])
   assert.deepEqual(refuse('  stop: xcrun simctl shutdown "My iPhone"'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown "My iPhone"'])
   assert.deepEqual(refuse('  stop: sudo shutdown -h now'), ['shuts down or restarts the machine: sudo shutdown -h now'])
