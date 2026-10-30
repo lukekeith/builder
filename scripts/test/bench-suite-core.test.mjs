@@ -384,3 +384,7 @@ test('safety: brew services stop|restart, mysql.server stop|restart and pg_ctlcl
   assert.deepEqual(probe('sudo pg_ctlcluster 16 main restart'), ['setup: stops a database server: sudo pg_ctlcluster 16 main restart'])
   assert.deepEqual(probe('brew services list && brew services start bench_redis'), [])
 })
+test('caseEnv: POSTGRES_*, SUPABASE_DB_URL, REDIS_HOST and REDIS_PORT are not inherited either, unless the profile sets them', () => {
+  const shell = { PATH: '/bin', POSTGRES_USER: 'x', POSTGRES_PASSWORD: 'x', POSTGRES_DB: 'x', SUPABASE_DB_URL: 'x', REDIS_HOST: 'x', REDIS_PORT: 'x', SUPABASE_URL: 'kept' }
+  assert.deepEqual(caseEnv(shell, { REDIS_PORT: '6380' }, '/c'), { PATH: '/bin', SUPABASE_URL: 'kept', REDIS_PORT: '6380', CLAUDE_PROJECT_DIR: '/c' })
+})

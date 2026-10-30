@@ -37,7 +37,8 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
   names, a warning.
 - `env` — `{ "NAME": "value" }`, set for the setup, the teardown and the fleet — and so for every session the fleet
   starts. Point the project's own scripts at the bench database here: `DATABASE_URL`, `DIRECT_URL`,
-  `TEST_DATABASE_URL`, `REDIS_URL`, `MONGODB_URI`, `MONGO_URL` and every `PG*`, `MYSQL_*` and `DB_*` are never
+  `TEST_DATABASE_URL`, `SUPABASE_DB_URL`, `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, `MONGODB_URI`, `MONGO_URL` and every
+  `PG*`, `POSTGRES_*`, `MYSQL_*` and `DB_*` are never
   inherited from your shell, so without `env` they are unset.
 - `replace` — `[["from", "to"], …]`, literal replacements over the whole clone's `builder.md` — front matter and body —
   after the keys above are set; each must match at least once, or the case is refused (`replace: "<from>" not found`).
