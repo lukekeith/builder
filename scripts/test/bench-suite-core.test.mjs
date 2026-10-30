@@ -298,3 +298,25 @@ test('frontMatterText: only the front matter — ports named in the body never c
   assert.deepEqual(portsNamed(frontMatterText(md)), [5917])
   assert.equal(frontMatterText('no front matter\nlocalhost:3000\n'), '')
 })
+
+test('safety: shutdown is refused only with a database client or server in the segment, or as SQL in a -c / -e / --eval string', () => {
+  const stops = (s) => assert.ok(refuse(s).some((x) => x.startsWith('stops a database server: ')), `${s} → ${JSON.stringify(refuse(s))}`)
+  for (const s of [
+    '  stop: mysqladmin -u root shutdown',
+    '  stop: redis-cli shutdown nosave',
+    '  stop: valkey-cli SHUTDOWN',
+    '  stop: mongosh --eval "db.shutdownServer()"',
+    '  stop: mongo admin --eval "db.adminCommand({shutdown: 1})"',
+    '  stop: mysql -u root -e "SHUTDOWN"',
+    '  stop: psql bench_p -c "select 1; SHUTDOWN"',
+    '  stop: pg_ctl -D /data stop',
+    '  stop: redis-cli flushdb',
+    '  stop: echo x | redis-cli -n 2 flushall',
+  ]) stops(s)
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown bench_iphone'), [])
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown bench_iphone && xcrun simctl delete bench_iphone'), [])
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown booted'), ['simctl targets the booted simulator — name a bench device UDID'])
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown all'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown all'])
+  assert.deepEqual(refuse('  stop: xcrun simctl shutdown "My iPhone"'), ['simctl shutdown names no bench_ device: xcrun simctl shutdown "My iPhone"'])
+  assert.deepEqual(refuse('  stop: sudo shutdown -h now'), ['shuts down the machine: sudo shutdown -h now'])
+})
