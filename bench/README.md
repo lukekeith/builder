@@ -74,7 +74,8 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   items but not parked or timed-out ones; `status` and `report <suite-id>` show where it stands. `stop` stops a running
   suite safely: each running case stops its fleet, the fleet's sessions and what its setup started, runs its teardown and
   is marked `stopped`; nothing more starts; the reports are written and the lock released. `--resume` re-runs stopped
-  items, and refuses while a case an earlier attempt started is still alive.
+  items, and refuses while a case an earlier attempt started is still alive. Stop a suite with `/builder:benchmark --stop`
+  (or `bench-suite.mjs stop`), never `kill -9`: a SIGKILL can't be trapped and leaves each running case's fleet going.
 - **The builder under test is pinned.** The suite runs on a detached worktree at `--builder`'s HEAD
   (`$TMPDIR/bench-builder-<sha12>`, removed when the suite ends); a checkout with uncommitted changes to tracked files is
   refused unless `--allow-dirty`, which runs it as it is. `suite.json` and both reports' headers carry the treatment's SHA
