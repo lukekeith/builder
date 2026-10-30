@@ -9,7 +9,7 @@ const PLAN = readFileSync(join(LEAN, 'note-tags', 'PLAN.md'), 'utf8')
 const INDEX = [
   '## Plan',
   '',
-  'The plan, with its code: `docs/features/note-tags/PLAN.md` (§PLAN.md).',
+  'The plan, task by task: `docs/features/note-tags/PLAN.md` (§PLAN.md).',
   '',
   '- Phase 1 · Task 1 · Tag parsing, `add --tag`, and the tagged `list` line',
   '- Phase 1 · Task 2 · `list --tag <t>` filter',

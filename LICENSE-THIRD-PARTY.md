@@ -16,7 +16,7 @@ version **6.3.0**.
 | `skills/build/prompts/task-reviewer.md` | `subagent-driven-development/task-reviewer-prompt.md` |
 | `skills/build/prompts/re-review.md` | `subagent-driven-development/re-review-prompt.md` |
 | `skills/build/prompts/final-reviewer.md` | `requesting-code-review/code-reviewer.md` |
-| `skills/plan/PLAN-FORMAT.md` | `writing-plans/SKILL.md` |
+| `skills/plan/PLAN-FORMAT.md` | `writing-plans/SKILL.md` (as of 7.0.0) |
 | `scripts/task-brief` | `subagent-driven-development/scripts/task-brief` |
 | `scripts/review-package` | `subagent-driven-development/scripts/review-package` |
 | `skills/test-driven-development/` | `test-driven-development/` (SKILL.md + writing-good-tests.md) |

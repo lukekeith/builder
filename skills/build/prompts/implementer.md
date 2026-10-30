@@ -22,6 +22,22 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     [One line on where this fits. Interfaces and decisions from earlier tasks
     that the brief cannot know. Your resolution of any ambiguity in the brief.]
 
+    ## What the plan gives you
+
+    The plan gives each task Files (path and responsibility), Interfaces,
+    Behaviour, an optional Pattern and Tests, in words. Behaviour rules
+    are what the code must do; you write the bodies to them, and any body
+    the plan does give is a starting point you make pass. Write the
+    listed tests with their given assertions, as written. Follow a Pattern
+    by reading the file at its `file:line`, not by copying it. The one code
+    you keep word for word is exact copy the spec fixes (a message, a
+    migration, a config value).
+
+    A reasonable choice the plan leaves open is yours: naming of locals,
+    structure inside the body. A real design choice is not: a new interface,
+    or a behaviour neither the spec nor the tests settle. That is the "stop
+    and escalate" case below.
+
     ## The app you are working in
 
     **App: [APP].** Your task touches that app and no other. Do not edit

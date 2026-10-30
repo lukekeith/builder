@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Turns an audited spec into a committed PLAN.md — ordered phases, one app per phase, each step with its code and tests — and takes the build go-ahead with its test plan. Use when asked to plan a spec's implementation.
+description: Turns an audited spec into a committed PLAN.md — ordered phases, one app per phase, each task with its test code, signatures and the values the spec pins — and takes the build go-ahead with its test plan. Use when asked to plan a spec's implementation.
 ---
 
 # `/builder:plan` — the audited spec becomes phases
@@ -44,15 +44,14 @@ task** so it arrives with the work.
 
 ## What the plan is
 
-One committed file, `<folder>/PLAN.md`, holding the tasks **and the code they carry** — the human
+One committed file, `<folder>/PLAN.md`, holding the tasks **and what they pin — test code, signatures, the spec's values, Interfaces** — the human
 reads it at the go-ahead, a reviewer sees it in the PR, and the sign-off condense deletes it with
 `git log` keeping it. The plan is never inside the SPEC: the SPEC gets a §Plan index only.
 
 **Its shape is [`PLAN-FORMAT.md`](PLAN-FORMAT.md)** — write what that file specifies, reading it
 there. In short: the header (Goal · Architecture · Tech Stack · Spec) · `## Global Constraints`
 copied verbatim from the config · the `## Phases` table (`Phase · App · Tasks · Goal`) ·
-then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, **Files**, **Interfaces** and
-bite-sized `- [ ]` steps with the actual code, the run command and the commit.
+then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, **Files**, **Interfaces**, **Behaviour**, **Tests** (assertions as code), an optional **Pattern**, and the `- [ ]` steps in words with the run command and the commit.
 
 - **Task numbering runs across the whole plan** — `task-brief` keys on the literal `Task N` heading.
 - **Every task names the recipe skill to read FIRST** on its `Recipe:` line (the config's §Companion
@@ -143,7 +142,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    then the task blocks in order.
 
    **With `plan_writers: per-app`** in the config and two or more apps in `## Phases`, the task
-   blocks are drafted in parallel — the plan's slowest step is writing its code, and apps don't
+   blocks are drafted in parallel — the plan's slowest step is writing its tasks (their tests, signatures and interfaces), and apps don't
    share it. Write the header and `## Phases` table yourself first: they fix every task's number,
    app and phase. Then dispatch **one writer per app, in one message** — each given PLAN-FORMAT.md,
    the header and Phases table, its own app's SPEC section, §Contract **verbatim** (the only thing
@@ -156,7 +155,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
 
    **With `plan_writers: per-phase`**, the same, one writer **per phase** instead of per app — a
    phase over six tasks split into two writers of consecutive tasks — so no writer holds more than a
-   few tasks' code: a single writer's context grew to 400–525k on measured plans and was re-read on
+   few tasks: a single writer's context grew to 400–525k on measured plans and was re-read on
    every turn. Each writer gets what a per-app writer gets, scoped to its phase's app, plus **the
    blocks the earlier phases' writers already wrote for the interfaces its tasks consume** (their
    **Interfaces** lines, not their code). Phases of different apps run in one message; phases of one
@@ -176,7 +175,7 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    - every §Findings row marked `build-time risk` is **copied onto the task that settles it**;
    - **the producer phase's last task records the freeze** — a step writing `contract: frozen <date>`
      to the manifest, so no consumer task starts against an open contract;
-   - then PLAN-FORMAT's own §No placeholders scan and §Self-review, run over the finished file.
+   - then PLAN-FORMAT's own §No placeholders and the §Self-review Step scan, run over the finished file.
 
 🔴 **Nothing follows the last task block** — no footer, no closing section, no summary, no separator.
 `task-brief` reads the last task from its heading to **end of file**. The resume footer at the end of
