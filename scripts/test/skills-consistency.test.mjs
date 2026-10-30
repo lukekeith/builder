@@ -266,6 +266,16 @@ test('the fleet launches detached, never as a session background task', () => {
   assert.match(read('skills/agent/SKILL.md'), /launch detached, `--detach`/)
 })
 
+test('the fleet skill starts a watcher (fleet.mjs --wait) as the session background task, never the fleet', () => {
+  const fleet = read('skills/fleet/SKILL.md')
+  assert.match(fleet, /fleet\.mjs --wait/)
+  assert.match(fleet, /watcher[\s\S]{0,400}`run_in_background`/)
+  assert.match(fleet, /🔴 \*\*Never\*\* launch it as a background task/, 'the fleet itself is still never backgrounded')
+  assert.match(fleet, /without marking it seen/)
+  assert.match(fleet, /killed or ended non-zero is not a finish/)
+  assert.match(read('skills/agent/SKILL.md'), /watcher/)
+})
+
 test('tidy: the skill drives inventory and tidy.mjs; status shows the repo line; help names it; no skill lands on the checked-out branch', () => {
   const tidy = read('skills/tidy/SKILL.md')
   assert.match(tidy, /^name: tidy$/m)

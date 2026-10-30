@@ -130,10 +130,22 @@ node <builder>/scripts/fleet.mjs <the same arguments> --detach
 ```
 
 It starts the fleet in its own session — output to `.builder/fleet/fleet.out` — prints
-`fleet started detached (pid N)` and returns at once. 🔴 **Never** launch it as a background task of
+`fleet started detached (pid N)` once the fleet holds its lock (a few seconds, at most 30). If it
+prints `fleet exited at once` instead, the fleet never started: relay that output and its `fleet.out`
+tail, and start no watcher. 🔴 **Never** launch it as a background task of
 this session (the Bash tool's `run_in_background`, or any agent's equivalent): a session's limit on
 background tasks, or the session ending, kills the fleet with it — mid-run, with no record of why.
-Detached, it outlives the session, and nothing is waiting on it here.
+Detached, it outlives the session.
+
+The **watcher** is the opposite: right after that line (it prints only once the fleet holds its lock),
+also run `node <builder>/scripts/fleet.mjs --wait` as a background task of this session (the Bash
+tool's `run_in_background`). It prints nothing while the fleet runs; when the fleet exits it prints
+what `--status` prints and ends 0 — without marking it seen: only opening `/builder:fleet:status`
+does, so an overnight finish still shows on the status line and in the next brief. Its completion
+notice is the cue to reply with §5's report — only when its output is that status: a watcher that
+was killed or ended non-zero is not a finish. The fleet is never the background task; the watcher is,
+because if the session ends or the task is killed nothing is lost — the status line and the next
+session's brief still tell.
 
 **Adding to a running fleet:** run the same command in the foreground — it drops the specs in the
 inbox and returns at once. Print its `↳` / `✗` / `↻` lines, then the footer:
@@ -167,11 +179,11 @@ still working is never cut off. Each run's words go to `.builder/fleet/logs/<fea
 works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets one more run before
 the feature parks.
 
-Then say, in two lines: it's running on its own and outlives this session; `/builder:fleet:status`
-shows where it stands (and the `builder` status line, if it's on), and §5's report is what
-`/builder:fleet:status` shows once every row has landed, parked or failed. Nothing waits on it here,
-so what happens is told where you look instead. A merge: the status line reads `✔ <feature> merged —
-/builder:fleet:status` once the fleet has exited, and the next session's brief names it with its sha
+Then say, in two lines: it's running on its own and outlives this session; while this session is open
+the chat reports when it finishes (the watcher), otherwise the `builder` status line and the next
+session's brief tell; `/builder:fleet:status` shows where it stands any time. A merge: the status line
+reads `✔ <feature> merged — /builder:fleet:status` once the fleet has exited (on a narrow line,
+`✔ <feature> merged`, then `✔ <n> merged`; never folded into "+N more"), and the next session's brief names it with its sha
 and "test it yourself" — both until `/builder:fleet:status` is opened, which then offers the wrap-up
 (§5): anything this checkout needs before you test what landed — the migrations, a restart, the
 fixtures, the merged branches — in one answer. Say that, rather than offering to run those steps
@@ -184,7 +196,7 @@ a line under `/builder:fleet:status`. A fleet whose process is gone with work mi
 
 ## 5. When it finishes
 
-When asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+When the watcher ends 0 with the status as its output, or when asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
 - **done** — merged into the target, its worktree and branch removed, and archived: the row leaves the table for

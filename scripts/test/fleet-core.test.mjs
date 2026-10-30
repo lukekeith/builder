@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, existsSync, mkdirSync, writeFileSync, utimes
 const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow } from '../fleet-core.mjs'
+import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, STALL_MS } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
@@ -822,4 +822,23 @@ test('landedMigrations asks the dev DB when a status: command says: current → 
   const maybe = landedMigrations({ files, readiness })
   assert.match(maybe.why, /the dev DB may be behind: if it lacks them, run/)
   assert.equal(maybe.kind, 'maybe', 'the caller asks pending: only then')
+})
+
+test('waitForFleet returns once no live fleet holds the lock, and at once when none does', async () => {
+  const waited = []
+  await waitForFleet('/x', { pollMs: 1, alive: () => waited.length < 3, sleep: async (ms) => void waited.push(ms) })
+  assert.deepEqual(waited, [1, 1, 1])
+  await waitForFleet('/x', { pollMs: 1, alive: () => false, sleep: async () => assert.fail('no fleet: no wait') })
+})
+
+test('waitForFleet gives a lock a grace to appear before it concludes no fleet is coming', async () => {
+  let t = 0
+  const sleep = async (ms) => void (t += ms)
+  // Appears 3 s in, held 2 s: waited for.
+  await waitForFleet('/x', { pollMs: 1000, graceMs: 15000, alive: () => t >= 3000 && t < 5000, sleep })
+  assert.equal(t, 5000)
+  // Never appears: returns after the grace, not before.
+  t = 0
+  await waitForFleet('/x', { pollMs: 1000, graceMs: 15000, alive: () => false, sleep })
+  assert.equal(t, 15000)
 })
