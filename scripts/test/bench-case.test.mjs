@@ -20,13 +20,14 @@ const put = (f, s) => {
 }
 const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\n---\n\n# config\n'
 
-/** A project repo (its builder.md `md`) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
-function fixture({ md = MD } = {}) {
+/** A project repo (its builder.md `md`, and `base`'s files in its first commit) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
+function fixture({ md = MD, base = {} } = {}) {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-case-')))
   const repo = join(tmp, 'repo')
   mkdirSync(repo)
   git(repo, 'init', '-q', '-b', 'main')
   put(join(repo, '.claude', 'builder.md'), md)
+  for (const [f, text] of Object.entries(base)) put(join(repo, f), text)
   put(join(repo, '.gitignore'), '.builder/\n')
   put(join(repo, 'README.md'), 'r\n')
   git(repo, 'add', '-A')
@@ -311,6 +312,30 @@ test('a replace that rewrites the runner\'s claude_args is refused', () => {
   const r = run(['c1', '--builder', REPO, '--out', out, '--dry-run'])
   assert.equal(r.status, 2)
   assert.match(r.stderr, /^refused: replace: changes agent_walk\.claude_args, which the runner sets — use the profile's agent_walk\.claude_args$/m)
+})
+
+test('every --mcp-config file is read like a placed file — mcp: reasons — and one outside the clone, or missing, is refused', () => {
+  const md = (args) => `---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: ${args}\n---\n`
+  const unsafe = JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['db-mcp'], env: { PGDATABASE: 'app_dev' } } } }, null, 2)
+  const own = fixture({ md: md('--mcp-config .claude/walk-mcp.json'), base: { '.claude/walk-mcp.json': unsafe } })
+  const r = own.run(['c1', '--builder', REPO, '--out', own.out, '--dry-run'])
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /^refused: mcp: database app_dev is not a bench database \(bench_\*\)$/m)
+  // a profile's placed file is the one the sessions load
+  put(join(own.local, 'projects', 'bench-mcp.json'), JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['db-mcp', '--port', '6123'], env: { PGDATABASE: 'bench_p' } } } }))
+  own.writeProfile({ files: { '.claude/walk-mcp.json': 'bench-mcp.json' } })
+  const ok = own.run(['c1', '--builder', REPO, '--out', own.out, '--dry-run'])
+  assert.equal(ok.status, 0, ok.stderr)
+  for (const [args, m] of [
+    ['--mcp-config ../outside.json', /^refused: mcp: --mcp-config \.\.\/outside\.json is outside the clone$/m],
+    ['--mcp-config=/etc/mcp.json', /^refused: mcp: --mcp-config \/etc\/mcp\.json is outside the clone$/m],
+    ['--mcp-config .claude/none.json', /^refused: mcp: --mcp-config \.claude\/none\.json is not in the clone — place it with the profile's files$/m],
+  ]) {
+    const f = fixture({ md: md(args) })
+    const x = f.run(['c1', '--builder', REPO, '--out', f.out, '--dry-run'])
+    assert.equal(x.status, 2, args)
+    assert.match(x.stderr, m)
+  }
 })
 
 const waitFor = async (fn, ms = 15000) => {
