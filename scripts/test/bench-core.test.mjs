@@ -1,9 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, realpathSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseStream, deriveSteps, sessionTotals, parseTap, runTotals, median, summarize, renderReport, renderStatusTable, callIntervals, splitOf, attachSplits } from '../bench-core.mjs'
+import { builderLabel } from '../bench.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STREAM = readFileSync(join(HERE, 'fixtures/bench/session.jsonl'), 'utf8')
@@ -334,4 +337,27 @@ test('turnsPerStep: a step over its budget is marked, one within it is bare', as
   const ok = turnsPerStep(rows, ['builder:plan'], { builder: { 'builder:plan': 7 } }).join('\n')
   assert.match(ok, /within its turn budget/)
   assert.doesNotMatch(turnsPerStep(rows, ['builder:plan'], {}).join('\n'), /budget/)
+})
+
+test('builderLabel: <plugin.json version>+<short sha>, -dirty with tracked changes; the version alone outside git', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'blabel-')))
+  mkdirSync(join(dir, '.claude-plugin'))
+  writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'builder', version: '5.4.2' }))
+  assert.equal(builderLabel(dir), '5.4.2')
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@localhost', ...a], { cwd: dir, encoding: 'utf8' }).trim()
+  git('init', '-q', '-b', 'main')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  const sha = git('rev-parse', 'HEAD').slice(0, 7)
+  assert.equal(builderLabel(dir), `5.4.2+${sha}`)
+  writeFileSync(join(dir, 'untracked.txt'), 'x')
+  assert.equal(builderLabel(dir), `5.4.2+${sha}`, 'an untracked file is not a change to the builder')
+  writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'builder', version: '5.4.3' }))
+  assert.equal(builderLabel(dir), `5.4.3+${sha}-dirty`)
+  assert.equal(builderLabel(join(dir, 'nope')), null)
+})
+
+test('renderReport heads the report with the builder label as recorded', () => {
+  const md = renderReport({ ...DATA, versions: { builder: '5.4.2+abc1234-dirty' }, runs: [] })
+  assert.match(md, /^builder 5\.4\.2\+abc1234-dirty · /m)
 })

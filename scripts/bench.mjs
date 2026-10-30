@@ -604,10 +604,33 @@ export async function runConfig(plan, m, rep, data, outRoot) {
   return run
 }
 
+/**
+ * A builder checkout as a run records it: `<plugin.json version>+<short sha>`, `-dirty` when its
+ * tracked files differ from that commit — unreleased work on a branch never reads as the last
+ * release. Outside git, the version alone; with no plugin.json, null.
+ */
+export function builderLabel(dir) {
+  let version
+  try {
+    version = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf8')).version ?? null
+  } catch {
+    return null
+  }
+  let sha, changes
+  try {
+    // the checkout itself, never a repo it happens to sit inside
+    if (realpathSync(git(dir, 'rev-parse', '--show-toplevel')) !== realpathSync(dir)) return version
+    sha = git(dir, 'rev-parse', '--verify', 'HEAD')
+    changes = git(dir, 'status', '--porcelain', '--untracked-files=no')
+  } catch {
+    return version
+  }
+  return `${version}+${sha.slice(0, 7)}${changes ? '-dirty' : ''}`
+}
+
 function versions() {
-  const builder = JSON.parse(readFileSync(join(BUILDER, '.claude-plugin', 'plugin.json'), 'utf8')).version
   const sp = superpowersDir()
-  return { builder, superpowers: sp ? basename(sp) : null, gsd: null }
+  return { builder: builderLabel(BUILDER), superpowers: sp ? basename(sp) : null, gsd: null }
 }
 
 export async function runAll(plan) {

@@ -103,6 +103,7 @@ test('a case runs in a clone and never touches the repo', () => {
   assert.equal(res.planLines, 10)
   assert.deepEqual({ id: res.id, size: res.size, kind: res.kind, project: res.project, control: res.control }, { id: 'c1', size: 'sm', kind: 'archived', project: 'p', control: false })
   assert.deepEqual(res.estimate, { minutes: 10, usd: 2 })
+  assert.match(res.builder, /^\d+\.\d+\.\d+\+[0-9a-f]{7}(-dirty)?$/, 'the builder under test, version and commit')
   assert.equal(git(clone, 'remote'), '')
   assert.match(readFileSync(join(clone, '.claude', 'builder.md'), 'utf8'), /claude_args: --permission-mode bypassPermissions --settings \S+ --plugin-dir /)
   assert.ok(!existsSync(join(clone, 'src', 'a.js'))) // the code commit is not in the clone's start

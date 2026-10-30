@@ -34,7 +34,7 @@ import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow,
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { BUILDER, disabledPlugins, fleetRecord } from './bench.mjs'
+import { BUILDER, disabledPlugins, fleetRecord, builderLabel } from './bench.mjs'
 
 const FLEET_TIMEOUT_MS = Number(process.env.BENCH_CASE_FLEET_TIMEOUT_MS) || 24 * 60 * 60 * 1000
 const SETUP_TIMEOUT_MS = Number(process.env.BENCH_SETUP_TIMEOUT_MS) || 20 * 60 * 1000
@@ -669,7 +669,7 @@ if (isMain) {
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
-  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [] }
+  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, builder: builderLabel(builder), status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [] }
   mkdirSync(out, { recursive: true })
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`
