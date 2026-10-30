@@ -17,10 +17,16 @@ function wallCost(row) {
   return { ms: ms > 0 ? ms : null, usd }
 }
 
-/** An archive row's estimate: wallMs (else Σ timing ms) → whole minutes up; costUsd (else Σ timing cost) → cents. */
+/**
+ * An archive row's estimate: wallMs (else Σ timing ms) less the human wait in it — stages.parked and
+ * walkQueueMs — but never below Σ timing ms, → whole minutes up; costUsd (else Σ timing cost) → cents.
+ */
 export function estimateFromRow(row) {
-  const { ms, usd } = wallCost(row)
-  if (ms == null) return null
+  const { ms: wall, usd } = wallCost(row)
+  if (wall == null) return null
+  const wait = (row.stages?.parked > 0 ? row.stages.parked : 0) + (row.walkQueueMs > 0 ? row.walkQueueMs : 0)
+  const work = sum((row.timing ?? []).map((t) => t.ms ?? 0))
+  const ms = Math.max(wall - wait, work, 0) || wall
   return { minutes: Math.ceil(ms / 60000), usd: usd == null ? null : cents(usd) }
 }
 
