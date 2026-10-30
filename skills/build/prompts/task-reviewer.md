@@ -39,6 +39,12 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     a test that would fail without it; an uncovered or unmet line is a
     Missing finding.
 
+    Check the opinionated code the plan gave is implemented as written: exact
+    copy, a migration or DDL, the frozen contract, an algorithm's body, a
+    security mechanism. A departure is Critical. Check the listed tests are
+    written with the plan's assertions, none weakened or dropped: a departure
+    is Important, Critical if it lets a wrong body pass.
+
     ## What the implementer claims they built
 
     Read the implementer's report: [REPORT_FILE]

@@ -108,7 +108,7 @@ const ident = (code) => {
 }
 const FILE_LINE = /^\s*[-*]\s+(Create|Modify|Test|Delete|Remove|Read)\s*:\s*`([^`]+)`/i
 
-/** Each task's head (its heading up to its first `- [ ]` step), its step count, and its parsed Files and Interfaces. */
+/** Each task's head (its heading up to its **Behaviour:** line, else its first `- [ ]` step), its step count, and its parsed Files and Interfaces. */
 export function taskHeads(planText) {
   const out = []
   let cur = null
@@ -120,8 +120,10 @@ export function taskHeads(planText) {
     if (!inside && /^## /.test(line)) { cur = null; continue }
     // A step: a `- [ ]` box (PLAN-FORMAT), a `**Step N` line written without one, or — in a plan
     // written neither way — the first code fence. The head ends at whichever comes first.
+    // The head also ends at **Behaviour:**; a fence under **Interfaces** (the frozen contract) stays in it.
     if (!inside && (STEP.test(line) || STEP_LOOSE.test(line))) { cur.open = false; cur.steps += 1 }
-    else if (cur.open && inside) cur.open = false
+    else if (cur.open && !inside && /^\s*\**Behaviour:?\**:?\s*$/i.test(line)) { cur.open = false; cur.behaviour = true }
+    else if (cur.open && inside && part !== 'interfaces') cur.open = false
     if (cur.open) {
       cur.head.push(line)
       if (/^\s*\**Files:?\**:?\s*$/i.test(line)) part = 'files'
@@ -133,12 +135,12 @@ export function taskHeads(planText) {
       if (part === 'interfaces' && io) cur.io = { key: io[2].toLowerCase(), indent: io[1].length }
       else if (part === 'interfaces' && cur.io && !(/^\s*[-*]\s/.test(line) && /^\s*/.exec(line)[0].length > cur.io.indent)) cur.io = null
       if (part === 'interfaces' && cur.io) cur[cur.io.key].push(...[...(io ? io[3] : line).matchAll(/`([^`]+)`/g)].map((m) => ident(m[1])).filter(Boolean))
-    } else cur.stepText.push(line)
+    } else if (cur.steps > 0 || !cur.behaviour) cur.stepText.push(line)
   }
-  return out.map(({ open, io, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
+  return out.map(({ open, io, behaviour, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
 }
 
-/** --brief: the header verbatim, then per task its head and one line of what its steps hold. */
+/** --brief: the header verbatim, then per task its head (App/Phase/Recipe/Files/Interfaces) and a count of its steps and tests. */
 export function planBrief(planText) {
   const firstTask = fenced(planText).findIndex(({ line, inside }) => !inside && HEADING.test(line))
   const lines = String(planText).split('\n')

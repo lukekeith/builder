@@ -227,7 +227,7 @@ test('--brief ends a task\'s head at its first step however the plan writes step
   assert.match(b, /### Task 1: a[\s\S]*\(1 step · /)
 })
 
-test('the six-part shape: Pattern sits in the head, adds no files↔steps row; backticked names pair across tasks', async () => {
+test('the six-part shape: Pattern sits after the head, adds no files↔steps row; backticked names pair across tasks', async () => {
   const { planScan, planBrief } = await import('../plan-slices.mjs')
   const fmt = readFileSync(join(HERE, '..', '..', 'skills', 'plan', 'PLAN-FORMAT.md'), 'utf8')
   const ex = /````markdown\n### Task N[\s\S]*?\n````/.exec(fmt)[0].replace(/^````markdown\n/, '').replace(/\n````$/, '')
@@ -236,10 +236,20 @@ test('the six-part shape: Pattern sits in the head, adds no files↔steps row; b
   const plan = ['# p', '', '## Phases', '', '| Phase | App | Tasks | Goal |', '|---|---|---|---|', '| 1 | api | 1–2 | g |', '',
     task(1, '').replace('Phase: <n>', 'Phase: 1'), '', task(2, '').replace('Phase: <n>', 'Phase: 1')].join('\n')
   assert.doesNotMatch(planScan(plan), /files ↔ steps \| 1 \| steps name/)
-  assert.match(planBrief(plan), /path\/to\/similar\.ts:40/)
+  assert.doesNotMatch(planBrief(plan), /path\/to\/similar\.ts:40/, 'the brief ends at Behaviour, before Pattern')
   const two = [
     '### Task 1: a', 'App: api', 'Phase: 1', '', '**Files:**', '- Create: `api/a.ts` — a', '', '**Interfaces:**', '- Produces: `parseTags` — takes the raw tag string, returns the list of normalised tags', '', '- [ ] **Step 1: x**',
     '### Task 2: b', 'App: api', 'Phase: 1', '', '**Files:**', '- Create: `api/b.ts` — b', '', '**Interfaces:**', '- Consumes: `parseTags` — from Task 1', '', '- [ ] **Step 1: x**',
   ].join('\n')
   assert.match(planScan(two), /\| interface \| 1 → 2 \| `parseTags` — the same spelling/)
+})
+
+test('--brief cuts a task\'s head at **Behaviour:**, keeping a fence under Interfaces', async () => {
+  const { planBrief } = await import('../plan-slices.mjs')
+  const plan = ['# p', '', '### Task 1: a', 'App: api', 'Phase: 1', '', '**Files:**', '- Create: `api/a.ts` — a', '', '**Interfaces:**', '- Produces: `Wire` — the shape', '', '```ts', 'type Wire = { id: string }', '```', '', 'after the fence', '', '**Behaviour:**', '- BEHAVIOUR_RULE (D1)', '', '**Tests:**', '- TEST_LINE', '', '- [ ] **Step 1: x**'].join('\n')
+  const b = planBrief(plan)
+  assert.match(b, /type Wire = \{ id: string \}/)
+  assert.match(b, /after the fence/)
+  assert.doesNotMatch(b, /BEHAVIOUR_RULE|TEST_LINE/)
+  assert.match(b, /\(1 step · /)
 })
