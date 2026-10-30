@@ -184,3 +184,8 @@ test('statusCategory: an unknown status is failed, never its text', () => {
   assert.equal(statusCategory('something odd /Users/x'), 'failed')
   assert.equal(statusCategory(undefined), 'failed')
 })
+test('estimateFromRow: human wait — stages.parked and walkQueueMs — is left out, never below Σ timing ms', () => {
+  assert.deepEqual(estimateFromRow({ wallMs: 120 * 60000, stages: { build: 30 * 60000, parked: 50 * 60000 }, walkQueueMs: 10 * 60000, costUsd: 1 }), { minutes: 60, usd: 1 })
+  assert.deepEqual(estimateFromRow({ wallMs: 100 * 60000, stages: { parked: 90 * 60000 }, timing: [{ ms: 40 * 60000 }], costUsd: 1 }), { minutes: 40, usd: 1 })
+  assert.deepEqual(estimateFromRow({ wallMs: 61 * 60000, costUsd: 1 }), { minutes: 61, usd: 1 })
+})
