@@ -23,7 +23,8 @@
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_TMP ($TMPDIR/bench-suite), BENCH_FLEET (the fleet script — tests point it at a stub),
  * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run; the suite passes 3× the estimate), BENCH_SETUP_TIMEOUT_MS (20 min, the
  * profile's setup and teardown), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout or a stop),
- * BENCH_EVIDENCE_CAP_BYTES (50 MB, the largest file saveEvidence copies), BENCH_KEEP_CLONES, BENCH_INSTALLED_PLUGINS (as bench.mjs).
+ * BENCH_EVIDENCE_CAP_BYTES (50 MB, the largest file saveEvidence copies), BENCH_EVIDENCE_JSONL_CAP_BYTES (500 MB, the
+ * same for a .jsonl transcript), BENCH_EVIDENCE_TOTAL_CAP_BYTES (2 GB, all of it), BENCH_KEEP_CLONES, BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync, readdirSync, statSync } from 'node:fs'
@@ -39,7 +40,8 @@ import { BUILDER, disabledPlugins, fleetRecord, builderLabel } from './bench.mjs
 const FLEET_TIMEOUT_MS = Number(process.env.BENCH_CASE_FLEET_TIMEOUT_MS) || 24 * 60 * 60 * 1000
 const SETUP_TIMEOUT_MS = Number(process.env.BENCH_SETUP_TIMEOUT_MS) || 20 * 60 * 1000
 const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
-const EVIDENCE_CAP = Number(process.env.BENCH_EVIDENCE_CAP_BYTES) || 50 * 1024 * 1024
+const MB = 1024 * 1024
+const envBytes = (k, d) => Number(process.env[k]) || d
 const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const git = (cwd, ...a) => sh('git', ['-c', 'user.name=bench', '-c', 'user.email=bench@localhost', ...a], cwd)
 const tryGit = (cwd, ...a) => {
@@ -569,16 +571,23 @@ export async function finishCase({ clone, teardown, setupPgid, out, env = {} }) 
  * The run's evidence, saved before the clone goes: the clone's .builder/ (the fleet's logs with
  * _archive/ and the env-check logs, archive.jsonl, fleet.json, kept workspaces, the verifier's files)
  * to <out>/builder/, and the .builder/ of each worktree still standing beside it (a timeout, a stop)
- * to <out>/builder/worktrees/<name>/. Never a node_modules folder, a symlink, or a file over
- * BENCH_EVIDENCE_CAP_BYTES. → { files, bytes, skipped: ['<path> (<n> bytes)'] }
+ * to <out>/builder/worktrees/<name>/. Never a node_modules folder or a symlink; a file over its cap
+ * (`cap`, or `jsonlCap` for a .jsonl transcript — the evidence that matters most) or past the run's
+ * `totalCap` is skipped and named. Never throws: a file that can't be copied is named in `skipped`,
+ * and the first failure is `error`. → { files, bytes, skipped: ['<path> (<why>)'], error? }
  */
-export function saveEvidence(clone, out) {
+export function saveEvidence(clone, out, { cap = envBytes('BENCH_EVIDENCE_CAP_BYTES', 50 * MB), jsonlCap = envBytes('BENCH_EVIDENCE_JSONL_CAP_BYTES', 500 * MB), totalCap = envBytes('BENCH_EVIDENCE_TOTAL_CAP_BYTES', 2048 * MB) } = {}) {
   const dest = join(out, 'builder')
   const res = { files: 0, bytes: 0, skipped: [] }
+  const fail = (r, e) => {
+    res.skipped.push(`${r} (copy failed: ${e.code ?? e.message})`)
+    res.error ??= `${r}: ${e.message}`
+  }
   const copy = (from, to, rel) => {
     let entries
     try {
-      entries = readdirSync(from, { withFileTypes: true })
+      // in name order: what the total cap leaves out does not depend on the file system's order
+      entries = readdirSync(from, { withFileTypes: true }).sort((x, y) => (x.name < y.name ? -1 : 1))
     } catch {
       return
     }
@@ -588,24 +597,32 @@ export function saveEvidence(clone, out) {
       const r = rel ? `${rel}/${e.name}` : e.name
       if (e.isDirectory()) copy(src, join(to, e.name), r)
       else if (e.isFile()) {
-        const size = statSync(src).size
-        if (size > EVIDENCE_CAP) {
-          res.skipped.push(`${r} (${size} bytes)`)
-          continue
+        try {
+          const size = statSync(src).size
+          if (size > (e.name.endsWith('.jsonl') ? jsonlCap : cap)) res.skipped.push(`${r} (${size} bytes)`)
+          else if (res.bytes + size > totalCap) res.skipped.push(`${r} (${size} bytes, past the ${totalCap}-byte total)`)
+          else {
+            mkdirSync(to, { recursive: true })
+            copyFileSync(src, join(to, e.name))
+            res.files++
+            res.bytes += size
+          }
+        } catch (err) {
+          fail(r, err)
         }
-        mkdirSync(to, { recursive: true })
-        copyFileSync(src, join(to, e.name))
-        res.files++
-        res.bytes += size
       }
     }
   }
-  copy(join(clone, '.builder'), dest, '')
-  let worktrees = []
   try {
-    worktrees = readdirSync(`${clone}.fleet`, { withFileTypes: true }).filter((e) => e.isDirectory())
-  } catch {}
-  for (const w of worktrees) copy(join(`${clone}.fleet`, w.name, '.builder'), join(dest, 'worktrees', w.name), `worktrees/${w.name}`)
+    copy(join(clone, '.builder'), dest, '')
+    let worktrees = []
+    try {
+      worktrees = readdirSync(`${clone}.fleet`, { withFileTypes: true }).filter((e) => e.isDirectory())
+    } catch {}
+    for (const w of worktrees) copy(join(`${clone}.fleet`, w.name, '.builder'), join(dest, 'worktrees', w.name), `worktrees/${w.name}`)
+  } catch (err) {
+    res.error ??= err.message
+  }
   return res
 }
 
@@ -699,9 +716,22 @@ if (isMain) {
   if (stopRequested() && result.status !== 'done') result.status = 'failed: stopped'
   const teardown = await finishCase({ clone: prep.clone, teardown: plan.teardown, setupPgid: prep.setupPgid, out, env: plan.env })
   if (teardown) result.teardown = teardown
-  if (prep.clone && existsSync(prep.clone)) result.evidence = saveEvidence(prep.clone, out)
-  writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
-  if (prep.clone && !process.env.BENCH_KEEP_CLONES) removeClone(prep.clone)
+  // result.json first: nothing the evidence copy does can lose it; then the copy, then result.json again
+  // with its evidence section — and the clone goes whatever the copy did
+  const writeResult = () => writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
+  writeResult()
+  try {
+    if (prep.clone && existsSync(prep.clone)) {
+      try {
+        result.evidence = saveEvidence(prep.clone, out)
+      } catch (e) {
+        result.evidence = { error: e.message }
+      }
+      writeResult()
+    }
+  } finally {
+    if (prep.clone && !process.env.BENCH_KEEP_CLONES) removeClone(prep.clone)
+  }
   console.log(`${result.id}: ${result.status} — ${join(out, 'result.json')}`)
   process.exit(0)
 }

@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines } from '../bench-case.mjs'
+import { specCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, saveEvidence } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -617,6 +617,32 @@ test('before the clone goes its .builder/ is saved to <out>/builder/ — transcr
   const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
   assert.deepEqual(res.evidence.skipped, ['fleet/logs/huge.log (4096 bytes)'])
   assert.ok(res.evidence.files >= 5)
+})
+
+test('an evidence copy that fails is recorded in evidence.error — result.json is still written and the clone still goes', () => {
+  const { out, clone, run } = fixture()
+  mkdirSync(out, { recursive: true })
+  writeFileSync(join(out, 'builder'), 'a file where the evidence folder goes\n')
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_KEEP_CLONES: '' })
+  assert.equal(r.status, 0, r.stderr)
+  const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
+  assert.equal(res.status, 'done')
+  assert.match(res.evidence.error, /EEXIST|ENOTDIR/)
+  assert.equal(res.evidence.files, 0)
+  assert.ok(!existsSync(clone), 'the clone goes whatever the copy did')
+})
+
+test('saveEvidence: a .jsonl transcript has its own, larger cap; past the total cap a file is skipped and named', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-ev-')))
+  const clone = join(tmp, 'clone')
+  put(join(clone, '.builder', 'fleet', 'logs', 'a-01.jsonl'), 'j'.repeat(300))
+  put(join(clone, '.builder', 'fleet', 'logs', 'a-01.log'), 'l'.repeat(300))
+  put(join(clone, '.builder', 'fleet', 'z.json'), 'z'.repeat(150))
+  const res = saveEvidence(clone, join(tmp, 'out'), { cap: 200, jsonlCap: 1000, totalCap: 400 })
+  assert.ok(existsSync(join(tmp, 'out', 'builder', 'fleet', 'logs', 'a-01.jsonl')))
+  assert.deepEqual(res.skipped.sort(), ['fleet/logs/a-01.log (300 bytes)', 'fleet/z.json (150 bytes, past the 400-byte total)'])
+  assert.equal(res.bytes, 300)
+  assert.equal(res.error, undefined)
 })
 
 test('SIGTERM stops the case: its fleet, the fleet\'s session groups and the setup\'s, the teardown run, result.json failed: stopped', async () => {
