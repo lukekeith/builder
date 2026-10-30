@@ -246,6 +246,9 @@ const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g
 const DB_CLIENT = /(?:^|[\s(])(?:psql|createdb|dropdb|pg_dump|pg_restore)(?=\s|$)/
 /** A command that empties or stops a database server outright — never the bench's to run, whatever port it names. */
 const SERVER_STOP = /\b(?:flushall|flushdb)\b|\bpg_ctl(?:cluster)?\b.*\b(?:stop|restart|kill)\b|\bmysql\.server\s+(?:stop|restart)\b/i
+/** A database server stopped by process name (pkill / killall) or by launchd (launchctl unload / bootout / stop / kill, a homebrew.mxcl.<db> label). */
+const DB_PROC = String.raw`(?:^|[\s"'/])(?:postgres(?:ql)?|mysqld|mariadbd|redis-server|mongod|valkey-server)(?=[\s"'@.]|$)`
+const DB_SERVICE_STOP = new RegExp(String.raw`\b(?:pkill|killall)\b.*${DB_PROC}|\blaunchctl\s+(?:unload|bootout|stop|kill)\b.*(?:homebrew\.mxcl\.(?:postgres|mysql|mariadb|redis|mongodb|valkey)|${DB_PROC})`)
 /** brew services stop|restart|kill — whatever it names, the service is the human's. */
 const BREW_STOP = /\bbrew\s+services\s+(?:stop|restart|kill)\b/
 /**
@@ -309,6 +312,7 @@ function lineRefusals(lines, prefix, inUse) {
     for (const seg of segs) {
       if (SERVER_STOP.test(seg)) add(`stops a database server: ${bare(seg)}`)
       if (BREW_STOP.test(seg)) add(`stops a service: ${bare(seg)}`)
+      if (DB_SERVICE_STOP.test(seg)) add(`stops a database service: ${bare(seg)}`)
       if (haltsMachine(bare(seg))) add(`shuts down or restarts the machine: ${bare(seg)}`)
       const sim = /\bsimctl\s+shutdown\s+(\S+)/.exec(seg)?.[1]
       if (sim && sim !== 'booted' && !sim.includes(prefix)) add(`simctl shutdown names no ${prefix} device: ${bare(seg)}`)

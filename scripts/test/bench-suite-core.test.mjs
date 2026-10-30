@@ -388,3 +388,9 @@ test('caseEnv: POSTGRES_*, SUPABASE_DB_URL, REDIS_HOST and REDIS_PORT are not in
   const shell = { PATH: '/bin', POSTGRES_USER: 'x', POSTGRES_PASSWORD: 'x', POSTGRES_DB: 'x', SUPABASE_DB_URL: 'x', REDIS_HOST: 'x', REDIS_PORT: 'x', SUPABASE_URL: 'kept' }
   assert.deepEqual(caseEnv(shell, { REDIS_PORT: '6380' }, '/c'), { PATH: '/bin', SUPABASE_URL: 'kept', REDIS_PORT: '6380', CLAUDE_PROJECT_DIR: '/c' })
 })
+test('safety: pkill / killall and launchctl stopping a database service are refused', () => {
+  for (const s of ['pkill postgres', 'pkill -f postgresql', 'killall -9 mysqld', 'sudo killall mariadbd', 'pkill redis-server', 'killall mongod', 'pkill -x valkey-server',
+    'launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql@16.plist', 'launchctl bootout gui/501/homebrew.mxcl.redis', 'launchctl stop homebrew.mxcl.mysql', 'launchctl kill TERM gui/501/homebrew.mxcl.mongodb-community'])
+    assert.ok(probe(s).some((x) => x === `setup: stops a database service: ${s}`), `${s} → ${JSON.stringify(probe(s))}`)
+  assert.deepEqual(probe('pkill -f "node server.js" && killall bench_worker && launchctl list'), [])
+})
