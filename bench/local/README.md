@@ -1,0 +1,57 @@
+# bench/local — real-project cases, kept on this machine
+
+Everything here except this file is git-ignored: cases, profiles and results name real projects and
+never leave the machine. Nothing committed names one. Placeholder names below.
+
+```
+bench/local/
+  cases/<case-id>.json        one file per case
+  projects/<project>.json     one profile per project
+  results/<suite-id>/         suite.json, one folder per attempt, REPORT.md
+```
+
+Adding a case is one file: `cases/<id>.json`. A new project also needs its profile once.
+
+## A case — `cases/<id>.json`
+
+The id is the file name. Fields: `project` (the profile name), `feature` (the archived feature's name in
+the project's registry), `size` (`xs`, `sm`, `md`, `lg` or `xl`), `covers` (a few words, shown in the picker),
+and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estimate comes from the feature's archive row).
+
+```json
+{ "project": "project-a", "feature": "export-csv", "size": "md", "covers": "two apps, a migration" }
+```
+
+## A profile — `projects/<project>.json`
+
+- `repo` (required) — the project's git repo, relative to this file or absolute. It is only read; the case runs in a clone.
+- `db_prefix` (required) — the prefix every bench database carries, such as `bench_a_`.
+- `agent_walk` — keys set under `agent_walk:` in the clone's `.claude/builder.md` (`claude_args` is always set by the runner).
+- `verify` — a file whose `verify:` block replaces the clone's.
+- `files` — `{ "<path in the clone>": "<source file>" }`, copied in and kept out of git. Not `.git` or `builder.md`.
+- `setup` — a shell command run in the clone before the fleet (timeout 20 min); it may start what the run needs.
+
+```json
+{
+  "repo": "../../../project-a",
+  "db_prefix": "bench_a_",
+  "agent_walk": { "start": "npm run dev -- --port 4010" },
+  "verify": "project-a.verify.yml",
+  "files": { ".env": "project-a.env" },
+  "setup": "npm ci && createdb bench_a_main"
+}
+```
+
+## Safety rules
+
+A case is refused, before anything is cloned, when the clone's config would touch something of yours:
+
+- the profile has no `db_prefix`, or a database URL in the config names a database that does not start with it;
+- a port the config uses is listening now;
+- a `docker` or `docker-compose` command names no container carrying the prefix;
+- `simctl` targets the booted simulator instead of a named bench device;
+- `agent_walk.claude_args` is not set, so sessions would load your own plugins (the runner sets it);
+- the feature has no merged archive row, no spec-only commits at the head of its branch, or the clone or builder path contains whitespace;
+- the clone's path is inside the project repo, or already exists.
+
+`bench-suite.mjs plan` runs each case's `--dry-run` and shows these reasons; fix the case or profile and plan again.
