@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, execFileSync } from 'node:child_process'
-import { specCommits } from '../bench-case.mjs'
+import { specCommits, killableGroup } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -169,4 +169,24 @@ test('a fleet that runs past its timeout is killed with everything it started', 
   assert.ok(pid > 0)
   for (let i = 0; i < 40 && alive(pid); i++) await new Promise((res) => setTimeout(res, 50))
   assert.equal(alive(pid), false, `the fleet's child ${pid} outlived it`)
+})
+
+const pgidOf = (pid) => Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' }).trim())
+
+test('killableGroup: never pgid ≤ 1, this process\'s own group or its parent\'s', () => {
+  for (const p of [-1, 0, 1, 1.5, NaN, undefined, null, '7']) assert.equal(killableGroup(p), false, String(p))
+  assert.equal(killableGroup(pgidOf(process.pid)), false)
+  assert.equal(killableGroup(pgidOf(process.ppid)), false)
+  assert.equal(killableGroup(999999), true)
+})
+
+test('a timed-out fleet\'s recorded groups are killed — but never pgid 1 or the runner\'s own group', async () => {
+  const { out, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_FLEET: HANG, BENCH_CASE_FLEET_TIMEOUT_MS: '1500', STUB_FLEET_PGIDS: '1', STUB_EXTRA_PGID: String(pgidOf(process.pid)) })
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: .*timed out/)
+  const session = Number(readFileSync(join(out, 'clone', '.builder', 'fleet', 'session.pid'), 'utf8'))
+  for (let i = 0; i < 40 && alive(session); i++) await new Promise((res) => setTimeout(res, 50))
+  assert.equal(alive(session), false, `the session group ${session} outlived the fleet`)
+  // still here: neither pgid 1 nor this runner's group was signalled
 })

@@ -66,7 +66,26 @@ export function listeningPorts() {
   return [...new Set([...r.stdout.matchAll(/:(\d+) \(LISTEN\)/g)].map((m) => Number(m[1])))]
 }
 
+/** A process's group id, or null when ps can't say. */
+const pgidOf = (pid) => {
+  const r = spawnSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' })
+  const n = Number(r.stdout?.trim())
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+let protectedGroups = null
+/**
+ * True when a process group may be signalled: an integer above 1 (kill(-1) signals every process the
+ * user owns), and neither this process's own group nor its parent's. When ps can't tell those groups,
+ * nothing may be.
+ */
+export function killableGroup(pgid) {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false
+  protectedGroups ??= [pgidOf(process.pid), pgidOf(process.ppid)]
+  if (protectedGroups.some((g) => g == null)) return false
+  return !protectedGroups.includes(pgid)
+}
 const killGroup = (pgid, sig) => {
+  if (!killableGroup(pgid)) return
   try {
     process.kill(-pgid, sig)
   } catch {}
@@ -267,7 +286,7 @@ export function maxPlanLines(clone, registry, feature, since) {
 /** The process groups a fleet records for its sessions and dev envs (each runs in its own group). */
 const fleetPgids = (clone) => {
   const f = readJson(join(clone, '.builder', 'fleet', 'fleet.json'))
-  return [...Object.values(f?.features ?? {}), f?.walkBatch, f?.envCheck].flatMap((x) => [x?.pgid, x?.startPgid]).filter((p) => Number.isInteger(p) && p > 0)
+  return [...Object.values(f?.features ?? {}), f?.walkBatch, f?.envCheck].flatMap((x) => [x?.pgid, x?.startPgid]).filter(killableGroup)
 }
 
 /**
