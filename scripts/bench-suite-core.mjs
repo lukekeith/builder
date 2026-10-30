@@ -160,7 +160,7 @@ const PORT_RES = [
   /(?<![A-Z0-9_])(?!(?:PG|DB|DATABASE|POSTGRES|MYSQL|REDIS|MONGO)_?PORT=)[A-Z0-9_]*PORT=['"]?(\d+)/g,
   /--port[= ]['"]?(\d+)/g,
   /(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d+)/g,
-  /(?:^|\s)(?:-p|--publish)[\s=]+(?:\d{1,3}(?:\.\d{1,3}){3}:)?(\d+)/g,
+  /(?:^|[\s"'])(?:-p|--publish)[\s=]+(?:\d{1,3}(?:\.\d{1,3}){3}:)?(\d+)/g,
   /(?:tcp|udp):(\d+)/gi,
   /(?:^|\s)-[a-zA-Z]*i\s*:(\d+)/g,
   /\b(\d+)\/(?:tcp|udp)\b/g,
@@ -169,8 +169,10 @@ const PORT_RES = [
 const uncommented = (lines) => lines.filter((l) => !l.trim().startsWith('#'))
 const normalize = (s) => String(s ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
 
-/** A database client: its -p / --port is the shared database server's. */
-const DB_CLIENT = /\b(?:psql|createdb|dropdb|pg_dump|pg_restore|pg_isready|mysql|mysqladmin|mysqldump|redis-cli|mongosh)\b/
+/** A Postgres client whose database name is checked: its -p / --port is the shared database server's. No other client is exempt. */
+const DB_CLIENT = /(?:^|[\s(])(?:psql|createdb|dropdb|pg_dump|pg_restore)(?=\s|$)/
+/** A command that stops or empties a database server — never the bench's to run, whatever port it names. */
+const SERVER_STOP = /\b(?:shutdown|flushall|flushdb)\b|\bpg_ctl\b.*\b(?:stop|restart|kill)\b/i
 const OPT_PORT = new Set([PORT_RES[1], PORT_RES[3]])
 /** The ports named in lines, database URLs and a database client's -p / --port left out (a shared database server's port is fine). */
 const portsIn = (lines) => [...new Set(lines.flatMap((l) => l.replace(DB_URL, ' ').split(/&&|\|\||;|\|/).flatMap((seg) =>
@@ -202,6 +204,7 @@ function lineRefusals(lines, prefix, inUse) {
     if (name == null || !name.startsWith(prefix)) notBench(name)
   }
   for (const port of portsIn(lines)) if (inUse.has(port)) add(`port ${port} is in use now`)
+  for (const l of lines) for (const seg of l.split(/&&|\|\||;|\|/)) if (SERVER_STOP.test(seg)) add(`stops a database server: ${seg.replace(/^\s*[\w-]+:\s+/, '').trim()}`)
   for (const l of lines) for (const seg of l.split(/&&|;|\|/)) {
     const m = /(?:^|[\s(:])(docker-compose\b.*|docker\s+(?:start|stop|restart|kill|pause|unpause|exec|run|rm|rmi|compose|volume|network|container|system|prune)\b.*)/.exec(seg)
     if (m && !m[1].includes(prefix)) add(`docker command names no ${prefix} container: ${m[1].trim()}`)
