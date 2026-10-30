@@ -90,3 +90,42 @@ test('safety: scans only the front matter', () =>
   assert.deepEqual(safetyRefusals(walk('  env: PORT=5917') + '\ndocker rm app localhost:3000\n', P, { listening: [3000] }), []))
 test('safety: a shared db server port is fine, an app port on it is not', () =>
   assert.deepEqual(safetyRefusals(walk('  env: PORT=5432 DATABASE_URL=postgres://localhost:5432/bench_p'), P, { listening: [5432] }), ['port 5432 is in use now']))
+
+// fix round 1
+const refuse = (s, listening = []) => safetyRefusals(walk(s), P, { listening })
+test('safety: a database URL with no name is the default database', () => {
+  assert.deepEqual(refuse('  env: DATABASE_URL=postgres://localhost:5432'), ['database (default) is not a bench database (bench_*)'])
+  assert.deepEqual(refuse('  env: REDIS_URL=redis://h:6379'), ['database (default) is not a bench database (bench_*)'])
+})
+test('safety: driver-suffixed and mysql2 schemes are database URLs', () => {
+  assert.deepEqual(refuse('  env: U=postgresql+asyncpg://u@h/app_dev'), ['database app_dev is not a bench database (bench_*)'])
+  assert.deepEqual(refuse('  env: U=mysql2://u@h/app_dev'), ['database app_dev is not a bench database (bench_*)'])
+})
+test('safety: every docker command on a line must name a bench container', () => {
+  assert.deepEqual(refuse('  start: docker start bench_a && docker stop app-db'), ['docker command names no bench_ container: docker stop app-db'])
+  assert.deepEqual(refuse('  start: docker-compose kill'), ['docker command names no bench_ container: docker-compose kill'])
+  assert.deepEqual(refuse('  start: docker volume rm data'), ['docker command names no bench_ container: docker volume rm data'])
+  assert.deepEqual(refuse('  start: docker start bench_a; docker start bench_b'), [])
+})
+test('safety: any *PORT= variable counts', () =>
+  assert.deepEqual(refuse('  env: APP_PORT=3000', [3000]), ['port 3000 is in use now']))
+test('safety: front matter that cannot be found', () => {
+  const none = ['no front matter — cannot check the config']
+  assert.deepEqual(safetyRefusals('project: p\n', P, { listening: [] }), none)
+  assert.deepEqual(safetyRefusals('', P, { listening: [] }), none)
+})
+test('safety: CRLF and a BOM are normalized, not skipped', () => {
+  assert.deepEqual(safetyRefusals('\uFEFF' + walk('  env: PORT=3000').replace(/\n/g, '\r\n'), P, { listening: [3000] }), ['port 3000 is in use now'])
+  assert.deepEqual(safetyRefusals(walk('  env: PORT=5917').replace(/\n/g, '\r\n'), P, { listening: [] }), [])
+})
+test('safety: a missing or empty claude_args is the same refusal', () => {
+  const m = ["agent_walk.claude_args is not set — sessions would load the user's plugins"]
+  assert.deepEqual(safetyRefusals('---\nagent_walk:\n  env: A=1\n---\n', P, { listening: [] }), m)
+  assert.deepEqual(safetyRefusals('---\nagent_walk:\n  claude_args:\n---\n', P, { listening: [] }), m)
+  assert.deepEqual(safetyRefusals('---\nproject: p\n---\n', P, { listening: [] }), m)
+})
+test('applyProfile: throws without claudeArgs', () => assert.throws(() => applyProfile('---\n---\n', { agentWalk: {} }), /claudeArgs/))
+test('applyProfile: agent_walk with a comment or {} stays one key', () => {
+  assert.equal(applyProfile('---\nagent_walk: # x\n  env: A=1\n---\n', { agentWalk: { env: 'A=2' }, claudeArgs: '--a' }), '---\nagent_walk: # x\n  env: A=2\n  claude_args: --a\n---\n')
+  assert.equal(applyProfile('---\nagent_walk: {}\nz: 1\n---\n', { agentWalk: { env: 'A=2' }, claudeArgs: '--a' }), '---\nagent_walk:\n  env: A=2\n  claude_args: --a\nz: 1\n---\n')
+})

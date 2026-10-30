@@ -102,10 +102,12 @@ const blockEnd = (lines, i) => {
 
 /** A clone's builder.md with the profile's agent_walk keys and claude_args set and the verify block swapped; the body is untouched. */
 export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArgs }) {
+  if (!claudeArgs) throw new Error('applyProfile: claudeArgs is required')
   const { fm, rest, tail = '\n' } = splitFm(builderMd)
   const set = { ...agentWalk, claude_args: claudeArgs }
-  let at = fm.findIndex((l) => /^agent_walk:\s*$/.test(l))
+  let at = fm.findIndex((l) => /^agent_walk:\s*(\{\s*\})?\s*(#.*)?$/.test(l))
   if (at < 0) { fm.push('agent_walk:'); at = fm.length - 1 }
+  else fm[at] = fm[at].replace(/^agent_walk:\s*\{\s*\}/, 'agent_walk:')
   for (const [k, v] of Object.entries(set)) {
     const end = blockEnd(fm, at)
     const own = fm.findIndex((l, i) => i > at && i < end && l.startsWith(`  ${k}:`))
@@ -121,33 +123,36 @@ export function applyProfile(builderMd, { agentWalk = {}, verifyBlock, claudeArg
   return `---\n${fm.join('\n')}\n---${tail}${rest}`
 }
 
-const DB_URL = /\b(?:postgres|postgresql|mysql|mongodb|redis):\/\/[^\s'"]*/g
+const DB_URL = /\b(?:postgres(?:ql)?|mysql2?|mariadb|mongodb|redis|rediss)(?:\+\w+)?:\/\/[^\s'"]*/g
 
 /** Why a clone's config must not run: it would touch something of the human's. Empty means safe. `builderMd` is the text after applyProfile; `listening` the TCP ports now listening. */
 export function safetyRefusals(builderMd, profile, { listening = [] } = {}) {
   const prefix = profile?.db_prefix
   if (!prefix) return ['profile has no db_prefix']
-  const { fm } = splitFm(builderMd)
+  const { fm, bare } = splitFm(builderMd.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'))
+  if (bare) return ['no front matter — cannot check the config']
   const lines = fm.filter((l) => !l.trim().startsWith('#'))
   const out = []
   const add = (m) => { if (!out.includes(m)) out.push(m) }
   const inUse = new Set(listening.map(Number))
   for (const l of lines) for (const u of l.match(DB_URL) ?? []) {
-    const name = /^[a-z]+:\/\/[^/\s]*\/([^\s?'"]*)/.exec(u)?.[1]
-    if (name && !name.startsWith(prefix)) add(`database ${name} is not a bench database (${prefix}*)`)
+    const name = /^[^:]+:\/\/[^/\s]*(?:\/([^\s?'"]*))?/.exec(u)?.[1] || ''
+    if (!name.startsWith(prefix)) add(`database ${name || '(default)'} is not a bench database (${prefix}*)`)
   }
   for (const l of lines) {
     const bare = l.replace(DB_URL, ' ')
-    for (const m of bare.matchAll(/\bPORT=(\d+)|--port[= ](\d+)|(?:localhost|127\.0\.0\.1):(\d+)/g)) {
+    for (const m of bare.matchAll(/[A-Z_]*PORT=(\d+)|--port[= ](\d+)|(?:localhost|127\.0\.0\.1):(\d+)/g)) {
       const port = Number(m[1] ?? m[2] ?? m[3])
       if (inUse.has(port)) add(`port ${port} is in use now`)
     }
   }
-  for (const l of lines) {
-    const m = /\bdocker\s+(?:start|stop|exec|run|rm|compose)\b.*/.exec(l)
-    if (m && !m[0].includes(prefix)) add(`docker command names no ${prefix} container: ${m[0].trim()}`)
+  for (const l of lines) for (const seg of l.split(/&&|;|\|/)) {
+    const m = /(?:^|[\s(:])(docker-compose\b.*|docker\s+(?:start|stop|restart|kill|pause|unpause|exec|run|rm|rmi|compose|volume|network|container|system|prune)\b.*)/.exec(seg)
+    if (m && !m[1].includes(prefix)) add(`docker command names no ${prefix} container: ${m[1].trim()}`)
   }
   if (lines.some((l) => /\bsimctl\b.*\bbooted\b/.test(l))) add('simctl targets the booted simulator — name a bench device UDID')
-  if (lines.some((l) => /^\s*claude_args:\s*\{claude_args\}\s*$/.test(l))) add("agent_walk.claude_args is not set — sessions would load the user's plugins")
+  const at = fm.findIndex((l) => /^agent_walk:/.test(l))
+  const ca = at < 0 ? undefined : fm.slice(at + 1, blockEnd(fm, at)).map((l) => /^\s+claude_args:\s*(.*?)\s*(#.*)?$/.exec(l)).find(Boolean)
+  if (!ca || !ca[1] || ca[1] === '{claude_args}') add("agent_walk.claude_args is not set — sessions would load the user's plugins")
   return out
 }
