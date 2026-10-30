@@ -21,7 +21,9 @@
  *
  * State lives in .builder/fleet/ (fleet.json, STATUS.md, logs/). Re-running resumes. A feature that
  * lands leaves fleet.json for archive.jsonl, and its logs move to logs/_archive/<feature>/ (pruned
- * after agent_walk.keep_logs days); fleet.json holds only work in flight.
+ * after agent_walk.keep_logs days); fleet.json holds only work in flight. A benchmark run keeps every
+ * piece of evidence: FLEET_KEEP_STREAMS=1 archives a metered feature's .jsonl transcripts instead of
+ * dropping them, FLEET_KEEP_WORKSPACES=1 keeps a landed feature's build workspace in .builder/kept/.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
@@ -1022,7 +1024,9 @@ async function landNow(feature) {
   // is stashed by name, the worktree goes, and so does the branch — whoever made it — once it is in
   // the target (`-d` refuses one that isn't).
   if (f.worktree) {
-    const r = clearWorktree(ROOT, f.worktree, feature, { keep: false })
+    // FLEET_KEEP_WORKSPACES=1 (a benchmark run) keeps the build workspace — ledger, reviews, walk
+    // reports — in .builder/kept/<feature>, as a parked feature's is: the run's evidence
+    const r = clearWorktree(ROOT, f.worktree, feature, { keep: process.env.FLEET_KEEP_WORKSPACES === '1' })
     if (r.stash) addNote(`${feature} merged; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
     if (r.removed || !existsSync(f.worktree)) f.worktree = null
     else addNote(`${feature} merged; its worktree ${f.worktree} stays: ${r.why} — /builder:tidy removes it once that's settled`)

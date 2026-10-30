@@ -64,7 +64,7 @@ and optionally `estimate` (`{ "minutes": 90, "usd": 12 }`; without it the estima
 }
 ```
 
-The clone is removed once its `result.json` is written (the logs stay); `BENCH_KEEP_CLONES=1` keeps it to look into.
+Before the clone goes, its `.builder/` is saved to `<out>/builder/` — the fleet's logs with every `.jsonl` transcript (the fleet runs with `FLEET_KEEP_STREAMS=1`) and the env-check logs, `archive.jsonl`, `fleet.json`, each landed feature's workspace in `kept/` (`FLEET_KEEP_WORKSPACES=1`), and any worktree still standing under `worktrees/` — never `node_modules` or a file over `BENCH_EVIDENCE_CAP_BYTES` (50 MB; `result.json`'s `evidence.skipped` names them). The clone is removed once its `result.json` is written (the logs stay); `BENCH_KEEP_CLONES=1` keeps it to look into.
 
 ## Safety rules
 

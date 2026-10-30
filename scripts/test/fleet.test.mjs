@@ -467,6 +467,19 @@ test('a landed feature leaves no worktree and no branch, even with test output r
   assert.doesNotMatch(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /was kept/)
 })
 
+test('FLEET_KEEP_WORKSPACES=1: a landed feature\'s build workspace is kept in .builder/kept/<feature> as its worktree goes; without it, it goes too', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a'], { a: ['TOUCH:.builder/a/ledger.md:audited', ...HAPPY.slice(1)] }, { FLEET_KEEP_WORKSPACES: '1' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(`${root}-wt/a`), false)
+  assert.ok(existsSync(join(root, '.builder/kept/a/ledger.md')), 'the workspace outlives the landing')
+  const plain = makeRepo(['a'])
+  const r2 = runFleet(plain, ['a'], { a: ['TOUCH:.builder/a/ledger.md:audited', ...HAPPY.slice(1)] }, { FLEET_KEEP_WORKSPACES: '' })
+  assert.equal(r2.status, 0, r2.stderr)
+  assert.equal(existsSync(join(plain, '.builder/kept/a')), false)
+})
+
 test('a real uncommitted change in a landed feature\'s worktree is stashed by name, then the worktree goes', () => {
   const root = makeRepo(['a'])
   mkdirSync(join(root, 'app'))

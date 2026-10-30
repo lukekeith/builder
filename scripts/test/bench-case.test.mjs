@@ -365,7 +365,7 @@ test('a profile\'s env reaches setup, teardown and the fleet; the shell\'s DATAB
   assert.equal(readFileSync(join(tmp, 'setup.env'), 'utf8'), want)
   assert.equal(readFileSync(join(tmp, 'teardown.env'), 'utf8'), want)
   const { env } = JSON.parse(readFileSync(join(clone, '.builder', 'fleet', 'stub-args.json'), 'utf8'))
-  assert.deepEqual(env, { DATABASE_URL: 'postgres://localhost:5432/bench_p', BENCH_MARK: 'on' })
+  assert.deepEqual(env, { DATABASE_URL: 'postgres://localhost:5432/bench_p', BENCH_MARK: 'on', FLEET_KEEP_STREAMS: '1', FLEET_KEEP_WORKSPACES: '1' })
 })
 
 test('a profile\'s env is checked like the config — each reason says env: — and the dry run shows it', () => {
@@ -543,6 +543,24 @@ test('the clone is removed once result.json is written — the logs stay — unl
   const kept = run(['c1', '--builder', REPO, '--out', join(tmp, 'out2')], { BENCH_KEEP_CLONES: '1' })
   assert.equal(kept.status, 0, kept.stderr)
   assert.ok(existsSync(join(tmp, 'clones', basename(tmp), 'out2', 'clone', '.git')))
+})
+
+test('before the clone goes its .builder/ is saved to <out>/builder/ — transcripts, env-check logs, kept workspaces, standing worktrees\' — never node_modules or a file over the cap; the fleet runs with FLEET_KEEP_STREAMS and FLEET_KEEP_WORKSPACES', () => {
+  const { out, clone, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out], { BENCH_KEEP_CLONES: '', BENCH_EVIDENCE_CAP_BYTES: '1000' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(!existsSync(clone))
+  const b = join(out, 'builder')
+  for (const f of ['fleet/logs/_archive/f/f-01.jsonl', 'fleet/logs/_envcheck-1.log', 'fleet/archive.jsonl', 'kept/f/ledger.md', 'worktrees/f/f/review.md']) assert.ok(existsSync(join(b, f)), f)
+  const args = JSON.parse(readFileSync(join(b, 'fleet', 'stub-args.json'), 'utf8'))
+  assert.equal(args.env.FLEET_KEEP_STREAMS, '1')
+  assert.equal(args.env.FLEET_KEEP_WORKSPACES, '1')
+  assert.ok(!existsSync(join(b, 'node_modules')))
+  assert.ok(!existsSync(join(b, 'worktrees', 'f', 'node_modules')))
+  assert.ok(!existsSync(join(b, 'fleet', 'logs', 'huge.log')))
+  const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
+  assert.deepEqual(res.evidence.skipped, ['fleet/logs/huge.log (4096 bytes)'])
+  assert.ok(res.evidence.files >= 5)
 })
 
 test('SIGTERM stops the case: its fleet, the fleet\'s session groups and the setup\'s, the teardown run, result.json failed: stopped', async () => {
