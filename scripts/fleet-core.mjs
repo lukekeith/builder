@@ -240,6 +240,10 @@ export function landingLine(l) {
 /** An archive row whose runs carry the meter (5.4+): its raw .jsonl streams have been read into it. */
 const metered = (row) => Boolean(row?.timing?.some?.((t) => t?.meter))
 
+/** FLEET_KEEP_STREAMS=1 (a benchmark run): a metered feature's `.jsonl` transcripts are archived and pruned
+ *  like every other log, never dropped for the meter — the run keeps its full evidence. */
+const keepStreams = () => process.env.FLEET_KEEP_STREAMS === '1'
+
 export function archiveLogs(root, feature, keepDays = 30) {
   const logs = join(fleetDir(root), 'logs')
   if (!existsSync(logs)) return null
@@ -249,8 +253,8 @@ export function archiveLogs(root, feature, keepDays = 30) {
     const names = readdirSync(logs).filter((n) => mine.test(n))
     if (!names.length) return null
     // The raw stream goes only once the archive row holds what was read from it, and never when the
-    // project keeps its logs forever (keep_logs: 0).
-    const dropJsonl = keepDays > 0 && metered(tailArchive(root, 50).findLast((r) => r.feature === feature))
+    // project keeps its logs forever (keep_logs: 0), or the run keeps its streams (FLEET_KEEP_STREAMS=1).
+    const dropJsonl = keepDays > 0 && !keepStreams() && metered(tailArchive(root, 50).findLast((r) => r.feature === feature))
     mkdirSync(dest, { recursive: true })
     for (const n of names) {
       if (dropJsonl && n.endsWith('.jsonl')) rmSync(join(logs, n), { force: true })
@@ -292,7 +296,7 @@ export function pruneArchivedLogs(root, days, now = Date.now()) {
       }
       for (const f of readdirSync(dir)) {
         const p = join(dir, f)
-        if ((days > 0 && f.endsWith('.jsonl') && metered(landed.get(n))) || stale(p)) drop(p)
+        if ((days > 0 && !keepStreams() && f.endsWith('.jsonl') && metered(landed.get(n))) || stale(p)) drop(p)
       }
       if (!readdirSync(dir).length) rmSync(dir, { recursive: true, force: true })
     } catch {}

@@ -389,6 +389,29 @@ test('archiveLogs moves exactly this feature’s logs — not those of a feature
   assert.equal(archiveLogs(root, 'nothing-here'), null)
 })
 
+test('FLEET_KEEP_STREAMS=1: a landed feature\'s metered transcript moves into _archive like the other logs, and prune keeps it to its age', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fc-'))
+  const logs = join(fleetDir(root), 'logs')
+  mkdirSync(logs, { recursive: true })
+  const meter = { orchestrator: { turns: 1, startCtx: 1, peakCtx: 1, sumCtx: 1 }, dispatches: [] }
+  for (const n of ['a-01.log', 'a-01.jsonl', 'a-02.jsonl']) writeFileSync(join(logs, n), 'x')
+  appendArchive(root, { feature: 'a', merged: 'abc', timing: [{ n: 1, meter }] })
+  const was = process.env.FLEET_KEEP_STREAMS
+  process.env.FLEET_KEEP_STREAMS = '1'
+  try {
+    assert.equal(archiveLogs(root, 'a', 30), null)
+    for (const n of ['a-01.log', 'a-01.jsonl', 'a-02.jsonl']) assert.ok(existsSync(join(logs, '_archive', 'a', n)), n)
+    assert.equal(pruneArchivedLogs(root, 30), 0)
+    assert.ok(existsSync(join(logs, '_archive', 'a', 'a-01.jsonl')))
+  } finally {
+    if (was === undefined) delete process.env.FLEET_KEEP_STREAMS
+    else process.env.FLEET_KEEP_STREAMS = was
+  }
+  // without it, the default: the metered transcript goes
+  assert.equal(pruneArchivedLogs(root, 30), 2)
+  assert.equal(existsSync(join(logs, '_archive', 'a', 'a-01.jsonl')), false)
+})
+
 test('pruneArchivedLogs removes archived log files older than the window, by each file\'s mtime; 0 keeps them', () => {
   const root = mkdtempSync(join(tmpdir(), 'fc-'))
   const base = join(fleetDir(root), 'logs', '_archive')
