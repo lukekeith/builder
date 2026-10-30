@@ -1,1 +1,1 @@
-{ "fixture": "notes", "expect": "in-chat" }
+{ "fixture": "notes", "expect": "in-chat", "size": "xs", "covers": "one small command, built in the chat" }

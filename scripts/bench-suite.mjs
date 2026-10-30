@@ -1,0 +1,635 @@
+#!/usr/bin/env node
+/**
+ * bench-suite — a catalogue of sized benchmark cases, scheduled into lanes that fit a night, run
+ * detached, reported per case and per stage. Design: docs/specs/2026-10-29-benchmark-suite-design.md.
+ *
+ *   node scripts/bench-suite.mjs list [--json]
+ *   node scripts/bench-suite.mjs plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>]
+ *   node scripts/bench-suite.mjs run  <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] --detach
+ *   node scripts/bench-suite.mjs run --resume <suite-id> --detach
+ *   node scripts/bench-suite.mjs status
+ *   node scripts/bench-suite.mjs report <suite-id>
+ *
+ * Fixture cases are bench/features/<f>/feature.json (`size`, `covers`; project `fixtures`); archived
+ * cases are $BENCH_LOCAL/cases/<id>.json. A suite lives in $BENCH_LOCAL/results/<suite-id>/ (suite.json,
+ * one folder per item attempt, the named REPORT.md); the committed report, with no project names, is
+ * $BENCH_SUITE_OUT/<date>-suite/REPORT.md. Two items of one project never run at once.
+ *
+ * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
+ * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
+ * <checkout>/scripts/bench.mjs), TMPDIR (where the main checkout for controls goes).
+ */
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, renameSync, openSync, closeSync, realpathSync, statSync } from 'node:fs'
+import { join, dirname, resolve, basename } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport } from './bench-suite-core.mjs'
+import { landedRow, duration } from './fleet-core.mjs'
+import { BUILDER, runId } from './bench.mjs'
+
+const SELF = fileURLToPath(import.meta.url)
+const LOCAL = process.env.BENCH_LOCAL || join(BUILDER, 'bench', 'local')
+const SUITE_OUT = process.env.BENCH_SUITE_OUT || join(BUILDER, 'bench', 'results')
+const CASE_RUNNER = process.env.BENCH_CASE || join(BUILDER, 'scripts', 'bench-case.mjs')
+const RESULTS = join(LOCAL, 'results')
+const LOCK = join(RESULTS, 'lock')
+const FEATURES = join(BUILDER, 'bench', 'features')
+const FIXTURE_RESULTS = join(BUILDER, 'bench', 'results')
+const DEFAULT_LANES = 3
+const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] | run <same> --detach | run --resume <suite-id> --detach | status | report <suite-id>'
+
+const die = (msg) => {
+  console.error(msg)
+  process.exit(2)
+}
+const readJson = (f) => {
+  try {
+    return JSON.parse(readFileSync(f, 'utf8'))
+  } catch {
+    return null
+  }
+}
+const isDir = (p) => {
+  try {
+    return statSync(p).isDirectory()
+  } catch {
+    return false
+  }
+}
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return e.code === 'EPERM'
+  }
+}
+const cents = (n) => Math.round(n * 100) / 100
+const firstLine = (s) => String(s ?? '').trim().split('\n')[0] ?? ''
+
+// ---- the catalogue ---------------------------------------------------------------------------------
+
+/** A fixture's run folders under a results dir (YYYY-MM-DD-HHMM-<feature>, with a runs.json), oldest first. */
+export function fixtureRunDirs(results, feature) {
+  if (!isDir(results)) return []
+  const re = new RegExp(`^\\d{4}-\\d\\d-\\d\\d-\\d{4}-${feature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+  return readdirSync(results).filter((n) => re.test(n) && existsSync(join(results, n, 'runs.json'))).sort().map((n) => join(results, n))
+}
+
+/** A fixture's estimate: the newest of its runs that has done builder runs, else null. */
+function fixtureEstimate(feature) {
+  for (const d of fixtureRunDirs(FIXTURE_RESULTS, feature).reverse()) {
+    const e = estimateFromRuns(readJson(join(d, 'runs.json')), 'builder')
+    if (e) return e
+  }
+  return null
+}
+
+/** An archived case's estimate: the case file's, else its original archive row's, else null. */
+function archivedEstimate(c) {
+  if (c.estimate) return c.estimate
+  try {
+    const pf = join(LOCAL, 'projects', `${c.project}.json`)
+    const profile = readJson(pf)
+    if (!profile?.repo || !c.feature) return null
+    const row = landedRow(resolve(dirname(pf), profile.repo), c.feature)
+    return row ? estimateFromRow(row) : null
+  } catch {
+    return null
+  }
+}
+
+/** Every case — fixtures, then archived — each with `problem` set when it cannot be scheduled (an unknown size, a bad file). */
+export function loadCatalogue() {
+  const cases = []
+  if (isDir(FEATURES)) {
+    for (const f of readdirSync(FEATURES).sort()) {
+      if (!existsSync(join(FEATURES, f, 'request.md'))) continue
+      const def = readJson(join(FEATURES, f, 'feature.json')) ?? {}
+      cases.push({ id: f, size: def.size, covers: def.covers ?? f, kind: 'fixture', project: 'fixtures', feature: f, estimate: fixtureEstimate(f) })
+    }
+  }
+  const dir = join(LOCAL, 'cases')
+  if (isDir(dir)) {
+    for (const n of readdirSync(dir).filter((n) => n.endsWith('.json')).sort()) {
+      const id = n.slice(0, -5)
+      const c = readJson(join(dir, n))
+      if (!c || typeof c !== 'object') {
+        cases.push({ id, size: undefined, covers: '?', kind: 'archived', project: null, problem: 'case file is not JSON' })
+        continue
+      }
+      const kase = { ...c, id, kind: 'archived', covers: c.covers ?? c.feature ?? id }
+      if (cases.some((x) => x.id === id)) kase.problem = 'a fixture has the same id'
+      else if (!c.project) kase.problem = 'case names no project'
+      kase.estimate = kase.problem ? (c.estimate ?? null) : archivedEstimate(kase)
+      cases.push(kase)
+    }
+  }
+  for (const c of cases) if (!c.problem && !SIZES.includes(c.size)) c.problem = 'unknown size'
+  return cases.sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))
+}
+const rank = (c) => (SIZES.includes(c.size) ? SIZES.indexOf(c.size) : SIZES.length)
+const label = (c) => (c.problem ? `${c.size ?? '?'} · ${c.id} — ${c.covers} · ${c.problem}` : pickLabel(c))
+
+// ---- selection and the schedule --------------------------------------------------------------------
+
+const VALUE_OPTS = new Set(['--lanes', '--control', '--budget', '--builder', '--resume'])
+const FLAG_OPTS = new Set(['--all', '--detach', '--json'])
+
+/** The CLI's options; an unknown flag or a flag missing its value is a usage error. */
+function parseArgs(argv) {
+  const opts = {}
+  const pos = []
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (VALUE_OPTS.has(a)) {
+      const v = argv[i + 1]
+      if (v == null || v.startsWith('--')) die(`${a} needs a value — ${USAGE}`)
+      opts[a] = v
+      i++
+    } else if (FLAG_OPTS.has(a)) opts[a] = true
+    else if (a.startsWith('--')) die(`unknown option ${a} — ${USAGE}`)
+    else pos.push(a)
+  }
+  return { opts, pos }
+}
+
+/** --lanes as a whole number ≥ 1 (default 3). */
+function lanesOf(opts) {
+  const raw = opts['--lanes']
+  if (raw == null) return DEFAULT_LANES
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) die(`--lanes must be a whole number of 1 or more: got '${raw}'`)
+  return Number(raw)
+}
+
+/** --budget as minutes: 12h, 90m, 1.5h. */
+function budgetOf(raw) {
+  const m = /^(\d+(?:\.\d+)?)(h|m)$/.exec(raw)
+  if (!m || !(Number(m[1]) > 0)) die(`--budget takes hours or minutes, like 12h or 90m: got '${raw}'`)
+  return Math.floor(Number(m[1]) * (m[2] === 'h' ? 60 : 1))
+}
+
+/** The picked cases (and their controls), the skipped ones with reasons, from ids, --all or --budget. */
+function select({ opts, pos }, catalogue, lanes) {
+  const modes = [pos.length > 0, !!opts['--all'], opts['--budget'] != null].filter(Boolean).length
+  if (modes !== 1) die(`pick cases by id, --all or --budget — one of them — ${USAGE}`)
+  const byId = new Map(catalogue.map((c) => [c.id, c]))
+  let pool
+  if (pos.length) {
+    const ids = pos.join(',').split(',').map((s) => s.trim()).filter(Boolean)
+    for (const id of ids) if (!byId.has(id)) die(`no case '${id}' — the catalogue has: ${catalogue.map((c) => c.id).join(', ') || 'nothing'}`)
+    pool = [...new Set(ids)].map((id) => byId.get(id))
+  } else pool = catalogue
+  const skipped = []
+  const usable = []
+  for (const c of pool) {
+    if (c.problem) skipped.push({ id: c.id, reason: c.problem })
+    else usable.push(c)
+  }
+  let picked
+  if (opts['--budget'] != null) {
+    const fit = fillBudget(usable, { minutes: budgetOf(opts['--budget']), lanes })
+    picked = fit.picked
+    skipped.push(...fit.skipped)
+  } else {
+    picked = []
+    for (const c of usable) {
+      if (c.estimate) picked.push(c)
+      else skipped.push({ id: c.id, reason: 'no estimate' })
+    }
+  }
+  const controlIds = (opts['--control'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const controls = []
+  for (const id of [...new Set(controlIds)]) {
+    const c = picked.find((p) => p.id === id)
+    if (!c) die(`control ${id} is not in the selection — a control runs a picked case again on builder's main`)
+    controls.push({ ...c, id: `${c.id}@main`, case: c.id, control: true })
+  }
+  return { picked, controls, skipped, controlsGiven: controlIds.length > 0 }
+}
+
+const clock = (t) => new Date(t).toTimeString().slice(0, 5)
+const money = (xs) => (xs.some((x) => x != null) ? `~$${cents(xs.reduce((a, x) => a + (x ?? 0), 0))}` : '~$?')
+
+/** The schedule review: each lane's items with start–end clock times from now, its end and cost, the total, the skipped, the recommended controls. */
+export function renderSchedule({ packed, items, skipped, recommended = [], lanes, now = Date.now() }) {
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const at = (m) => clock(now + m * 60000)
+  const nCases = items.filter((i) => !i.control).length
+  const nCtl = items.length - nCases
+  const out = [`suite: ${nCases} case${nCases === 1 ? '' : 's'}${nCtl ? ` + ${nCtl} control${nCtl === 1 ? '' : 's'}` : ''} in ${lanes} lane${lanes === 1 ? '' : 's'}, from now (${clock(now)})`]
+  packed.lanes.forEach((lane, i) => {
+    if (!lane.length) return out.push(`lane ${i + 1}: (empty)`)
+    out.push(`lane ${i + 1}: ${lane.map((x) => `${x.id} (${byId.get(x.id).size}) ${at(x.start)}–${at(x.end)}`).join(' · ')}`)
+    out.push(`        ends ~${at(lane.at(-1).end)} · ${money(lane.map((x) => byId.get(x.id).estimate?.usd ?? null))}`)
+  })
+  out.push(`all lanes end ~${at(packed.wallMinutes)} (${duration(packed.wallMinutes * 60000)}) · ${money(items.map((i) => i.estimate?.usd ?? null))} total`)
+  if (skipped.length) out.push(`skipped: ${skipped.map((s) => `${s.id} — ${s.reason}`).join(' · ')}`)
+  if (recommended.length) out.push(`controls recommended (one per size, the same case on builder's main): ${recommended.join(', ')} — add --control ${recommended.join(',')}`)
+  return out.join('\n')
+}
+
+/** Items in packed order (lane, then start), as suite.json holds them. */
+function scheduleItems(items, packed) {
+  const byId = new Map(items.map((i) => [i.id, i]))
+  return packed.lanes.flatMap((lane, li) => lane.map((x) => {
+    const c = byId.get(x.id)
+    return { id: c.id, case: c.case ?? c.id, kind: c.kind, project: c.project, size: c.size, control: !!c.control, estimate: c.estimate, lane: li + 1, status: 'waiting', startedAt: null, endedAt: null, out: null }
+  }))
+}
+
+// ---- dry runs: the refusals before launch ----------------------------------------------------------
+
+/** Each archived case's `--dry-run` (once per case, controls included) → [{ id, reasons }] for every refusal. */
+function dryRuns(items, builder) {
+  const refusals = []
+  const ids = [...new Set(items.filter((i) => i.kind === 'archived').map((i) => i.case ?? i.id))]
+  for (const id of ids) {
+    const r = spawnSync(process.execPath, [CASE_RUNNER, id, '--builder', builder, '--out', join(tmpdir(), 'bench-suite-dry', id), '--dry-run'], { encoding: 'utf8' })
+    if (r.status === 0) continue
+    const lines = String(r.stderr ?? '').trim().split('\n').filter(Boolean)
+    const reasons = r.status === 2 ? lines.map((l) => l.replace(/^refused:\s*/, '')) : [`dry run failed (${r.error ? r.error.message : `exit ${r.status}`})${lines.length ? `: ${lines[0]}` : ''}`]
+    refusals.push({ id, reasons: reasons.length ? reasons : ['refused (no reason given)'] })
+  }
+  return refusals
+}
+const printRefusals = (refusals) => {
+  for (const { id, reasons } of refusals) {
+    console.error(`${id} refused:`)
+    for (const r of reasons) console.error(`  - ${r}`)
+  }
+}
+
+// ---- suite.json, the lock --------------------------------------------------------------------------
+
+const suiteDir = (id) => join(RESULTS, id)
+const readSuite = (id) => readJson(join(suiteDir(id), 'suite.json'))
+/** suite.json, written whole and renamed into place so a reader never sees half of it. */
+function saveSuite(s) {
+  const f = join(suiteDir(s.id), 'suite.json')
+  writeFileSync(`${f}.tmp`, JSON.stringify(s, null, 2) + '\n')
+  renameSync(`${f}.tmp`, f)
+}
+const latestSuite = () => (isDir(RESULTS) ? readdirSync(RESULTS).filter((n) => existsSync(join(RESULTS, n, 'suite.json'))).sort().at(-1) ?? null : null)
+/** An item a run (or a resume) still has to run: never started, cut off mid-run, or refused at its start. */
+const unfinished = (it) => it.status === 'waiting' || it.status === 'running' || it.status.startsWith('refused')
+
+/** { pid, suiteId, live } of the suite lock, or null. */
+function lockState() {
+  const l = readJson(LOCK)
+  if (!l) return null
+  return { ...l, live: Number.isInteger(l.pid) && alive(l.pid) }
+}
+/** Take the lock atomically (wx); a dead holder's lock is cleared. → false when a live other suite holds it. */
+function acquireLock(pid, suiteId) {
+  const held = lockState()
+  if (held && !held.live) rmSync(LOCK, { force: true })
+  mkdirSync(RESULTS, { recursive: true })
+  try {
+    writeFileSync(LOCK, JSON.stringify({ pid, suiteId }), { flag: 'wx' })
+    return true
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e
+    const l = lockState()
+    return l?.pid === pid || l?.pid === process.pid // already ours: the detach parent wrote it for this child
+  }
+}
+const busy = (l) => `a suite is running (pid ${l?.pid}, ${l?.suiteId}) — /builder:benchmark --status`
+const releaseLock = () => {
+  if (lockState()?.pid === process.pid) rmSync(LOCK, { force: true })
+}
+
+// ---- running a suite -------------------------------------------------------------------------------
+
+/** A child awaited in this process group (a SIGKILL of the suite's group takes it too), its output in files. → { code, error } */
+function spawnWait(cmd, args, { cwd, env, outFile, errFile }) {
+  return new Promise((done) => {
+    const out = openSync(outFile, 'a')
+    const err = openSync(errFile, 'a')
+    let settled = false
+    const finish = (code, error) => {
+      if (settled) return
+      settled = true
+      closeSync(out)
+      closeSync(err)
+      done({ code, error })
+    }
+    const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', out, err] })
+    child.on('error', (e) => finish(null, e))
+    child.on('exit', (code) => finish(code))
+  })
+}
+
+/** <suite>/<item id>, or -2, -3… when an earlier attempt left that folder. */
+function freshOut(dir, id) {
+  let p = join(dir, id)
+  for (let n = 2; existsSync(p); n++) p = join(dir, `${id}-${n}`)
+  return p
+}
+
+/** The checkout of builder's main a control runs on: $TMPDIR/bench-builder-main, made with `git worktree add` or reused. */
+function mainCheckout(builder) {
+  const dir = join(tmpdir(), 'bench-builder-main')
+  if (existsSync(dir)) {
+    // only our own worktree is moved to main's tip; a directory without .git is used as it is
+    if (existsSync(join(dir, '.git'))) spawnSync('git', ['-C', dir, 'checkout', '-q', '--detach', 'main'], { encoding: 'utf8' })
+    return dir
+  }
+  execFileSync('git', ['-C', builder, 'worktree', 'add', '-q', '--detach', dir, 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  return dir
+}
+
+const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
+
+/** An archived item: bench-case in a fresh --out; a control's result is rewritten as <id>@main. → its status */
+async function runArchived(it, builder, out) {
+  const errFile = join(out, 'case.err')
+  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out], { cwd: out, env: process.env, outFile: join(out, 'case.out'), errFile })
+  const resFile = join(out, 'result.json')
+  const res = readJson(resFile)
+  if (!res) return refusedOrDied(r, errFile)
+  if (it.control) writeFileSync(resFile, JSON.stringify({ ...res, id: it.id, control: true }, null, 2) + '\n')
+  return res.status ?? 'failed: the case wrote no status'
+}
+
+/** A fixture item: bench.mjs run <feature> --only builder in the checkout; measured from the run it made, against the one before. → its status */
+async function runFixture(it, checkout, out) {
+  const results = join(checkout, 'bench', 'results')
+  const before = fixtureRunDirs(results, it.case)
+  const script = process.env.BENCH_FIXTURE_RUNNER || join(checkout, 'scripts', 'bench.mjs')
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: checkout }
+  delete env.BENCH_RUN_ID
+  const errFile = join(out, 'case.err')
+  const r = await spawnWait(process.execPath, [script, 'run', it.case, '--only', 'builder'], { cwd: checkout, env, outFile: join(out, 'case.out'), errFile })
+  const fresh = fixtureRunDirs(results, it.case).filter((d) => !before.includes(d)).at(-1)
+  if (!fresh) return refusedOrDied(r, errFile)
+  const runs = readJson(join(fresh, 'runs.json'))
+  const mine = (runs?.runs ?? []).filter((x) => x.config === 'builder')
+  const first = mine[0]?.status ?? 'no builder run'
+  const status = mine.some((x) => x.status === 'done') ? 'done' : first.startsWith('failed') ? first : `failed: ${first}`
+  const prev = before.at(-1)
+  const result = { id: it.id, size: it.size, kind: 'fixture', project: 'fixtures', control: it.control, status, measure: measureFromRuns(runs, 'builder'), baseline: prev ? measureFromRuns(readJson(join(prev, 'runs.json')), 'builder') : null, specLines: null, planLines: null, estimate: it.estimate }
+  writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2) + '\n')
+  return status
+}
+
+/** Run a suite's unfinished items: one async loop per lane, a project mutex around every item, suite.json after each change, the reports at the end. */
+async function runSuite(id) {
+  const s = readSuite(id)
+  s.pid = process.pid
+  for (const it of s.items) if (unfinished(it)) Object.assign(it, { status: 'waiting', startedAt: null, endedAt: null })
+  saveSuite(s)
+  let main = null
+  if (s.items.some((it) => it.control && unfinished(it))) {
+    try {
+      main = mainCheckout(s.builder)
+    } catch (e) {
+      for (const it of s.items) if (it.control && unfinished(it)) Object.assign(it, { status: `failed: no main checkout for controls: ${firstLine(e.stderr || e.message)}`, endedAt: Date.now() })
+      saveSuite(s)
+    }
+  }
+  const held = new Map()
+  /** Run fn once every earlier holder of `project` has finished: the packed order is the plan, this is the guarantee. */
+  const exclusive = async (project, fn) => {
+    const prev = held.get(project) ?? Promise.resolve()
+    let release
+    const gate = new Promise((r) => (release = r))
+    held.set(project, prev.then(() => gate))
+    await prev
+    try {
+      return await fn()
+    } finally {
+      release()
+    }
+  }
+  const runItem = (it) => exclusive(it.project, async () => {
+    const out = freshOut(suiteDir(id), it.id)
+    mkdirSync(out, { recursive: true })
+    Object.assign(it, { status: 'running', startedAt: Date.now(), endedAt: null, out })
+    saveSuite(s)
+    const checkout = it.control ? main : s.builder
+    let status
+    try {
+      status = it.kind === 'fixture' ? await runFixture(it, checkout, out) : await runArchived(it, checkout, out)
+    } catch (e) {
+      status = `failed: ${firstLine(e.message)}`
+    }
+    Object.assign(it, { status, endedAt: Date.now() })
+    saveSuite(s)
+    console.log(`${new Date().toISOString()} ${it.id}: ${status}`)
+  })
+  const lanes = [...new Set(s.items.map((it) => it.lane))]
+  await Promise.all(lanes.map(async (lane) => {
+    for (const it of s.items.filter((x) => x.lane === lane && unfinished(x))) await runItem(it)
+  }))
+  const paths = writeReports(id)
+  console.log(`${new Date().toISOString()} suite ${id} finished — ${paths.named}`)
+}
+
+// ---- the report ------------------------------------------------------------------------------------
+
+/** Every item's Result, in size order with each control after its case; an item with no result.json is reported from suite.json. */
+function resultsOf(s) {
+  const out = s.items.map((it) => {
+    const r = it.out ? readJson(join(it.out, 'result.json')) : null
+    if (r) return it.control ? { ...r, id: it.id, control: true } : r
+    return { id: it.id, size: it.size, kind: it.kind, project: it.project, control: it.control, status: it.status, measure: null, baseline: null, specLines: null, planLines: null, estimate: it.estimate ?? null }
+  })
+  const base = (r) => r.id.replace(/@main$/, '')
+  const sz = (r) => (SIZES.includes(r.size) ? SIZES.indexOf(r.size) : SIZES.length)
+  return out.sort((a, b) => sz(a) - sz(b) || base(a).localeCompare(base(b)) || Number(!!a.control) - Number(!!b.control))
+}
+
+/** The committed report (no project names) and the named one beside suite.json. */
+function writeReports(id) {
+  const s = readSuite(id)
+  const results = resultsOf(s)
+  const committed = join(SUITE_OUT, `${id.slice(0, 10)}-suite`, 'REPORT.md')
+  const named = join(suiteDir(id), 'REPORT.md')
+  mkdirSync(dirname(committed), { recursive: true })
+  writeFileSync(committed, renderSuiteReport(results, { names: false }))
+  writeFileSync(named, renderSuiteReport(results, { names: true }))
+  return { committed, named }
+}
+
+// ---- status ----------------------------------------------------------------------------------------
+
+/** Per lane: the running item and its elapsed time, then done, failed (and other ends), waiting; a dead suite with work left says how to resume. */
+export function renderStatus(s, { live, now = Date.now() }) {
+  const out = [`# suite ${s.id} — ${live ? 'running' : s.items.some(unfinished) ? 'stopped' : 'finished'}`, '']
+  for (const lane of [...new Set(s.items.map((it) => it.lane))].sort((a, b) => a - b)) {
+    const its = s.items.filter((it) => it.lane === lane)
+    const ended = (it) => {
+      const m = /^([^:]+)(?::\s*(.*))?$/.exec(it.status)
+      return m[2] ? `${m[1]} ${it.id} (${m[2]})` : `${m[1]} ${it.id}`
+    }
+    const parts = [
+      ...its.filter((it) => it.status === 'running').map((it) => (live ? `running ${it.id} (${duration(now - it.startedAt)})` : `stopped ${it.id}`)),
+      ...its.filter((it) => it.status === 'done').map((it) => `done ${it.id}`),
+      ...its.filter((it) => !['running', 'done', 'waiting'].includes(it.status)).map(ended),
+      ...its.filter((it) => it.status === 'waiting').map((it) => `waiting ${it.id}`),
+    ]
+    out.push(`lane ${lane}: ${parts.join(' · ')}`)
+  }
+  const left = s.items.filter(unfinished).length
+  if (!live && left) out.push('', `⚠ suite stopped mid-run — ${left} unfinished; /builder:benchmark --resume ${s.id} runs them`)
+  if (!live && !left) out.push('', `report: ${join(suiteDir(s.id), 'REPORT.md')}`)
+  return out.join('\n')
+}
+
+function status() {
+  const lock = lockState()
+  const id = lock?.suiteId && readSuite(lock.suiteId) ? lock.suiteId : latestSuite()
+  if (!id) return console.log('no suite has run here yet — /builder:benchmark starts one')
+  console.log(renderStatus(readSuite(id), { live: !!(lock?.live && lock.suiteId === id) }))
+}
+
+// ---- the CLI ---------------------------------------------------------------------------------------
+
+/** Start `_run <id>` detached (its own process group, which its case children share) and hand it the lock. */
+function launch(id) {
+  const outFd = openSync(join(suiteDir(id), 'suite.out'), 'a')
+  const child = spawn(process.execPath, [SELF, '_run', id], { cwd: process.cwd(), env: process.env, detached: true, stdio: ['ignore', outFd, outFd] })
+  child.unref()
+  if (!acquireLock(child.pid, id)) {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {}
+    die(busy(lockState()))
+  }
+  console.log(`suite started detached (pid ${child.pid}) — ${id} · /builder:benchmark --status`)
+}
+
+/** A suite id not yet used: <YYYY-MM-DD-HHMM>-suite, with -2, -3… after it when that minute is taken. */
+function newSuiteId() {
+  const base = runId('suite')
+  let id = base
+  for (let n = 2; existsSync(suiteDir(id)); n++) id = `${base}-${n}`
+  return id
+}
+
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(SELF)
+  } catch {
+    return false
+  }
+})()
+
+if (isMain) {
+  const argv = process.argv.slice(2)
+  const cmd = argv[0]
+  const args = parseArgs(argv.slice(1))
+  const plainId = (id) => {
+    if (!id || id !== basename(id) || id.startsWith('.')) die(`suite id must be a plain directory name: '${id ?? ''}'`)
+    if (!readSuite(id)) die(`no suite '${id}' under ${RESULTS}`)
+    return id
+  }
+
+  if (cmd === 'list') {
+    const cases = loadCatalogue()
+    if (args.opts['--json']) console.log(JSON.stringify(cases, null, 2))
+    else console.log(cases.length ? cases.map(label).join('\n') : 'no cases — bench/features/ and $BENCH_LOCAL/cases/ are empty')
+    process.exit(0)
+  }
+
+  if (cmd === 'status') {
+    status()
+    process.exit(0)
+  }
+
+  if (cmd === 'report') {
+    const id = plainId(args.pos[0])
+    const { committed, named } = writeReports(id)
+    console.log(`report: ${committed}\nnamed:  ${named}`)
+    process.exit(0)
+  }
+
+  if (cmd === '_run') {
+    const id = plainId(args.pos[0])
+    if (!acquireLock(process.pid, id)) die(busy(lockState()))
+    try {
+      await runSuite(id)
+    } finally {
+      releaseLock()
+    }
+    process.exit(0)
+  }
+
+  if (cmd === 'plan' || cmd === 'run') {
+    const resume = cmd === 'run' ? args.opts['--resume'] : undefined
+    if (resume != null) {
+      const id = plainId(resume)
+      if (args.pos.length || args.opts['--all'] || args.opts['--budget'] || args.opts['--control'] || args.opts['--lanes']) die('--resume takes only the suite id (and --detach)')
+      const held = lockState()
+      if (held?.live) die(busy(held))
+      const s = readSuite(id)
+      const left = s.items.filter(unfinished)
+      if (!left.length) {
+        const { named } = writeReports(id)
+        console.log(`suite ${id} has nothing left to run — report: ${named}`)
+        process.exit(0)
+      }
+      const refusals = dryRuns(left, s.builder)
+      if (refusals.length) {
+        printRefusals(refusals)
+        process.exit(2)
+      }
+      if (args.opts['--detach']) launch(id)
+      else {
+        if (!acquireLock(process.pid, id)) die(busy(lockState()))
+        try {
+          await runSuite(id)
+        } finally {
+          releaseLock()
+        }
+      }
+      process.exit(0)
+    }
+
+    const lanes = lanesOf(args.opts)
+    const builder = resolve(args.opts['--builder'] ?? BUILDER)
+    const catalogue = loadCatalogue()
+    const { picked, controls, skipped, controlsGiven } = select(args, catalogue, lanes)
+    const items = [...picked, ...controls]
+    if (!items.length) die(`nothing to run${skipped.length ? ` — skipped: ${skipped.map((s) => `${s.id} — ${s.reason}`).join(' · ')}` : ''}`)
+    const packed = packLanes(items, lanes)
+
+    if (cmd === 'plan') {
+      const recommended = controlsGiven ? [] : recommendControls(picked)
+      console.log(renderSchedule({ packed, items, skipped, recommended, lanes }))
+      const refusals = dryRuns(items, builder)
+      if (refusals.length) {
+        printRefusals(refusals)
+        process.exit(2)
+      }
+      const checked = [...new Set(items.filter((i) => i.kind === 'archived').map((i) => i.case ?? i.id))]
+      if (checked.length) console.log(`dry runs: ${checked.map((id) => `${id} ok`).join(' · ')}`)
+      process.exit(0)
+    }
+
+    const held = lockState()
+    if (held?.live) die(busy(held))
+    const refusals = dryRuns(items, builder)
+    if (refusals.length) {
+      printRefusals(refusals)
+      process.exit(2)
+    }
+    const id = newSuiteId()
+    mkdirSync(suiteDir(id), { recursive: true })
+    saveSuite({ id, builder, lanes, createdAt: Date.now(), pid: null, items: scheduleItems(items, packed), skipped })
+    if (args.opts['--detach']) launch(id)
+    else {
+      if (!acquireLock(process.pid, id)) die(busy(lockState()))
+      try {
+        await runSuite(id)
+      } finally {
+        releaseLock()
+      }
+    }
+    process.exit(0)
+  }
+
+  die(USAGE)
+}
