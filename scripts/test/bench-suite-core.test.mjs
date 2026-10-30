@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, caseEnv } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -365,4 +365,8 @@ test('mcpConfigs and mcpScanText: every --mcp-config value; a JSON config\'s lea
   assert.deepEqual(probe(mcpScanText(text)), ['setup: database app_dev is not a bench database (bench_*)'])
   assert.deepEqual(textRefusals('mcp', mcpScanText(text), P, { listening: [3000] }), ['mcp: database app_dev is not a bench database (bench_*)', 'mcp: port 3000 is in use now'])
   assert.equal(mcpScanText('not json'), 'not json')
+})
+test('caseEnv: no database variable is inherited — DATABASE_URL, DIRECT_URL, TEST_DATABASE_URL, PG*, REDIS_URL, MONGODB_URI, MONGO_URL, MYSQL_*, DB_* — unless the profile sets it', () => {
+  const shell = { PATH: '/bin', HOME: '/h', DATABASE_URL: 'x', DIRECT_URL: 'x', TEST_DATABASE_URL: 'x', PGHOST: 'x', REDIS_URL: 'x', MONGODB_URI: 'x', MONGO_URL: 'x', MYSQL_PWD: 'x', MYSQL_HOST: 'x', DB_HOST: 'x', DB_DATABASE: 'x', REDIS_URL_OTHER: 'kept', MYDB_HOST: 'kept' }
+  assert.deepEqual(caseEnv(shell, { DB_DATABASE: ':memory:' }, '/c'), { PATH: '/bin', HOME: '/h', REDIS_URL_OTHER: 'kept', MYDB_HOST: 'kept', DB_DATABASE: ':memory:', CLAUDE_PROJECT_DIR: '/c' })
 })

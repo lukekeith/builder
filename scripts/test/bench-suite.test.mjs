@@ -492,11 +492,11 @@ test('the builder under test is pinned: a detached worktree at its HEAD, a dirty
   assert.match(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), new RegExp(`^builder under test: ${sha12} \\+ uncommitted changes \\(unpinned\\)$`, 'm'))
 })
 
-test('plan notes when this shell sets DATABASE_URL, DIRECT_URL, TEST_DATABASE_URL or PG* — no case inherits them', () => {
+test('plan notes when this shell sets a database variable (DATABASE_URL, PG*, REDIS_URL, DB_*…) — no case inherits them', () => {
   const { suite } = setup()
-  const r = suite(['plan', 'c1'], { DATABASE_URL: 'postgres://localhost/app_dev', PGHOST: 'localhost', DIRECT_URL: 'postgres://localhost/app_dev' })
+  const r = suite(['plan', 'c1'], { DATABASE_URL: 'postgres://localhost/app_dev', PGHOST: 'localhost', DIRECT_URL: 'postgres://localhost/app_dev', REDIS_URL: 'redis://localhost', DB_HOST: 'localhost' })
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /^this shell sets DATABASE_URL, DIRECT_URL, PGHOST — no case inherits them: setup, teardown and the fleet start without them, and a profile's env sets its own$/m)
+  assert.match(r.stdout, /^this shell sets DATABASE_URL, DB_HOST, DIRECT_URL, PGHOST, REDIS_URL — no case inherits them: setup, teardown and the fleet start without them, and a profile's env sets its own$/m)
 })
 
 test('a second suite on one date gets its own committed report, <date>-HHMM-suite; a rebuilt report stays where it was', async () => {
