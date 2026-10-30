@@ -201,7 +201,7 @@ export function planScan(planText, apps = []) {
 export function planIndex(planText, rel) {
   const { phaseOf } = phaseApps(planText)
   const rows = slices(planText).map((s) => `- Phase ${phaseOf.get(s.n) ?? s.phase ?? '?'} · Task ${s.n} · ${s.name}`)
-  return ['## Plan', '', `The plan, with its code: \`${rel}/PLAN.md\` (§PLAN.md).`, '', ...rows].join('\n')
+  return ['## Plan', '', `The plan, task by task: \`${rel}/PLAN.md\` (§PLAN.md).`, '', ...rows].join('\n')
 }
 
 /** SPEC text with `index` as its §Plan — replacing one by its heading, else after §Findings & risks. */

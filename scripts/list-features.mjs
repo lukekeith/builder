@@ -177,7 +177,7 @@ const inspect = (root, name) => {
       )
     const planText = read(join(dir, 'PLAN.md'))
     if (planText && planText.split('\n').length > PLAN_LINE_BUDGET && out.layout !== 'program')
-      out.warnings.push(`PLAN.md is ${planText.split('\n').length} lines — long, but it carries code; not a blocker`)
+      out.warnings.push(`PLAN.md is ${planText.split('\n').length} lines — long; a plan carries decisions, not bodies (PLAN-FORMAT §Self-review, Proportion); not a blocker`)
     // A manifest left at `state: shipped`, or a program whose PROGRAM.md header says SHIPPED, has
     // arrived like a condensed one — only the archive move is owed, and that is /builder:archive's.
     if (isShippedFolder(dir)) Object.assign(out, { done: true, next: 'nothing — shipped' })

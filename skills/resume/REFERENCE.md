@@ -530,7 +530,7 @@ explicit command the config's §Companion skills names.
   SPEC.md        design, written once. §Decisions / §Findings append-only. §Plan — the task index —
                  appended after the audit, stripped at sign-off. Header line written at sign-off,
                  flipped at ship.
-  PLAN.md        the plan itself, with the code. Written by /builder:plan after the audit, read at
+  PLAN.md        the plan itself, task by task. Written by /builder:plan after the audit, read at
                  the go-ahead, `git rm`-ed by the sign-off condense.
   MANIFEST.md    the only committed file that moves with progress.
 
@@ -792,7 +792,7 @@ be hot-fixed.
 ```markdown
 ## Plan
 
-The plan, with its code: `<registry>/<feature>/PLAN.md` (§PLAN.md).
+The plan, task by task: `<registry>/<feature>/PLAN.md` (§PLAN.md).
 
 - Phase 1 · Task 1 · <name>
 - Phase 1 · Task 2 · <name>
@@ -809,7 +809,7 @@ human reads it at the go-ahead and a reviewer sees it in the PR; the sign-off co
 
 **Its shape is [`../plan/PLAN-FORMAT.md`](../plan/PLAN-FORMAT.md)** — the header, the `## Phases`
 table (`Phase · App · Tasks · Goal`), then flat `### Task N` blocks carrying `App:`,
-`Phase:`, `Recipe:`, **Files**, **Interfaces** and bite-sized `- [ ]` steps with the actual code.
+`Phase:`, `Recipe:`, **Files**, **Interfaces**, **Behaviour**, **Tests** (assertions as code), an optional **Pattern**, and the `- [ ]` steps in words with the run command and the commit.
 Read it there rather than from a restatement.
 
 The two rules worth repeating because everything else depends on them:
