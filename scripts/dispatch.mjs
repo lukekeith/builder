@@ -5,6 +5,7 @@
  *
  *   node <builder>/scripts/dispatch.mjs <kind> <folder> [--task N] [--round N] [--context "<one paragraph>"]
  *        [--findings "<verbatim>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]
+ *        [--model haiku|sonnet|opus]   override the printed default (an implementer's is recorded; rounds 4–5 escalate from it)
  *
  * kinds and what each fills (skills/build/prompts/*.md, build SKILL §Composing the brief and
  * §Dispatch, review, fix, EXECUTION.md §1–5, agent-walk SKILL §2):
@@ -144,6 +145,14 @@ export function modelFor({ kind, tiny = false, round = 0, models = 'default' }) 
   }
 }
 const modelsLever = (f) => parseTestPlan(f.manifest).levers.models ?? 'default'
+/** Why the default is what it is — printed beside the model, so the orchestrator sees what to weigh before raising it. */
+const defaultWhy = ({ tiny = false, models = 'default' } = {}) => ['default', tiny && 'tiny', models !== 'default' && `models=${models}`].filter(Boolean).join(' — ')
+/** `--model <m>` — the orchestrator's override of the printed default; a tier name or refused. */
+const overrideOf = (a) => {
+  if (a.model == null) return null
+  if (!TIERS.includes(a.model)) throw new Error(`--model must be one of ${TIERS.join(', ')} (got ${a.model})`)
+  return a.model
+}
 
 /** A prompts/*.md template → { description, body } — the `prompt: |` block, de-indented. */
 export function promptOf(md) {
@@ -395,6 +404,22 @@ function implementer(f, a, ws) {
   const rec = (st.tasks[n] ??= {})
   if (a.base) rec.base = short(f.root, a.base)
   rec.base ??= short(f.root, 'HEAD')
+  // The model: the task's implementer records what it ran on (the default, or --model); a resumed
+  // round 1–3 names it again; rounds 4–5 go one tier above it (§Model selection's escalation).
+  const recipe = recipeOf(block, f.root)
+  const lever = { tiny: !!recipe?.tiny, models: modelsLever(f) }
+  const dflt = modelFor({ kind: 'implementer', ...lever })
+  const override = overrideOf(a)
+  let model, why
+  if (round >= 4) {
+    const ran = rec.model ?? dflt
+    ;[model, why] = override ? [override, '--model'] : [tierUp(ran), `one tier above ${ran}, round ${round}`]
+  } else if (round) {
+    ;[model, why] = override ? [override, '--model'] : rec.model ? [rec.model, rec.model === dflt ? defaultWhy(lever) : 'the model that ran the task'] : [dflt, defaultWhy(lever)]
+  } else {
+    ;[model, why] = override ? [override, '--model'] : [dflt, defaultWhy(lever)]
+    rec.model = model
+  }
   saveState(ws, st)
 
   const briefPath = join(ws, `task-${n}-brief.md`)
@@ -420,14 +445,14 @@ function implementer(f, a, ws) {
   let body = tpl.body.replaceAll('Task N:', `Task ${n}:`).replaceAll('[task name]', t.name).replaceAll('[directory]', f.root)
   body = body.replace(/\[One line on where this fits\.[^\]]*\]/, () => ctx.join('\n'))
   body = fill(body, { BRIEF_FILE: briefPath, APP: t.app, COMMIT_INSTRUCTION: commit, REPORT_FILE: reportPath, ...craftValues() })
-  const recipe = recipeOf(block, f.root)
   return {
     file: join(ws, `dispatch-implementer-task-${n}${round ? `-round-${round}` : ''}.md`),
     agentType: recipe?.mcp ? mcpAgent(f) : agentTypeOf(f, recipe && !recipe.path ? 'implementer-skills' : 'implementer'),
     body,
     // A fix round says so — the fleet's meter tells a fix from an implementer by this description.
     description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
-    model: modelFor({ kind: 'implementer', tiny: !!recipe?.tiny, round, models: modelsLever(f) }),
+    model,
+    why,
     note: `BASE ${rec.base} recorded for task ${n}`,
   }
 }
@@ -499,7 +524,7 @@ function taskReview(f, a, ws) {
     FINDINGS_FILE: findingsPath(ws, `task-${t.n}-review`),
   })
   const tiny = recipeOf(taskOf(f, t.n).block)?.tiny
-  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), agentType: agentTypeOf(f, 'reviewer'), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: modelFor({ kind: 'task-review', tiny: !!tiny, models: modelsLever(f) }), findings: findingsPath(ws, `task-${t.n}-review`) }
+  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), agentType: agentTypeOf(f, 'reviewer'), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: modelFor({ kind: 'task-review', tiny: !!tiny, models: modelsLever(f) }), why: defaultWhy({ tiny: !!tiny, models: modelsLever(f) }), findings: findingsPath(ws, `task-${t.n}-review`) }
 }
 
 function reReview(f, a, ws) {
@@ -838,7 +863,7 @@ function emit(r, root) {
   console.log(`wrote ${rel(r.file)}${r.note ? ` · ${r.note}` : ''}`)
   if (r.findings) console.log(`findings: ${rel(r.findings)}`)
   // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
-  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} · description: ${r.description} · prompt: Read ${rel(r.file)} and do what it says.`)
+  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} (${r.why ?? 'default'}) · description: ${r.description} · prompt: Read ${rel(r.file)} and do what it says.`)
 }
 
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
@@ -882,7 +907,10 @@ async function main(argv) {
   const f = openFeature(folder)
   if (!f.cfg) throw new Error(f.cfgError)
   const ws = f.ws()
-  emit(RENDER[kind](f, a, ws), f.root)
+  const r = RENDER[kind](f, a, ws)
+  const override = overrideOf(a)
+  if (override && r.why !== '--model') Object.assign(r, { model: override, why: '--model' })
+  emit(r, f.root)
   return 0
 }
 

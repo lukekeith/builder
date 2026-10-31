@@ -71,7 +71,7 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — wrote .builder/cert-tags/dispatch-implementer-task-2.md · BASE 3f2a1c0 recorded for task 2 · Agent call — subagent_type: builder:implementer · model: sonnet"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — wrote .builder/cert-tags/dispatch-implementer-task-2.md · BASE 3f2a1c0 recorded for task 2 · Agent call — subagent_type: builder:implementer · model: sonnet (default)"
         },
         {
           "role": "tool",
@@ -122,7 +122,7 @@
         }
       ],
       "stamp": {
-        "hash": "e7ed0011e6e9",
+        "hash": "347958de7c1f",
         "version": "5.5.0",
         "date": "2026-10-31"
       }

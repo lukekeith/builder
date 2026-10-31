@@ -161,10 +161,12 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   `builder:implementer-skills` or `builder:reviewer` unless the config's `agent_types:` says
   otherwise — general-purpose only when this session has no agent of that type), its **`model`**
   (send the model it names: EXECUTION.md §Model selection as a table, the fix-loop escalation
-  included — read that section only to go above it for a task that needs more), its `description`
+  included — the reason is printed beside it, e.g. `model: haiku (default — tiny)`), its `description`
   and its prompt. Every path it prints is relative to the repo root. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
-  the file and survives a crash. The kinds:
+  the file and survives a crash. **The printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; never lower it.**
+  Raise it with `--model <m>` on the dispatch, so the model that ran is recorded and rounds 4–5
+  escalate one tier above it. The kinds:
 
   | Dispatch | Command |
   |---|---|
