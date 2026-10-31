@@ -730,7 +730,7 @@ const manifestOf = (wt, feature) => {
   return text == null ? {} : parseManifest(text)
 }
 
-async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifestOf(wt, feature).state ?? null, { goAhead: manifestOf(wt, feature)['go-ahead'], spec: specOf(feature), target: TARGET, walkLane: lane === 'walk', split: SPLIT, prior: priorPark(fleet.features[feature]) }), rec = fleet.features[feature]) {
+async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifestOf(wt, feature).state ?? null, { goAhead: manifestOf(wt, feature)['go-ahead'], specText: readSpec(wt, feature) ?? readSpec(ROOT, feature), spec: specOf(feature), target: TARGET, walkLane: lane === 'walk', split: SPLIT, prior: priorPark(fleet.features[feature]) }), rec = fleet.features[feature]) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)

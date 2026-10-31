@@ -5,7 +5,7 @@ description: Turns an audited spec into a committed PLAN.md — ordered phases, 
 
 # `/builder:plan` — the audited spec becomes phases
 
-Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--into <branch>]`**. Flags:
+Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-walk] [--into <branch>] [--no-dev-env]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
@@ -15,6 +15,8 @@ prints all three — and cite them rather than restate them:
 the phase counts · §Contract and the contract freeze, which the phase ORDER exists to protect ·
 §MANIFEST.md · §Branch and ticket) · **`.claude/builder.md`** (§Verification — the phase tier runs on each phase's app,
 §Global constraints for the plan's header block, §Companion skills for every `Recipe:` line).
+**Under `--agent-walk`, `docs.mjs plan-agent`** — the same less §The review, §Flags and §Continuing on
+"go", which an unattended plan never uses — one Bash output where `plan` is over it.
 
 Input: `<folder>/SPEC.md` + `MANIFEST.md`. Output: `<folder>/PLAN.md`, the §Plan index appended to
 that SPEC, the manifest at `state: planned`, and the go-ahead taken in the same turn. **No app code
@@ -37,6 +39,24 @@ whose state is `audited`.
 ```
 📍 <feature>: <manifest state> — not planned: <reason> — next: <the command the row names>
 ```
+
+**Started by the fleet** (`--agent-walk`: an audited feature with nothing open comes straight here,
+not through `/builder:resume`) — this step does what resume did around it:
+
+- **A row above that hands back** → run `/builder:resume --path <folder>` with this run's flags
+  through the Skill tool instead, in this turn: its decisions gate rules an OPEN row under `--auto`,
+  and a `blocked:` row parks there (AGENT-MODE §`--agent-walk`).
+- **The prompt says the feature was parked before** → read `docs.mjs section
+  skills/resume/AGENT-MODE.md "Agent mode outside the build loop"` first.
+- **Nobody is there**: never AskUserQuestion or ExitPlanMode; writers in the foreground, never
+  `run_in_background`; never park on the plan or the go-ahead (AGENT-MODE §Agent mode in the build lane).
+- **The manifest has no `agent-walk:` line** → the plan commit writes it: add
+  `--set "agent-walk=on <YYYY-MM-DD>"` to its `advance.mjs` call.
+- **The go-ahead** is §Picking the test plan ahead's `--auto` one: `go-ahead: auto (recommended)`,
+  `tests:` and `target:` kept, or written from `--into`.
+- **Under `--no-dev-env`, end the run at the go-ahead commit** — at most six lines, then the footer
+  (REFERENCE §Under `--auto` and `--agent-walk`); never `/builder:build` in this run: the fleet starts
+  it in a fresh context (AGENT-MODE §`--agent-walk`).
 
 ⛔ **A §Findings row marked `build-time risk` is not a blocker and never a reason for another audit
 pass** — the cap is spent. Each names the phase or task that settles it; **copy the note onto that
@@ -358,7 +378,8 @@ Only when one is missing do they write it: `tests: <the levers profile.mjs --rec
 returns>`, and `target: <the --into this run was given>` — `<merge_into>` only without `--into`.
 Without an `agent_walk:` block, `--auto` returns here — the run that called this step carries on into
 the build. Plain `--auto` with the block then launches the fleet as in step 4;
-**`--agent-walk` launches nothing** — the fleet is already running it.
+**`--agent-walk` launches nothing** — the fleet is already running it — and ends the run there under
+`--no-dev-env` (§Started by the fleet).
 
 ```
 📍 <feature>: planned — <m> slices in <apps>, test plan <test plan> — next: A builds it (/builder:build --path <folder>) · or say go

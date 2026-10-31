@@ -5,7 +5,7 @@ const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
-import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, STALL_MS } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -936,4 +936,24 @@ test('a planned feature with no go-ahead goes through /builder:resume, which tak
   for (const goAhead of [undefined, null, '', 'none'])
     assert.match(buildLanePrompt('planned', { goAhead, spec: 's', target: 't' }), /^\/builder:resume /)
   assert.match(buildLanePrompt('building', { goAhead: 'none', spec: 's', target: 't' }), /^\/builder:build /)
+})
+
+const SPEC_OK = '# F\n\n## Decisions\n\n| # | Decision | Ruling | Who / date |\n|---|---|---|---|\n| D1 | tags | kept — why; not x | auto (recommended) 2026-10-31 |\n\n## Findings & risks\n\n| # | Finding | Resolution |\n|---|---|---|\n| F1 | slow query | build-time risk — Task 3 |\n| F2 | was blocked: no index | settled |\n'
+test('an audited feature with nothing open goes straight to /builder:plan --auto --agent-walk, the park note riding along', () => {
+  assert.equal(buildLanePrompt('audited', { specText: SPEC_OK, spec: 'docs/features/f', target: 'main' }), '/builder:plan --path docs/features/f --auto --agent-walk --into main --no-dev-env')
+  assert.equal(buildLanePrompt('audited', { specText: SPEC_OK, spec: 's', target: 't', prior: '\n\nX' }), '/builder:plan --path s --auto --agent-walk --into t --no-dev-env\n\nX')
+  assert.equal(planReady(SPEC_OK), true)
+})
+test('an audited feature with an OPEN decision, a blocked: finding, or no SPEC read stays on /builder:resume', () => {
+  const open = SPEC_OK.replace('| D1 | tags | kept — why; not x | auto (recommended) 2026-10-31 |', '| D2 | colour | OPEN — recommend blue | |')
+  const blocked = SPEC_OK.replace('| F1 | slow query | build-time risk — Task 3 |', '| B1 | blocked: the API has no tags field — clears when D3 is ruled | audit exit |')
+  for (const specText of [open, blocked, null, undefined]) {
+    assert.equal(planReady(specText), false)
+    assert.equal(buildLanePrompt('audited', { specText, spec: 's', target: 't' }), '/builder:resume --path s --agent-walk --into t --no-dev-env')
+  }
+  // Only those two sections count: an OPEN elsewhere is not a decision row.
+  assert.equal(planReady(SPEC_OK + '\n## Fixes\n\n| x | OPEN | y |\n'), true)
+  // The walk lane never plans.
+  assert.match(buildLanePrompt('audited', { specText: SPEC_OK, spec: 's', target: 't', walkLane: true }), /^\/builder:resume /)
+  for (const state of ['spec', 'aligned']) assert.match(buildLanePrompt(state, { specText: SPEC_OK, spec: 's', target: 't' }), /^\/builder:resume /)
 })
