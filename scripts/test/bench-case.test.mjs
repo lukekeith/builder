@@ -113,6 +113,13 @@ test('replanCommits stops before the audit', () => {
   assert.deepEqual(replanCommits(r3, 'docs/features', 'f', specCommits(r3, 'docs/features', 'f', g3.commits)), [])
 })
 
+test('replanCommits is a contiguous prefix: it stops at the first commit past aligned', () => {
+  const { repo, range } = fixture({ states: ['spec', 'audited', 'spec'] })
+  const specs = specCommits(repo, 'docs/features', 'f', range.commits)
+  assert.equal(specs.length, 3)
+  assert.deepEqual(replanCommits(repo, 'docs/features', 'f', specs), [specs[0]])
+})
+
 test('--replan starts the fleet before the audit and the result says so', () => {
   const { out, clone, run } = fixture({ states: ['spec', 'audited', 'planned'] })
   const r = run(['c1', '--builder', REPO, '--out', out, '--replan'])
