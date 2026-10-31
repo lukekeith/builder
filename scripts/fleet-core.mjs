@@ -1210,21 +1210,30 @@ const markOf = (subject, feature = null) => {
 }
 /** Where a plain commit (a task, a fix) falls, from the last mark before it. */
 const PHASE_AFTER = { audit: 'plan', plan: 'build', finalReview: 'finalReview', endGates: 'walk', walk: 'walk', verify: 'verify', ship: 'ship' }
+/**
+ * Where the plain commits before the first mark fall, from that mark: the stage it closes. A branch
+ * whose first mark is its audit was audited in this run; one that came in audited and planned (a
+ * person did both before the fleet took it, or a benchmark case) opens with its build's tasks.
+ */
+const PHASE_BEFORE = { audit: 'audit', plan: 'plan', finalReview: 'build', endGates: 'build', walk: 'walk', verify: 'verify', ship: 'ship' }
 
 /**
  * A feature branch's commits, oldest first ({ t: epoch seconds, s: subject }) → wall-clock ms per
  * stage: audit, plan, build (the task commits), finalReview, endGates, walk (readiness, rounds,
  * sign-off — queueing included; walkQueue below splits it), verify, ship — and `parked`, the time
  * from a park to whatever came next, kept apart from the stage it interrupted. Also: walkRounds
- * (failed rounds committed), parks, startedAt, endGatesAt (ms, for the walk queue), lastAt.
+ * (failed rounds committed), parks, startedAt, endGatesAt (ms, for the walk queue), lastAt, and
+ * opening — the stage the branch's first commits belong to (PHASE_BEFORE).
  * Commits a stage didn't make leave its key out; nothing here is a guess.
  */
 export function stagesFromCommits(commits, feature = null) {
   const cs = (commits ?? []).filter((c) => c && Number.isFinite(c.t)).sort((a, b) => a.t - b.t)
-  const out = { stages: {}, walkRounds: 0, parks: 0, startedAt: null, endGatesAt: null, lastAt: null }
+  const out = { stages: {}, walkRounds: 0, parks: 0, startedAt: null, endGatesAt: null, lastAt: null, opening: null }
   if (!cs.length) return out
   const add = (k, ms) => { if (ms > 0) out.stages[k] = (out.stages[k] ?? 0) + ms }
-  let phase = 'audit'
+  const first = cs.map((c) => markOf(c.s, feature)).find((m) => m && m !== 'parked' && m !== 'resumed')
+  let phase = PHASE_BEFORE[first] ?? 'build'
+  out.opening = phase
   let parkedSince = null
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i]
@@ -1243,6 +1252,29 @@ export function stagesFromCommits(commits, feature = null) {
   out.startedAt = cs[0].t * 1000
   out.lastAt = cs[cs.length - 1].t * 1000
   return out
+}
+
+/**
+ * Wall-clock facts for the archive row, from the branch's stage timeline (stagesFromCommits) and the
+ * fleet's runs (timing[]): start → merge (`wallMs`), the stages plus `merge` (last commit → now), how
+ * long the built feature waited for the walk lane (first walk run after endGatesAt), rounds, parks.
+ * The wall starts at the branch's first commit, except:
+ *  - a branch a person started long before the fleet took it starts with the fleet's first run;
+ *  - a branch with no commit before the fleet's first run (the run made its first commit — the
+ *    fleet's own spec bring-in comes before it otherwise) starts with that run, and the lead goes to
+ *    the opening stage: commits can't say when the run's work began, the run's start can.
+ */
+export function wallFacts(st, timing = [], now = Date.now()) {
+  if (!st?.startedAt) return { wallMs: null, stages: null, walkQueueMs: null }
+  const runs = (timing ?? []).filter((t) => t?.start)
+  const firstRun = runs.map((t) => Date.parse(t.start)).filter(Number.isFinite).sort((a, b) => a - b)[0]
+  const lead = firstRun != null && firstRun < st.startedAt && st.opening ? st.startedAt - firstRun : 0
+  const startedAt = firstRun != null && st.startedAt < firstRun - 24 * 3600 * 1000 ? firstRun : st.startedAt - lead
+  const firstWalk = runs.filter((t) => t.lane === 'walk').map((t) => Date.parse(t.start)).sort((a, b) => a - b).find((at) => st.endGatesAt != null && at >= st.endGatesAt)
+  const stages = { ...st.stages }
+  if (lead > 0) stages[st.opening] = (stages[st.opening] ?? 0) + lead
+  if (st.lastAt) stages.merge = Math.max(0, now - st.lastAt)
+  return { wallMs: now - startedAt, stages, walkQueueMs: firstWalk != null ? firstWalk - st.endGatesAt : null, walkRounds: st.walkRounds, parks: st.parks }
 }
 
 /**

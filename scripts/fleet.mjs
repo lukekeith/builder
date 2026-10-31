@@ -31,7 +31,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -937,22 +937,6 @@ function noteStages(f, feature) {
   if (commits.length) f.stages = stagesFromCommits(commits, feature)
 }
 
-/**
- * Wall-clock facts for the archive row: start → merge (`wallMs`), the stage timeline, how long the
- * built feature waited for the walk lane (first walk run after the build's last verifier run), and the merge itself.
- */
-function wallFacts(f, now = Date.now()) {
-  const st = f.stages
-  if (!st?.startedAt) return { wallMs: null, stages: null, walkQueueMs: null }
-  // A branch a person started long before the fleet took it: the wall-clock starts with the fleet's
-  // first run, not with a commit weeks earlier.
-  const firstRun = (f.timing ?? []).map((t) => Date.parse(t.start)).filter(Number.isFinite).sort((a, b) => a - b)[0]
-  const startedAt = firstRun != null && st.startedAt < firstRun - 24 * 3600 * 1000 ? firstRun : st.startedAt
-  const firstWalk = (f.timing ?? []).filter((t) => t.lane === 'walk' && t.start).map((t) => Date.parse(t.start)).sort((a, b) => a - b).find((at) => st.endGatesAt != null && at >= st.endGatesAt)
-  const stages = { ...st.stages, ...(st.lastAt ? { merge: Math.max(0, now - st.lastAt) } : {}) }
-  return { wallMs: now - startedAt, stages, walkQueueMs: firstWalk != null ? firstWalk - st.endGatesAt : null, walkRounds: st.walkRounds, parks: st.parks }
-}
-
 /** A landed feature leaves fleet.json: one line in archive.jsonl, its logs under logs/_archive/. */
 function archiveRow(feature, facts, thisRun = true) {
   clearPause(feature)
@@ -977,7 +961,7 @@ function archiveRow(feature, facts, thisRun = true) {
     costUsd: sum('costUsd'),
     ...meterTotals(f.timing),
     quality: f.facts?.review ?? null,
-    ...wallFacts(f),
+    ...wallFacts(f.stages, f.timing),
     walk: walk ?? f.facts?.walk ?? null,
     landedAt: new Date().toISOString(),
   })
