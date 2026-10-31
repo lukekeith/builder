@@ -696,7 +696,7 @@ test('history: --backfill appends schema-0 rows for the suites and fixture runs 
     for (const [item, r] of Object.entries(results)) put(join(dir, item, 'result.json'), r)
   }
   suiteAt('2026-10-30-1326-suite', [{ id: 'c1', kind: 'archived', status: 'done' }, { id: 'c1@main', kind: 'archived', control: true, status: 'done' }, { id: 'c2', kind: 'archived', status: 'failed: case process died' }, { id: 'c3', kind: 'archived', status: 'stopped' }, { id: 'tags', kind: 'fixture', status: 'done' }],
-    { c1: res('c1', { status: 'parked: walk env failed in /Users/me/projA' }), 'c1@main': res('c1@main', { control: true }), c3: res('c3', { status: 'failed: stopped' }), tags: res('tags', { kind: 'fixture', project: 'fixtures' }) })
+    { c1: res('c1', { status: 'parked: walk env failed in /Users/me/projA' }), 'c1@main': res('c1@main', { control: true, measure: { ...res('x').measure, build: { tokens: 8000, turns: 40, tasks: 4, peakCtx: null } } }), c3: res('c3', { status: 'failed: stopped' }), tags: res('tags', { kind: 'fixture', project: 'fixtures' }) })
   // a suite still running: its lock is live (this test's own pid)
   suiteAt('2026-10-31-1418-suite', [{ id: 'c2', kind: 'archived', status: 'done' }], { c2: res('c2') })
   put(join(local, 'results', 'lock'), { pid: process.pid, suiteId: '2026-10-31-1418-suite' })
@@ -708,11 +708,12 @@ test('history: --backfill appends schema-0 rows for the suites and fixture runs 
   const rows = historyOf(join(out, 'history.jsonl'))
   assert.deepEqual(rows.map((x) => [x.suite, x.case, x.config, x.control, x.builder, x.outcome, x.reason, x.schema]), [
     ['2026-10-30-1326-suite', 'c1', null, false, '5.4.0+abcdef0', 'parked', 'parked', 0],
-    ['2026-10-30-1326-suite', 'c1', null, true, '5.3.0+1234567', 'landed', 'done', 0],
+    ['2026-10-30-1326-suite', 'c1', null, true, '5.3.0+1234567', 'landed', 'done', 1],
     ['2026-10-30-1334-tags', 'tags', 'builder', false, '5.4.0+abcdef0', 'landed', 'done', 0],
     ['2026-10-30-1334-tags', 'tags', 'gsd', false, '5.4.0+abcdef0', 'failed', 'failed', 0],
   ])
   assert.equal(rows[0].at, '2026-10-30T12:00:00.000Z')
+  assert.equal(rows[1].build.tokensPerTask, 2000, 'a result with the per-task build numbers is backfilled as schema 1')
   assert.equal(rows[2].size, 'sm')
   assert.doesNotMatch(readFileSync(join(out, 'history.jsonl'), 'utf8'), /projA|\/Users\//)
   const again = suite(['history', '--backfill'])

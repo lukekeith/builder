@@ -598,8 +598,11 @@ export function historyRowsFromRuns(data, { at, size = null, control = false, sc
   })
 }
 
-/** What makes a row the same run: a case of a suite (a config of a fixture run), its control apart — a rebuilt report or a second backfill adds nothing. */
-export const historyKey = (r) => [r.suite, r.case, r.config ?? '', r.control ? 'control' : ''].join('\u0000')
+/**
+ * What makes a row the same run: a case of a suite (a config of a fixture run), its control apart, and when it ended — a
+ * rebuilt report or a second backfill adds nothing (`at` comes from suite.json / runs.json), a re-run inside one suite id does.
+ */
+export const historyKey = (r) => [r.suite, r.case, r.config ?? '', r.control ? 'control' : '', r.at ?? ''].join('\u0000')
 
 /** history.jsonl's rows; a blank or broken line is skipped. */
 export const parseHistory = (text) => String(text ?? '').split('\n').flatMap((l) => {
@@ -614,11 +617,16 @@ export const parseHistory = (text) => String(text ?? '').split('\n').flatMap((l)
 const pctChange = (v, base) => (v == null || base == null || !(base > 0) ? null : Math.round(((v - base) / base) * 100))
 const HISTORY_METRICS = [['tokens ÷ task', (r) => r.build?.tokensPerTask ?? null], ['wall', (r) => r.wallMin], ['cost', (r) => r.costUsd]]
 
-/** Why a case's newest run (controls left out) is worse than the one before it, or [] — never against or as a schema-0 row. */
+/**
+ * Why a case's newest run (controls left out) is worse than its newest earlier run under a different builder, or [] —
+ * runs on one builder never flag, and a schema-0 row is never judged nor judged against.
+ */
 export function historyRegressions(rows) {
   const runs = rows.filter((r) => !r.control)
-  const [was, now] = runs.slice(-2)
-  if (!was || !now || !(was.schema >= 1) || !(now.schema >= 1)) return []
+  const now = runs.at(-1)
+  if (!now || !(now.schema >= 1)) return []
+  const was = runs.slice(0, -1).reverse().find((r) => r.schema >= 1 && r.builder !== now.builder)
+  if (!was) return []
   const out = HISTORY_METRICS.flatMap(([name, f]) => {
     const p = pctChange(f(now), f(was))
     return p != null && p > 10 ? [`${name} +${p}%`] : []

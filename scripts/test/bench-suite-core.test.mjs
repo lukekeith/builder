@@ -494,7 +494,8 @@ test('parseHistory: one row a line; blank and broken lines are skipped', () => {
   assert.deepEqual(parseHistory(''), [])
 })
 test('historyKey: a case of a suite (or a config of a fixture run), its control apart', () => {
-  assert.equal(historyKey(hr({})), historyKey(hr({ at: 'later', schema: 0 })))
+  assert.equal(historyKey(hr({})), historyKey(hr({ schema: 0, wallMin: 1 })), 'the same run, read again')
+  assert.notEqual(historyKey(hr({})), historyKey(hr({ at: '2026-10-31T00:00:00.000Z' })), 'a re-run inside one suite id is its own row')
   assert.notEqual(historyKey(hr({})), historyKey(hr({ control: true })))
   assert.notEqual(historyKey(hr({ kind: 'fixture', config: 'builder' })), historyKey(hr({ kind: 'fixture', config: 'gsd' })))
   assert.notEqual(historyKey(hr({})), historyKey(hr({ suite: 's2' })))
@@ -547,4 +548,15 @@ test('renderHistory: only the named cases, only runs since a date; nothing to sh
   assert.match(md, /\| s9 \|/)
   assert.match(renderHistory([], {}), /no runs in the history yet/)
   assert.match(renderHistory(rows, { cases: ['zz'] }), /no runs of zz/)
+})
+
+test('historyRegressions: runs on one builder never flag; the newest is judged against the newest earlier run under a different builder', () => {
+  const same = [hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', wallMin: 200, outcome: 'parked', reason: 'parked' })]
+  assert.doesNotMatch(renderHistory(same), /regressed/)
+  // s1 (aaaa) → s2 (cccc, worse) → s3 (cccc again): s3 is judged against s1, not s2
+  const rows = [hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: '5.6.0+ccccccc', wallMin: 200 }), hr({ at: '2026-10-31T06:00:00.000Z', suite: 's3', builder: '5.6.0+ccccccc', wallMin: 130 })]
+  assert.match(renderHistory(rows), /⚠ regressed: wall \+30%/)
+  // a schema-0 run under the other builder is passed over for an older schema-1 one
+  const skip0 = [hr({ wallMin: 100 }), hr({ at: '2026-10-30T12:00:00.000Z', suite: 's1b', builder: '5.5.5+bbbbbbb', wallMin: 500, schema: 0 }), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: '5.6.0+ccccccc', wallMin: 130 })]
+  assert.match(renderHistory(skip0), /⚠ regressed: wall \+30%/)
 })
