@@ -213,7 +213,13 @@ echo** — when they disagree, the table decides and the mismatch is said out lo
    merge tier and the walk cover that.
 2. 🔴 **A phase whose verdict is red does not close.** Each regression becomes a fix dispatch against
    the task that introduced it, reviewed like any other finding — never a controller fix — then the
-   phase tier again. A consumer app's phase never starts on a red producer.
+   phase tier again. A consumer app's phase never starts on a red producer. 🔴 **An env-broken
+   verdict (exit 3) does not close either** — the verifier never ran the tests, so there is nothing to
+   close on. Fix the environment its `⚠` lines name the way the config's `verify:` block expects it
+   (its `setup`, the database `db.url` names, a check's `cwd`) — never a suite run by hand instead —
+   then request the phase tier again. Env-broken a second time → stop: under `--agent-walk` park
+   (`kind: stuck`, §Stops) with the verifier's reason as the `blocked:` line; otherwise say that
+   reason and end the turn.
 2b. **Under `review=app`, one review of the phase's whole diff:**
    `node <builder>/scripts/dispatch.mjs task-review <folder> --phase N` — the review package from
    the BASE recorded before the phase's first task to HEAD (`<WS>/review-phase-N.diff`), with
@@ -244,7 +250,7 @@ nobody can hot-fix — an implementer writes its code and its tests **and stops 
 - the controller presents the staged diff and the proposed message, and takes one approval per task
   or one for the phase — the human's choice, offered explicitly;
 - the phase tier still runs on its uncommitted work (`verify.mjs request … --tier phase --tree`),
-  and a red verdict still blocks the close;
+  and a red or env-broken verdict still blocks the close;
 - **anything else the config reserves to the human for that app** — launching it, packaging it,
   releasing it — is offered as their next action, never done here.
 
@@ -370,7 +376,7 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
    `verify.mjs verdict <branch>` before the next task (exit 75 or 5 → nothing yet); at each phase
    close, `--tier phase --since <the phase's BASE>` (`<sha>^` of the phase's first ledger line) and
    `wait`. A red verdict is fixed here, in place, before the next task or
-   phase.
+   phase; an env-broken one at a phase close is not a pass either (§Phase close step 2).
 4. **Keep a one-line ledger** in the workspace (`<builder>/scripts/workspace <feature>` →
    `ledger.md`): `Task N: done <sha>`. After a `/clear`, `/builder:resume` routes back here and you
    pick up at the first task without a line.

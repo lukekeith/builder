@@ -415,6 +415,20 @@ test('6.0: the build requests verdicts and never runs a gate', () => {
   }
 })
 
+test('6.0: env-broken at a phase close is not a pass — the phase stays open, the env is fixed once, then a stop', () => {
+  const build = read('skills/build/SKILL.md')
+  const ref = read('skills/resume/REFERENCE.md')
+  const close = build.slice(build.indexOf('## Phase close'), build.indexOf('### 🔴 A phase in a `commit: manual` app'))
+  assert.match(close, /env-broken[^\n]*(\n[^\n]*){0,2}does not close either/i)
+  assert.match(close, /setup/)
+  assert.match(close, /request the phase tier again/)
+  assert.match(close, /env-broken a second time/i)
+  assert.match(close, /park/)
+  assert.match(build, /a red or env-broken verdict still blocks the close/)
+  assert.match(ref, /At a\s+phase close it is not a pass/)
+  assert.match(ref, /at the commit tier it blocks nothing/i)
+})
+
 test('with agent_walk set, no skill offers /builder:build as how a user builds', () => {
   // Task 8 asserts resume's planned-with-go-ahead row names /builder:agent and plan's footer has no `2. agent`;
   // this widens it to every skill and the README: no line pairs agent_walk with /builder:build unless it says never.

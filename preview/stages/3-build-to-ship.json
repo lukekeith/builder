@@ -158,13 +158,13 @@
         },
         {
           "role": "note",
-          "text": "The verdict line is the verifier client's own format (summarize in scripts/verify/verify.mjs): the sha it ran at, the flakes and known failures it reported and left alone, what it reused. A red verdict keeps the phase open: each regression prints as '✗ <test id> — introduced by <sha7>' and becomes a fix dispatch against that commit's task, never a controller fix, then the phase tier again. Under review=app the phase's whole diff is reviewed here too. The next phase starts in the same turn."
+          "text": "The verdict line is the verifier client's own format (summarize in scripts/verify/verify.mjs): the sha it ran at, the flakes and known failures it reported and left alone, what it reused. A red verdict keeps the phase open: each regression prints as '✗ <test id> — introduced by <sha7>' and becomes a fix dispatch against that commit's task, never a controller fix, then the phase tier again. An env-broken verdict (the verifier could not run) keeps it open too: the build fixes the environment the config's verify: block expects and requests the phase tier again; env-broken twice is a stop (a park under agent mode) with the verifier's reason. Under review=app the phase's whole diff is reviewed here too. The next phase starts in the same turn."
         }
       ],
       "stamp": {
-        "hash": "59495e70f2a1",
+        "hash": "cb7b1a146463",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-31"
       }
     },
     {
@@ -220,13 +220,13 @@
         },
         {
           "role": "note",
-          "text": "The skill names the two approvals (per task / per phase) and that declining is fine; the picker wording is a rendering. The phase tier still runs on the uncommitted work (verify.mjs request … --tier phase --tree), and a red verdict still blocks the close. Under agent mode this phase parks instead — agents never commit in a commit: manual app."
+          "text": "The skill names the two approvals (per task / per phase) and that declining is fine; the picker wording is a rendering. The phase tier still runs on the uncommitted work (verify.mjs request … --tier phase --tree), and a red or env-broken verdict still blocks the close. Under agent mode this phase parks instead — agents never commit in a commit: manual app."
         }
       ],
       "stamp": {
-        "hash": "46105162b4c4",
+        "hash": "34d5fe18fb64",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-31"
       }
     },
     {
@@ -362,9 +362,9 @@
         }
       ],
       "stamp": {
-        "hash": "aef1503efe26",
+        "hash": "19227264fe98",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-31"
       }
     },
     {
