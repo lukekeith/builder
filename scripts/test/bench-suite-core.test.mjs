@@ -414,3 +414,13 @@ test('renderSuiteReport: the build orchestrator per plan task, against the basel
   assert.match(sec, /\| c1 \| 10 \| 100k \| 200 \| 10k \| 20 \| -50% \| \+0% \|/)
   assert.match(sec, /\| c2 \| 4 \| 8k \| 20 \| 2k \| 5 \| — \| — \|/)
 })
+
+test('renderSuiteReport: a --replan suite names each case start in the header; an old result`s true is the prefix', () => {
+  const r = (id, replan) => ({ id, size: 'sm', status: 'done', measure: null, baseline: null, ...(replan === undefined ? {} : { replan }) })
+  const md = renderSuiteReport([r('a', 'prefix'), r('b', 'from-audited'), r('c', true), r('d')], { builder: { replan: true } })
+  assert.match(md, /^- a: prefix — the fleet audited and planned it$/m)
+  assert.match(md, /^- b: from-audited — /m)
+  assert.match(md, /^- c: prefix — /m)
+  assert.match(md, /^- d: — \(no start recorded\)$/m)
+  assert.doesNotMatch(renderSuiteReport([r('a', 'prefix')], { builder: { replan: false } }), /re-planned/)
+})

@@ -21,7 +21,7 @@ const put = (f, s) => {
 const MD = '---\nproject: p\nregistry: docs/features\nagent_walk:\n  claude_args: {claude_args}\n  env: PORT=4917\n---\n\n# config\n'
 
 /** A project repo (its builder.md `md`, and `base`'s files in its first commit) with feature f merged --no-ff, its archive row, and a BENCH_LOCAL with profile p and case c1. */
-function fixture({ md = MD, base = {}, into = 'main', mfTarget, drift = false, states } = {}) {
+function fixture({ md = MD, base = {}, into = 'main', mfTarget, drift = false, states, planned = false } = {}) {
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-case-')))
   const repo = join(tmp, 'repo')
   mkdirSync(repo)
@@ -43,8 +43,13 @@ function fixture({ md = MD, base = {}, into = 'main', mfTarget, drift = false, s
   put(join(repo, 'docs', 'features', 'f', 'SPEC.md'), '# f\n\none\ntwo\n')
   // states: one spec-only commit per state, each rewriting the manifest's `state:`
   for (const [i, st] of (states ?? [null]).entries()) {
-    put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), `size: sm\n${mfTarget ? `target: ${mfTarget}\n` : ''}${st ? `state: ${st}\n` : ''}`)
+    put(join(repo, 'docs', 'features', 'f', 'MANIFEST.md'), `size: sm\n${st ? `state: ${st}\n` : ''}${planned ? 'next: /builder:build --path docs/features/f\nhead: abc1234\nbranch: builder/f\ngo-ahead: luke 2026-10-01\ntests: walk=agent review=end\n' : ''}${mfTarget ? `target: ${mfTarget}\n` : ''}`)
     if (i) put(join(repo, 'docs', 'features', 'f', 'SPEC.md'), `# f\n\none\ntwo\n${'more\n'.repeat(i)}`)
+    // planned: the spec and its plan in one commit — PLAN.md and the SPEC's §Plan index beside it
+    if (planned) {
+      put(join(repo, 'docs', 'features', 'f', 'SPEC.md'), '# f\n\none\ntwo\n\n## Findings & risks\n\nnone\n\n## Plan\n\nThe plan, task by task: `docs/features/f/PLAN.md` (§PLAN.md).\n\n- Phase 1 · Task 1 · a\n')
+      put(join(repo, 'docs', 'features', 'f', 'PLAN.md'), '# f — plan\n\n### Task 1\n')
+    }
     git(repo, 'add', '-A')
     git(repo, 'commit', '-qm', st ? `spec ${st}` : 'spec')
   }
@@ -125,7 +130,7 @@ test('--replan starts the fleet before the audit and the result says so', () => 
   const r = run(['c1', '--builder', REPO, '--out', out, '--replan'])
   assert.equal(r.status, 0, r.stderr)
   const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
-  assert.equal(res.replan, true)
+  assert.equal(res.replan, 'prefix')
   assert.equal(res.status, 'done')
   // the stub fleet lands a PLAN.md; the start the clone was cut from had none, and the manifest was still at spec
   assert.match(git(clone, 'show', 'main~2:docs/features/f/MANIFEST.md'), /state: spec/)
@@ -138,11 +143,44 @@ test('--replan starts the fleet before the audit and the result says so', () => 
   assert.equal(d.status, 0, d.stderr)
 })
 
-test('--replan with no pre-audit spec commit is a prep failure, not a crash', () => {
-  const { out, run } = fixture({ states: ['audited', 'planned'] })
+test('--replan from a spec committed planned: the clone starts audited, with no plan and no go-ahead', () => {
+  const { repo, out, clone, run } = fixture({ states: ['planned'], planned: true, mfTarget: 'main' })
+  const before = git(repo, 'rev-parse', 'HEAD') + git(repo, 'status', '--porcelain')
   const r = run(['c1', '--builder', REPO, '--out', out, '--replan'])
   assert.equal(r.status, 0, r.stderr)
-  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: --replan: no spec commit before the audit/)
+  assert.equal(git(repo, 'rev-parse', 'HEAD') + git(repo, 'status', '--porcelain'), before)
+  const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
+  assert.equal(res.status, 'done')
+  assert.equal(res.replan, 'from-audited')
+  // main: the stub's plan commit; main~1 the profile; main~2 the reset the fleet starts from; main~3 the spec commit
+  assert.deepEqual(git(clone, 'log', '--format=%s', 'main~3..main~1').split('\n'), ['bench: profile', 'bench: re-plan from audited'])
+  assert.equal(tryShow(clone, 'main~1:docs/features/f/PLAN.md'), null)
+  const mf = git(clone, 'show', 'main~1:docs/features/f/MANIFEST.md')
+  assert.match(mf, /^state: audited$/m)
+  assert.match(mf, /^size: sm$/m)
+  for (const k of ['go-ahead', 'tests', 'target', 'head', 'branch']) assert.doesNotMatch(mf, new RegExp(`^${k}:`, 'm'), k)
+  assert.match(mf, /^next: \/builder:resume --path docs\/features\/f$/m)
+  const spec = git(clone, 'show', 'main~1:docs/features/f/SPEC.md')
+  assert.doesNotMatch(spec, /^## Plan/m)
+  assert.match(spec, /^## Findings & risks/m)
+  // the reset touched only the feature's folder
+  assert.deepEqual(git(clone, 'diff', '--name-only', 'main~3', 'main~2').split('\n').sort(), ['docs/features/f/MANIFEST.md', 'docs/features/f/PLAN.md', 'docs/features/f/SPEC.md'])
+})
+
+test('--replan whose spec commits stay before the audit keeps the prefix and makes no reset', () => {
+  const { out, clone, run } = fixture({ states: ['spec', 'aligned'] })
+  const r = run(['c1', '--builder', REPO, '--out', out, '--replan'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).replan, 'prefix')
+  assert.doesNotMatch(git(clone, 'log', '--format=%s', 'main'), /re-plan from audited/)
+  assert.match(git(clone, 'show', 'main~1:docs/features/f/MANIFEST.md'), /state: aligned/)
+})
+
+test('--replan with no manifest state to start from is a prep failure, not a crash', () => {
+  const { out, run } = fixture()
+  const r = run(['c1', '--builder', REPO, '--out', out, '--replan'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: --replan: /)
 })
 
 test('a case runs in a clone and never touches the repo', () => {

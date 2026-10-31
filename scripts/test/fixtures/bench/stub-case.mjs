@@ -6,7 +6,8 @@
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
 // Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log;
-// a dry run appends `replan <id> <bool>` to dry.log instead; case mode also `replan <id> <bool>`, `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
+// a dry run appends `replan <id> <bool>` to dry.log instead; a run under --replan writes result.json `replan: from-audited`
+// for an id in STUB_REPLAN_AUDITED, else `prefix`; case mode also `replan <id> <bool>`, `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
 // SIGTERM writes result.json `failed: stopped`, logs `stopped <id> <t>` and exits 0.
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -67,5 +68,5 @@ await sleep(unit * minutes * (ids(process.env.STUB_CASE_LONG).includes(id) ? 10 
 if (ids(process.env.STUB_CASE_DIE).includes(id)) process.exit(1)
 mkdirSync(out, { recursive: true })
 const measure = { wallMs: minutes * 60000, costUsd: c.estimate?.usd ?? null, turns: 3, tokens: 1000, stages: { build: minutes * 60000 }, byKind: null, quality: null }
-writeFileSync(join(out, 'result.json'), JSON.stringify({ id, size: c.size, kind: 'archived', project: c.project, control: false, status: 'done', ...(argv.includes('--replan') ? { replan: true } : {}), measure, baseline: null, specLines: 10, planLines: 20, estimate: c.estimate ?? null }))
+writeFileSync(join(out, 'result.json'), JSON.stringify({ id, size: c.size, kind: 'archived', project: c.project, control: false, status: 'done', ...(argv.includes('--replan') ? { replan: ids(process.env.STUB_REPLAN_AUDITED).includes(id) ? 'from-audited' : 'prefix' } : {}), measure, baseline: null, specLines: 10, planLines: 20, estimate: c.estimate ?? null }))
 log(`end ${id} ${Date.now()}`)

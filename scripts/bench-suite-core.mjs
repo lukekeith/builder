@@ -493,13 +493,17 @@ const builderHeader = ({ treatment, mainSha, mainLabel, replan } = {}) => {
   const short = (sha) => sha.slice(0, 12)
   const labelled = (label, what) => (label ? `${label} (${what})` : what)
   const under = treatment?.sha ? `${short(treatment.sha)}${treatment.dirty ? ' + uncommitted changes (unpinned)' : ''}` : 'not a git checkout (unpinned)'
-  return [`builder under test: ${labelled(treatment?.label, under)}`, '', ...(mainSha ? [`builder main (controls): ${labelled(mainLabel, short(mainSha))}`, ''] : []), ...(replan ? ['re-planned: the fleet audited and planned each case', ''] : [])]
+  return [`builder under test: ${labelled(treatment?.label, under)}`, '', ...(mainSha ? [`builder main (controls): ${labelled(mainLabel, short(mainSha))}`, ''] : []), ]
 }
+
+/** Each case's --replan start (result.json `replan`; an older result's `true` was the prefix), one line a case. */
+const REPLAN_WORDS = { prefix: 'prefix — the fleet audited and planned it', 'from-audited': 'from-audited — the spec was committed audited or planned; the plan taken out, the fleet planned it again' }
+const replanHeader = (results) => ['re-planned — where the fleet started each case:', '', ...results.map((r) => `- ${r.id}: ${REPLAN_WORDS[r.replan === true ? 'prefix' : r.replan] ?? `${DASH} (no start recorded)`}`), '']
 
 /** The suite report as markdown; with names: false a result's project never appears, nor its status's detail. `builder` adds the SHAs it ran on. */
 export function renderSuiteReport(results, { names = false, builder } = {}) {
   const controlOf = (r) => results.find((c) => c.control && c !== r && c.id.startsWith(`${r.id}@`))
-  const out = ['# Benchmark suite report', '', ...(builder ? builderHeader(builder) : [])]
+  const out = ['# Benchmark suite report', '', ...(builder ? builderHeader(builder) : []), ...(builder?.replan ? replanHeader(results) : [])]
   const head = ['id', 'size', ...(names ? ['project'] : []), 'status', 'wall', 'tokens', 'turns', 'cost', 'Δ wall vs baseline', 'Δ tokens vs baseline', 'Δ turns vs baseline', 'Δ cost vs baseline', 'Δ wall vs control', 'Δ tokens vs control', 'Δ turns vs control', 'Δ cost vs control', 'estimate']
   const rows = results.map((r) => {
     const m = r.measure
