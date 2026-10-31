@@ -576,6 +576,58 @@ test('stagesFromCommits splits a branch history into stages, parks kept apart', 
   assert.deepEqual(Object.fromEntries(Object.entries(anchored.stages).map(([k, v]) => [k, v / 60000])), { plan: 10, build: 20, endGates: 10 })
 })
 
+test('stagesFromCommits: a feature that came in audited and planned has no audit or plan — its opening commits are the build', () => {
+  // The shape of a benchmark case: spec, audit and plan were committed on the target before the fleet
+  // cut the branch, so the branch's first commits are the build's tasks and no audit or plan mark follows.
+  const c = (min, s) => ({ t: 1000 + min * 60, s })
+  const r = stagesFromCommits([
+    c(0, 'feat(x): owner history read model'), c(30, 'chore(x): x — contract frozen at phase 2'), c(52, 'feat(x): corrections screen'),
+    c(58, 'docs(x): x — SC1–SC9 landed'), c(66, 'fix(x): final review findings'), c(80, 'chore(x): x — phases closed, awaiting the walk lane'),
+    c(95, 'docs(x): x — agent walk round 1: 3 fixes'), c(99, 'docs(x): x agent signed off (not human-tested)'),
+    c(113, 'docs(x): x — verify READY'), c(114, 'docs(x): x shipped into main'),
+  ], 'x')
+  const mins = Object.fromEntries(Object.entries(r.stages).map(([k, v]) => [k, v / 60000]))
+  assert.deepEqual(mins, { build: 58, finalReview: 8, endGates: 14, walk: 19, verify: 14, ship: 1 })
+  assert.equal(r.opening, 'build')
+  // One that came in audited only: the run's opening commits are its plan.
+  const planned = stagesFromCommits([c(0, 'docs(x): spec and plan from main'), c(20, 'docs(x): plan x'), c(25, 'feat(x): one')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(planned.stages).map(([k, v]) => [k, v / 60000])), { plan: 20, build: 5 })
+  // A branch whose first mark is the walk (it came in built): its opening commits are the walk's.
+  const walked = stagesFromCommits([c(0, 'chore(x): x — walk readiness passed in the walk env'), c(9, 'docs(x): x agent signed off'), c(29, 'docs(x): x — verify READY')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(walked.stages).map(([k, v]) => [k, v / 60000])), { walk: 9, verify: 20 })
+})
+
+test('stagesFromCommits: a feature the fleet audits and plans keeps its audit and plan', () => {
+  const c = (min, s) => ({ t: 1000 + min * 60, s })
+  const r = stagesFromCommits([
+    c(0, 'docs(x): spec and plan from main'), c(4, 'docs(x): x — audit notes'), c(9, 'docs(x): x audited'), c(40, 'docs(x): plan x'),
+    c(70, 'feat(x): engine'), c(90, 'chore(x): x — phases closed, awaiting the walk lane'),
+  ], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(r.stages).map(([k, v]) => [k, v / 60000])), { audit: 9, plan: 31, build: 30, endGates: 20 })
+  assert.equal(r.opening, 'audit')
+})
+
+test('wallFacts starts the wall at the fleet\'s first run when the branch had nothing before it, the lead in the opening stage', () => {
+  const at = (min) => (1000 + min * 60) * 1000
+  const iso = (min) => new Date(at(min)).toISOString()
+  const c = (min, s) => ({ t: 1000 + min * 60, s })
+  const st = stagesFromCommits([c(3, 'feat(x): one'), c(30, 'chore(x): x — phases closed, awaiting the walk lane'), c(40, 'docs(x): x shipped into main')], 'x')
+  const timing = [{ lane: 'build', start: iso(0), ms: 30 * 60000 }, { lane: 'walk', start: iso(32), ms: 8 * 60000 }]
+  const w = wallFacts(st, timing, at(41))
+  assert.equal(w.wallMs, 41 * 60000)
+  assert.deepEqual(Object.fromEntries(Object.entries(w.stages).map(([k, v]) => [k, v / 60000])), { build: 3, endGates: 27, ship: 10, merge: 1 })
+  assert.equal(w.walkQueueMs, 2 * 60000)
+  // The fleet's own spec bring-in leads a branch it cut, before its first run: nothing moves.
+  const real = stagesFromCommits([c(0, 'docs(x): spec and plan from main'), c(9, 'docs(x): x audited'), c(20, 'docs(x): plan x')], 'x')
+  const r = wallFacts(real, [{ lane: 'build', start: iso(1), ms: 1 }], at(21))
+  assert.equal(r.wallMs, 21 * 60000)
+  assert.deepEqual(Object.fromEntries(Object.entries(r.stages).map(([k, v]) => [k, v / 60000])), { audit: 9, plan: 11, merge: 1 })
+  // A branch a person started weeks before the fleet took it: the wall starts with the fleet's first run.
+  const old = wallFacts(real, [{ lane: 'build', start: iso(60 * 24 * 30), ms: 1 }], at(60 * 24 * 30 + 5))
+  assert.equal(old.wallMs, 5 * 60000)
+  assert.equal(wallFacts({ stages: {} }, [], at(1)).wallMs, null)
+})
+
 test('walkFacts counts walk.md checks and each round report\'s results', () => {
   const report = (verdict, rows) => `sha: abc\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n${rows.map(([n, r]) => `| ${n} | web | item | ${r} | e.png |`).join('\n')}\nverdict: ${verdict}\n`
   const f = walkFacts({
@@ -658,7 +710,7 @@ test('landedRow reads the whole archive and returns the last row for a feature',
 })
 
 // ---- 4.9.2: migrations that land with a feature reach the dev DB ------------------------------
-import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts, destructiveMigration, forwardHalf } from '../fleet-core.mjs'
+import { parseWalkReadiness, landedMigrations, stagesFromCommits, walkFacts, wallFacts, destructiveMigration, forwardHalf } from '../fleet-core.mjs'
 
 const BODY = [
   '## Walk readiness', '', '```',
