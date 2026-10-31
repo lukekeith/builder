@@ -15,7 +15,7 @@
  *
  * Runs every couple of seconds, so it reads a handful of known files and spawns nothing.
  */
-import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, readdirSync, realpathSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { uptime } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -233,7 +233,7 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const argv = process.argv.slice(2)
   const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : undefined)
   const line = render({

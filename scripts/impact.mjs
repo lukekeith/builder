@@ -20,7 +20,7 @@
  * past (a shared harness beside the tests, a runner config, a dependency) selects the whole suite.
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { join, dirname, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -484,7 +484,7 @@ export function renderImpact(impact, globs = []) {
   return lines.join('\n') + '\n'
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const { requireConfig } = await import('./config.mjs')
   const CFG = requireConfig()
   const argv = process.argv.slice(2)

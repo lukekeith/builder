@@ -36,9 +36,9 @@
  * or HEAD is not the target. Names apply's plan did not list are refused unless --drop gives a reason
  * (the owner dropping a feature archive would not have judged abandoned).
  */
-import { existsSync, readdirSync, statSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, statSync, mkdirSync, rmSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE, isShippedFolder, isArchived } from './registry.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
@@ -407,4 +407,4 @@ async function main(argv) {
   return 2
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

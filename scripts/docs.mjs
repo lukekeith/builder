@@ -17,9 +17,9 @@
  *
  * Read-only; safe to run any number of times.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { BUILDER, read, headings, mdSection, normTitle, repoRoot, parseArgs, cli, posix } from './feature-core.mjs'
 
 const REF = 'skills/resume/REFERENCE.md'
@@ -144,4 +144,4 @@ async function main(argv) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

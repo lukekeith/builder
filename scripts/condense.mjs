@@ -41,9 +41,9 @@
  * gone, a PLAN.md already removed, a folder already archived — and a call whose result already
  * landed prints `already applied` / `already shipped` and commits nothing.
  */
-import { existsSync, readdirSync, rmSync, mkdirSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
 import { join, resolve, dirname, basename, relative } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { openFeature, headings, read, writeAtomic, git, shortHead, today, parseArgs, cli, posix, repoRoot, workspaceDir, setManifestKeys } from './feature-core.mjs'
 import { advance } from './advance.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
@@ -337,4 +337,4 @@ async function main(argv) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

@@ -26,10 +26,10 @@
  * owner's "Not now") both mark this wrap-up done: landings after it start the next one. Refuses while
  * a fleet runs. Never pushes, never touches a remote.
  */
-import { existsSync, mkdirSync, openSync, closeSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, closeSync, statSync, writeFileSync, realpathSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { execSync, execFileSync } from 'node:child_process'
-import { pathToFileURL, fileURLToPath } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { requireConfig } from './config.mjs'
 import { fleetDir, loadFleet, saveFleet, fleetAlive, parseWalkReadiness, tailArchive } from './fleet-core.mjs'
 
@@ -214,4 +214,4 @@ function main(argv) {
   return failed ? 1 : 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main(process.argv.slice(2)))
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) process.exit(main(process.argv.slice(2)))
