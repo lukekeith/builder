@@ -87,7 +87,13 @@ an orchestrator entered its first implementer dispatch already holding 190–300
 ends any other way (a park, a stop) ends as it always has. Outside the fleet — no `--no-dev-env` —
 the steps run on in one turn, as below.
 
-**Agent mode's job is a feature merged into the target branch.**
+**Agent mode's job is a feature merged into the target branch.** A run that stops short of that
+without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
+write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
+`commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
+left to the human — only `commit: manual` and `hold:` stop the feature, and they park.
+
+A run started after an unpark: read `docs.mjs section skills/resume/AGENT-MODE.md "Agent mode outside the build loop"` first.
 
 ## Agent mode outside the build loop
 
@@ -113,12 +119,6 @@ What `--agent-walk` adds past the build loop: a run after an unpark, the walk, t
 the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
 or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away
 from the folder the env serves from. Never run a test suite or a build in this run.
-
-A run that stops short of that
-without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
-write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
-`commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
-left to the human — only `commit: manual` and `hold:` stop the feature, and they park.
 
 ## Ship in agent mode (`--agent-walk`)
 
