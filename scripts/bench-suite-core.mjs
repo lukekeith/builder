@@ -475,11 +475,11 @@ export function statusCategory(status) {
 }
 
 /** The builder the suite ran — `{ treatment: { sha, dirty, label }, mainSha, mainLabel }` — as the report's header lines; a label (version+sha) leads its SHA. */
-const builderHeader = ({ treatment, mainSha, mainLabel } = {}) => {
+const builderHeader = ({ treatment, mainSha, mainLabel, replan } = {}) => {
   const short = (sha) => sha.slice(0, 12)
   const labelled = (label, what) => (label ? `${label} (${what})` : what)
   const under = treatment?.sha ? `${short(treatment.sha)}${treatment.dirty ? ' + uncommitted changes (unpinned)' : ''}` : 'not a git checkout (unpinned)'
-  return [`builder under test: ${labelled(treatment?.label, under)}`, '', ...(mainSha ? [`builder main (controls): ${labelled(mainLabel, short(mainSha))}`, ''] : [])]
+  return [`builder under test: ${labelled(treatment?.label, under)}`, '', ...(mainSha ? [`builder main (controls): ${labelled(mainLabel, short(mainSha))}`, ''] : []), ...(replan ? ['re-planned: the fleet audited and planned each case', ''] : [])]
 }
 
 /** The suite report as markdown; with names: false a result's project never appears, nor its status's detail. `builder` adds the SHAs it ran on. */

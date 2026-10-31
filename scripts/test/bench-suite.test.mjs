@@ -75,6 +75,7 @@ function setup() {
       ended: (id) => of('end', id).length > 0,
       starts: (id) => of('start', id).length,
       ends: (id) => of('end', id).length,
+      replans: (id) => of('replan', id).map((l) => l[2]),
       builders: (id) => of('builder', id).map((l) => l[2]),
       timeouts: (id) => of('timeout', id).map((l) => l[2]),
       cloneRoots: (id) => of('clone-root', id).map((l) => l[2]),
@@ -103,6 +104,30 @@ test('list shows fixtures and local cases with size and estimate', () => {
   const json = JSON.parse(suite(['list', '--json']).stdout)
   assert.deepEqual(json.find((c) => c.id === 'tags').project, 'fixtures')
   assert.deepEqual(json.find((c) => c.id === 'c3').estimate, { minutes: 20, usd: 1.5 })
+})
+
+test('--replan reaches the dry run and the case, is recorded in suite.json, and both report headers say so', async () => {
+  const { suite, suiteJson, readLog, dateDir, out, results, settled, state } = setup()
+  const dry = () => (existsSync(join(state, 'dry.log')) ? readFileSync(join(state, 'dry.log'), 'utf8').trim().split('\n') : [])
+  const p = suite(['plan', 'c2', '--replan'])
+  assert.equal(p.status, 0, p.stderr)
+  assert.deepEqual(dry(), ['replan c2 true'])
+  const r = suite(['run', 'c2', '--replan', '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => suiteJson().items[0].status === 'done')
+  await settled()
+  const s = suiteJson()
+  assert.equal(s.replan, true)
+  assert.deepEqual(dry(), ['replan c2 true', 'replan c2 true'])
+  assert.deepEqual(readLog().replans('c2'), ['true'])
+  const line = 're-planned: the fleet audited and planned each case'
+  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), new RegExp(line))
+  assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), new RegExp(line))
+  // without the flag: no field, no line
+  const r2 = suite(['run', 'c3', '--detach'])
+  assert.equal(r2.status, 0, r2.stderr)
+  await settled()
+  assert.equal(suiteJson().replan, undefined)
 })
 
 test('a case with an unknown size is listed and skipped, never run', () => {
