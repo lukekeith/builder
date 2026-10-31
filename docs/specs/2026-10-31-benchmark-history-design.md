@@ -26,7 +26,7 @@ remove wasted time and tokens; that needs the same case compared across builder 
   `findings` (`{ critical, important, minor }`), `schema` (an integer, starting at 1). Unknown → null.
 - **D3. `bench-suite.mjs history [<case>…] [--since <date>]`** prints, per case, one row per run in time
   order with the builder label, outcome and the key numbers, and the change against the case's previous
-  run under a different builder. A case whose newest run is worse than the one before by more than 10%
+  run under a different builder. A case whose newest run is worse than its previous run under a different builder by more than 10%
   on tokens per task, wall, or cost — or that landed before and does not now — is marked `⚠ regressed`.
   `/builder:benchmark --history` shows it.
 - **D4. Backfill.** A one-time `bench-suite.mjs history --backfill` appends rows for the results already
