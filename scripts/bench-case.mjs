@@ -233,16 +233,17 @@ export function specCommits(repo, registry, feature, commits) {
 const STATE_BEFORE_AUDIT = new Set(['spec', 'aligned'])
 
 /**
- * The longest prefix of `specs` after which <registry>/<feature>/MANIFEST.md's `state:` is spec or aligned — the
- * commits that come before the audit; [] when none does.
+ * The longest prefix of `specs` that comes before the audit: it stops at the first commit whose
+ * <registry>/<feature>/MANIFEST.md `state:` is past aligned (a commit with no MANIFEST continues); [] when the first is.
  */
 export function replanCommits(repo, registry, feature, specs) {
   let keep = 0
-  specs.forEach((c, i) => {
-    const md = tryGit(repo, 'show', `${c}:${registry.replace(/\/+$/, '')}/${feature}/MANIFEST.md`) ?? ''
-    const state = /^state:\s*["']?([\w-]+)/m.exec(md)?.[1]
-    if (STATE_BEFORE_AUDIT.has(state)) keep = i + 1
-  })
+  for (const c of specs) {
+    const md = tryGit(repo, 'show', `${c}:${registry.replace(/\/+$/, '')}/${feature}/MANIFEST.md`)
+    const state = /^state:\s*["']?([\w-]+)/m.exec(md ?? '')?.[1]
+    if (md !== null && !STATE_BEFORE_AUDIT.has(state)) break
+    keep++
+  }
   return specs.slice(0, keep)
 }
 
