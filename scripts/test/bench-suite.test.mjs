@@ -130,6 +130,42 @@ test('--replan reaches the dry run and the case, is recorded in suite.json, and 
   assert.equal(suiteJson().replan, undefined)
 })
 
+test('--resume reuses the recorded replan; the report header line is absent when replan is off', async () => {
+  const { suite, suiteJson, readLog, dateDir, out, results, settled, state } = setup()
+  const line = 're-planned: the fleet audited and planned each case'
+  const dry = () => (existsSync(join(state, 'dry.log')) ? readFileSync(join(state, 'dry.log'), 'utf8').trim().split('\n') : [])
+  suite(['run', 'c1,c2', '--lanes', '1', '--replan', '--detach'])
+  await until(() => suiteJson().items.find((i) => i.id === 'c1').status === 'done')
+  const { pid, id } = suiteJson()
+  process.kill(-pid, 'SIGKILL')
+  await until(() => {
+    try {
+      process.kill(pid, 0)
+      return false
+    } catch {
+      return true
+    }
+  })
+  const before = dry().length
+  const r = suite(['run', '--resume', id, '--detach'])
+  assert.equal(r.status, 0, r.stderr)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  assert.deepEqual(dry().slice(before), ['replan c2 true'])
+  assert.ok(readLog().replans('c2').length >= 1 && readLog().replans('c2').every((v) => v === 'true'))
+  assert.equal(suiteJson().replan, true)
+  assert.match(readFileSync(join(results, id, 'REPORT.md'), 'utf8'), new RegExp(line))
+})
+
+test('the report header has no re-planned line when replan is off', async () => {
+  const { suite, suiteJson, dateDir, out, results, settled } = setup()
+  assert.equal(suite(['run', 'c2', '--detach']).status, 0)
+  await until(() => existsSync(join(out, dateDir(), 'REPORT.md')))
+  await settled()
+  assert.doesNotMatch(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /re-planned/)
+  assert.doesNotMatch(readFileSync(join(results, suiteJson().id, 'REPORT.md'), 'utf8'), /re-planned/)
+})
+
 test('a case with an unknown size is listed and skipped, never run', () => {
   const { suite, writeCase } = setup()
   writeCase('odd', { size: 'huge' })
