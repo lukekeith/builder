@@ -68,14 +68,12 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
 
     ## Output format
 
-    Your final message IS the report: begin directly with the first finding's
-    verdict. Every line is a verdict, a finding with file:line, or a check you
-    ran — no preamble, no process narration.
-
-    **Write the same report to [FINDINGS_FILE]** (create or overwrite it —
+    **Write your full report to [FINDINGS_FILE]** (create or overwrite it —
     the one file you write; it is in the git-ignored workspace, not the
-    checkout). If findings remain open, the controller hands that file to
-    the next fix round as it is.
+    checkout), in the form below. If findings remain open, the controller
+    hands that file to the next fix round as it is. Every line is a
+    verdict, a finding with file:line, or a check you ran — no preamble, no
+    process narration.
 
     ### Finding verdicts
 
@@ -97,6 +95,16 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
 
     **Fix round:** [All findings addressed, no new Critical/Important breakage
     | Findings remain open] — list the open ones.
+
+    ## Your reply — short; the report is in the file
+
+    Reply with ONLY:
+    - one line per finding, in order: `ADDRESSED | NOT ADDRESSED — [finding
+      one-liner] — file:line`
+    - `new breakage: none`, or one line per item: `new breakage: Critical|
+      Important|Minor — file:line — what broke`
+    - the fix-round verdict line above
+    Out-of-scope observations stay in the file.
 ```
 
 **Placeholders:** `[MODEL]` · `[BRIEF_FILE]` · `[FINDINGS]` (verbatim, one per bullet) ·

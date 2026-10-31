@@ -71,11 +71,11 @@
       "turns": [
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — task-2-brief.md (+ SPEC §api, §Contract (open), recipe path, §Global constraints) · dispatch-implementer-task-2.md · BASE 3f2a1c0 · subagent_type: builder:implementer"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2) — wrote .builder/cert-tags/dispatch-implementer-task-2.md · BASE 3f2a1c0 recorded for task 2 · Agent call — subagent_type: builder:implementer · model: sonnet"
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(builder:implementer — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
+          "text": "⏺ Agent(builder:implementer, sonnet — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
         },
         {
           "role": "claude",
@@ -122,7 +122,7 @@
         }
       ],
       "stamp": {
-        "hash": "a63c49270c0f",
+        "hash": "e7ed0011e6e9",
         "version": "5.5.0",
         "date": "2026-10-31"
       }

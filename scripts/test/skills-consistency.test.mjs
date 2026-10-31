@@ -741,7 +741,7 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
   assert.match(exec, /dispatch\.mjs final-review <folder>/)
   assert.match(walk, /dispatch\.mjs agent-walk <folder>/)
   // findings travel as files: every reviewer template writes its report where the dispatch says
-  for (const f of ['task-reviewer.md', 're-review.md', 'final-reviewer.md']) assert.match(read(`skills/build/prompts/${f}`), /\*\*Write the same report to \[FINDINGS_FILE\]\*\*/, f)
+  for (const f of ['task-reviewer.md', 're-review.md', 'final-reviewer.md']) assert.match(read(`skills/build/prompts/${f}`), /\*\*Write (?:the same|your full) report to \[FINDINGS_FILE\]\*\*/, f)
   for (const s of [build, exec]) assert.match(s, /--findings-file/)
   assert.doesNotMatch(build, /`<builder>\/scripts\/review-package BASE HEAD/, 'the review package comes from dispatch.mjs, not a hand call')
   // P2 — state changes through advance.mjs / condense.mjs / plan-slices --index --write
@@ -958,4 +958,32 @@ test('opinionated code is the decision: format, implementer, reviewer, execution
   assert.match(plan, /§No placeholders and the whole §Self-review/)
   assert.match(plan, /to cite file:line/)
   assert.match(plan, /frozen contract, algorithm bodies, migrations and security mechanisms/)
+})
+
+test('one line per fact: short agent replies — the full reports stay in their files', () => {
+  const impl = read('skills/build/prompts/implementer.md')
+  assert.match(impl, /at most 6 lines, each under 100 characters/)
+  assert.match(impl, /one test line/)
+  assert.match(impl, /one line per concern/)
+  assert.match(impl, /Write your full report to \[REPORT_FILE\]/)
+  assert.doesNotMatch(impl, /the report file path|under 15 lines/)
+  const fin = read('skills/build/prompts/final-reviewer.md')
+  const finReply = fin.slice(fin.indexOf('## Your reply'))
+  assert.ok(fin.indexOf('## Your reply') > 0, 'the final reviewer has a reply section')
+  assert.match(finReply, /Ready for the human's walk\? Yes \| No \| With fixes/)
+  assert.match(finReply, /one line per finding, Critical first, then Important, then Minor/)
+  assert.match(finReply, /no Strengths/)
+  // the file keeps the headings the fix wave and fleet-core reviewFacts read
+  for (const h of ['### Strengths', '#### Critical (Must Fix)', '#### Important (Should Fix)', '#### Minor (Nice to Have)', '### Assessment']) assert.ok(fin.includes(h), h)
+  const rr = read('skills/build/prompts/re-review.md')
+  const rrReply = rr.slice(rr.indexOf('## Your reply'))
+  assert.ok(rr.indexOf('## Your reply') > 0, 'the re-review has a reply section')
+  assert.match(rrReply, /one line per finding, in order: `ADDRESSED \| NOT ADDRESSED/)
+  assert.match(rrReply, /`new breakage: none`/)
+  for (const h of ['### Finding verdicts', '### New breakage in the fix diff', '### Verdict']) assert.ok(rr.includes(h), h)
+  // a routine dispatch sends the model the Agent-call line names; §Model selection is for an escalation
+  const build = read('skills/build/SKILL.md')
+  assert.match(build, /send the model it names/)
+  assert.doesNotMatch(build, /name the model yourself/)
+  assert.doesNotMatch(build, /before the first dispatch,\s+`docs\.mjs section skills\/build\/EXECUTION\.md "Model selection"`/)
 })

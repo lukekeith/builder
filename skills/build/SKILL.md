@@ -25,8 +25,8 @@ on top of that loop.
 output: `node <builder>/scripts/docs.mjs fleet-build --no-config` — EXECUTION §The task loop,
 REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk` —
 then `node <builder>/scripts/docs.mjs fleet-setup` — EXECUTION §Setup and the config. The rest is read with
-`docs.mjs section` at the step that needs it: before the first dispatch,
-`docs.mjs section skills/build/EXECUTION.md "Model selection"`; when the last phase closes, this
+`docs.mjs section` at the step that needs it — never EXECUTION §Model selection for a routine
+dispatch (dispatch.mjs names the model); when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
 pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md, nor EXECUTION's preamble,
 whose rules still bind: narrate at most one short line between tool calls, execute every task without
@@ -156,11 +156,13 @@ you know what not to repeat in `--context`:
 EXECUTION.md §1–5 unchanged, with these bindings:
 
 - 🔴 **Every dispatch is rendered, never typed:** `node <builder>/scripts/dispatch.mjs <kind> <folder> …`
-  writes the subagent's whole prompt into the workspace and prints the Agent call — its
-  `description`, its **`subagent_type`** (send it as printed: builder's lean `builder:implementer`,
+  writes the subagent's whole prompt into the workspace and prints the Agent call on one line — its
+  **`subagent_type`** (send it as printed: builder's lean `builder:implementer`,
   `builder:implementer-skills` or `builder:reviewer` unless the config's `agent_types:` says
-  otherwise — general-purpose only when this session has no agent of that type), the model guidance
-  (**name the model yourself**, EXECUTION.md §Model selection) and the prompt line. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
+  otherwise — general-purpose only when this session has no agent of that type), its **`model`**
+  (send the model it names: EXECUTION.md §Model selection as a table, the fix-loop escalation
+  included — read that section only to go above it for a task that needs more), its `description`
+  and its prompt. Every path it prints is relative to the repo root. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
   the file and survives a crash. The kinds:
 
