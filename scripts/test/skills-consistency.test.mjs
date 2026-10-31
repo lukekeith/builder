@@ -774,6 +774,17 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
       assert.doesNotMatch(text, /echo +["']?={3,}/, `skills/${dir}/${file} has an echo === separator`)
     }
   }
+  // every `docs.mjs section <file> "<heading>"` pointer names a file and a heading that exist
+  const { mdSection } = await import('../feature-core.mjs')
+  let pointers = 0
+  for (const dir of readdirSync(join(ROOT, 'skills')))
+    for (const file of readdirSync(join(ROOT, 'skills', dir)).filter((x) => x.endsWith('.md')))
+      for (const m of read(`skills/${dir}/${file}`).matchAll(/docs\.mjs section (skills\/[\w./-]+\.md) "([^"]+)"/g)) {
+        pointers++
+        assert.ok(existsSync(join(ROOT, m[1])), `skills/${dir}/${file}: docs.mjs section ${m[1]} — no such file`)
+        assert.ok(mdSection(read(m[1]), m[2]), `skills/${dir}/${file}: docs.mjs section ${m[1]} "${m[2]}" — no such heading`)
+      }
+  assert.ok(pointers >= 6, `only ${pointers} docs.mjs section pointers found`)
   // P6 — build writes the hand-off; resume's walk lane reads it and falls back on stale (exit 3)
   assert.match(build, /handoff\.mjs write <folder>/)
   assert.match(resume, /handoff\.mjs read <folder>/)

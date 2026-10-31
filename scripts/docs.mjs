@@ -51,7 +51,7 @@ export const STEPS = {
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
   // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
-  // fleet-build: build SKILL (Task 4 adds the line) — under the fleet, EXECUTION §The task loop (its
+  // fleet-build: build SKILL "Under the fleet (`BUILDER_FLEET_DIR` is set): read … fleet-build instead" — EXECUTION §The task loop (its
   // five steps), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk`.
   // Left out (≤ 30,000 chars) for `docs.mjs section`: EXECUTION §Setup, §Model selection, §The final whole-branch
   // review, §Finish, §Common rationalizations; REFERENCE §SPEC.md, §MANIFEST.md, §Walk readiness.

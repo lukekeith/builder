@@ -21,6 +21,15 @@ prints EXECUTION.md, then REFERENCE (§Contract and the contract freeze · §PLA
 brief · §House rules · §Environment landmines). Everything below is the binding this pipeline puts
 on top of that loop.
 
+**Under the fleet (`BUILDER_FLEET_DIR` is set):** read `node <builder>/scripts/docs.mjs fleet-build`
+instead — EXECUTION §The task loop, REFERENCE §Contract and the contract freeze · §PLAN.md · §The
+verifier, AGENT-MODE §`--agent-walk`, the config — and, in the same Bash call, EXECUTION §Setup:
+`node <builder>/scripts/docs.mjs section skills/build/EXECUTION.md "Setup"`. The rest is read with
+`docs.mjs section` at the step that needs it: before the first dispatch,
+`docs.mjs section skills/build/EXECUTION.md "Model selection"`; when the last phase closes, this
+skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
+pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md.
+
 **The orchestrator does not type what a script writes** (REFERENCE §The scripts): every subagent
 prompt comes from `dispatch.mjs`, every manifest / ledger / commit change from `advance.mjs`, the walk
 script from `walk-script.mjs`, the walk lane's hand-off from `handoff.mjs`. Each is idempotent —
@@ -94,6 +103,10 @@ Two things it leaves to this skill:
 - **The pre-flight scan's third row type is this pipeline's:** one row per task for whether its
   `Files` stay inside its `App:`. A task reaching into another app breaks the one-app phase the
   verifier waits on.
+
+**Under `--agent-walk`, a manifest with no `agent-walk:` line gets one** before the first dispatch,
+so a cold session keeps agent mode (AGENT-MODE §`--agent-walk`):
+`node <builder>/scripts/advance.mjs <folder> --set "agent-walk=on <YYYY-MM-DD>" --commit "chore({key}): {feature} — agent walk on"`.
 
 ## The task loop
 
@@ -171,7 +184,8 @@ EXECUTION.md §1–5 unchanged, with these bindings:
 - **After each task's commit** (its review too, when there is one):
   `node <builder>/scripts/verify/verify.mjs request <worktree> HEAD --tier commit` — `<worktree>` is
   this checkout's root (`git rev-parse --show-toplevel`). It prints a request id and returns at
-  once; the next task does not wait.
+  once; the next task does not wait. Under the fleet, `dispatch.mjs next` files it and reads the
+  verdict below (EXECUTION.md §5).
 - **Before every implementer dispatch**, read `node <builder>/scripts/verify/verify.mjs verdict
   <branch>` — `<branch>` is the checked-out branch. It prints the latest *finished* verdict and the
   sha it ran at; exit 75 (none finished yet) or 5 (none at all) → nothing to act on yet. A
@@ -295,6 +309,13 @@ foreground; tests are the verifier's, which runs on its own and is read with `ve
 Never ask.
 
 ## When the last phase signs
+
+**Under the fleet (`BUILDER_FLEET_DIR` is set):** first
+`node <builder>/scripts/docs.mjs section skills/build/SKILL.md "When the last phase signs"` if this
+section is not in context; then `docs.mjs section skills/build/EXECUTION.md "The final whole-branch review"`
+at step 2, `docs.mjs section skills/resume/REFERENCE.md "Walk readiness"` at step 3 when it runs, and
+`docs.mjs section skills/build/EXECUTION.md "Finish"` at step 6. EXECUTION's "Common rationalizations"
+is the same call, read when a step looks skippable.
 
 1. **The last phase's tier is the end's.** The phase tier of the last phase (§Phase close) is
    green on the last commit; nothing else runs here. After step 2's fix wave commits, request the

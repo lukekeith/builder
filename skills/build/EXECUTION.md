@@ -176,6 +176,11 @@ in the config's `agent_types:`.
 - **Do not tell the implementer to run the app's suite.** Its prompt limits it to the tests of the
   code it changes plus the type-check; the verifier runs the rest (build §The test plan).
 
+**Under the fleet (`BUILDER_FLEET_DIR` is set):** when the implementer reports DONE (concerns
+cleared, §2), run `<plugin>/scripts/dispatch.mjs next <folder> --after-implement N` and send the Agent
+call it prints. Under `review=slice` that is task N's review (§3); otherwise it closes the task as §5
+does.
+
 Template: [prompts/implementer.md](prompts/implementer.md)
 
 ### 2. Handle the report
@@ -222,6 +227,9 @@ replaces it. Under `review=app` the same review runs once over the phase's whole
 - The reviewer may report **⚠️ Cannot verify from diff** items — requirements living in unchanged code
   or spanning tasks. These don't block the rest of the review, but **you resolve each one yourself**
   before marking the task complete. A confirmed gap enters the fix loop.
+
+**Under the fleet:** `dispatch.mjs next <folder> --after-implement N` (§1) renders this review — the
+same package as `task-review --task N`. Fix rounds and re-reviews are rendered as §4 says.
 
 Template: [prompts/task-reviewer.md](prompts/task-reviewer.md)
 
@@ -304,6 +312,14 @@ regression whose test id is not yet ledgered for its `introduced by` commit is a
 against that commit's task, ledgered `Regression <test id> (introduced by <sha7>): fix dispatched
 against Task N`; one already ledgered is never dispatched twice, and a later verdict without it
 means the fix held.
+
+**Under the fleet (`BUILDER_FLEET_DIR` is set), one call does all of that:** after a clean review, or
+one parked at the cap, `<plugin>/scripts/dispatch.mjs next <folder> --close N --ledger "<line>"
+[--context "…"]` writes the ledger line, files the commit-tier request, prints the verdict, then
+renders task N+1 (`--context` goes to it) and prints its Agent call. When N ends its phase it prints
+`phase <P> closes — build §Phase close` instead. On `verdict red — act on it (EXECUTION §5)` it renders
+nothing: act on each regression exactly as above, then run the `dispatch.mjs implementer` command it
+names (or close the phase, when that line follows). Re-run after a crash: what is done says `already applied`.
 
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.

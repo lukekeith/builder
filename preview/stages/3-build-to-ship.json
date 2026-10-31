@@ -14,7 +14,7 @@
       "turns": [
         {
           "role": "note",
-          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken there launches agents (plan §The go-ahead) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead taken without one — or what the fleet's log shows. Either way it reads the manifest's tests:."
+          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken there launches agents (plan §The go-ahead) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead taken without one. The fleet's log differs in two places: it reads docs.mjs fleet-build plus EXECUTION §Setup (docs.mjs section), not docs.mjs build, and it records agent-walk: on on the manifest before the first dispatch. Either way it reads the manifest's tests:."
         },
         {
           "role": "user",
@@ -51,9 +51,9 @@
         }
       ],
       "stamp": {
-        "hash": "401b6257ad3a",
+        "hash": "19b547705e30",
         "version": "5.5.0",
-        "date": "2026-10-30"
+        "date": "2026-10-31"
       }
     },
     {
@@ -88,7 +88,7 @@
         },
         {
           "role": "note",
-          "text": "tests: review=end — the recommended plan. A DONE report goes straight to the ledger; the one review is the final whole-branch review when the last phase signs. The implementer runs its own tests and the type-check, never the app's suite: after each task's commit the build asks the verifier for the commit tier and goes on, and reads the latest finished verdict before the next implementer dispatch. A regression it names (introduced by <sha7>) becomes a fix dispatch against that commit's task, ledgered once. Under review=slice the same task looks like this:"
+          "text": "tests: review=end — the recommended plan. A DONE report goes straight to the ledger; the one review is the final whole-branch review when the last phase signs. The implementer runs its own tests and the type-check, never the app's suite: after each task's commit the build asks the verifier for the commit tier and goes on, and reads the latest finished verdict before the next implementer dispatch. A regression it names (introduced by <sha7>) becomes a fix dispatch against that commit's task, ledgered once. Under the fleet one call does that bookkeeping: dispatch.mjs next --after-implement N (or --close N --ledger \"<line>\" after a review) writes the ledger line, files the commit-tier request, prints the verdict and renders the next task's Agent call. Under review=slice the same task looks like this:"
         },
         {
           "role": "tool",
@@ -122,9 +122,9 @@
         }
       ],
       "stamp": {
-        "hash": "ceae9ca95b41",
+        "hash": "b009be6e37bc",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-31"
       }
     },
     {
@@ -314,9 +314,9 @@
         }
       ],
       "stamp": {
-        "hash": "6bc74bc9643a",
+        "hash": "e52d151ac65c",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-10-31"
       }
     },
     {
