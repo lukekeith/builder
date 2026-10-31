@@ -229,6 +229,22 @@ export function specCommits(repo, registry, feature, commits) {
   return out
 }
 
+const STATE_BEFORE_AUDIT = new Set(['spec', 'aligned'])
+
+/**
+ * The longest prefix of `specs` after which <registry>/<feature>/MANIFEST.md's `state:` is spec or aligned — the
+ * commits that come before the audit; [] when none does.
+ */
+export function replanCommits(repo, registry, feature, specs) {
+  let keep = 0
+  specs.forEach((c, i) => {
+    const md = tryGit(repo, 'show', `${c}:${registry.replace(/\/+$/, '')}/${feature}/MANIFEST.md`) ?? ''
+    const state = /^state:\s*["']?([\w-]+)/m.exec(md)?.[1]
+    if (STATE_BEFORE_AUDIT.has(state)) keep = i + 1
+  })
+  return specs.slice(0, keep)
+}
+
 /**
  * Where a case starts, from the feature's range (featureRange): the base the clone checks out and the
  * spec commits cherry-picked onto it, together the tree the original build began from.
@@ -293,7 +309,7 @@ const agentWalkLines = (md) => {
  * Everything a case needs, worked out from the repo without writing anything: refusals (the run must
  * not start), else a prep failure (the merge can't be resolved), else the plan for the clone.
  */
-export function planCase({ profile, profileDir = '.', caseDef, builder, dest, out, listening = [] }) {
+export function planCase({ profile, profileDir = '.', caseDef, builder, dest, out, listening = [], replan = false }) {
   const refusals = []
   const feature = caseDef?.feature
   if (!feature) refusals.push('case has no feature')
@@ -329,7 +345,9 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   // the registry, from the config where the branch was cut (else where it landed): caseStart needs it to pick the base
   const forkMd = tryGit(repo, 'show', `${range.fork}:.claude/builder.md`) ?? tryGit(repo, 'show', `${range.base}:.claude/builder.md`) ?? ''
   const registry = /^registry:\s*(\S+)/m.exec(forkMd)?.[1] ?? 'docs/features'
-  const { base, specs, spec } = caseStart(repo, registry, feature, range)
+  const start = caseStart(repo, registry, feature, range)
+  const { base, spec } = start
+  const specs = replan ? replanCommits(repo, registry, feature, start.specs) : start.specs
   let baseMd
   try {
     baseMd = git(repo, 'show', `${base}:.claude/builder.md`) + '\n'
@@ -411,7 +429,7 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)]), ...mcp].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
   const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
-  const failure = spec ? null : `no spec-only commits lead ${feature}'s branch`
+  const failure = !spec ? `no spec-only commits lead ${feature}'s branch` : replan && !specs.length ? '--replan: no spec commit before the audit' : null
   const specLines = spec ? lineCount(tryGit(repo, 'show', `${head}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
   return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines, target }
 }
@@ -421,8 +439,8 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
  * profile applied and committed, its files placed and its setup run. Refuses before it clones.
  * → { clone, base, specs, refusals, failure, plan }; clone is null when nothing was made.
  */
-export async function prepareClone({ profile, profileDir, caseDef, builder, dest, out, listening = [] }) {
-  const plan = planCase({ profile, profileDir, caseDef, builder, dest, out, listening })
+export async function prepareClone({ profile, profileDir, caseDef, builder, dest, out, listening = [], replan = false }) {
+  const plan = planCase({ profile, profileDir, caseDef, builder, dest, out, listening, replan })
   const logDir = out ?? dirname(dest)
   const none = { clone: null, base: plan.base ?? null, specs: plan.specs ?? [], refusals: plan.refusals, failure: plan.failure ?? null, plan }
   if (plan.refusals.length || plan.failure) return none
@@ -662,7 +680,7 @@ const isMain = (() => {
 })()
 
 if (isMain) {
-  const USAGE = 'usage: bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run]'
+  const USAGE = 'usage: bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run] [--replan]'
   const refuse = (reasons) => {
     for (const r of [].concat(reasons)) console.error(`refused: ${r}`)
     process.exit(2)
@@ -674,7 +692,7 @@ if (isMain) {
   }
   const id = argv[0]
   const dryRun = argv.includes('--dry-run')
-  const known = new Set(['--builder', '--out', '--clone-root', '--dry-run'])
+  const known = new Set(['--builder', '--out', '--clone-root', '--dry-run', '--replan'])
   const unknown = argv.filter((a, i) => a.startsWith('--') && !known.has(a) && !['--builder', '--out', '--clone-root'].includes(argv[i - 1]))
   if (!id || id.startsWith('--') || unknown.length || !opt('--out') || ['--builder', '--clone-root'].some((f) => argv.includes(f) && !opt(f))) refuse(USAGE)
   const builder = resolve(opt('--builder') ?? BUILDER)
@@ -688,7 +706,7 @@ if (isMain) {
   const profileFile = join(local, 'projects', `${caseDef.project}.json`)
   const profile = readJson(profileFile)
   if (!profile) refuse(`no profile ${profileFile} (or it is not JSON)`)
-  const args = { profile, profileDir: dirname(profileFile), caseDef, builder, dest: join(cloneRoot, 'clone'), out, listening: listeningPorts() }
+  const args = { profile, profileDir: dirname(profileFile), caseDef, builder, dest: join(cloneRoot, 'clone'), out, listening: listeningPorts(), replan: argv.includes('--replan') }
 
   if (dryRun) {
     const p = planCase(args)
@@ -702,6 +720,7 @@ if (isMain) {
       `${id} (${caseDef.size}, ${caseDef.project}) — dry run, nothing is cloned or run`,
       `  clone:  ${p.clone}`,
       `  base:   ${subject(p.base)}`,
+      ...(args.replan ? ['  replan: the fleet starts before the audit'] : []),
       `  specs:  ${p.specs.length ? p.specs.map(subject).join('\n          ') : '(none after the base — it holds the spec)'}`,
       '  agent_walk:',
       ...agentWalkLines(p.builderMd).map((l) => `    ${l}`),
@@ -720,7 +739,7 @@ if (isMain) {
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
-  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, builder: builderLabel(builder), status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [] }
+  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, builder: builderLabel(builder), status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [], ...(args.replan ? { replan: true } : {}) }
   mkdirSync(out, { recursive: true })
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`

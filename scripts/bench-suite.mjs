@@ -4,7 +4,7 @@
  * detached, reported per case and per stage. Design: docs/specs/2026-10-29-benchmark-suite-design.md.
  *
  *   node scripts/bench-suite.mjs list [--json]
- *   node scripts/bench-suite.mjs plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty]
+ *   node scripts/bench-suite.mjs plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] [--replan]
  *   node scripts/bench-suite.mjs run  <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] --detach
  *   node scripts/bench-suite.mjs run --resume <suite-id> --detach
  *   node scripts/bench-suite.mjs status
@@ -45,7 +45,7 @@ const LOCK = join(RESULTS, 'lock')
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURE_RESULTS = join(BUILDER, 'bench', 'results')
 const DEFAULT_LANES = 3
-const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
+const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] [--replan] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
 const STOP_WAIT_MS = Number(process.env.BENCH_STOP_WAIT_MS) || 120 * 1000
 const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
 
@@ -168,7 +168,7 @@ const label = (c) => (c.problem ? `${c.size ?? '?'} · ${c.id} — ${c.covers} �
 // ---- selection and the schedule --------------------------------------------------------------------
 
 const VALUE_OPTS = new Set(['--lanes', '--control', '--budget', '--builder', '--resume'])
-const FLAG_OPTS = new Set(['--all', '--detach', '--json', '--allow-dirty'])
+const FLAG_OPTS = new Set(['--all', '--detach', '--json', '--allow-dirty', '--replan'])
 
 /** The CLI's options; an unknown flag or a flag missing its value is a usage error. */
 function parseArgs(argv) {
@@ -278,13 +278,13 @@ function scheduleItems(items, packed) {
  * Each archived case's `--dry-run` (once per case, controls included) → { refusals: [{ id, reasons }], summaries: [{ id, text }] };
  * two picked projects whose dry runs name one port are a refusal too — they may run at once.
  */
-function dryRuns(items, builder) {
+function dryRuns(items, builder, replan = false) {
   const refusals = []
   const summaries = []
   const ports = new Map()
   const cases = [...new Map(items.filter((i) => i.kind === 'archived').map((i) => [i.case ?? i.id, i.project])).entries()]
   for (const [id, project] of cases) {
-    const r = spawnSync(process.execPath, [CASE_RUNNER, id, '--builder', builder, '--out', join(tmpdir(), 'bench-suite-dry', id), '--dry-run'], { encoding: 'utf8' })
+    const r = spawnSync(process.execPath, [CASE_RUNNER, id, '--builder', builder, '--out', join(tmpdir(), 'bench-suite-dry', id), '--dry-run', ...(replan ? ['--replan'] : [])], { encoding: 'utf8' })
     if (r.status === 0) {
       const text = String(r.stdout ?? '').replace(/\n+$/, '')
       summaries.push({ id, text })
@@ -462,11 +462,11 @@ function treatmentOf(builder, allowDirty) {
 const refusedOrDied = (r, errFile) => (r.code === 2 ? `refused: ${firstLine(readFileSync(errFile, 'utf8')).replace(/^refused:\s*/, '') || 'no reason given'}` : 'failed: case process died')
 
 /** An archived item: bench-case in a fresh --out, its clone under CLONE_ROOT, its fleet timeout from its estimate; a control's result is rewritten as <id>@main. → its status */
-async function runArchived(it, builder, out, suiteId, onSpawn) {
+async function runArchived(it, builder, out, suiteId, onSpawn, replan = false) {
   const errFile = join(out, 'case.err')
   const env = { ...process.env, BENCH_CASE_FLEET_TIMEOUT_MS: String(caseFleetTimeoutMs(it.estimate)) }
   const cloneRoot = join(CLONE_ROOT, suiteId, basename(out))
-  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out, '--clone-root', cloneRoot], { cwd: out, env, outFile: join(out, 'case.out'), errFile, onSpawn })
+  const r = await spawnWait(process.execPath, [CASE_RUNNER, it.case, '--builder', builder, '--out', out, '--clone-root', cloneRoot, ...(replan ? ['--replan'] : [])], { cwd: out, env, outFile: join(out, 'case.out'), errFile, onSpawn })
   const resFile = join(out, 'result.json')
   const res = readJson(resFile)
   if (!res) return refusedOrDied(r, errFile)
@@ -554,7 +554,7 @@ async function runSuite(id) {
       saveSuite(s)
       const checkout = it.control ? main : treatment
       const onSpawn = tracker(s, it)
-      status = it.kind === 'fixture' ? await runFixture(it, checkout, out, onSpawn, s.builder) : await runArchived(it, checkout, out, id, onSpawn)
+      status = it.kind === 'fixture' ? await runFixture(it, checkout, out, onSpawn, s.builder) : await runArchived(it, checkout, out, id, onSpawn, !!s.replan)
     } catch (e) {
       status = `failed: ${firstLine(e.message)}`
     }
@@ -609,7 +609,7 @@ function writeReports(id) {
   }
   const committed = join(SUITE_OUT, s.report, 'REPORT.md')
   const named = join(suiteDir(id), 'REPORT.md')
-  const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null, mainLabel: s.mainLabel ?? null }
+  const builder = { treatment: s.treatment ?? null, mainSha: s.mainSha ?? null, mainLabel: s.mainLabel ?? null, replan: !!s.replan }
   mkdirSync(dirname(committed), { recursive: true })
   writeFileSync(committed, renderSuiteReport(results, { names: false, builder }))
   writeFileSync(named, renderSuiteReport(results, { names: true, builder }))
@@ -753,7 +753,7 @@ if (isMain) {
     const resume = cmd === 'run' ? args.opts['--resume'] : undefined
     if (resume != null) {
       const id = plainId(resume)
-      if (args.pos.length || args.opts['--all'] || args.opts['--budget'] || args.opts['--control'] || args.opts['--lanes'] || args.opts['--builder'] || args.opts['--allow-dirty']) die('--resume takes only the suite id (and --detach)')
+      if (args.pos.length || args.opts['--all'] || args.opts['--budget'] || args.opts['--control'] || args.opts['--lanes'] || args.opts['--builder'] || args.opts['--allow-dirty'] || args.opts['--replan']) die('--resume takes only the suite id (and --detach)')
       const held = lockState()
       if (held?.live) die(busy(held))
       const s = readSuite(id)
@@ -765,7 +765,7 @@ if (isMain) {
         console.log(`suite ${id} has nothing left to run — report: ${named}`)
         process.exit(0)
       }
-      const { refusals, summaries } = dryRuns(left, s.builder)
+      const { refusals, summaries } = dryRuns(left, s.builder, !!s.replan)
       if (refusals.length) {
         printRefusals(refusals)
         process.exit(2)
@@ -792,7 +792,7 @@ if (isMain) {
       // a database named in this shell is the human's: bench-case strips these from every case's setup, teardown and fleet
       const stripped = Object.keys(process.env).filter(strippedEnv).sort()
       if (stripped.length) console.log(`this shell sets ${stripped.join(', ')} — no case inherits them: setup, teardown and the fleet start without them, and a profile's env sets its own`)
-      const { refusals, summaries } = dryRuns(items, builder)
+      const { refusals, summaries } = dryRuns(items, builder, !!args.opts['--replan'])
       if (refusals.length) {
         printRefusals(refusals)
         process.exit(2)
@@ -809,7 +809,7 @@ if (isMain) {
 
     const held = lockState()
     if (held?.live) die(busy(held))
-    const { refusals, summaries } = dryRuns(items, builder)
+    const { refusals, summaries } = dryRuns(items, builder, !!args.opts['--replan'])
     if (refusals.length) {
       printRefusals(refusals)
       process.exit(2)
@@ -818,7 +818,7 @@ if (isMain) {
     printWarnings(warnings)
     const id = newSuiteId()
     mkdirSync(suiteDir(id), { recursive: true })
-    saveSuite({ id, builder, treatment, mainSha: null, lanes, createdAt: Date.now(), pid: null, items: withWarnings(scheduleItems(items, packed), warnings), skipped })
+    saveSuite({ id, builder, treatment, ...(args.opts['--replan'] ? { replan: true } : {}), mainSha: null, lanes, createdAt: Date.now(), pid: null, items: withWarnings(scheduleItems(items, packed), warnings), skipped })
     launch(id)
     process.exit(0)
   }
