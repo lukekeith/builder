@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, replanCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, planTasks, saveEvidence, removeClone } from '../bench-case.mjs'
+import { specCommits, replanCommits, resetToAudited, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, planTasks, saveEvidence, removeClone } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -152,8 +152,17 @@ test('--replan from a spec committed planned: the clone starts audited, with no 
   const res = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8'))
   assert.equal(res.status, 'done')
   assert.equal(res.replan, 'from-audited')
-  // main: the stub's plan commit; main~1 the profile; main~2 the reset the fleet starts from; main~3 the spec commit
-  assert.deepEqual(git(clone, 'log', '--format=%s', 'main~3..main~1').split('\n'), ['bench: profile', 'bench: re-plan from audited'])
+  // main: the stub's plan commit; main~1 the profile; main~2 the spec and the reset as one commit on the base
+  assert.deepEqual(git(clone, 'log', '--format=%s', 'main~2..main~1').split('\n'), ['bench: profile'])
+  assert.equal(git(clone, 'log', '-1', '--format=%s', 'main~2'), 'spec (re-plan from audited)')
+  assert.equal(git(clone, 'log', '-1', '--format=%s', 'main~3'), 'init')
+  // the original plan is nowhere in the clone: no commit carries it, and its blob is gone
+  assert.deepEqual(git(clone, 'log', '--all', '--format=%s', '--', 'docs/features/f/PLAN.md').split('\n'), ['plan f'])
+  assert.equal(git(clone, 'log', '-p', 'main~1', '--', 'docs/features/f/PLAN.md'), '')
+  const oldPlan = git(repo, 'rev-parse', 'builder/f~2:docs/features/f/PLAN.md')
+  assert.equal(spawnSync('git', ['cat-file', '-e', oldPlan], { cwd: clone }).status !== 0, true, 'the original PLAN.md blob is still in the clone')
+  const oldMf = git(repo, 'rev-parse', 'builder/f~2:docs/features/f/MANIFEST.md')
+  assert.equal(spawnSync('git', ['cat-file', '-e', oldMf], { cwd: clone }).status !== 0, true, 'the original manifest blob is still in the clone')
   assert.equal(tryShow(clone, 'main~1:docs/features/f/PLAN.md'), null)
   const mf = git(clone, 'show', 'main~1:docs/features/f/MANIFEST.md')
   assert.match(mf, /^state: audited$/m)
@@ -163,8 +172,20 @@ test('--replan from a spec committed planned: the clone starts audited, with no 
   const spec = git(clone, 'show', 'main~1:docs/features/f/SPEC.md')
   assert.doesNotMatch(spec, /^## Plan/m)
   assert.match(spec, /^## Findings & risks/m)
-  // the reset touched only the feature's folder
-  assert.deepEqual(git(clone, 'diff', '--name-only', 'main~3', 'main~2').split('\n').sort(), ['docs/features/f/MANIFEST.md', 'docs/features/f/PLAN.md', 'docs/features/f/SPEC.md'])
+  // the one commit touches only the feature's folder
+  assert.deepEqual(git(clone, 'diff', '--name-only', 'main~3', 'main~2').split('\n').sort(), ['docs/features/f/MANIFEST.md', 'docs/features/f/SPEC.md'])
+})
+
+test('resetToAudited makes no commit when the base already holds the spec at audited', () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-reset-')))
+  git(tmp, 'init', '-q', '-b', 'main')
+  put(join(tmp, 'docs', 'features', 'f', 'MANIFEST.md'), 'size: sm\nstate: audited\nnext: /builder:resume --path docs/features/f\n')
+  put(join(tmp, 'docs', 'features', 'f', 'SPEC.md'), '# f\n')
+  git(tmp, 'add', '-A')
+  git(tmp, 'commit', '-qm', 'init')
+  const base = git(tmp, 'rev-parse', 'HEAD')
+  assert.equal(resetToAudited(tmp, 'docs/features', 'f', base), null)
+  assert.equal(git(tmp, 'rev-parse', 'HEAD'), base)
 })
 
 test('--replan whose spec commits stay before the audit keeps the prefix and makes no reset', () => {
