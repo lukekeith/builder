@@ -9,7 +9,7 @@
  *
  *   node scripts/verify/serve.mjs <main checkout>     (started by verify.mjs; never by hand)
  */
-import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
@@ -460,7 +460,7 @@ export function runService(root, opts = {}) {
     })
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const root = process.argv[2]
   if (!root) {
     console.error('usage: serve.mjs <main checkout>')

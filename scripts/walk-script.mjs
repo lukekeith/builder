@@ -24,10 +24,11 @@
  * person can do, and correcting a [risk] tag the heuristic got wrong. A re-run keeps every
  * orchestrator block as written and rewrites the rest identically.
  */
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { openFeature, read, writeAtomic, mdSection, headings, configSection, tableRows, parseArgs, cli, shortHead } from './feature-core.mjs'
 import { isSet } from './manifest.mjs'
+import { realpathSync } from 'node:fs'
 
 /** Split a one-paragraph script into steps: on ` · ` when it uses it, else on `;` — outside backticks. */
 export function splitSteps(text) {
@@ -274,4 +275,4 @@ async function main(argv) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

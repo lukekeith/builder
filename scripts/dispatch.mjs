@@ -62,10 +62,10 @@
  * (`<WS>/dispatch-state.json`) are written once and reused — a re-render after a crash, or after
  * later commits, describes the same range.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { BUILDER, openFeature, read, writeAtomic, git, mdSection, configSection, tableRows, parseArgs, cli } from './feature-core.mjs'
 import { slices } from './plan-slices.mjs'
 import { parseTestPlan } from './profile.mjs'
@@ -707,4 +707,4 @@ async function main(argv) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

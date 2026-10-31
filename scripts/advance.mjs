@@ -27,9 +27,9 @@
  * call reports `already applied` and does nothing. A crash between the write and the commit is
  * finished by running the same command again.
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { resolve, relative } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { openFeature, setManifestKeys, appendLedger, writeAtomic, git, shortHead, currentBranch, posix, parseArgs, cli, read } from './feature-core.mjs'
 
 export const PRESETS = {
@@ -145,4 +145,4 @@ async function main(argv) {
   return 0
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

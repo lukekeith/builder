@@ -9,10 +9,10 @@
  *   node scripts/profile.mjs --estimate <folder> [--tests "<value>"]
  *   node scripts/profile.mjs --cost <folder> [--tests "<value>"]
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 
@@ -299,4 +299,4 @@ function loadCfg() {
   return c.ok ? c : {}
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main(process.argv.slice(2))
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) main(process.argv.slice(2))

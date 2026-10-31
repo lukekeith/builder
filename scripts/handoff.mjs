@@ -27,9 +27,9 @@
  * Safe to re-run: write rewrites the file only when its content changed (the date, not the time, is
  * recorded); read writes nothing.
  */
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { openFeature, read, writeAtomic, git, shortHead, currentBranch, today, mdSection, configSection, codeChangedSince, parseArgs, cli } from './feature-core.mjs'
 import { bundle } from './docs.mjs'
 
@@ -179,4 +179,4 @@ async function main(argv) {
   return cmd === 'write' ? write(f, a) : readCmd(f, a)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) cli(main)
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)

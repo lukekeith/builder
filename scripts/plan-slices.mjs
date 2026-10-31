@@ -15,10 +15,10 @@
  *
  * Levers: --tests, else the manifest's tests:/profile: line, else the recommendation for the folder.
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, realpathSync } from 'node:fs'
 import { join, resolve, basename, relative, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 import { RECOMMENDED, parseTests, parseTestPlan, recommend, cost, formatTests, section } from './profile.mjs'
@@ -327,4 +327,4 @@ function main(argv) {
   console.log(flag('--json') ? JSON.stringify(out) : render(out))
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main(process.argv.slice(2))
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) main(process.argv.slice(2))

@@ -16,7 +16,7 @@
  * Exit: 0 green · 1 red (release: the checkout refused the fast-forward) · 2 usage · 3 env-broken · 4 conflict · 5 gone/none · 6 cancelled · 7 target moved (release) · 75 pending.
  */
 import { spawn } from 'node:child_process'
-import { openSync, closeSync } from 'node:fs'
+import { openSync, closeSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { git, tryGit, mainRoot } from './git.mjs'
@@ -264,7 +264,7 @@ async function main() {
   die(USAGE)
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   // Every exit path calls process.exit(), and stdout to a pipe is asynchronous on macOS: a verdict
   // past the pipe's 64 KB would be cut off mid-JSON. Blocking writes finish before the exit.
   process.stdout._handle?.setBlocking?.(true)

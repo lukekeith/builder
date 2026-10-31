@@ -6,7 +6,7 @@
  *
  *   node scripts/verify/migrate.mjs [<repo root>]
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -97,7 +97,7 @@ export function migrateGates(body, apps = []) {
   return { yaml, notes }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const root = process.argv[2] ?? process.cwd()
   const text = readFileSync(join(root, '.claude', 'builder.md'), 'utf8')
   const apps = [...text.matchAll(/^\s*-\s*name:\s*(\S+)/gm)].map((m) => m[1])

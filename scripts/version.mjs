@@ -129,7 +129,7 @@ function runningFleet(repo) {
   return version ? { pid, version } : null
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === real(process.argv[1])) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const argv = process.argv.slice(2)
   const i = argv.indexOf('--root')
   const loadedRoot = i >= 0 ? argv[i + 1] : join(fileURLToPath(import.meta.url), '..', '..')
