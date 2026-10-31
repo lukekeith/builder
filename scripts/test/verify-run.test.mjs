@@ -5,9 +5,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, exis
 import { getEventListeners } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { openLedger } from '../verify/ledger.mjs'
-import { runRequest, runShell, bisect } from '../verify/run.mjs'
+import { runRequest, runShell, bisect, reapStrays } from '../verify/run.mjs'
 import { selectSuites } from '../verify/select.mjs'
 
 const T = (body) => `import { test } from 'node:test'\nimport assert from 'node:assert'\n${body}\n`
@@ -615,4 +615,128 @@ test('runShell with lines: a multi-byte character split across output chunks is 
   // 65,535 bytes, then ✗ (3 bytes): a 64 KB pipe chunk ends inside it.
   const r = await runShell(`node -e 'process.stdout.write("x".repeat(65535) + "✗ done\\n")'`, { cwd: tmpdir(), lines: '✗ done' })
   assert.equal(r.lines.size, 1)
+})
+
+// ---- strays: a run reaps what it left running in its checkout ----
+// A zombie is dead: a sleep this test spawned stays one until the event loop reaps it.
+const alive = (pid) => {
+  try {
+    return !execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim().startsWith('Z')
+  } catch {
+    return false
+  }
+}
+// A detached sleep in the cwd, its pid written to the file named: a webServer the runner never stopped.
+// process.getBuiltinModule: the same line runs in a `node -e` and in an ESM test file.
+const leaveSleep = (pidFile) => `const c = process.getBuiltinModule('child_process').spawn('sleep', ['60'], { cwd: process.cwd(), detached: true, stdio: 'ignore' }); c.unref(); process.getBuiltinModule('fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid))`
+const spawnSleep = (cwd) => {
+  const p = spawn('sleep', ['60'], { cwd, detached: true, stdio: 'ignore' })
+  p.unref()
+  return p
+}
+const kill = (pid) => {
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {}
+}
+const pidIn = (f) => Number(readFileSync(f, 'utf8'))
+
+test('a suite that leaves a detached server in the checkout: the run reaps it', async () => {
+  const pidFile = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-'))), 'pid')
+  const co = project({ 'test/a.test.mjs': T(`test('serves', () => { ${leaveSleep(pidFile)} })`) })
+  const v = await runRequest(req(), ctxFor(co, co))
+  assert.equal(v.status, 'green')
+  const pid = pidIn(pidFile)
+  try {
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('a check that times out or fails with a server left behind: reaped either way', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 1500, db: null, checks: [
+    { name: 'red', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'red')))}; exit 1`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    { name: 'slow', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'slow')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+  ] } })
+  await runRequest(req(), ctx)
+  const pids = [pidIn(join(dir, 'red')), pidIn(join(dir, 'slow'))]
+  try {
+    assert.deepEqual(pids.map(alive), [false, false])
+  } finally {
+    pids.forEach(kill)
+  }
+})
+
+test('a cancelled run reaps what it left behind', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const ac = new AbortController()
+  const ctx = ctxFor(co, co, { signal: ac.signal, verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'srv', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'pid')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+  ] } })
+  const run = runRequest(req(), ctx)
+  for (const t0 = Date.now(); !existsSync(join(dir, 'pid')) && Date.now() - t0 < 10000; ) await new Promise((r) => setTimeout(r, 50))
+  await new Promise((r) => setTimeout(r, 100))
+  ac.abort()
+  const v = await run
+  const pid = pidIn(join(dir, 'pid'))
+  try {
+    assert.equal(v.status, 'cancelled')
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('reapStrays never touches a process outside the checkout, nor a sibling whose name only shares a prefix', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
+  mkdirSync(join(root, '1', 'apps'), { recursive: true })
+  mkdirSync(join(root, '10'))
+  const outside = spawnSleep(tmpdir())
+  const sibling = spawnSleep(join(root, '10'))
+  const inside = spawnSleep(join(root, '1', 'apps'))
+  try {
+    const got = reapStrays(join(root, '1'))
+    assert.deepEqual(got, [inside.pid])
+    assert.equal(alive(inside.pid), false)
+    assert.equal(alive(outside.pid), true)
+    assert.equal(alive(sibling.pid), true)
+  } finally {
+    for (const p of [outside, sibling, inside]) kill(p.pid)
+  }
+})
+
+test('reapStrays matches by real path: a checkout named through a symlink still reaps', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
+  mkdirSync(join(root, 'real'))
+  execFileSync('ln', ['-s', join(root, 'real'), join(root, 'link')])
+  const inside = spawnSleep(join(root, 'real'))
+  try {
+    assert.deepEqual(reapStrays(join(root, 'link')), [inside.pid])
+    assert.equal(alive(inside.pid), false)
+  } finally {
+    kill(inside.pid)
+  }
+})
+
+test('reapStrays never signals this process, and finds nothing without lsof', () => {
+  // Only this process runs in a fresh directory: never the repo, whose other processes are real.
+  const here = process.cwd()
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-self-')))
+  process.chdir(dir)
+  try {
+    assert.deepEqual(reapStrays(dir), [])
+  } finally {
+    process.chdir(here)
+  }
+  const path = process.env.PATH
+  process.env.PATH = '/nonexistent'
+  try {
+    assert.deepEqual(reapStrays(tmpdir()), [])
+  } finally {
+    process.env.PATH = path
+  }
 })

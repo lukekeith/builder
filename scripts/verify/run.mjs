@@ -4,9 +4,9 @@
  * then each suite's selected files (all of them at the merge tier); every failing test is judged by
  * classify(); a run with no report is retried once in a fresh lease and is env-broken after that.
  */
-import { existsSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
-import { join, posix } from 'node:path'
-import { spawn } from 'node:child_process'
+import { existsSync, readFileSync, mkdirSync, rmSync, realpathSync } from 'node:fs'
+import { join, posix, resolve, sep } from 'node:path'
+import { spawn, spawnSync } from 'node:child_process'
 import { ADAPTERS } from './adapters.mjs'
 import { classify } from './classify.mjs'
 import { fromCwd } from './select.mjs'
@@ -81,6 +81,68 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
     // unheard would take the whole service down. It is a failed run, nothing more.
     p.on('error', (e) => settle({ code: 127, timedOut: false, out: `could not start: ${e.message}`, spawnError: true, ...(re && { lines: new Set() }) }))
   })
+}
+
+const REAP_GRACE_MS = 3000
+const realOr = (p) => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
+}
+/** Alive and not a zombie: a stray this process spawned stays a zombie until the event loop reaps it. */
+const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0)
+  } catch (e) {
+    if (e.code !== 'EPERM') return false
+  }
+  return !/^Z/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim() ?? '')
+}
+/**
+ * Every process whose cwd is `dir` or under it, stopped: SIGTERM, then SIGKILL for any still alive
+ * after 3 s → the pids signalled. runShell kills its own process group, but a server the run started
+ * in a group of its own (a playwright webServer) outlives it — seen running for hours. Matched by real
+ * path on a separator boundary (co/1 never takes co/10; /var is /private/var); never this process or
+ * its parent, nor the lsof that lists them. No lsof: [].
+ */
+export function reapStrays(dir) {
+  const root = realOr(resolve(dir))
+  if (root === sep) return []
+  const r = spawnSync('lsof', ['-nP', '-w', '-d', 'cwd', '-Fpn'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (r.error || !r.stdout) return []
+  const within = (p) => p === root || p.startsWith(root + sep)
+  const pids = []
+  let pid = null
+  for (const l of r.stdout.split('\n')) {
+    if (l[0] === 'p') pid = Number(l.slice(1))
+    else if (l[0] === 'n' && pid && pid !== process.pid && pid !== process.ppid && pid !== r.pid && !pids.includes(pid)) {
+      const cwd = l.slice(1)
+      if (within(cwd) || within(realOr(cwd))) pids.push(pid)
+    }
+  }
+  const signal = (sig) => pids.forEach((p) => {
+    try {
+      process.kill(p, sig)
+    } catch {}
+  })
+  signal('SIGTERM')
+  // Synchronous on purpose: callers need the checkout empty before its next run; a stray that obeys
+  // SIGTERM is gone in milliseconds, so the full grace is only ever spent on one that ignores it.
+  const nap = new Int32Array(new SharedArrayBuffer(4))
+  for (const t0 = Date.now(); pids.some(isAlive) && Date.now() - t0 < REAP_GRACE_MS; ) Atomics.wait(nap, 0, 0, 50)
+  if (pids.some(isAlive)) signal('SIGKILL')
+  return pids
+}
+
+/** runShell, then whatever it left running in its cwd reaped — on success, red, timeout and cancel alike. */
+async function runShellReaped(cmd, opts) {
+  try {
+    return await runShell(cmd, opts)
+  } finally {
+    reapStrays(opts.cwd)
+  }
 }
 
 /**
@@ -244,7 +306,7 @@ async function judgeRequest(req, ctx, tmp) {
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
       const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, trackedFor(suite, where).list()) : null
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, pairs: pairs && pairs.map((p) => ({ ...p, file: fromCwd(suite.cwd, [p.file])[0] })), report })
-      const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      const r = await runShellReaped(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
       if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
@@ -296,7 +358,7 @@ async function judgeRequest(req, ctx, tmp) {
     if (!existsSync(cwd)) return { code: 1, timedOut: false, noCwd: true, out: `its cwd ${c.cwd} does not exist`, ...(c.compare === 'lines' && { lines: new Set() }) }
     const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
     try {
-      return await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
+      return await runShellReaped(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
     } finally {
       lease.release()
     }
