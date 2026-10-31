@@ -957,3 +957,21 @@ test('an audited feature with an OPEN decision, a blocked: finding, or no SPEC r
   assert.match(buildLanePrompt('audited', { specText: SPEC_OK, spec: 's', target: 't', walkLane: true }), /^\/builder:resume /)
   for (const state of ['spec', 'aligned']) assert.match(buildLanePrompt(state, { specText: SPEC_OK, spec: 's', target: 't' }), /^\/builder:resume /)
 })
+
+test('planReady reads the SPEC as people write it: lowercase open, an empty ruling, bold blocked:, a suffixed or legacy heading', () => {
+  const rowOk = '| D1 | tags | kept — why; not x | auto (recommended) 2026-10-31 |'
+  for (const [why, t] of [
+    ['lowercase open', SPEC_OK.replace(rowOk, '| D2 | colour | open — recommend blue | |')],
+    ['Open', SPEC_OK.replace(rowOk, '| D2 | colour | Open | |')],
+    ['an empty ruling', SPEC_OK.replace(rowOk, '| D2 | colour |  | |')],
+    ['an empty ruling, no who', SPEC_OK.replace(rowOk, '| D2 | colour | |')],
+    ['bold blocked', SPEC_OK.replace('| F1 | slow query | build-time risk — Task 3 |', '| B1 | **blocked:** no tags field — clears when D3 is ruled | audit exit |')],
+    ['backtick blocked', SPEC_OK.replace('| F1 | slow query | build-time risk — Task 3 |', '| B1 | `blocked:` no tags field | audit exit |')],
+    ['a suffixed Decisions heading', SPEC_OK.replace('## Decisions', '## Decisions (rulings)').replace(rowOk, '| D2 | colour | OPEN | |')],
+    ['a legacy Findings heading', SPEC_OK.replace('## Findings & risks', '## Findings').replace('| F1 | slow query | build-time risk — Task 3 |', '| B1 | blocked: no tags field | audit exit |')],
+  ]) assert.equal(planReady(t), false, why)
+  // Still ready: a ruling that mentions "open" as a word inside a sentence of a decided row is not an OPEN row,
+  // the header and separator rows are not rows, and a resolved finding that quotes "was blocked:" is not a blocker.
+  assert.equal(planReady(SPEC_OK.replace(rowOk, '| D1 | tags | keep the panel open on load — why; not closed | auto (recommended) 2026-10-31 |')), true)
+  assert.equal(planReady(SPEC_OK.replace('## Decisions', '## Decisions (rulings)')), true)
+})

@@ -15,8 +15,9 @@ prints all three — and cite them rather than restate them:
 the phase counts · §Contract and the contract freeze, which the phase ORDER exists to protect ·
 §MANIFEST.md · §Branch and ticket) · **`.claude/builder.md`** (§Verification — the phase tier runs on each phase's app,
 §Global constraints for the plan's header block, §Companion skills for every `Recipe:` line).
-**Under `--agent-walk`, `docs.mjs plan-agent`** — the same less §The review, §Flags and §Continuing on
-"go", which an unattended plan never uses — one Bash output where `plan` is over it.
+**Under `--agent-walk`, two calls instead: `docs.mjs plan-agent`** — the same less §The review, §Flags
+and §Continuing on "go", which an unattended plan never uses — **then `docs.mjs fleet-config plan`**, the
+config sections named above; each fits one Bash output where `plan` is over it.
 
 Input: `<folder>/SPEC.md` + `MANIFEST.md`. Output: `<folder>/PLAN.md`, the §Plan index appended to
 that SPEC, the manifest at `state: planned`, and the go-ahead taken in the same turn. **No app code
@@ -54,8 +55,9 @@ not through `/builder:resume`) — this step does what resume did around it:
   `--set "agent-walk=on <YYYY-MM-DD>"` to its `advance.mjs` call.
 - **The go-ahead** is §Picking the test plan ahead's `--auto` one: `go-ahead: auto (recommended)`,
   `tests:` and `target:` kept, or written from `--into`.
-- **Under `--no-dev-env`, end the run at the go-ahead commit** — at most six lines, then the footer
-  (REFERENCE §Under `--auto` and `--agent-walk`); never `/builder:build` in this run: the fleet starts
+- **Under `--no-dev-env`, end the run at the go-ahead commit** — at most six lines (the state reached,
+  one `ruled: <decision> → <choice>` per ruling, one `worth checking:` line when there is something),
+  then the one-line footer, unnumbered; never `/builder:build` in this run: the fleet starts
   it in a fresh context (AGENT-MODE §`--agent-walk`).
 
 ⛔ **A §Findings row marked `build-time risk` is not a blocker and never a reason for another audit

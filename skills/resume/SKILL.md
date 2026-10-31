@@ -16,9 +16,11 @@ picker, nothing written.
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
 `/builder:init`, and stop. One call prints it with the REFERENCE sections this flow reads —
 §Flags · §MANIFEST.md · §Condense · §The two-way footer · §Continuing on "go":
-`node <builder>/scripts/docs.mjs resume` — **`docs.mjs resume-agent` under `--agent-walk`**: §Flags,
-§MANIFEST.md and [`AGENT-MODE.md`](AGENT-MODE.md), one Bash output; nobody reads an unattended footer
-or says go, so §Condense, §The two-way footer and §Continuing on "go" are `docs.mjs section` reads there.
+`node <builder>/scripts/docs.mjs resume` — **under `--agent-walk`, two calls: `docs.mjs resume-agent`**
+(§Flags, §MANIFEST.md and [`AGENT-MODE.md`](AGENT-MODE.md)) **then `docs.mjs fleet-config resume`** (the
+config's `agent_walk:` block, §Walk readiness, §Environment landmines, §Standing traps), each one Bash
+output; nobody reads an unattended footer or says go, so §Condense, §The two-way footer and
+§Continuing on "go" are `docs.mjs section` reads there, and each step it runs prints its own config.
 
 **State changes go through the scripts** (REFERENCE §The scripts): a manifest key, a ledger line and
 its commit are one `node <builder>/scripts/advance.mjs <folder> …` call, never a hand `sed`. 🔴 Each
@@ -424,7 +426,8 @@ released artifact nobody can hot-fix.
    two-way footer — `Full spec:` and the `Pick up where you left off` line above it, then
    `1. Agent` (only with an `agent_walk:` block) · `2. Step by step` (this command) ·
    `3. In this session` (only before the build), renumbered when one is absent, each explained in
-   plain words for the state and none carrying a `/builder:*` command.
+   plain words for the state and none carrying a `/builder:*` command. **Under `--agent-walk` the
+   footer is never numbered** — the one `📍` line, since no human reads it.
 5. **A bare affirmative picks option 1** — on a numbered footer that offers Agent, "go" runs
    `/builder:agent --path <folder>`; otherwise it continues this command. `agent` runs
    `/builder:agent --path <folder>`; `step by step` or `resume` continues this command; `in this

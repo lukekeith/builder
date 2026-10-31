@@ -8,6 +8,8 @@
  *   node <builder>/scripts/docs.mjs section <file> "<heading>"   (one section, printed as the bundles print it)
  *   node <builder>/scripts/docs.mjs config-key <key>   (one front-matter block of the repo's .claude/builder.md —
  *                                                       `verify`, `agent_walk` — which fleet-setup leaves out)
+ *   node <builder>/scripts/docs.mjs fleet-config <build|plan|resume>   (the config cut to what that fleet step acts
+ *                                                       on, alone — the second of a fleet session's two first reads)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
@@ -55,9 +57,10 @@ export const STEPS = {
   // plan SKILL: PLAN-FORMAT.md · REFERENCE (§Sizes · §Contract and the contract freeze · §MANIFEST.md · §Branch and ticket),
   // §The review (the go-ahead's recap), §Flags (--here), §Continuing on "go".
   plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket', 'The review', 'Flags', 'Continuing on "go"'), CONFIG],
-  // plan SKILL under --auto or --agent-walk: the same less §The review (no recap is printed), §Flags and §Continuing on
-  // "go" (nobody answers) — one Bash output (≤ 30,000 chars), where `plan` is over it.
-  'plan-agent': [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket'), CONFIG],
+  // plan SKILL under --agent-walk: the same less §The review (no recap is printed), §Flags and §Continuing on "go"
+  // (nobody answers), and no config — `fleet-config plan` prints it in its own call. Each ≤ 30,000 chars (one Bash
+  // output), where `plan` is over it.
+  'plan-agent': [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket')],
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
   // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
@@ -88,10 +91,11 @@ export const STEPS = {
   revise: [...R('Contract and the contract freeze', 'SPEC.md', 'The review', 'Continuing on "go"'), CONFIG],
   // resume SKILL: §Flags, §MANIFEST.md, §Condense (state detection), §The two-way footer, §Continuing on "go".
   resume: [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), CONFIG],
-  // resume SKILL: under --agent-walk, §Flags, §MANIFEST.md and AGENT-MODE.md — one Bash output (≤ 30,000 chars). Left
+  // resume SKILL: under --agent-walk, §Flags, §MANIFEST.md and AGENT-MODE.md — one Bash output (≤ 30,000 chars); the
+  // config is `fleet-config resume`, its own call. Left
   // out for `docs.mjs section`: §The two-way footer and §Continuing on "go" (no human reads an unattended footer, and
   // nobody says go), §Condense (a fleet feature always has a MANIFEST; agent-walk and ship print it where they condense).
-  'resume-agent': [...R('Flags', 'MANIFEST.md'), FILE('skills/resume/AGENT-MODE.md'), CONFIG],
+  'resume-agent': [...R('Flags', 'MANIFEST.md'), FILE('skills/resume/AGENT-MODE.md')],
 }
 
 /** step → the sections to cut out of it for a feature's test plan (`--path`): [file, section, why]. */
@@ -100,9 +104,37 @@ const OMIT = {
   'fleet-build': (levers) => (levers.review === 'end' ? [['skills/build/EXECUTION.md', '3. Review the task', 'review=end: no task or phase review']] : []),
 }
 
-/** What the fleet's build orchestrator acts on in the config, and nothing else. */
-const BUILD_FM_DROP = /^(verify|agent_walk):/
-const BUILD_SECTIONS = ['House rules', 'Environment landmines', 'Standing traps']
+/**
+ * What each fleet step acts on in the config: the front-matter blocks it drops (the verifier and the fleet
+ * read `verify:` and `agent_walk:` themselves) and the `## ` sections it keeps. `docs.mjs fleet-config <step>`.
+ *   build  — the task loop: §House rules, §Environment landmines, §Standing traps (fleet-setup prints it).
+ *   plan   — writing PLAN.md: §Verification (the phase tier per app), §Global constraints (the plan header),
+ *            §House rules (the phase skeleton), §Companion skills (Recipe: lines), §Standing traps.
+ *   resume — routing, the walk lane and the park: `agent_walk:` kept; §Walk readiness, §Environment landmines,
+ *            §Standing traps. The steps it runs (audit, verify, ship…) print their own config.
+ */
+export const FLEET_CONFIG = {
+  build: { drop: /^(verify|agent_walk):/, sections: ['House rules', 'Environment landmines', 'Standing traps'] },
+  plan: { drop: /^(verify|agent_walk):/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
+  resume: { drop: /^verify:/, sections: ['Walk readiness', 'Environment landmines', 'Standing traps'] },
+}
+
+/** The config cut to what one fleet step acts on: the front matter less its dropped blocks and comments, then the kept sections. */
+export function configFor(step, text) {
+  const { drop, sections } = FLEET_CONFIG[step]
+  const lines = String(text).split('\n')
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const fm = []
+  let dropping = false
+  for (const line of close > 0 ? lines.slice(0, close + 1) : []) {
+    if (/^[A-Za-z_][\w-]*:/.test(line) || line === '---') dropping = drop.test(line)
+    if (dropping || /^\s*#/.test(line) || !line.trim()) continue
+    fm.push(line)
+  }
+  const body = close > 0 ? lines.slice(close + 1).join('\n') : String(text)
+  const secs = sections.map((n) => mdSection(body, n, { level: 2 })?.text).filter(Boolean)
+  return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
+}
 
 /**
  * The config cut to what the build loop acts on: the frontmatter without its `verify:` and `agent_walk:`
@@ -110,20 +142,7 @@ const BUILD_SECTIONS = ['House rules', 'Environment landmines', 'Standing traps'
  * landmines and §Standing traps when present. §Global constraints, §Quality gates and §Walk readiness are
  * left to the briefs, the verifier and the walk lane that use them.
  */
-export function configForBuild(text) {
-  const lines = String(text).split('\n')
-  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
-  const fm = []
-  let dropping = false
-  for (const line of close > 0 ? lines.slice(0, close + 1) : []) {
-    if (/^[A-Za-z_][\w-]*:/.test(line) || line === '---') dropping = BUILD_FM_DROP.test(line)
-    if (dropping || /^\s*#/.test(line) || !line.trim()) continue
-    fm.push(line)
-  }
-  const body = close > 0 ? lines.slice(close + 1).join('\n') : String(text)
-  const secs = BUILD_SECTIONS.map((n) => mdSection(body, n, { level: 2 })?.text).filter(Boolean)
-  return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
-}
+export const configForBuild = (text) => configFor('build', text)
 
 /** One top-level front-matter block (`<key>:` and its indented lines) of a config's text, or null. */
 export function configKey(text, key) {
@@ -216,6 +235,17 @@ async function main(argv) {
       return 1
     }
     process.stdout.write([`--- ${file} §${normTitle(s.title)} (lines ${s.start + 1}–${s.end})`, '', s.text, ''].join('\n'))
+    return 0
+  }
+  if (a._[0] === 'fleet-config') {
+    const step = a._[1]
+    if (!FLEET_CONFIG[step]) {
+      console.error(`usage: docs.mjs fleet-config <${Object.keys(FLEET_CONFIG).join('|')}>`)
+      return 2
+    }
+    const text = read(join(repoRoot(process.cwd()), '.claude', 'builder.md'))
+    const out = text ? configFor(step, text) : '(no .claude/builder.md here — /builder:init writes it)'
+    process.stdout.write([`--- .claude/builder.md (the project config — the part ${step} acts on)`, '', out, ''].join('\n'))
     return 0
   }
   if (a._[0] === 'config-key') {

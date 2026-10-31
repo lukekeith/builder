@@ -184,22 +184,40 @@ test('config-key prints one front-matter block of the repo config — what fleet
   assert.match(n.stderr, /nope/)
 })
 
-test('resume-agent is one Bash call (≤ 30,000 with the config): §Flags, §MANIFEST.md and AGENT-MODE — no human footer, no "go", no §Condense', () => {
-  const r = fleetRun(['resume-agent'])
-  assert.equal(r.status, 0, r.stderr)
-  assert.ok(r.stdout.length <= 30000, over(r.stdout.length))
-  assert.ok(r.stdout.length <= 27000, `${r.stdout.length} chars: keep 3,000 of margin for a larger config`)
+const REAL = readFileSync(join(import.meta.dirname, 'fixtures', 'configs', 'realistic-builder.md'), 'utf8')
+const realRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags', { extra: { '.claude/builder.md': REAL } }).root })
+const CONFIG_HEAD = /^--- .*\.claude\/builder\.md/gm
+test('every fleet first-read call is one Bash output (≤ 30,000) with a 15–20k config: the bundle without the config, then the config in its own call', () => {
+  assert.ok(REAL.length >= 15000 && REAL.length <= 20000, `fixture is ${REAL.length}`)
+  const sizes = {}
+  for (const args of [['fleet-build', '--no-config'], ['fleet-setup'], ['resume-agent'], ['plan-agent'], ['fleet-config', 'resume'], ['fleet-config', 'plan'], ['fleet-config', 'build']]) {
+    const r = realRun(args)
+    assert.equal(r.status, 0, args.join(' ') + r.stderr)
+    sizes[args.join(' ')] = r.stdout.length
+    assert.ok(r.stdout.length <= 30000, `${args.join(' ')}: ${over(r.stdout.length)}`)
+  }
+  console.log(JSON.stringify(sizes))
+})
+test('resume-agent and plan-agent carry no config; fleet-config prints it once, cut to what that step acts on', () => {
+  for (const step of ['resume-agent', 'plan-agent']) assert.equal((realRun([step]).stdout.match(CONFIG_HEAD) ?? []).length, 0, step)
+  const plan = realRun(['fleet-config', 'plan']).stdout
+  const resume = realRun(['fleet-config', 'resume']).stdout
+  for (const out of [plan, resume]) assert.equal((out.match(CONFIG_HEAD) ?? []).length, 1, 'the config, once')
+  for (const x of ['apps:', 'released_artifact: true', 'plan_writers: per-app', '## Verification', '## Global constraints', '## House rules', '## Companion skills', '## Standing traps']) assert.ok(plan.includes(x), `plan: ${x}`)
+  for (const x of ['\nagent_walk:', '\nverify:', 'suites:', '## Walk readiness', '## Environment landmines', '## Quality gates', '# The fleet']) assert.ok(!plan.includes(x), `plan has no ${x}`)
+  for (const x of ['apps:', 'agent_walk:', 'start: docker compose', '## Walk readiness', '## Environment landmines', '## Standing traps']) assert.ok(resume.includes(x), `resume: ${x}`)
+  for (const x of ['\nverify:', 'suites:', '## House rules', '## Companion skills', '## Quality gates', '## Global constraints']) assert.ok(!resume.includes(x), `resume has no ${x}`)
+  assert.equal(realRun(['fleet-config', 'nope']).status, 2)
+})
+test('resume-agent: §Flags, §MANIFEST.md and AGENT-MODE — no human footer, no "go", no §Condense', () => {
+  const r = realRun(['resume-agent'])
   for (const s of ['§Flags', '§MANIFEST.md']) assert.match(r.stdout, new RegExp(`^--- skills/resume/REFERENCE\\.md ${s} `, 'm'))
   assert.match(r.stdout, /^--- skills\/resume\/AGENT-MODE\.md$/m)
   for (const s of ['§The two-way footer', '§Continuing on "go"', '§Condense']) assert.ok(!r.stdout.includes(`REFERENCE.md ${s} `), s)
-  assert.equal((r.stdout.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1, 'the config, once')
 })
-test('plan-agent — what an unattended plan reads — is one Bash call (≤ 30,000 with the config): no §The review, §Flags or §Continuing on "go"', () => {
-  const r = fleetRun(['plan-agent'])
-  assert.equal(r.status, 0, r.stderr)
-  assert.ok(r.stdout.length <= 27000, `${r.stdout.length} chars: keep 3,000 of margin for a larger config`)
+test('plan-agent — what an unattended plan reads: no §The review, §Flags or §Continuing on "go"', () => {
+  const r = realRun(['plan-agent'])
   assert.match(r.stdout, /^--- skills\/plan\/PLAN-FORMAT\.md$/m)
   for (const s of ['§Sizes', '§Contract and the contract freeze', '§MANIFEST.md', '§Branch and ticket']) assert.match(r.stdout, new RegExp(`^--- skills/resume/REFERENCE\\.md ${s} `, 'm'))
   for (const s of ['§The review', '§Flags', '§Continuing on "go"']) assert.ok(!r.stdout.includes(`REFERENCE.md ${s}`), s)
-  assert.equal((r.stdout.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1, 'the config, once')
 })

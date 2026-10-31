@@ -729,7 +729,7 @@ test('4.13.0: every approval shows the review — REFERENCE defines it, the appr
 })
 
 test('lean orchestrator: the skills call the scripts instead of typing what they write — dispatch, advance, condense, docs, handoff, walk-script, the §Plan index', async () => {
-  const { STEPS } = await import('../docs.mjs')
+  const { STEPS, FLEET_CONFIG } = await import('../docs.mjs')
   const build = read('skills/build/SKILL.md'), exec = read('skills/build/EXECUTION.md'), walk = read('skills/agent-walk/SKILL.md'), resume = resumeAll()
   // P1 — every subagent dispatch is rendered; the Agent call is one line
   for (const k of ['implementer <folder> --task N', 'task-review <folder> --task N', 're-review <folder> --task N --round R', 'task-review <folder> --phase N', 'final-review <folder>', 'implementer <folder> --final'])
@@ -769,7 +769,8 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
   for (const dir of readdirSync(join(ROOT, 'skills'))) {
     for (const file of readdirSync(join(ROOT, 'skills', dir)).filter((x) => x.endsWith('.md'))) {
       const text = read(`skills/${dir}/${file}`)
-      for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(m[1] === 'section' || m[1] === 'config-key' || STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
+      for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(m[1] === 'section' || m[1] === 'config-key' || m[1] === 'fleet-config' || STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
+      for (const m of text.matchAll(/docs\.mjs fleet-config ([a-z]+)/g)) assert.ok(FLEET_CONFIG[m[1]], `skills/${dir}/${file}: docs.mjs fleet-config ${m[1]} is not a fleet config cut`)
       // zsh reads a word starting with = as a filename expansion: no `echo =====` separator anywhere
       assert.doesNotMatch(text, /echo +["']?={3,}/, `skills/${dir}/${file} has an echo === separator`)
     }
@@ -989,4 +990,18 @@ test('one line per fact: short agent replies — the full reports stay in their 
   assert.match(build, /--model <m>/)
   assert.doesNotMatch(build, /name the model yourself/)
   assert.doesNotMatch(build, /before the first dispatch,\s+`docs\.mjs section skills\/build\/EXECUTION\.md "Model selection"`/)
+})
+
+test('an unattended plan or resume reads its bundle and its config in two calls, and cites nothing those calls leave out', () => {
+  const plan = readFileSync(join(ROOT, 'skills/plan/SKILL.md'), 'utf8')
+  const resume = readFileSync(join(ROOT, 'skills/resume/SKILL.md'), 'utf8')
+  assert.match(plan, /docs\.mjs plan-agent`[\s\S]{0,200}docs\.mjs fleet-config plan`/)
+  assert.match(resume, /docs\.mjs resume-agent`[\s\S]{0,200}docs\.mjs fleet-config resume`/)
+  // plan-agent drops §The review, where §Under `--auto` and `--agent-walk` lives: the fleet block inlines its rule.
+  const fleetBlock = plan.slice(plan.indexOf('**Started by the fleet**'), plan.indexOf('⛔ **A §Findings row'))
+  assert.doesNotMatch(fleetBlock, /REFERENCE §Under/)
+  assert.match(fleetBlock, /at most six lines/)
+  // resume-agent drops §The two-way footer: step-end item 4 carries "never numbered under --agent-walk" itself.
+  const item4 = resume.slice(resume.indexOf('4. **One-line resume footer**'), resume.indexOf('5. **A bare affirmative'))
+  assert.match(item4, /Under `--agent-walk` the\s+footer is never numbered/)
 })
