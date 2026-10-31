@@ -94,10 +94,10 @@ export function slices(planText) {
 //
 // The orchestrator coordinates; it never implements. Holding the whole PLAN.md — every task's tests and steps —
 // costs it that text on every turn of the build (one measured plan was 386KB). What it needs is the
-// header (Global Constraints, the Phases table) and each task's head: App, Phase, Recipe, Files,
-// Interfaces. --brief prints exactly that; --scan prints the pre-flight conflict scan's mechanical
+// header (the Phases table; the build brief carries the Global Constraints) and one line per task:
+// N · app · phase · title · recipe · k files. --brief prints exactly that; --scan prints the pre-flight conflict scan's mechanical
 // rows from it. A task's steps and code stay in the plan, for its implementer's brief and for the
-// orchestrator to read with task-brief when a ruling needs them.
+// orchestrator to read with task-brief when a ruling needs a task's Files or Interfaces.
 
 const STEP = /^\s*[-*]\s+\[[ xX]\]\s/
 const STEP_LOOSE = /^\s*(?:[-*]\s+|\d+\.\s+)?\*\*Step\s+\d+/i

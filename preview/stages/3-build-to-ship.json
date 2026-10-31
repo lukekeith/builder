@@ -30,7 +30,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --brief) — the plan's outline: header, Global Constraints, the Phases table and 12 task heads (App · Phase · Recipe · Files · Interfaces) — no steps, no code · Read(docs/features/cert-tags/SPEC.md)"
+          "text": "⏺ Bash(node <builder>/scripts/plan-slices.mjs docs/features/cert-tags --brief) — the plan's outline: the Phases table and 12 task lines (N · app · phase · title · recipe · files) — no Global Constraints, no steps, no code · Read(docs/features/cert-tags/SPEC.md)"
         },
         {
           "role": "tool",
@@ -51,7 +51,7 @@
         }
       ],
       "stamp": {
-        "hash": "66e9334b61da",
+        "hash": "0d5f8527af91",
         "version": "5.5.0",
         "date": "2026-10-31"
       }
