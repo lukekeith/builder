@@ -136,15 +136,6 @@ export function reapStrays(dir) {
   return pids
 }
 
-/** runShell, then whatever it left running in its cwd reaped — on success, red, timeout and cancel alike. */
-async function runShellReaped(cmd, opts) {
-  try {
-    return await runShell(cmd, opts)
-  } finally {
-    reapStrays(opts.cwd)
-  }
-}
-
 /**
  * A report's file as a repo path. Playwright's JUnit names files relative to its testDir, so the
  * suite's cwd + that name may not be the test: it is taken only when it exists and the suite's glob
@@ -265,14 +256,18 @@ export async function runRequest(req, ctx) {
   // Report files for this request; removed however the run ends, a throw included.
   const tmp = join(ctx.ledger.dir, 'reports', req.id)
   mkdirSync(tmp, { recursive: true })
+  // Every slot a suite or check ran in. Only this request uses a slot while it runs, so whatever is
+  // still running in one once every lease is released is a stray: reaped once, at the end, whole.
+  const slots = new Set()
   try {
-    return await judgeRequest(req, ctx, tmp)
+    return await judgeRequest(req, ctx, tmp, slots)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
+    for (const where of slots) reapStrays(where)
   }
 }
 
-async function judgeRequest(req, ctx, tmp) {
+async function judgeRequest(req, ctx, tmp, slots) {
   const { verify, pool, ledger, checkout, signal } = ctx
   const t0 = Date.now()
   const verdict = { request: req.id, branch: req.branch, sha: req.sha, tier: req.tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0 }
@@ -301,12 +296,15 @@ async function judgeRequest(req, ctx, tmp) {
     const report = adapter.reportPath ? adapter.reportPath(suite, cwd) : join(tmp, `${++n}-${suite.name}.out`)
     rmSync(report, { force: true })
     const lease = await ctx.lease(suite.needs, { template: templateFor(suite.needs, where), cwd })
+    slots.add(where)
+    let cut = false
     try {
       // A junit command's {files} is the project's own runner: it may take them as regexes (playwright),
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
       const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, trackedFor(suite, where).list()) : null
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, pairs: pairs && pairs.map((p) => ({ ...p, file: fromCwd(suite.cwd, [p.file])[0] })), report })
-      const r = await runShellReaped(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      cut = r.timedOut
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
       if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
@@ -315,6 +313,8 @@ async function judgeRequest(req, ctx, tmp) {
       return { results: results.map((x) => ({ ...x, file: repoFile(suite, where, x.file, tracked) })) }
     } finally {
       lease.release()
+      // A run killed at its timeout may have left a server holding the port the next run needs.
+      if (cut) reapStrays(where)
     }
   }
   const statusIn = (res, f) => (res.results ? res.results.find((x) => x.file === f.file && x.name === f.name)?.status ?? 'missing' : 'broken')
@@ -357,10 +357,15 @@ async function judgeRequest(req, ctx, tmp) {
     // A check whose directory this checkout lacks (an app the branch adds) has nothing to run in.
     if (!existsSync(cwd)) return { code: 1, timedOut: false, noCwd: true, out: `its cwd ${c.cwd} does not exist`, ...(c.compare === 'lines' && { lines: new Set() }) }
     const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
+    slots.add(where)
+    let cut = false
     try {
-      return await runShellReaped(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
+      const r = await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
+      cut = r.timedOut
+      return r
     } finally {
       lease.release()
+      if (cut) reapStrays(where)
     }
   }
   const targetLines = async (c) => {
