@@ -14,7 +14,7 @@
       "turns": [
         {
           "role": "note",
-          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken there launches agents (plan §The go-ahead) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead taken without one. The fleet's log differs in two places: it reads docs.mjs fleet-build --no-config, then docs.mjs fleet-setup (EXECUTION §Setup and the config) in a second call, not docs.mjs build, and it records agent-walk: on on the manifest before the first dispatch. Either way it reads the manifest's tests:."
+          "text": "cert-tags' project has an agent_walk: block, so a go-ahead taken there launches agents (plan §The go-ahead) and the fleet runs this same build with --agent-walk. The in-chat build below is what runs on a go-ahead taken without one. The fleet's log differs in two places: it reads docs.mjs fleet-build --no-config --path <folder>, then docs.mjs fleet-setup (EXECUTION §Setup and the part of the config the build acts on) in a second call, not docs.mjs build, and it records agent-walk: on on the manifest before the first dispatch. Either way it reads the manifest's tests:."
         },
         {
           "role": "user",
@@ -314,7 +314,7 @@
         }
       ],
       "stamp": {
-        "hash": "e52d151ac65c",
+        "hash": "3776c4ec42ac",
         "version": "5.5.0",
         "date": "2026-10-31"
       }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { leanRepo, run } from './fixtures/lean-repo.mjs'
 import { STEPS, bundle } from '../docs.mjs'
@@ -62,7 +62,7 @@ test('docs: --list names every step and what it prints; an unknown step is a usa
 const BUILD_BEFORE = [['skills/build/EXECUTION.md', null], ...['Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'].map((n) => ['skills/resume/REFERENCE.md', n]), ['<config>', null]]
 const fleetRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags').root })
 
-const MOVE_NEXT = 'Keep at least 3,000 of margin; when over, move text out of the bundle for `docs.mjs section` in this order: AGENT-MODE §--agent-walk\'s readiness-only rows ("Dev-DB migrations", "Starting or restarting the dev env"), then REFERENCE §Contract and the contract freeze'
+const MOVE_NEXT = 'Keep at least 3,000 of margin; when over, move text out of the bundle for `docs.mjs section` in this order: AGENT-MODE §Agent mode in the build lane\'s config-change row (it parks; the park record is read when parking), then REFERENCE §Contract and the contract freeze'
 const over = (n) => `${n} chars: ${n - 30000} over the 30,000 limit. ${MOVE_NEXT}`
 test('the fleet build\'s first read is two Bash calls, each ≤ 30,000 chars: fleet-build --no-config, then fleet-setup (EXECUTION §Setup + the config, printed once)', () => {
   const one = fleetRun(['fleet-build', '--no-config'])
@@ -79,7 +79,7 @@ test('the fleet build\'s first read is two Bash calls, each ≤ 30,000 chars: fl
 })
 test('fleet-build carries the loop and the rules a fleet build needs', () => {
   const out = fleetRun(['fleet-build']).stdout
-  for (const h of ['§The task loop', '§The verifier', '§PLAN.md', '§Contract and the contract freeze', '§--agent-walk']) assert.match(out, new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))  // the label drops backticks, as normTitle does
+  for (const h of ['§The task loop', '§The verifier', '§PLAN.md', '§Contract and the contract freeze', '§Agent mode in the build lane']) assert.match(out, new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))  // the label drops backticks, as normTitle does
   for (const h of ['§SPEC.md', '§MANIFEST.md', '§Walk readiness']) assert.doesNotMatch(out, new RegExp(`--- .*${h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(`))
 })
 test('section prints one heading, and fails naming a missing one', () => {
@@ -89,3 +89,87 @@ test('section prints one heading, and fails naming a missing one', () => {
   assert.match(r.stderr, /No such heading/)
 })
 test('build (the human bundle) is unchanged', () => assert.deepEqual(STEPS.build, BUILD_BEFORE))
+
+const FULL_CONFIG = `---
+project: notes
+registry: docs/features
+base_branch: main
+# a comment the build never acts on
+apps:
+  - name: notes
+    path: ./
+    role: app
+    commit: auto
+agent_walk:
+  driver: the CLI
+  parallel: 1
+verify:
+  workers: 2
+  suites:
+    notes: { runner: node-test, files: "test/*.test.mjs" }
+---
+
+# notes — builder config
+
+Intro paragraph.
+
+## Quality gates
+
+QG-BODY
+
+## Walk readiness
+
+WR-BODY
+
+## Global constraints
+
+- GC-BODY
+
+## House rules
+
+**notes** — HR-BODY
+
+## Environment landmines
+
+- EL-BODY
+
+## Standing traps
+
+- ST-BODY
+`
+test('fleet-setup prints only the config the build acts on: the apps list, §House rules, §Environment landmines, §Standing traps', () => {
+  const r = leanRepo('note-tags', { extra: { '.claude/builder.md': FULL_CONFIG } })
+  const out = run('docs.mjs', ['fleet-setup'], { cwd: r.root }).stdout
+  const s = out.slice(out.indexOf('--- .claude/builder.md'))
+  for (const x of ['apps:', '  - name: notes', 'commit: auto', 'base_branch: main', '## House rules', 'HR-BODY', '## Environment landmines', 'EL-BODY', '## Standing traps', 'ST-BODY']) assert.ok(s.includes(x), x)
+  for (const x of ['verify:', 'agent_walk:', 'workers: 2', 'driver: the CLI', 'Quality gates', 'QG-BODY', 'Walk readiness', 'WR-BODY', 'Global constraints', 'GC-BODY', 'a comment the build never acts on']) assert.ok(!s.includes(x), x)
+  assert.ok(out.length <= 30000)
+})
+test('fleet-setup on a config without those sections prints only what exists', () => {
+  const out = fleetRun(['fleet-setup']).stdout
+  const s = out.slice(out.indexOf('--- .claude/builder.md'))
+  assert.match(s, /apps:\n  - name: notes/)
+  for (const x of ['House rules', 'Environment landmines', 'Standing traps', 'verify:', 'agent_walk:', 'Walk readiness', 'Global constraints', 'No dependencies']) assert.ok(!s.includes(x), x)
+})
+test('fleet-build is lever-aware: review=end leaves out EXECUTION §3 Review the task, review=slice keeps it; each ≤ 30,000', () => {
+  const r = leanRepo('note-tags')
+  const end = run('docs.mjs', ['fleet-build', '--path', r.rel], { cwd: r.root })
+  assert.equal(end.status, 0, end.stderr)
+  assert.doesNotMatch(end.stdout, /^### 3\. Review the task/m)
+  assert.match(end.stdout, /^### 4\. The fix loop/m)
+  assert.ok(end.stdout.length <= 30000, over(end.stdout.length))
+  writeFileSync(join(r.folder, 'MANIFEST.md'), readFileSync(join(r.folder, 'MANIFEST.md'), 'utf8').replace('review=end', 'review=slice'))
+  const slice = run('docs.mjs', ['fleet-build', '--path', r.rel], { cwd: r.root })
+  assert.match(slice.stdout, /^### 3\. Review the task/m)
+  assert.ok(slice.stdout.length <= 30000, over(slice.stdout.length))
+  assert.match(run('docs.mjs', ['fleet-build'], { cwd: r.root }).stdout, /^### 3\. Review the task/m, 'no --path: the whole loop')
+})
+test('fleet-build carries AGENT-MODE §Agent mode in the build lane, not §--agent-walk', () => {
+  const s = fleetRun(['fleet-build', '--no-config']).stdout
+  assert.match(s, /^--- skills\/resume\/AGENT-MODE\.md §Agent mode in the build lane/m)
+  assert.doesNotMatch(s, /^## `--agent-walk`/m)
+  for (const x of ['Never call AskUserQuestion', 'Never** `run_in_background`', 'verify.mjs\n  wait <id>` in the foreground', 'Never kill a process you did not start', 'Agent mode builds to done', 'env-broken a second time parks', 'has not finished', '`commit: manual` app, or deploy', 'committed\n  manifest the next run resumes from', 'Agent mode outside the build loop"'])
+    assert.ok(s.includes(x), x)
+  const whole = run('docs.mjs', ['resume-agent', '--no-config'], { cwd: leanRepo('note-tags').root }).stdout
+  assert.ok(whole.includes(readFileSync(join(import.meta.dirname, '..', '..', 'skills', 'resume', 'AGENT-MODE.md'), 'utf8').trim()), 'resume-agent prints the whole file')
+})

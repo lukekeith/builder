@@ -3,14 +3,16 @@
  * docs — every doc section one step reads, printed in one call, instead of grepping REFERENCE's
  * headings and `sed`-ing line ranges in two or three calls per session.
  *
- *   node <builder>/scripts/docs.mjs <step> [--prompts] [--no-config]
+ *   node <builder>/scripts/docs.mjs <step> [--prompts] [--no-config] [--path <folder>]
  *   node <builder>/scripts/docs.mjs --list
  *   node <builder>/scripts/docs.mjs section <file> "<heading>"   (one section, printed as the bundles print it)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
  * one the step also reads is printed once. The project config (`.claude/builder.md`, every step's
- * first read) comes last unless --no-config; --prompts adds build's four prompt templates.
+ * first read) comes last unless --no-config; --prompts adds build's four prompt templates. The fleet's
+ * build steps print only the config the build acts on (`configForBuild`), and `--path <folder>` makes
+ * fleet-build lever-aware: under `tests: … review=end` it leaves out EXECUTION §3 Review the task.
  *
  * The map is built from each skill's own "read / load REFERENCE §X" lines — STEPS below names the
  * line it came from. A section that no longer exists fails the call (exit 1, naming it), so a
@@ -19,14 +21,17 @@
  * Read-only; safe to run any number of times.
  */
 import { existsSync, realpathSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BUILDER, read, headings, mdSection, normTitle, repoRoot, parseArgs, cli, posix } from './feature-core.mjs'
+import { parseManifest } from './manifest.mjs'
+import { parseTestPlan } from './profile.mjs'
 
 const REF = 'skills/resume/REFERENCE.md'
 const R = (...names) => names.map((n) => [REF, n])
 const FILE = (p) => [p, null]
 const CONFIG = ['<config>', null]
+const CONFIG_BUILD = ['<config-build>', null]
 
 /** step → [file, section|null (= the whole file)] — and the skill line each list comes from. */
 export const STEPS = {
@@ -52,13 +57,14 @@ export const STEPS = {
   // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
   // fleet-build: build SKILL "Under the fleet (`BUILDER_FLEET_DIR` is set): read … fleet-build instead" — EXECUTION §The task loop (its
-  // five steps), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk`.
+  // five steps; §3 only when the plan reviews — OMIT below), REFERENCE §Contract and the contract freeze · §PLAN.md ·
+  // §The verifier, AGENT-MODE §Agent mode in the build lane (the rest of AGENT-MODE is resume-agent's).
   // Left out (≤ 30,000 chars) for `docs.mjs section`: EXECUTION §Setup, §Model selection, §The final whole-branch
   // review, §Finish, §Common rationalizations; REFERENCE §SPEC.md, §MANIFEST.md, §Walk readiness.
   // The fleet's first read is two Bash calls, each ≤ 30,000 chars (one Bash output): `fleet-build --no-config`,
-  // then `fleet-setup` — EXECUTION §Setup and the config, which is printed there once.
-  'fleet-build': [['skills/build/EXECUTION.md', 'The task loop'], ...R('Contract and the contract freeze', 'PLAN.md', 'The verifier'), ['skills/resume/AGENT-MODE.md', '`--agent-walk`'], CONFIG],
-  'fleet-setup': [['skills/build/EXECUTION.md', 'Setup'], CONFIG],
+  // then `fleet-setup` — EXECUTION §Setup and the config the build acts on, printed there once.
+  'fleet-build': [['skills/build/EXECUTION.md', 'The task loop'], ...R('Contract and the contract freeze', 'PLAN.md', 'The verifier'), ['skills/resume/AGENT-MODE.md', 'Agent mode in the build lane'], CONFIG_BUILD],
+  'fleet-setup': [['skills/build/EXECUTION.md', 'Setup'], CONFIG_BUILD],
   // resume SKILL, `state: building` + `ready: pending` (the fleet's walk lane): "run REFERENCE §Walk readiness,
   // then the build's walk script and `state: built`" — build SKILL §When the last phase signs.
   'walk-lane': [...R('Walk readiness'), ['skills/build/SKILL.md', 'When the last phase signs'], CONFIG],
@@ -81,23 +87,57 @@ export const STEPS = {
   'resume-agent': [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), FILE('skills/resume/AGENT-MODE.md'), CONFIG],
 }
 
+/** step → the sections to cut out of it for a feature's test plan (`--path`): [file, section, why]. */
+const OMIT = {
+  // EXECUTION §3 is the task review (review=slice) and the phase review (review=app); review=end runs neither.
+  'fleet-build': (levers) => (levers.review === 'end' ? [['skills/build/EXECUTION.md', '3. Review the task', 'review=end: no task or phase review']] : []),
+}
+
+/** What the fleet's build orchestrator acts on in the config, and nothing else. */
+const BUILD_FM_DROP = /^(verify|agent_walk):/
+const BUILD_SECTIONS = ['House rules', 'Environment landmines', 'Standing traps']
+
+/**
+ * The config cut to what the build loop acts on: the frontmatter without its `verify:` and `agent_walk:`
+ * blocks (the verifier and the fleet read those) or its comments, then §House rules, §Environment
+ * landmines and §Standing traps when present. §Global constraints, §Quality gates and §Walk readiness are
+ * left to the briefs, the verifier and the walk lane that use them.
+ */
+export function configForBuild(text) {
+  const lines = String(text).split('\n')
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const fm = []
+  let dropping = false
+  for (const line of close > 0 ? lines.slice(0, close + 1) : []) {
+    if (/^[A-Za-z_][\w-]*:/.test(line) || line === '---') dropping = BUILD_FM_DROP.test(line)
+    if (dropping || /^\s*#/.test(line) || !line.trim()) continue
+    fm.push(line)
+  }
+  const body = close > 0 ? lines.slice(close + 1).join('\n') : String(text)
+  const secs = BUILD_SECTIONS.map((n) => mdSection(body, n, { level: 2 })?.text).filter(Boolean)
+  return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
+}
+
 const PROMPT_FILES = ['implementer.md', 'task-reviewer.md', 're-review.md', 'final-reviewer.md'].map((f) => FILE(`skills/build/prompts/${f}`))
 
 /**
  * Resolve a step's list → { sections: [{ label, text }], missing: [label] }. Sections are de-duplicated:
  * one that sits inside another selected section of the same file is dropped.
  */
-export function bundle(step, { config = true, prompts = false, root = process.cwd() } = {}) {
+export function bundle(step, { config = true, prompts = false, root = process.cwd(), path = null } = {}) {
   const list = [...STEPS[step]]
-  if (prompts) list.splice(list.findIndex((x) => x === CONFIG), 0, ...PROMPT_FILES)
+  if (prompts) list.splice(list.findIndex((x) => x === CONFIG || x === CONFIG_BUILD), 0, ...PROMPT_FILES)
+  const manifest = path && OMIT[step] ? read(join(resolve(root, path), 'MANIFEST.md')) : null
+  const omit = manifest ? OMIT[step](parseTestPlan(parseManifest(manifest)).levers) : []
   const found = []
   const missing = []
   for (const [file, name] of list) {
-    if (file === '<config>') {
+    if (file === '<config>' || file === '<config-build>') {
       if (!config) continue
       const p = join(root, '.claude', 'builder.md')
       const text = read(p)
-      found.push(text ? { file: p, label: '.claude/builder.md (the project config)', text: text.replace(/\s+$/, ''), whole: true } : { file: p, label: '.claude/builder.md', text: '(no .claude/builder.md here — /builder:init writes it)', whole: true })
+      const build = file === '<config-build>'
+      found.push(text ? { file: p, label: `.claude/builder.md (the project config${build ? ' — the part the build acts on' : ''})`, text: (build ? configForBuild(text) : text).replace(/\s+$/, ''), whole: true } : { file: p, label: '.claude/builder.md', text: '(no .claude/builder.md here — /builder:init writes it)', whole: true })
       continue
     }
     const abs = join(BUILDER, file)
@@ -115,7 +155,15 @@ export function bundle(step, { config = true, prompts = false, root = process.cw
       missing.push(`${file} §${name}`)
       continue
     }
-    found.push({ file: abs, label: `${file} §${normTitle(s.title)} (lines ${s.start + 1}–${s.end})`, text: s.text, start: s.start, end: s.end })
+    let body = s.text
+    const cut = []
+    for (const [f, n, why] of omit) {
+      const o = f === file ? mdSection(text, n) : null
+      if (!o || o.start <= s.start || o.end > s.end) continue
+      body = body.replace(`${text.split('\n').slice(o.start, o.end).join('\n')}`, '')
+      cut.push(`§${normTitle(o.title)} (${why})`)
+    }
+    found.push({ file: abs, label: `${file} §${normTitle(s.title)} (lines ${s.start + 1}–${s.end})${cut.length ? ` — without ${cut.join(', ')}` : ''}`, text: body, start: s.start, end: s.end })
   }
   const inside = (a, b) => a !== b && a.file === b.file && !b.whole && !a.whole && a.start >= b.start && a.end <= b.end
   const sections = found
@@ -153,10 +201,10 @@ async function main(argv) {
   }
   const step = a._[0]
   if (!step || !STEPS[step]) {
-    console.error(`usage: docs.mjs <${Object.keys(STEPS).join('|')}> [--prompts] [--no-config] · docs.mjs --list`)
+    console.error(`usage: docs.mjs <${Object.keys(STEPS).join('|')}> [--prompts] [--no-config] [--path <folder>] · docs.mjs --list`)
     return 2
   }
-  const b = bundle(step, { config: !a['no-config'], prompts: !!a.prompts, root: repoRoot(process.cwd()) })
+  const b = bundle(step, { config: !a['no-config'], prompts: !!a.prompts, root: repoRoot(process.cwd()), path: a.path ?? null })
   if (b.missing.length) {
     console.error(`builder: docs ${step}: not found in ${BUILDER}: ${b.missing.join(' · ')}`)
     return 1
