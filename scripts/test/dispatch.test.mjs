@@ -381,3 +381,111 @@ test('dispatch: every build dispatch names the agent it runs as — builder\'s l
   assert.equal(typeOf(gp), 'general-purpose')
   assert.doesNotMatch(gp.stdout, /if this session has no agent/)
 })
+
+// ---- next: the bookkeeping between dispatches in one call -----------------------------------------
+
+/** A lean repo with task 1 implemented (BASE recorded, one commit) and a stub verify.mjs that logs its calls. */
+function nextRepo() {
+  const r = leanRepo('note-tags')
+  const stubDir = mkdtempSync(join(tmpdir(), 'verify-stub-'))
+  const log = join(stubDir, 'calls.jsonl')
+  const stub = join(stubDir, 'verify.mjs')
+  const url = (p) => new URL(`file://${join(SCRIPTS, p)}`).href
+  writeFileSync(
+    stub,
+    [
+      `import { appendFileSync } from 'node:fs'`,
+      `import { openLedger } from '${url('verify/ledger.mjs')}'`,
+      `import { git, mainRoot } from '${url('verify/git.mjs')}'`,
+      `const [cmd, ...rest] = process.argv.slice(2)`,
+      `appendFileSync(process.env.STUB_LOG, JSON.stringify([cmd, ...rest]) + '\\n')`,
+      `if (cmd === 'request') {`,
+      `  const wt = rest[0]`,
+      `  const req = openLedger(mainRoot(wt)).newRequest({ worktree: wt, branch: git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), sha: git(wt, 'rev-parse', rest[1]), tier: rest[rest.indexOf('--tier') + 1] })`,
+      `  console.log(req.id)`,
+      `}`,
+      `if (cmd === 'verdict') { console.log('verify ' + rest[0] + ': no verdict'); process.exit(5) }`,
+    ].join('\n') + '\n',
+  )
+  run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  commitTask(r)
+  const env = { BUILDER_VERIFY_BIN: stub, STUB_LOG: log }
+  return {
+    r,
+    next: (args) => run('dispatch.mjs', ['next', r.rel, ...args], { cwd: r.root, env }),
+    ledger: () => (existsSync(join(WS(r), 'progress.md')) ? readText(join(WS(r), 'progress.md')) : ''),
+    stubCalls: (cmd) => (existsSync(log) ? readText(log).trim().split('\n').map((l) => JSON.parse(l)) : []).filter((c) => c[0] === cmd),
+    setTests: (v) => {
+      const mf = join(r.folder, 'MANIFEST.md')
+      writeFileSync(mf, readText(mf).replace(/^tests: .*$/m, `tests: ${v}`))
+    },
+  }
+}
+
+test('next --close writes the ledger, files the request, prints the verdict and the next Agent call', () => {
+  const { r, next, ledger, stubCalls } = nextRepo()
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits aaaaaaa..bbbbbbb, review clean)'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(ledger(), /^Task 1: complete \(commits aaaaaaa\.\.bbbbbbb, review clean\)$/m)
+  const reqs = stubCalls('request')
+  assert.equal(reqs.length, 1)
+  assert.deepEqual(reqs[0], ['request', r.root, 'HEAD', '--tier', 'commit'])
+  assert.deepEqual(stubCalls('verdict')[0], ['verdict', `builder/${r.feature}`])
+  assert.match(res.stdout, /^verify builder\/note-tags: no verdict$/m)
+  assert.match(res.stdout, /task-2-brief\.md/)
+  assert.match(res.stdout, /Read .* and do what it says/)
+  assert.match(res.stdout, /description: Implement Task 2: /)
+})
+
+test('next --close run twice writes one ledger line and one request', () => {
+  const { next, ledger, stubCalls } = nextRepo()
+  next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.equal((ledger().match(/^Task 1: complete/gm) ?? []).length, 1)
+  assert.equal(stubCalls('request').length, 1)
+  assert.match(res.stdout, /^ledger: already applied/m)
+  assert.match(res.stdout, /^verify request: already applied/m)
+  assert.equal(stubCalls('verdict').length, 2, 'the verdict is read every time')
+  assert.match(res.stdout, /task-2-brief\.md/)
+})
+
+test('next --close on the last task of a phase renders no brief across the boundary', () => {
+  const { next } = nextRepo()
+  const lastTaskOfPhase1 = 2
+  const res = next(['--close', String(lastTaskOfPhase1), '--ledger', `Task ${lastTaskOfPhase1}: complete (commits a..b, review clean)`])
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(res.stdout, /^phase 1 closes — build §Phase close$/m)
+  assert.doesNotMatch(res.stdout, /task-\d+-brief\.md/)
+  assert.doesNotMatch(res.stdout, /Agent call/)
+})
+
+test('next --after-implement renders the review when the test plan reviews tasks', () => {
+  const { next, ledger, stubCalls, setTests } = nextRepo()
+  setTests('slice=own end=risk review=slice')
+  const res = next(['--after-implement', '1'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(res.stdout, /task-1-review/)
+  assert.match(res.stdout, /description: Review Task 1 \(spec \+ quality\)/)
+  assert.doesNotMatch(ledger(), /Task 1: complete/)
+  assert.equal(stubCalls('request').length, 0)
+})
+
+test('next --after-implement closes with the no-review line when the test plan sets none', () => {
+  const { r, next, ledger, stubCalls, setTests } = nextRepo()
+  setTests('review=app')
+  const base = JSON.parse(readText(join(WS(r), 'dispatch-state.json'))).tasks['1'].base
+  const head = git(r.root, 'rev-parse', '--short', 'HEAD')
+  const res = next(['--after-implement', '1'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(ledger(), /^Task 1: complete \(commits \w+\.\.\w+, no task review \(tests: review=app\)\)$/m)
+  assert.ok(ledger().includes(`Task 1: complete (commits ${base}..${head}, no task review (tests: review=app))`))
+  assert.equal(stubCalls('request').length, 1)
+  assert.match(res.stdout, /task-2-brief\.md/)
+})
+
+test('next: usage', () => {
+  const { next } = nextRepo()
+  assert.equal(next([]).status, 2)
+  assert.equal(next(['--close', '1']).status, 2, '--close needs its --ledger line')
+})
