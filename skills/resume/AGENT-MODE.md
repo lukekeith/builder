@@ -39,7 +39,8 @@ to agents has no reason to stop short of merged: a merge conflict, a red verdict
 a plan that came out large, a dev env that won't start — each of those is work, and the run does it.
 A park is reserved for **a product decision the spec leaves open that no ruling can responsibly
 settle** — which means the spec was not finished — and for the few steps the config reserves to the
-human (below). "It's a big call", "the human might want to review this", "a lot of decisions were
+human (below) — and an env still broken after one fix, which parks as `stuck` (table below).
+"It's a big call", "the human might want to review this", "a lot of decisions were
 auto-ruled" are never reasons: rule, record the ruling where the hand-off lists it, and keep going.
 
 Every point that would ask resolves one of two ways:
@@ -62,8 +63,8 @@ Every point that would ask resolves one of two ways:
 | A plan that wants to split | build it whole — record `Ruling: built as one feature under --agent-walk — <the split it wanted>` (plan §Writing the plan's dials). Never a park |
 | An open scope question the spec can't answer, and no ruling can settle without guessing at what the product should be | park — the spec needs a human. A question a reasonable reading of the SPEC settles is a ruling, not this |
 | An audit `blocked:` finding | park, citing it — it is a spec defect (a released contract it would break, a promise it can't keep) |
-| A merge conflict · a red verdict · a failed agent walk · a stalled step | work it — never a park. The fleet hands conflicts and env failures to a run of their own (fleet §What it will do) |
-| A dev env or verifier env that won't come up (an env-broken verdict, exit 3) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
+| A merge conflict · a red verdict · a failed agent walk · a stalled step | work it — never a park. The fleet hands conflicts and the walk env to a run of their own (fleet §What it will do) |
+| A dev env or verifier env that won't come up at a phase close (an env-broken verdict, exit 3; build §Phase close step 2) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
