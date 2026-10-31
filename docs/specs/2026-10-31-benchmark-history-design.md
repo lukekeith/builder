@@ -14,7 +14,8 @@ remove wasted time and tokens; that needs the same case compared across builder 
 
 - **D1. One append-only file, committed: `bench/results/history.jsonl`.** One row per finished case or
   fixture config, appended when its result is written (suite cases when the suite writes its report;
-  fixture runs when `bench.mjs` writes `runs.json`). Never edited, never deleted; a re-run is a new row.
+  fixture runs when `bench.mjs` writes `runs.json`). Never edited, never deleted; a re-run is a new row. A fixture
+  run outside the builder repo writes no history unless `BENCH_HISTORY` names a file.
 - **D2. A row carries no project name.** Fields: `at` (ISO), `suite` (suite id or fixture run id),
   `case` (id), `size`, `kind` (`archived` | `fixture`), `config` (fixture config, else null), `builder`
   (`<version>+<sha>[-dirty]`), `control` (bool), `replan` (`prefix` | `from-audited` | null),
@@ -31,7 +32,8 @@ remove wasted time and tokens; that needs the same case compared across builder 
 - **D4. Backfill.** A one-time `bench-suite.mjs history --backfill` appends rows for the results already
   on this machine — the `bench/local/results/*-suite/*/result.json` cases and the fixture runs under
   `bench/results/*/runs.json` — each with `schema: 0` (measured before the per-task build numbers and
-  the corrected stage split existed). The history view shows schema-0 rows but never flags a
+  the corrected stage split existed) — except a result that already carries the per-task build numbers
+  (`build.tokensPerTask`), which is `schema: 1`. Rows already in the file are never rewritten. The history view shows schema-0 rows but never flags a
   regression against one.
 - **D5. What it never does.** Write a project name, a path, or a status's detail; rewrite or reorder an
   existing row.

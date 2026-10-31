@@ -22,7 +22,7 @@
  * files is refused unless --allow-dirty, which runs the tree as it is. suite.json and both reports carry
  * the treatment's SHA and main's. Each finished case appends a row to the history (bench/results/history.jsonl, committed,
  * no project names) when the suite writes its report; a fixture item's runner appends its own. `history` shows it per case;
- * `history --backfill` appends schema-0 rows for the results already on this machine. Design: docs/specs/2026-10-31-benchmark-history-design.md.
+ * `history --backfill` appends rows for the results already on this machine (schema 0 unless a result has the per-task build numbers). Design: docs/specs/2026-10-31-benchmark-history-design.md.
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
  * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
@@ -647,7 +647,7 @@ const mtimeIso = (f) => {
 }
 
 /**
- * A one-time backfill of the results already on this machine, as schema-0 rows: each suite's finished archived cases
+ * A one-time backfill of the results already on this machine — schema 1 for a result with the per-task build numbers, else 0: each suite's finished archived cases
  * that have a result.json (a suite a live lock holds is still running, and is left out) and every fixture run's
  * runs.json under $BENCH_SUITE_OUT. Rows the history holds are not appended again. → { appended, file }
  */
@@ -666,7 +666,8 @@ function backfill() {
       const r = readJson(join(dir, 'result.json'))
       if (r) results.push({ ...(it.control ? { ...r, id: it.id, control: true } : r), _file: join(dir, 'result.json') })
     }
-    rows.push(...suiteHistoryRows({ ...s, id }, results, { schema: 0, at: (r) => mtimeIso(r._file) }))
+    // a result measured with the per-task build numbers is schema 1; one from before them, schema 0
+    rows.push(...suiteHistoryRows({ ...s, id }, results, { schema: 0, at: (r) => mtimeIso(r._file) }).map((h) => ({ ...h, schema: h.build?.tokensPerTask != null ? 1 : 0 })))
   }
   const runDirs = isDir(SUITE_OUT) ? readdirSync(SUITE_OUT).filter((n) => existsSync(join(SUITE_OUT, n, 'runs.json'))).sort() : []
   for (const n of runDirs) {
