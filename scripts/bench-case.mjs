@@ -4,7 +4,11 @@
  * fleet, in a scratch clone of its project at the feature's base commit, on the builder under test.
  * Design: docs/specs/2026-10-29-benchmark-suite-design.md.
  *
- *   node scripts/bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run]
+ *   node scripts/bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run] [--replan]
+ *
+ * --replan starts the fleet before the plan (replanStart): the spec commits before the audit
+ * (`prefix`), else every spec commit and one "bench: re-plan from audited" commit that takes the plan
+ * and the go-ahead back out (`from-audited`); result.json's `replan` says which.
  *
  * Reads $BENCH_LOCAL/cases/<id>.json and $BENCH_LOCAL/projects/<project>.json. Writes <out>/result.json
  * and exits 0 whether the case landed or not; exits 2 on a refusal, the reasons on stderr. Every
@@ -36,6 +40,8 @@ import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
 import { reapStrays } from './verify/run.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
+import { setManifestKeys } from './feature-core.mjs'
+import { stripPlan } from './condense.mjs'
 import { BUILDER, disabledPlugins, fleetRecord, builderLabel } from './bench.mjs'
 
 const FLEET_TIMEOUT_MS = Number(process.env.BENCH_CASE_FLEET_TIMEOUT_MS) || 24 * 60 * 60 * 1000
@@ -248,6 +254,55 @@ export function replanCommits(repo, registry, feature, specs) {
 }
 
 /**
+ * The manifest keys the plan and the go-ahead write (REFERENCE §MANIFEST.md, plan §Writing the plan and
+ * §The go-ahead) — `head`/`branch` from advance --head, `go-ahead`, `tests`, `target` — and the later
+ * steps' (`walk`, `verify`, `ready`, `blocked`, `build`): a re-plan from audited drops them all.
+ */
+export const REPLAN_UNSETS = ['head', 'branch', 'go-ahead', 'tests', 'target', 'walk', 'verify', 'ready', 'blocked', 'build']
+
+/**
+ * How --replan starts a case → { mode, specs } or { failure }. `prefix`: the spec commits before the
+ * audit (replanCommits), when any are — or none, when the base already holds the spec before its audit.
+ * `from-audited`: the spec was committed audited or further (or "spec and plan" in one commit), so
+ * every spec commit applies and resetToAudited takes the plan back out. Neither: no manifest `state:`
+ * to start from.
+ */
+export function replanStart(repo, registry, feature, base, specs) {
+  const prefix = replanCommits(repo, registry, feature, specs)
+  if (prefix.length) return { mode: 'prefix', specs: prefix }
+  const md = tryGit(repo, 'show', `${specs.at(-1) ?? base}:${registry.replace(/\/+$/, '')}/${feature}/MANIFEST.md`)
+  const state = /^state:\s*["']?([\w-]+)/m.exec(md ?? '')?.[1]
+  if (md === null) return { failure: '--replan: no MANIFEST.md in the spec commits to start from' }
+  if (!state) return { failure: '--replan: the spec commits\' MANIFEST.md has no state: to start from' }
+  if (!specs.length && STATE_BEFORE_AUDIT.has(state)) return { mode: 'prefix', specs: [] }
+  return { mode: 'from-audited', specs }
+}
+
+/**
+ * The clone taken back to `state: audited`, as one commit on its HEAD ("bench: re-plan from audited"):
+ * PLAN.md gone, the SPEC's §Plan index stripped (condense's stripPlan), and the manifest — through
+ * setManifestKeys, advance.mjs's writer — at `state: audited` with the audit's `next:` and none of
+ * REPLAN_UNSETS. The fleet then plans, takes the go-ahead and builds with the builder under test.
+ * → null, or the failure.
+ */
+export function resetToAudited(clone, registry, feature) {
+  const rel = `${registry.replace(/\/+$/, '')}/${feature}`
+  const dir = join(clone, rel)
+  try {
+    const mf = join(dir, 'MANIFEST.md')
+    writeFileSync(mf, setManifestKeys(readFileSync(mf, 'utf8'), [['state', 'audited'], ['next', `/builder:resume --path ${rel}`]], REPLAN_UNSETS))
+    rmSync(join(dir, 'PLAN.md'), { force: true })
+    const spec = join(dir, 'SPEC.md')
+    if (existsSync(spec)) writeFileSync(spec, stripPlan(readFileSync(spec, 'utf8')))
+    git(clone, 'add', '-A', '--', rel)
+    git(clone, 'commit', '-qm', 'bench: re-plan from audited', '--', rel)
+    return null
+  } catch (e) {
+    return `could not take the spec back to audited: ${why(e)}`
+  }
+}
+
+/**
  * Where a case starts, from the feature's range (featureRange): the base the clone checks out and the
  * spec commits cherry-picked onto it, together the tree the original build began from.
  *
@@ -349,7 +404,8 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const registry = /^registry:\s*(\S+)/m.exec(forkMd)?.[1] ?? 'docs/features'
   const start = caseStart(repo, registry, feature, range)
   const { base, spec } = start
-  const specs = replan ? replanCommits(repo, registry, feature, start.specs) : start.specs
+  const rs = replan && spec ? replanStart(repo, registry, feature, base, start.specs) : null
+  const specs = rs?.specs ?? (replan ? [] : start.specs)
   let baseMd
   try {
     baseMd = git(repo, 'show', `${base}:.claude/builder.md`) + '\n'
@@ -431,9 +487,9 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const texts = [['env', Object.keys(env).length ? envLines(env) : null], ['setup', profile.setup], ['teardown', profile.teardown], ...files.map((f) => [`files/${f.to.split(sep).join('/')}`, textOf(f.from)]), ...mcp].filter(([, t]) => t != null)
   for (const [where, text] of texts) refusals.push(...textRefusals(where, text, profile, { listening }))
   const ports = [...new Set([frontMatterText(builderMd), ...texts.map(([, t]) => t)].flatMap(portsNamed))].sort((a, b) => a - b)
-  const failure = !spec ? `no spec-only commits lead ${feature}'s branch` : replan && !specs.length ? '--replan: no spec commit before the audit' : null
+  const failure = !spec ? `no spec-only commits lead ${feature}'s branch` : rs?.failure ?? null
   const specLines = spec ? lineCount(tryGit(repo, 'show', `${head}:${registry}/${feature}/SPEC.md`) ?? '') || null : null
-  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines, target }
+  return { refusals, row, failure, repo, clone, base, specs, registry, feature, builderMd, warnings, files, env, setup: profile.setup ?? null, teardown: profile.teardown ?? null, ports, fleet, specLines, target, replan: rs?.mode ?? null }
 }
 
 /**
@@ -461,6 +517,8 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   }
   const picked = applySpecs(clone, specs)
   if (picked) return { ...none, clone, failure: picked }
+  const reset = plan.replan === 'from-audited' ? resetToAudited(clone, plan.registry, plan.feature) : null
+  if (reset) return { ...none, clone, failure: reset }
   // the reflog still holds the source's tip — the landed feature — and `clone: from <the project's path>`:
   // an agent could check out HEAD@{1}. Once the spec commits are in, the reflog goes and every object
   // no ref reaches is pruned (after the cherry-pick: the spec commits were reachable only through it).
@@ -763,7 +821,7 @@ if (isMain) {
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep
-  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, builder: builderLabel(builder), status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [], ...(args.replan ? { replan: true } : {}) }
+  const result = { id: caseDef.id ?? id, size: caseDef.size, kind: 'archived', project: caseDef.project, control: false, builder: builderLabel(builder), status: null, measure: null, baseline: plan.row ? measureFromRow(plan.row) : null, specLines: plan.specLines ?? null, planLines: null, estimate: caseDef.estimate ?? (plan.row ? estimateFromRow(plan.row) : null), warnings: plan.warnings ?? [], ...(args.replan ? { replan: plan.replan ?? null } : {}) }
   mkdirSync(out, { recursive: true })
   if (prep.failure) {
     result.status = `failed: ${prep.failure}`

@@ -112,7 +112,7 @@ test('--replan reaches the dry run and the case, is recorded in suite.json, and 
   const p = suite(['plan', 'c2', '--replan'])
   assert.equal(p.status, 0, p.stderr)
   assert.deepEqual(dry(), ['replan c2 true'])
-  const r = suite(['run', 'c2', '--replan', '--detach'])
+  const r = suite(['run', 'c2', '--replan', '--detach'], { STUB_REPLAN_AUDITED: 'c2' })
   assert.equal(r.status, 0, r.stderr)
   await until(() => suiteJson().items[0].status === 'done')
   await settled()
@@ -120,9 +120,12 @@ test('--replan reaches the dry run and the case, is recorded in suite.json, and 
   assert.equal(s.replan, true)
   assert.deepEqual(dry(), ['replan c2 true', 'replan c2 true'])
   assert.deepEqual(readLog().replans('c2'), ['true'])
-  const line = 're-planned: the fleet audited and planned each case'
-  assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), new RegExp(line))
-  assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), new RegExp(line))
+  // the header names each case's start
+  for (const f of [join(out, dateDir(), 'REPORT.md'), join(results, s.id, 'REPORT.md')]) {
+    const md = readFileSync(f, 'utf8')
+    assert.match(md, /^re-planned — where the fleet started each case:$/m)
+    assert.match(md, /^- c2: from-audited — the spec was committed audited or planned; the plan taken out, the fleet planned it again$/m)
+  }
   // without the flag: no field, no line
   const r2 = suite(['run', 'c3', '--detach'])
   assert.equal(r2.status, 0, r2.stderr)
@@ -132,7 +135,7 @@ test('--replan reaches the dry run and the case, is recorded in suite.json, and 
 
 test('--resume reuses the recorded replan; the report header line is absent when replan is off', async () => {
   const { suite, suiteJson, readLog, dateDir, out, results, settled, state } = setup()
-  const line = 're-planned: the fleet audited and planned each case'
+  const line = '^- c2: prefix — the fleet audited and planned it$'
   const dry = () => (existsSync(join(state, 'dry.log')) ? readFileSync(join(state, 'dry.log'), 'utf8').trim().split('\n') : [])
   suite(['run', 'c1,c2', '--lanes', '1', '--replan', '--detach'])
   await until(() => suiteJson().items.find((i) => i.id === 'c1').status === 'done')
@@ -154,7 +157,7 @@ test('--resume reuses the recorded replan; the report header line is absent when
   assert.deepEqual(dry().slice(before), ['replan c2 true'])
   assert.ok(readLog().replans('c2').length >= 1 && readLog().replans('c2').every((v) => v === 'true'))
   assert.equal(suiteJson().replan, true)
-  assert.match(readFileSync(join(results, id, 'REPORT.md'), 'utf8'), new RegExp(line))
+  assert.match(readFileSync(join(results, id, 'REPORT.md'), 'utf8'), new RegExp(line, 'm'))
 })
 
 test('the report header has no re-planned line when replan is off', async () => {
