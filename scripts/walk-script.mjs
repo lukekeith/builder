@@ -13,7 +13,7 @@
  *     names) or an auth / permission / load / save / delete / notification / deep-link path — the
  *     items the agent walk under `walk=risk` walks; then the config's §Environment landmines that
  *     concern that app (a landmine naming no app goes under every app);
- *   - under --agent-walk (the manifest's `agent-walk: on`, or --cross-app): `## Cross-app (verify E2E)`,
+ *   - under --agent-walk (the manifest's `agent-walk: on`, a fleet build's BUILDER_FLEET_DIR, or --cross-app): `## Cross-app (verify E2E)`,
  *     SPEC §Testing's human-verification / E2E script as numbered steps E1…En, in its order — only
  *     when two or more apps are in scope. With one, there is no cross-app walk: the script's steps ARE
  *     that app's items (the per-app test items are the verifier's to prove), so nothing is walked twice.
@@ -265,7 +265,7 @@ async function main(argv) {
   const f = openFeature(a._[0])
   if (!f.cfg) throw new Error(f.cfgError)
   if (read(f.specPath) == null) throw new Error(`no SPEC.md in ${f.dir}`)
-  const cross = a['no-cross-app'] ? false : a['cross-app'] ? true : /^on\b/.test(f.manifest['agent-walk'] ?? '')
+  const cross = a['no-cross-app'] ? false : a['cross-app'] ? true : /^on\b/.test(f.manifest['agent-walk'] ?? '') || !!process.env.BUILDER_FLEET_DIR // a fleet build is agent mode before the manifest says so
   const path = join(f.ws(), 'walk.md')
   const r = render(f, { cross, previous: read(path) })
   if (read(path) !== r.text) writeAtomic(path, r.text)

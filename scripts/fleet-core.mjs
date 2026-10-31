@@ -34,17 +34,17 @@ export function laneOf(mf, { batched = false, specText = null } = {}) {
   return 'unknown'
 }
 
-/** An open `- [ ]` under the SPEC's `## Fixes` (always its last section). */
 /**
- * The default prompt of a build-lane session. A planned or building feature starts on /builder:build
- * (the bundle that carries the task loop); any other state goes through /builder:resume, which routes it.
+ * The default prompt of a build-lane session. A building feature, or a planned one with its go-ahead, starts on /builder:build
+ * (the bundle that carries the task loop); any other state (a planned one with no go-ahead too) goes through /builder:resume, which takes the go-ahead.
  * The walk lane keeps /builder:resume (its walk handling) and its --walk-lane flag; `prior` is priorPark's suffix.
  */
-export function buildLanePrompt(state, { spec, target, walkLane = false, split = false, prior = '' }) {
-  const cmd = !walkLane && (state === 'planned' || state === 'building') ? '/builder:build' : '/builder:resume'
+export function buildLanePrompt(state, { goAhead = null, spec, target, walkLane = false, split = false, prior = '' }) {
+  const cmd = !walkLane && (state === 'building' || (state === 'planned' && isSet(goAhead))) ? '/builder:build' : '/builder:resume'
   return `${cmd} --path ${spec} --agent-walk --into ${target}${walkLane ? (split ? ' --walk-lane' : '') : ' --no-dev-env'}${prior}`
 }
 
+/** An open `- [ ]` under the SPEC's `## Fixes` (always its last section). */
 export function hasOpenFixes(specText) {
   const i = (specText ?? '').search(/^## Fixes\s*$/m)
   return i >= 0 && /^\s*[-*] \[ \]/m.test(specText.slice(i))

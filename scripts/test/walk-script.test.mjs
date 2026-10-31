@@ -91,3 +91,13 @@ test('walk-script: an in-scope app §Testing says nothing about gets a section t
   run('walk-script.mjs', [r.rel], { cwd: r.root })
   assert.match(readText(WALK(r)), /\n## cli\n[\s\S]*SPEC §Testing names nothing to walk in cli/)
 })
+
+test('walk-script: a fleet build (BUILDER_FLEET_DIR) writes the cross-app section with no agent-walk line; without either it does not', () => {
+  const r = leanRepo('share', { feature: 'note-sharing' })
+  const mf = join(r.folder, 'MANIFEST.md')
+  writeFileSync(mf, readText(mf).split('\n').filter((l) => !l.startsWith('agent-walk:')).join('\n'))
+  run('walk-script.mjs', [r.rel], { cwd: r.root, env: { BUILDER_FLEET_DIR: '' } })
+  assert.doesNotMatch(readText(WALK(r)), /Cross-app/)
+  run('walk-script.mjs', [r.rel], { cwd: r.root, env: { BUILDER_FLEET_DIR: '/tmp/fleet' } })
+  assert.match(readText(WALK(r)), /Cross-app/)
+})

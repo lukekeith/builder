@@ -724,13 +724,13 @@ const priorPark = (f) =>
       'Park again only if it still stands, with the line and the record rewritten per REFERENCE §How a park reads and §The park record.'
     : ''
 
-/** A feature's manifest `state:` in its worktree (the main tree before the worktree has it), or null. */
-const stateOf = (wt, feature) => {
+/** A feature's manifest `state:` and `go-ahead:` — from its worktree, the main tree before the worktree has it. */
+const manifestOf = (wt, feature) => {
   const text = readManifest(wt, feature) ?? readManifest(ROOT, feature)
-  return text == null ? null : (parseManifest(text).state ?? null)
+  return text == null ? {} : parseManifest(text)
 }
 
-async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(stateOf(wt, feature), { spec: specOf(feature), target: TARGET, walkLane: lane === 'walk', split: SPLIT, prior: priorPark(fleet.features[feature]) }), rec = fleet.features[feature]) {
+async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifestOf(wt, feature).state ?? null, { goAhead: manifestOf(wt, feature)['go-ahead'], spec: specOf(feature), target: TARGET, walkLane: lane === 'walk', split: SPLIT, prior: priorPark(fleet.features[feature]) }), rec = fleet.features[feature]) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)

@@ -920,7 +920,7 @@ test('waitForFleet gives a lock a grace to appear before it concludes no fleet i
 
 test('a planned or building feature starts the build lane on /builder:build', () => {
   for (const state of ['planned', 'building'])
-    assert.equal(buildLanePrompt(state, { spec: 'docs/features/f', target: 'main' }), '/builder:build --path docs/features/f --agent-walk --into main --no-dev-env')
+    assert.equal(buildLanePrompt(state, { goAhead: 'me 2026-10-03', spec: 'docs/features/f', target: 'main' }), '/builder:build --path docs/features/f --agent-walk --into main --no-dev-env')
 })
 test('a feature not yet planned, or already built, still starts on /builder:resume', () => {
   for (const state of ['spec', 'aligned', 'audited', 'built', 'signed-off', 'verified', null])
@@ -929,5 +929,11 @@ test('a feature not yet planned, or already built, still starts on /builder:resu
 test('the walk lane keeps /builder:resume and its flag, and a park note rides along', () => {
   assert.equal(buildLanePrompt('building', { spec: 's', target: 't', walkLane: true, split: true }), '/builder:resume --path s --agent-walk --into t --walk-lane')
   assert.equal(buildLanePrompt('building', { spec: 's', target: 't', walkLane: true }), '/builder:resume --path s --agent-walk --into t')
-  assert.equal(buildLanePrompt('planned', { spec: 's', target: 't', prior: '\n\nX' }), '/builder:build --path s --agent-walk --into t --no-dev-env\n\nX')
+  assert.equal(buildLanePrompt('planned', { goAhead: 'me 2026-10-03', spec: 's', target: 't', prior: '\n\nX' }), '/builder:build --path s --agent-walk --into t --no-dev-env\n\nX')
+})
+
+test('a planned feature with no go-ahead goes through /builder:resume, which takes it; a building one needs none', () => {
+  for (const goAhead of [undefined, null, '', 'none'])
+    assert.match(buildLanePrompt('planned', { goAhead, spec: 's', target: 't' }), /^\/builder:resume /)
+  assert.match(buildLanePrompt('building', { goAhead: 'none', spec: 's', target: 't' }), /^\/builder:build /)
 })
