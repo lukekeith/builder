@@ -49,12 +49,17 @@
  *                          `Task N: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`.
  *   next <folder> --close N --ledger "<line>"   EXECUTION §5 in one call: the ledger line (advance.mjs
  *                          --ledger), the commit-tier request (`verify.mjs request <worktree> HEAD --tier
- *                          commit`), `verify.mjs verdict <branch>` printed verbatim, then task N+1's
- *                          implementer render — or, when N closes its phase in the ## Phases table,
- *                          `phase <P> closes — build §Phase close` and no render. Each part is skipped,
+ *                          commit`), `verify.mjs verdict <branch>` printed verbatim, then the
+ *                          implementer render of the next task N's ## Phases row lists (with
+ *                          --context) — or, when N is its phase's last, `phase <P> closes — build
+ *                          §Phase close` and no render. A red verdict (exit 1) renders nothing and
+ *                          names the implementer command to run once it is acted on (at a phase's
+ *                          end: the red line, then the phase-close line); exits 3, 4, 5, 6 and 75
+ *                          render as usual; any other exit is an error. Each part is skipped,
  *                          printing `already applied`, when done before (a `Task N: complete` ledger
  *                          line; a commit-tier request for HEAD's sha), so a re-run after a crash
- *                          finishes only what is missing. Judgement stays the orchestrator's: whether
+ *                          finishes only what is missing; a re-run with a different ledger line
+ *                          keeps the first one. Judgement stays the orchestrator's: whether
  *                          findings need a fix round, whether a verdict's regression needs a fix dispatch.
  *                          BUILDER_VERIFY_BIN overrides the verify client (tests stub it).
  *
@@ -689,9 +694,10 @@ const verifyBin = () => process.env.BUILDER_VERIFY_BIN || join(BUILDER, 'scripts
 
 /**
  * `verify.mjs <args>` in the worktree → { out, status }, its stdout verbatim. Exits 0 green, 1 red,
- * 3 env-broken, 5 none and 75 pending are answers; any other exit is an error carrying its stderr.
+ * 3 env-broken, 4 conflict, 5 none, 6 cancelled and 75 pending are answers; any other exit is an
+ * error carrying its stderr.
  */
-const VERIFY_ANSWERS = [0, 1, 3, 5, 75]
+const VERIFY_ANSWERS = [0, 1, 3, 4, 5, 6, 75]
 function verifyCli(root, args) {
   const r = spawnSync(process.execPath, [verifyBin(), ...args], { cwd: root, encoding: 'utf8' })
   if (r.error) throw r.error
@@ -730,6 +736,7 @@ function close(f, ws, n, line, context) {
 
   const p = phaseEnd(f, n)
   if (p.next == null) {
+    if (verdict.status === 1) out.push('verdict red — act on it (EXECUTION §5)')
     out.push(`phase ${p.phase ?? '?'} closes — build §Phase close`)
     return { lines: out, render: null }
   }
