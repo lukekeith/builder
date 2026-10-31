@@ -31,6 +31,12 @@ const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelle
 export const exitFor = (status) => EXIT[status] ?? 75
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+/** The lines of a failure message that say what failed (FAIL, ✗, Error, expected); else its last 6 lines. */
+function failingLines(msg) {
+  const all = String(msg ?? '').split('\n')
+  const hit = all.filter((l) => /FAIL|✗|Error|expected/.test(l))
+  return (hit.length ? hit : all.filter((l) => l.trim())).slice(hit.length ? 0 : -6, hit.length ? 6 : undefined)
+}
 export function summarize(v) {
   const head = [
     `verify ${v.tier} ${String(v.sha).slice(0, 7)} ${v.branch}: ${String(v.status).toUpperCase()}`,
@@ -46,7 +52,7 @@ export function summarize(v) {
   const lines = [head.join(' · ')]
   for (const g of v.regressions) {
     lines.push(`  ✗ ${g.id} — introduced by ${String(g.introducedBy).slice(0, 7)}${g.note ? ` (${g.note})` : ''}`)
-    for (const l of String(g.msg ?? '').split('\n').slice(0, 6)) lines.push(`      ${l}`)
+    for (const l of failingLines(g.msg)) lines.push(`      ${l}`)
   }
   for (const b of v.broken) lines.push(`  ⚠ ${b.suite}: ${b.reason}`)
   if (v.files?.length) lines.push(`  conflict in: ${v.files.join(', ')}`)

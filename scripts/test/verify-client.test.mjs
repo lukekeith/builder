@@ -112,6 +112,20 @@ test('summarize and exitFor', () => {
   assert.match(s, /selection: u 3 files/)
 })
 
+test('summarize shows the failing lines of a red check, not its banner', () => {
+  const base = { tier: 'commit', sha: 'abcdef1234', branch: 'f', status: 'red', ms: 1, flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0 }
+  const msg = '> x@1 test\n> node --test\n\nstarting\nrunning\n  ✗ test/x.test.mjs > y\n    expected 1, got 2\nmore\nnoise'
+  const s = summarize({ ...base, regressions: [{ id: 'c', msg, introducedBy: '1234567abc' }] })
+  assert.match(s, /✗ test\/x\.test\.mjs > y/)
+  assert.match(s, /expected 1, got 2/)
+  assert.doesNotMatch(s, /npm|> x@1|starting/)
+  const tail = Array.from({ length: 10 }, (_, i) => `l${i}`).join('\n')
+  const t = summarize({ ...base, regressions: [{ id: 'c', msg: tail, introducedBy: '1234567abc' }] })
+  assert.match(t, /l9/)
+  assert.match(t, /l4/)
+  assert.doesNotMatch(t, /l3\b/)
+})
+
 test('cancel never overwrites a finished request and cancels a queued one at once', () => {
   const { root, wt } = repo()
   const ledger = openLedger(root)
