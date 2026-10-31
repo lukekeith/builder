@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, caseEnv, historyRowFromResult, historyRowsFromRuns, historyFinished } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, caseEnv, historyRowFromResult, historyRowsFromRuns, historyFinished, historyKey, parseHistory, renderHistory } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -483,4 +483,68 @@ test('historyRowsFromRuns: one row per config in a fixture run, its median done 
   assert.doesNotMatch(JSON.stringify(rows), /\/Users\//)
   assert.equal(historyRowsFromRuns(data, { schema: 0, control: true })[0].schema, 0)
   assert.equal(historyRowsFromRuns(data, { control: true })[0].control, true)
+})
+
+// ── the history view ──
+const hr = (o) => ({ at: '2026-10-30T10:00:00.000Z', suite: 's1', case: 'a19', size: 'lg', kind: 'archived', config: null, builder: '5.5.0+aaaaaaa', control: false, replan: null, outcome: 'landed', reason: 'done', wallMin: 100, costUsd: 10, tokens: 1000000, turns: 100, build: { tokens: 40000, turns: 40, tasks: 4, tokensPerTask: 10000, turnsPerTask: 10, peakCtx: null }, stages: null, planLines: null, specLines: null, fixRounds: null, findings: null, schema: 1, ...o })
+const ptBuild = (tpt) => ({ tokens: tpt * 4, turns: 40, tasks: 4, tokensPerTask: tpt, turnsPerTask: 10, peakCtx: null })
+const sectionOf = (md, c) => md.slice(md.indexOf(`## ${c}`), (md.indexOf('\n## ', md.indexOf(`## ${c}`) + 1) + 1 || md.length + 1) - 1)
+test('parseHistory: one row a line; blank and broken lines are skipped', () => {
+  assert.deepEqual(parseHistory('{"case":"a"}\n\nnot json\n{"case":"b"}\n'), [{ case: 'a' }, { case: 'b' }])
+  assert.deepEqual(parseHistory(''), [])
+})
+test('historyKey: a case of a suite (or a config of a fixture run), its control apart', () => {
+  assert.equal(historyKey(hr({})), historyKey(hr({ at: 'later', schema: 0 })))
+  assert.notEqual(historyKey(hr({})), historyKey(hr({ control: true })))
+  assert.notEqual(historyKey(hr({ kind: 'fixture', config: 'builder' })), historyKey(hr({ kind: 'fixture', config: 'gsd' })))
+  assert.notEqual(historyKey(hr({})), historyKey(hr({ suite: 's2' })))
+})
+test('renderHistory: per case, its runs in time order with builder, outcome and key numbers; Δ against its previous run under a different builder', () => {
+  const rows = [
+    hr({ at: '2026-10-31T09:00:00.000Z', suite: 's3', builder: '5.6.0+ccccccc', wallMin: 80, costUsd: 8, build: ptBuild(9000) }),
+    hr({ at: '2026-10-30T10:00:00.000Z', suite: 's1' }),
+    hr({ at: '2026-10-30T20:00:00.000Z', suite: 's2', wallMin: 120 }),
+    hr({ case: 'tags', size: 'sm', kind: 'fixture', config: 'builder', suite: '2026-10-30-1410-tags', build: null, wallMin: 9 }),
+  ]
+  const md = renderHistory(rows)
+  assert.match(md, /^# Benchmark history — 4 runs of 2 cases$/m)
+  assert.ok(md.indexOf('## tags') < md.indexOf('## a19'), 'cases by size, then id')
+  const a = sectionOf(md, 'a19')
+  assert.match(a, /\| at \| suite \| builder \| outcome \| wall \| tokens \| tokens ÷ task \| cost \| Δ tokens ÷ task \| Δ wall \| Δ cost \|/)
+  const lines = a.split('\n').filter((l) => /^\| 2026/.test(l))
+  assert.deepEqual(lines.map((l) => l.split(' | ')[1]), ['s1', 's2', 's3'])
+  assert.match(lines[0], /^\| 2026-10-30 10:00 \| s1 \| 5\.5\.0\+aaaaaaa \| landed \| 1h40m \| 1\.0M \| 10k \| \$10\.00 \| — \| — \| — \|$/)
+  // s3 is the first under 5.6.0: against s2, the newest run under the builder before it
+  assert.match(lines[2], /\| 9k \| \$8\.00 \| -10% \| -33% \| -20% \|$/)
+  assert.doesNotMatch(a, /regressed/)
+  assert.match(sectionOf(md, 'tags'), /^## tags · sm · builder$/m)
+})
+test('renderHistory: a newest run worse by more than 10% on tokens per task, wall or cost — or landed before and not now — is ⚠ regressed', () => {
+  const b = '5.6.0+ccccccc'
+  const worse = renderHistory([hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: b, build: ptBuild(11500), wallMin: 111, costUsd: 10.5 })])
+  assert.match(worse, /^## a19 · lg — ⚠ regressed: tokens ÷ task \+15%, wall \+11%$/m)
+  const tenPct = renderHistory([hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: b, build: ptBuild(11000), wallMin: 110, costUsd: 11 })])
+  assert.doesNotMatch(tenPct, /regressed/, 'exactly 10% is not more than 10%')
+  const parked = renderHistory([hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: b, outcome: 'parked', reason: 'parked', wallMin: 50, build: null })])
+  assert.match(parked, /⚠ regressed: landed before, parked now/)
+  // a control (the case on main) is shown, never the newest run a regression is judged on
+  const ctl = renderHistory([hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: b, control: true, outcome: 'failed', reason: 'failed' })])
+  assert.match(ctl, /5\.6\.0\+ccccccc \(control\)/)
+  assert.doesNotMatch(ctl, /regressed/)
+})
+test('renderHistory: schema-0 rows are shown, marked, and never flagged against', () => {
+  const md = renderHistory([hr({ schema: 0, build: ptBuild(5000), wallMin: 10 }), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', builder: '5.6.0+ccccccc' })])
+  assert.match(md, /^\| 2026-10-30 10:00 † \| s1 \|/m)
+  assert.match(md, /† backfilled \(schema 0\)/)
+  assert.doesNotMatch(md, /regressed/)
+  assert.doesNotMatch(renderHistory([hr({}), hr({ at: '2026-10-31T00:00:00.000Z', suite: 's2', outcome: 'failed', reason: 'failed', schema: 0 })]), /regressed/)
+})
+test('renderHistory: only the named cases, only runs since a date; nothing to show says so', () => {
+  const rows = [hr({}), hr({ case: 'b03', at: '2026-10-29T00:00:00.000Z' }), hr({ case: 'b03', suite: 's9', at: '2026-10-31T00:00:00.000Z' })]
+  const md = renderHistory(rows, { cases: ['b03'], since: '2026-10-30' })
+  assert.match(md, /^# Benchmark history — 1 run of 1 case since 2026-10-30$/m)
+  assert.doesNotMatch(md, /## a19/)
+  assert.match(md, /\| s9 \|/)
+  assert.match(renderHistory([], {}), /no runs in the history yet/)
+  assert.match(renderHistory(rows, { cases: ['zz'] }), /no runs of zz/)
 })

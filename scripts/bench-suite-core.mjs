@@ -597,3 +597,66 @@ export function historyRowsFromRuns(data, { at, size = null, control = false, sc
     return historyRow({ at: when, suite: data.runId, case: data.feature, size, kind: 'fixture', config, builder: data.versions?.builder, control, outcome: OUTCOMES[reason] ?? 'failed', reason, measure: measureFromRuns(data, config), schema })
   })
 }
+
+/** What makes a row the same run: a case of a suite (a config of a fixture run), its control apart — a rebuilt report or a second backfill adds nothing. */
+export const historyKey = (r) => [r.suite, r.case, r.config ?? '', r.control ? 'control' : ''].join('\u0000')
+
+/** history.jsonl's rows; a blank or broken line is skipped. */
+export const parseHistory = (text) => String(text ?? '').split('\n').flatMap((l) => {
+  if (!l.trim()) return []
+  try {
+    return [JSON.parse(l)]
+  } catch {
+    return []
+  }
+})
+
+const pctChange = (v, base) => (v == null || base == null || !(base > 0) ? null : Math.round(((v - base) / base) * 100))
+const HISTORY_METRICS = [['tokens ÷ task', (r) => r.build?.tokensPerTask ?? null], ['wall', (r) => r.wallMin], ['cost', (r) => r.costUsd]]
+
+/** Why a case's newest run (controls left out) is worse than the one before it, or [] — never against or as a schema-0 row. */
+export function historyRegressions(rows) {
+  const runs = rows.filter((r) => !r.control)
+  const [was, now] = runs.slice(-2)
+  if (!was || !now || !(was.schema >= 1) || !(now.schema >= 1)) return []
+  const out = HISTORY_METRICS.flatMap(([name, f]) => {
+    const p = pctChange(f(now), f(was))
+    return p != null && p > 10 ? [`${name} +${p}%`] : []
+  })
+  if (was.outcome === 'landed' && now.outcome !== 'landed') out.push(`landed before, ${now.outcome} now`)
+  return out
+}
+
+/**
+ * The history view: per case (by size, then id), its runs in time order — builder, outcome and the key numbers, and the
+ * change against the case's previous run under a different builder; a case whose newest run regressed is marked ⚠.
+ */
+export function renderHistory(rows, { cases = [], since = null } = {}) {
+  const picked = rows.filter((r) => (!cases.length || cases.includes(r.case)) && (!since || String(r.at ?? '') >= since))
+  const scope = `${cases.length ? ` of ${cases.join(', ')}` : ''}${since ? ` since ${since}` : ''}`
+  if (!picked.length) return rows.length ? `no runs${scope} in the history` : 'no runs in the history yet — a suite or a fixture run adds them; bench-suite.mjs history --backfill adds the ones already on this machine'
+  const groups = new Map()
+  for (const r of picked) {
+    const k = r.config ? `${r.case} · ${r.size ?? '?'} · ${r.config}` : `${r.case} · ${r.size ?? '?'}`
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  const sz = (r) => (SIZES.includes(r.size) ? SIZES.indexOf(r.size) : SIZES.length)
+  const ordered = [...groups].sort(([ka, [a]], [kb, [b]]) => sz(a) - sz(b) || ka.localeCompare(kb))
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+  const out = [`# Benchmark history — ${plural(picked.length, 'run')} of ${plural(ordered.length, 'case')}${since ? ` since ${since}` : ''}`, '', 'Δ: against the case\'s previous run under a different builder. † backfilled (schema 0) — shown, never flagged against.', '']
+  const head = ['at', 'suite', 'builder', 'outcome', 'wall', 'tokens', 'tokens ÷ task', 'cost', 'Δ tokens ÷ task', 'Δ wall', 'Δ cost']
+  for (const [k, rs] of ordered) {
+    const runs = [...rs].sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')))
+    const reg = historyRegressions(runs)
+    const body = runs.map((r, i) => {
+      const prev = runs.slice(0, i).reverse().find((p) => p.builder !== r.builder)
+      return [
+        `${String(r.at ?? DASH).slice(0, 16).replace('T', ' ')}${r.schema >= 1 ? '' : ' †'}`, r.suite, `${r.builder ?? DASH}${r.control ? ' (control)' : ''}`, r.outcome,
+        r.wallMin == null ? DASH : duration(r.wallMin * 60000), tokStr(r.tokens), tokStr(r.build?.tokensPerTask), usd(r.costUsd),
+        ...HISTORY_METRICS.map(([, f]) => (prev ? delta(f(r), f(prev)) : DASH)),
+      ]
+    })
+    out.push(`## ${k}${reg.length ? ` — ⚠ regressed: ${reg.join(', ')}` : ''}`, '', table(head, body), '')
+  }
+  return out.join('\n')
+}
