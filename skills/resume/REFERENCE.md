@@ -959,7 +959,9 @@ database and no `psql`.
 target — the only thing that dispatches a fix, each with the commit that introduced it),
 **flakes** (failed, then passed on the same commit — listed automatically unless the branch owns
 the test), **known** failures (fail on the target too) and **newly found debt**. **Env-broken** —
-no report, a failed lease — is never red and never a fix. Exit codes: 0 green · 1 red · 3
+no report, a failed lease — is never red and never a fix; at the commit tier it blocks nothing. At a
+phase close it is not a pass: the phase stays open until the environment is fixed and the phase
+tier re-run (build §Phase close). Exit codes: 0 green · 1 red · 3
 env-broken · 4 conflict · 5 none · 6 cancelled · 7 target moved · 75 still running (call again) ·
 2 usage (and `carry` when code changed). `verify.mjs verdict <branch> [<sha>] [--tier <t>]` reads
 the latest *finished* verdict — of that tier, with `--tier`, so a newer phase green never answers
