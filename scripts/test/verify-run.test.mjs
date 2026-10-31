@@ -628,7 +628,7 @@ const alive = (pid) => {
 }
 // A detached sleep in the cwd, its pid written to the file named: a webServer the runner never stopped.
 // process.getBuiltinModule: the same line runs in a `node -e` and in an ESM test file.
-const leaveSleep = (pidFile) => `const c = process.getBuiltinModule('child_process').spawn('sleep', ['60'], { cwd: process.cwd(), detached: true, stdio: 'ignore' }); c.unref(); process.getBuiltinModule('fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid))`
+const leaveSleep = (pidFile, cwd = null) => `const c = process.getBuiltinModule('child_process').spawn('sleep', ['60'], { cwd: ${cwd ? JSON.stringify(cwd) : 'process.cwd()'}, detached: true, stdio: 'ignore' }); c.unref(); process.getBuiltinModule('fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid))`
 const spawnSleep = (cwd) => {
   const p = spawn('sleep', ['60'], { cwd, detached: true, stdio: 'ignore' })
   p.unref()
@@ -738,5 +738,63 @@ test('reapStrays never signals this process, and finds nothing without lsof', ()
     assert.deepEqual(reapStrays(tmpdir()), [])
   } finally {
     process.env.PATH = path
+  }
+})
+
+test('a suite in apps/e2e that leaves a server in the sibling apps/web: the whole slot is reaped', async () => {
+  const pidFile = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-'))), 'pid')
+  const co = project({})
+  mkdirSync(join(co, 'apps', 'e2e', 'test'), { recursive: true })
+  mkdirSync(join(co, 'apps', 'web'))
+  writeFileSync(join(co, 'apps', 'e2e', 'test', 'a.test.mjs'), T(`test('serves', () => { ${leaveSleep(pidFile, join(co, 'apps', 'web'))} })`))
+  const e2e = { ...suite, name: 'e2e', cwd: 'apps/e2e' }
+  const v = await runRequest(req(), ctxFor(co, co, { verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } }))
+  const pid = pidIn(pidFile)
+  try {
+    assert.equal(v.status, 'green')
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('the lease is released before the reap, so a release hook can stop its own daemon first', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const atRelease = []
+  const ctx = ctxFor(co, co, {
+    lease: async () => ({ env: {}, release: () => atRelease.push(alive(pidIn(join(dir, 'pid')))) }),
+    verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+      { name: 'srv', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'pid')))}`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    ] },
+  })
+  await runRequest(req(), ctx)
+  const pid = pidIn(join(dir, 'pid'))
+  try {
+    assert.deepEqual(atRelease, [true])
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('one reap per request run, at its end; a timed-out run is reaped at once, before the next', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const seen = (name, f) => ({ name, run: `if kill -0 $(cat ${f}) 2>/dev/null; then echo alive > ${f}.${name}; else echo gone > ${f}.${name}; fi`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] })
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 1500, db: null, checks: [
+    { name: 'ok', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'ok')))}`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    seen('after-ok', join(dir, 'ok')),
+    { name: 'slow', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'slow')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    seen('after-slow', join(dir, 'slow')),
+  ] } })
+  await runRequest(req(), ctx)
+  const pids = [pidIn(join(dir, 'ok')), pidIn(join(dir, 'slow'))]
+  try {
+    assert.equal(readFileSync(join(dir, 'ok.after-ok'), 'utf8').trim(), 'alive')
+    assert.equal(readFileSync(join(dir, 'slow.after-slow'), 'utf8').trim(), 'gone')
+    assert.deepEqual(pids.map(alive), [false, false])
+  } finally {
+    pids.forEach(kill)
   }
 })
