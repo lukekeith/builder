@@ -802,7 +802,9 @@ if (isMain) {
         console.log(summaries.map((x) => x.text).join('\n\n'))
         // a body: or files: line is a warning, never a refusal: prose naming something of the human's, a placed file worktrees won't get
         const warned = (x) => warningsOf([x]).get(x.id)?.length ?? 0
-        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok${warned(x) ? ` — ${warned(x)} warning${warned(x) > 1 ? 's' : ''}, ${WARNING_FIX}` : ''}`).join(' · ')}`)
+        // under --replan, each case's start beside its ok: prefix (<n> commits) or from-audited
+        const mode = (x) => /^\s*replan:\s+(.*)$/m.exec(x.text)?.[1]
+        console.log(`\ndry runs: ${summaries.map((x) => `${x.id} ok${mode(x) ? ` — replan: ${mode(x)}` : ''}${warned(x) ? ` — ${warned(x)} warning${warned(x) > 1 ? 's' : ''}, ${WARNING_FIX}` : ''}`).join(' · ')}`)
       }
       process.exit(0)
     }

@@ -183,6 +183,25 @@ test('--replan with no manifest state to start from is a prep failure, not a cra
   assert.match(JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')).status, /^failed: --replan: /)
 })
 
+test('--dry-run --replan names the mode, and refuses only when neither works', () => {
+  const pre = fixture({ states: ['spec', 'audited', 'planned'] })
+  const a = pre.run(['c1', '--builder', REPO, '--out', pre.out, '--dry-run', '--replan'])
+  assert.equal(a.status, 0, a.stderr)
+  assert.match(a.stdout, /^  replan: prefix \(1 commit\)$/m)
+  const two = fixture({ states: ['spec', 'aligned', 'audited'] })
+  assert.match(two.run(['c1', '--builder', REPO, '--out', two.out, '--dry-run', '--replan']).stdout, /^  replan: prefix \(2 commits\)$/m)
+  const aud = fixture({ states: ['audited', 'planned'] })
+  const b = aud.run(['c1', '--builder', REPO, '--out', aud.out, '--dry-run', '--replan'])
+  assert.equal(b.status, 0, b.stderr)
+  assert.match(b.stdout, /^  replan: from-audited$/m)
+  // the dry run without --replan names no mode
+  assert.doesNotMatch(aud.run(['c1', '--builder', REPO, '--out', aud.out, '--dry-run']).stdout, /replan:/)
+  const none = fixture()
+  const c = none.run(['c1', '--builder', REPO, '--out', none.out, '--dry-run', '--replan'])
+  assert.equal(c.status, 2, c.stdout)
+  assert.match(c.stderr, /^refused: --replan: /m)
+})
+
 test('a case runs in a clone and never touches the repo', () => {
   const { repo, out, clone, run } = fixture()
   const before = git(repo, 'rev-parse', 'HEAD') + git(repo, 'status', '--porcelain')

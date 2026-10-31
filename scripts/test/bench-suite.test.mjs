@@ -112,13 +112,18 @@ test('--replan reaches the dry run and the case, is recorded in suite.json, and 
   const p = suite(['plan', 'c2', '--replan'])
   assert.equal(p.status, 0, p.stderr)
   assert.deepEqual(dry(), ['replan c2 true'])
+  // the dry run's replan line, and the mode beside the case's ok
+  assert.match(p.stdout, /^  replan: prefix \(1 commit\)$/m)
+  assert.match(p.stdout, /^dry runs: c2 ok — replan: prefix \(1 commit\)$/m)
+  const pa = suite(['plan', 'c2', '--replan'], { STUB_REPLAN_AUDITED: 'c2' })
+  assert.match(pa.stdout, /^dry runs: c2 ok — replan: from-audited$/m)
   const r = suite(['run', 'c2', '--replan', '--detach'], { STUB_REPLAN_AUDITED: 'c2' })
   assert.equal(r.status, 0, r.stderr)
   await until(() => suiteJson().items[0].status === 'done')
   await settled()
   const s = suiteJson()
   assert.equal(s.replan, true)
-  assert.deepEqual(dry(), ['replan c2 true', 'replan c2 true'])
+  assert.deepEqual(dry(), ['replan c2 true', 'replan c2 true', 'replan c2 true'])
   assert.deepEqual(readLog().replans('c2'), ['true'])
   // the header names each case's start
   for (const f of [join(out, dateDir(), 'REPORT.md'), join(results, s.id, 'REPORT.md')]) {
