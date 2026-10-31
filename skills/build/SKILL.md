@@ -21,6 +21,8 @@ prints EXECUTION.md, then REFERENCE (§Contract and the contract freeze · §PLA
 brief · §House rules · §Environment landmines). Everything below is the binding this pipeline puts
 on top of that loop.
 
+**Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
+
 **Under the fleet (`BUILDER_FLEET_DIR` is set):** read in two Bash calls instead, each one Bash
 output: `node <builder>/scripts/docs.mjs fleet-build --no-config --path <folder>` — EXECUTION §The task loop
 (without §3 under `review=end`), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier,

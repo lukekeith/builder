@@ -26,7 +26,7 @@
  * dropping them, FLEET_KEEP_WORKSPACES=1 keeps a landed feature's build workspace in .builder/kept/.
  */
 import { spawn, execFile, execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, createWriteStream, unlinkSync, openSync, closeSync, cpSync, statSync, rmSync, realpathSync } from 'node:fs'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
@@ -281,6 +281,8 @@ function envFor(feature, lane) {
   // Set after it for the same reason: a run's cwd is its worktree, beside the repo, so the skills'
   // pause check (`$BUILDER_FLEET_DIR/requests/<feature>.pause`) needs the main checkout's fleet dir.
   env.BUILDER_FLEET_DIR = DIR
+  // The builder root, so the skills' `<builder>/scripts/…` needs no resolving (and no `B=…;` prefix).
+  env.BUILDER_DIR = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'))
   return env
 }
 

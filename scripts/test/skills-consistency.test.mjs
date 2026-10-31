@@ -1005,3 +1005,13 @@ test('an unattended plan or resume reads its bundle and its config in two calls,
   const item4 = resume.slice(resume.indexOf('4. **One-line resume footer**'), resume.indexOf('5. **A bare affirmative'))
   assert.match(item4, /Under `--agent-walk` the\s+footer is never numbered/)
 })
+
+test('the skills a fleet session reads say once that <builder> is "$BUILDER_DIR" under the fleet, and every <builder>/scripts path still exists', () => {
+  const ONCE = /Under the fleet \(`BUILDER_DIR` is set\), `<builder>` is `"\$BUILDER_DIR"`/
+  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md']) assert.match(read(p), ONCE, p)
+  const agent = read('skills/resume/AGENT-MODE.md')
+  assert.match(agent.slice(agent.indexOf('## Agent mode in the build lane'), agent.indexOf('## `--agent-walk`')), ONCE, 'AGENT-MODE build lane')
+  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/AGENT-MODE.md']) {
+    for (const m of read(p).matchAll(/(?:<builder>|"\$BUILDER_DIR")\/(scripts\/[\w./-]+?\.(?:mjs|sh))/g)) assert.ok(existsSync(join(ROOT, m[1])), `${p}: ${m[1]}`)
+  }
+})

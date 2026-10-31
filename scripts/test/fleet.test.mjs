@@ -1641,6 +1641,16 @@ test('every run is told where the fleet keeps its requests: BUILDER_FLEET_DIR, w
   }
 })
 
+test('every run gets BUILDER_DIR, the builder root, so a skill never resolves <builder> itself', () => {
+  const root = makeRepo(['a'], { lines: ['env: BUILDER_DIR=/nope'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.ok(starts.some((l) => / walk /.test(l)) && starts.some((l) => / build /.test(l)))
+  const want = realpathSync(join(HERE, '..', '..'))
+  for (const l of starts) assert.equal(/ builder_dir=(\S+)/.exec(l)?.[1], want, l)
+})
+
 test('a pause filed while a shipped feature waits to merge parks it as revising; it does not land', () => {
   const root = makeRepo(['a'])
   mkdirSync(join(root, 'docs/features/_archive/a'), { recursive: true })
