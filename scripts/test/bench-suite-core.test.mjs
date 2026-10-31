@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, caseEnv } from '../bench-suite-core.mjs'
+import { estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, applyProfile, safetyRefusals, measureFromRow, measureFromRuns, topSpend, renderSuiteReport, statusCategory, caseFleetTimeoutMs, textRefusals, portsNamed, walkClaudeArgs, applyReplacements, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, caseEnv, historyRowFromResult, historyRowsFromRuns, historyFinished } from '../bench-suite-core.mjs'
 
 // catalogue, estimates, lane packing, budget fill
 test('estimateFromRow: wallMs and costUsd win', () =>
@@ -396,12 +396,16 @@ test('safety: pkill / killall and launchctl stopping a database service are refu
 })
 
 // The build orchestrator per plan task: a --replan case's plan can differ in size from its baseline's.
-const buildRun = (tok, turns, kinds) => ({ lane: 'build', ms: 1, turns, tokens: { input: tok, output: 0, cacheRead: 0, cacheCreation: 0 }, meter: { orchestrator: { turns }, dispatches: kinds.map((kind) => ({ kind })) } })
+const buildRun = (tok, turns, kinds, peakCtx) => ({ lane: 'build', ms: 1, turns, tokens: { input: tok, output: 0, cacheRead: 0, cacheCreation: 0 }, meter: { orchestrator: { turns, ...(peakCtx == null ? {} : { peakCtx }) }, dispatches: kinds.map((kind) => ({ kind })) } })
 test('measureFromRow: the build orchestrator\'s tokens and turns — the runs that dispatched implementers — and the plan\'s task count', () => {
   const m = measureFromRow({ ...row(60, 9, {}), size: { tasks: 4 }, timing: [buildRun(500, 3, ['audit']), buildRun(8000, 40, ['implement', 'task-review']), buildRun(2000, 10, ['implement']), buildRun(300, 2, ['final-review'])] })
-  assert.deepEqual(m.build, { tokens: 10000, turns: 50, tasks: 4 })
+  assert.deepEqual(m.build, { tokens: 10000, turns: 50, tasks: 4, peakCtx: null })
   assert.equal(measureFromRow({ ...row(1, 1, {}), timing: [buildRun(1, 1, ['audit'])] }).build, null, 'no implementer dispatched: no build run')
   assert.equal(measureFromRow({ feature: 'x' }).build, null)
+})
+test('measureFromRow: the build orchestrator\'s peak context is the largest of its runs\'', () => {
+  const m = measureFromRow({ ...row(1, 1, {}), timing: [buildRun(1, 1, ['implement'], 90000), buildRun(1, 1, ['implement'], 120000), buildRun(1, 1, ['audit'], 999999)] })
+  assert.equal(m.build.peakCtx, 120000)
 })
 test('renderSuiteReport: the build orchestrator per plan task, against the baseline per task; PLAN.md\'s count when the row has none', () => {
   const r = { id: 'c1', size: 'md', status: 'done', measure: measureFromRow({ ...row(10, 1, {}), size: { tasks: 10 }, timing: [buildRun(100000, 200, ['implement'])] }), baseline: measureFromRow({ ...row(10, 1, {}), size: { tasks: 5 }, timing: [buildRun(100000, 100, ['implement'])] }) }
@@ -423,4 +427,60 @@ test('renderSuiteReport: a --replan suite names each case start in the header; a
   assert.match(md, /^- c: prefix — /m)
   assert.match(md, /^- d: — \(no start recorded\)$/m)
   assert.doesNotMatch(renderSuiteReport([r('a', 'prefix')], { builder: { replan: false } }), /re-planned/)
+})
+
+// ── history: one row per finished case or fixture config, no project name ──
+const ROW_KEYS = ['at', 'suite', 'case', 'size', 'kind', 'config', 'builder', 'control', 'replan', 'outcome', 'reason', 'wallMin', 'costUsd', 'tokens', 'turns', 'build', 'stages', 'planLines', 'specLines', 'fixRounds', 'findings', 'schema']
+test('historyRowFromResult: a suite Result as a history row — every field, minutes, per-task build numbers', () => {
+  const measure = { ...measureFromRow({ ...row(90, 4.5, { build: 30 * 60000, plan: 6 * 60000 }), size: { tasks: 4 }, timing: [buildRun(8000, 40, ['implement'], 70000)] }), quality: { fixRounds: 2, finalFindings: { critical: 0, important: 3, minor: 7 } } }
+  const r = { id: 'a19', size: 'lg', kind: 'archived', project: 'secretproj', control: false, builder: '5.5.0+44a7438', status: 'done', replan: 'from-audited', measure, specLines: 249, planLines: 3321, planTasks: 9 }
+  const h = historyRowFromResult(r, { at: '2026-10-31T10:00:00.000Z', suite: '2026-10-31-1237-suite' })
+  assert.deepEqual(Object.keys(h), ROW_KEYS)
+  assert.deepEqual(h, {
+    at: '2026-10-31T10:00:00.000Z', suite: '2026-10-31-1237-suite', case: 'a19', size: 'lg', kind: 'archived', config: null, builder: '5.5.0+44a7438', control: false, replan: 'from-audited',
+    outcome: 'landed', reason: 'done', wallMin: 90, costUsd: 4.5, tokens: 1515, turns: 30,
+    build: { tokens: 8000, turns: 40, tasks: 4, tokensPerTask: 2000, turnsPerTask: 10, peakCtx: 70000 },
+    stages: { build: 30, plan: 6 }, planLines: 3321, specLines: 249, fixRounds: 2, findings: { critical: 0, important: 3, minor: 7 }, schema: 1,
+  })
+  assert.doesNotMatch(JSON.stringify(h), /secretproj/)
+})
+test('historyRowFromResult: a status naming a path keeps its category only; unknown fields are null; a control is its case on main', () => {
+  const r = { id: 'a28@main', size: 'md', kind: 'archived', project: 'secretproj', control: true, status: 'parked: walk env failed in /Users/me/secretproj/apps/web', measure: null, specLines: null, planLines: null }
+  const h = historyRowFromResult(r, { at: 'T', suite: 's', builder: '5.4.0+abc1234', schema: 0 })
+  assert.equal(h.case, 'a28')
+  assert.equal(h.control, true)
+  assert.equal(h.builder, '5.4.0+abc1234', 'no builder on the Result: the suite\'s label')
+  assert.deepEqual([h.outcome, h.reason, h.schema], ['parked', 'parked', 0])
+  for (const k of ['replan', 'wallMin', 'costUsd', 'tokens', 'turns', 'build', 'stages', 'planLines', 'specLines', 'fixRounds', 'findings']) assert.equal(h[k], null, k)
+  assert.doesNotMatch(JSON.stringify(h), /secretproj|\/Users\//)
+  assert.equal(historyRowFromResult({ ...r, status: 'failed: timed out after 6h' }, { at: 'T', suite: 's' }).outcome, 'timed out')
+  assert.equal(historyRowFromResult({ ...r, status: 'failed: git: /Users/me/x' }, { at: 'T', suite: 's' }).reason, 'failed')
+  assert.equal(historyRowFromResult({ ...r, replan: true }, { at: 'T', suite: 's' }).replan, 'prefix', 'an older result\'s true was the prefix')
+})
+test('historyRowFromResult: a build with no task count gives no per-task numbers; PLAN.md\'s count stands in', () => {
+  const measure = measureFromRow({ ...row(1, 1, {}), timing: [buildRun(9000, 30, ['implement'])] })
+  assert.deepEqual(historyRowFromResult({ id: 'x', status: 'done', measure }, { at: 'T', suite: 's' }).build, { tokens: 9000, turns: 30, tasks: null, tokensPerTask: null, turnsPerTask: null, peakCtx: null })
+  assert.equal(historyRowFromResult({ id: 'x', status: 'done', measure, planTasks: 3 }, { at: 'T', suite: 's' }).build.tokensPerTask, 3000)
+})
+test('historyFinished: stopped, waiting, running and refused cases are not finished', () => {
+  assert.deepEqual(['done', 'parked: x', 'failed: y', 'timed out', 'failed: stopped', 'stopped', 'waiting', 'running', 'refused: z'].map(historyFinished), [true, true, true, true, false, false, false, false, false])
+})
+test('historyRowsFromRuns: one row per config in a fixture run, its median done run; landed when any run is done', () => {
+  const s = (name, ms) => ({ name, totals: { ms, turns: 5, costUsd: 0.25, tokens: { input: 10, output: 20, cacheRead: 70, cacheCreation: 0 } } })
+  const data = { runId: '2026-10-30-1410-tags', feature: 'tags', endedAt: Date.parse('2026-10-30T15:00:00Z'), versions: { builder: '5.5.0+44a7438' }, runs: [
+    { config: 'builder', status: 'done', ms: 600000, sessions: [s('brainstorm', 60000), s('fleet 01', 480000)] },
+    { config: 'gsd', status: 'failed: no network at /Users/me', ms: 1000, sessions: [] },
+  ] }
+  const rows = historyRowsFromRuns(data, { size: 'sm' })
+  assert.equal(rows.length, 2)
+  for (const h of rows) assert.deepEqual(Object.keys(h), ROW_KEYS)
+  assert.deepEqual(rows[0], {
+    at: '2026-10-30T15:00:00.000Z', suite: '2026-10-30-1410-tags', case: 'tags', size: 'sm', kind: 'fixture', config: 'builder', builder: '5.5.0+44a7438', control: false, replan: null,
+    outcome: 'landed', reason: 'done', wallMin: 10, costUsd: 0.5, tokens: 200, turns: 10, build: null, stages: { brainstorm: 1, fleet: 8 },
+    planLines: null, specLines: null, fixRounds: null, findings: null, schema: 1,
+  })
+  assert.deepEqual([rows[1].config, rows[1].outcome, rows[1].reason, rows[1].wallMin], ['gsd', 'failed', 'failed', null])
+  assert.doesNotMatch(JSON.stringify(rows), /\/Users\//)
+  assert.equal(historyRowsFromRuns(data, { schema: 0, control: true })[0].schema, 0)
+  assert.equal(historyRowsFromRuns(data, { control: true })[0].control, true)
 })
