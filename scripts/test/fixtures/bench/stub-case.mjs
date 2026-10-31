@@ -5,7 +5,8 @@
 // STUB_CASE_MS × the case's estimated minutes (10× for an id in STUB_CASE_LONG), then writes
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
-// Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log;
+// Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log (fixture mode also
+// `history <feature> <BENCH_HISTORY> <BENCH_CONTROL>`, '-' for unset);
 // a dry run appends `replan <id> <bool>` to dry.log instead, and under --replan prints `replan: from-audited` for an id in
 // STUB_REPLAN_AUDITED, else `replan: prefix (1 commit)` (a run's result.json carries the same mode); case mode also `replan <id> <bool>`, `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
 // SIGTERM writes result.json `failed: stopped`, logs `stopped <id> <t>` and exits 0.
@@ -24,6 +25,7 @@ if (argv[0] === 'run') {
   const feature = argv[1]
   log(`start ${feature} fixtures ${Date.now()}`)
   log(`builder ${feature} ${process.cwd()}`)
+  log(`history ${feature} ${process.env.BENCH_HISTORY || '-'} ${process.env.BENCH_CONTROL || '-'}`)
   await sleep(unit)
   const dir = join(process.cwd(), 'bench', 'results', `9999-12-31-2359-${feature}`)
   mkdirSync(dir, { recursive: true })

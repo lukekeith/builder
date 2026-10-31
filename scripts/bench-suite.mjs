@@ -10,6 +10,7 @@
  *   node scripts/bench-suite.mjs status
  *   node scripts/bench-suite.mjs stop
  *   node scripts/bench-suite.mjs report <suite-id>
+ *   node scripts/bench-suite.mjs history [<case>…] [--since <YYYY-MM-DD>] [--backfill]
  *
  * Fixture cases are bench/features/<f>/feature.json (`size`, `covers`; project `fixtures`); archived
  * cases are $BENCH_LOCAL/cases/<id>.json. A suite lives in $BENCH_LOCAL/results/<suite-id>/ (suite.json,
@@ -19,24 +20,29 @@
  * The builder under test is pinned: the suite runs on a detached worktree at --builder's HEAD
  * ($TMPDIR/bench-builder-<sha12>, removed when it ends); a --builder with uncommitted changes to tracked
  * files is refused unless --allow-dirty, which runs the tree as it is. suite.json and both reports carry
- * the treatment's SHA and main's.
+ * the treatment's SHA and main's. Each finished case appends a row to the history (bench/results/history.jsonl, committed,
+ * no project names) when the suite writes its report; a fixture item's runner appends its own. `history` shows it per case;
+ * `history --backfill` appends schema-0 rows for the results already on this machine. Design: docs/specs/2026-10-31-benchmark-history-design.md.
  *
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_SUITE_OUT (<builder>/bench/results), BENCH_CASE (the
  * case runner; scripts/bench-case.mjs), BENCH_FIXTURE_RUNNER (the bench.mjs a fixture item runs;
- * <checkout>/scripts/bench.mjs), BENCH_TMP (where clones go; $TMPDIR/bench-suite), TMPDIR (where the main checkout for controls goes).
+ * <checkout>/scripts/bench.mjs), BENCH_TMP (where clones go; $TMPDIR/bench-suite), TMPDIR (where the main checkout for controls goes),
+ * BENCH_HISTORY (the history file; $BENCH_SUITE_OUT/history.jsonl).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, renameSync, openSync, closeSync, realpathSync, statSync, cpSync } from 'node:fs'
 import { join, dirname, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions, strippedEnv } from './bench-suite-core.mjs'
+import { SIZES, estimateFromRow, estimateFromRuns, pickLabel, packLanes, fillBudget, recommendControls, measureFromRuns, renderSuiteReport, caseFleetTimeoutMs, portCollisions, strippedEnv, historyRowFromResult, historyRowsFromRuns, historyFinished, parseHistory, renderHistory } from './bench-suite-core.mjs'
 import { landedRow, duration } from './fleet-core.mjs'
-import { BUILDER, runId, builderLabel } from './bench.mjs'
+import { BUILDER, runId, builderLabel, appendHistory } from './bench.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const LOCAL = process.env.BENCH_LOCAL || join(BUILDER, 'bench', 'local')
 const SUITE_OUT = process.env.BENCH_SUITE_OUT || join(BUILDER, 'bench', 'results')
+/** The committed history, one row per finished case or fixture config: <builder>/bench/results/history.jsonl. */
+const HISTORY = process.env.BENCH_HISTORY || join(SUITE_OUT, 'history.jsonl')
 const CASE_RUNNER = process.env.BENCH_CASE || join(BUILDER, 'scripts', 'bench-case.mjs')
 /** Where each archived case's clone goes — <root>/<suite-id>/<item>/clone — outside every repo, so no repo's CLAUDE.md loads into its sessions. */
 const CLONE_ROOT = process.env.BENCH_TMP || join(tmpdir(), 'bench-suite')
@@ -45,7 +51,7 @@ const LOCK = join(RESULTS, 'lock')
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURE_RESULTS = join(BUILDER, 'bench', 'results')
 const DEFAULT_LANES = 3
-const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] [--replan] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id>'
+const USAGE = 'usage: bench-suite.mjs list [--json] | plan <id,…|--all|--budget 12h> [--lanes N] [--control <id,…>] [--builder <checkout>] [--allow-dirty] [--replan] | run <same> --detach | run --resume <suite-id> --detach | status | stop | report <suite-id> | history [<case>…] [--since <YYYY-MM-DD>] [--backfill]'
 const STOP_WAIT_MS = Number(process.env.BENCH_STOP_WAIT_MS) || 120 * 1000
 const KILL_GRACE_MS = Number(process.env.BENCH_CASE_KILL_GRACE_MS) || 10 * 1000
 
@@ -167,8 +173,8 @@ const label = (c) => (c.problem ? `${c.size ?? '?'} · ${c.id} — ${c.covers} �
 
 // ---- selection and the schedule --------------------------------------------------------------------
 
-const VALUE_OPTS = new Set(['--lanes', '--control', '--budget', '--builder', '--resume'])
-const FLAG_OPTS = new Set(['--all', '--detach', '--json', '--allow-dirty', '--replan'])
+const VALUE_OPTS = new Set(['--lanes', '--control', '--budget', '--builder', '--resume', '--since'])
+const FLAG_OPTS = new Set(['--all', '--detach', '--json', '--allow-dirty', '--replan', '--backfill'])
 
 /** The CLI's options; an unknown flag or a flag missing its value is a usage error. */
 function parseArgs(argv) {
@@ -481,7 +487,8 @@ async function runFixture(it, checkout, out, onSpawn, home) {
   const results = join(checkout, 'bench', 'results')
   const before = fixtureRunDirs(results, it.case)
   const script = process.env.BENCH_FIXTURE_RUNNER || join(checkout, 'scripts', 'bench.mjs')
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: checkout }
+  // the runner appends its own history row — to this suite's history, not the pinned worktree's, which goes when the suite ends
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: checkout, BENCH_HISTORY: HISTORY, ...(it.control ? { BENCH_CONTROL: '1' } : {}) }
   delete env.BENCH_RUN_ID
   const errFile = join(out, 'case.err')
   const r = await spawnWait(process.execPath, [script, 'run', it.case, '--only', 'builder'], { cwd: checkout, env, outFile: join(out, 'case.out'), errFile, onSpawn })
@@ -613,7 +620,63 @@ function writeReports(id) {
   mkdirSync(dirname(committed), { recursive: true })
   writeFileSync(committed, renderSuiteReport(results, { names: false, builder }))
   writeFileSync(named, renderSuiteReport(results, { names: true, builder }))
+  appendHistory(HISTORY, suiteHistoryRows(s, results))
   return { committed, named }
+}
+
+/** An ISO time from epoch ms, or null. */
+const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null)
+
+/**
+ * A suite's history rows: one per finished archived case (a fixture item's runner appends its own), dated when the item
+ * ended, labelled with the builder it ran on — the Result's own label, else the suite's (main's for a control).
+ */
+function suiteHistoryRows(s, results, { schema, at } = {}) {
+  return results.filter((r) => r.kind !== 'fixture' && historyFinished(r.status)).map((r) => {
+    const it = s.items.find((x) => x.id === r.id)
+    return historyRowFromResult(r, { at: iso(it?.endedAt) ?? at?.(r) ?? new Date().toISOString(), suite: s.id, builder: r.control ? (s.mainLabel ?? null) : (s.treatment?.label ?? null), ...(schema == null ? {} : { schema }) })
+  })
+}
+
+const mtimeIso = (f) => {
+  try {
+    return statSync(f).mtime.toISOString()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A one-time backfill of the results already on this machine, as schema-0 rows: each suite's finished archived cases
+ * that have a result.json (a suite a live lock holds is still running, and is left out) and every fixture run's
+ * runs.json under $BENCH_SUITE_OUT. Rows the history holds are not appended again. → { appended, file }
+ */
+function backfill() {
+  const rows = []
+  const lock = lockState()
+  const suites = isDir(RESULTS) ? readdirSync(RESULTS).filter((n) => existsSync(join(RESULTS, n, 'suite.json'))).sort() : []
+  for (const id of suites) {
+    if (lock?.live && lock.suiteId === id) continue
+    const s = readSuite(id)
+    if (!s?.items) continue
+    const results = []
+    for (const it of s.items) {
+      if (it.kind === 'fixture' || !it.out) continue
+      const dir = existsSync(it.out) ? it.out : join(suiteDir(id), basename(it.out))
+      const r = readJson(join(dir, 'result.json'))
+      if (r) results.push({ ...(it.control ? { ...r, id: it.id, control: true } : r), _file: join(dir, 'result.json') })
+    }
+    rows.push(...suiteHistoryRows({ ...s, id }, results, { schema: 0, at: (r) => mtimeIso(r._file) }))
+  }
+  const runDirs = isDir(SUITE_OUT) ? readdirSync(SUITE_OUT).filter((n) => existsSync(join(SUITE_OUT, n, 'runs.json'))).sort() : []
+  for (const n of runDirs) {
+    const f = join(SUITE_OUT, n, 'runs.json')
+    const data = readJson(f)
+    if (!data?.feature || !Array.isArray(data.runs)) continue
+    const size = readJson(join(FEATURES, data.feature, 'feature.json'))?.size ?? null
+    rows.push(...historyRowsFromRuns({ ...data, runId: data.runId ?? n }, { size, schema: 0, ...(data.endedAt > 0 || data.startedAt > 0 ? {} : { at: mtimeIso(f) }) }))
+  }
+  return { appended: appendHistory(HISTORY, rows), file: HISTORY }
 }
 
 // ---- status ----------------------------------------------------------------------------------------
@@ -732,6 +795,19 @@ if (isMain) {
     const id = plainId(args.pos[0])
     const { committed, named } = writeReports(id)
     console.log(`report: ${committed}\nnamed:  ${named}`)
+    process.exit(0)
+  }
+
+  if (cmd === 'history') {
+    const since = args.opts['--since']
+    if (since != null && !/^\d{4}-\d\d-\d\d$/.test(since)) die(`--since takes a date, like 2026-10-31: got '${since}'`)
+    if (args.opts['--backfill']) {
+      const { appended, file } = backfill()
+      console.log(`backfill: ${appended} row${appended === 1 ? '' : 's'} appended — ${file}`)
+      process.exit(0)
+    }
+    const cases = args.pos.join(',').split(',').map((x) => x.trim()).filter(Boolean)
+    console.log(renderHistory(existsSync(HISTORY) ? parseHistory(readFileSync(HISTORY, 'utf8')) : [], { cases, since }))
     process.exit(0)
   }
 

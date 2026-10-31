@@ -6,7 +6,7 @@ description: Maintainer tool — runs a fixture feature through builder, superpo
 
 # `/builder:benchmark` — where the time goes
 
-Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id|suite-id>]`**
+Invocation: **`/builder:benchmark [<feature>] [--only <config,…>] [--repeat N] [--model <m>] [--dry-run] [--status] [--report <run-id|suite-id>] [--history [<case,…>] [--since <date>]]`**
 for one fixture feature, or **`/builder:benchmark`** with no feature for the suite picker (§Picker), which also takes
 **`--all`**, **`--budget <h>`**, **`--lanes N`**, **`--control <ids>`**, **`--resume <suite-id>`** and **`--stop`**.
 `/builder:benchmark tags` is the quick fixture run the no-feature path used to start.
@@ -80,6 +80,12 @@ summary so far and the config and session it is on. Finished: the summary table 
 path. `⚠ benchmark stopped mid-run` means its process is gone; the finished configs are kept, and
 `--only` runs the rest. **`--report <run-id>`**: `node <builder>/scripts/bench.mjs report <run-id>`,
 then its table and the path.
+
+**`--history [<case,…>] [--since <date>]`** — `node <builder>/scripts/bench-suite.mjs history [<case,…>] [--since <date>]`:
+every case's runs from the committed `bench/results/history.jsonl`, in time order — builder, outcome, wall, tokens,
+tokens ÷ task, cost, and the change against the case's previous run under a different builder. Reply with it as markdown,
+and lead with each `⚠ regressed` case and why (over 10% worse on tokens ÷ task, wall or cost, or landed before and not now).
+Rows marked † were backfilled (schema 0) and are never flagged against. It reads only; nothing runs.
 
 **`--stop`** — after one **Stop it** / **Not now** — runs `node <builder>/scripts/bench-suite.mjs stop` in the foreground: each running
 case stops cleanly and is marked `stopped`, nothing more starts, the reports are written; `--resume` runs the rest.

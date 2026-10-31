@@ -18,7 +18,8 @@ cost, and whether the feature works. Design: `docs/specs/2026-10-13-benchmark-de
   on `notes-hub`; `edit` (one small command on `notes`) is the xs case — its `feature.json` says
   `"expect": "in-chat"`, so builder building it in the chat is the path it measures, not a flag.
 - `features/<name>/accept.test.mjs` — acceptance tests the agent never sees, run after the feature lands.
-- `results/<run-id>/REPORT.md` + `runs.json` — committed; the raw streams beside them are not.
+- `results/<run-id>/REPORT.md` + `runs.json` — committed; the raw streams beside them are not. `results/history.jsonl` —
+  committed, one row per run of each case across builder versions (§Suite, History).
 - `budgets.json` — turn budgets per step, by feature and config. The report's *Turns per step* table
   marks a step whose median goes over with ⚠. Lower a budget when a release beats it.
 
@@ -84,8 +85,18 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   `REPORT.md`; the committed `bench/results/<date>-suite/REPORT.md` carries case ids, sizes and each status's category
   only (done, failed, refused, parked, timed out, stopped) — the detail is in the named report. A second suite on one
   date writes `bench/results/<date>-HHMM-suite/REPORT.md` instead.
+- **History.** `bench/results/history.jsonl` (committed, append-only) holds one row per finished case or fixture config,
+  across builder versions: the suite appends its cases when it writes its report, `bench.mjs` its configs when a run ends
+  (in the builder repo, or wherever `BENCH_HISTORY` points). A row carries the case id, size, builder label, outcome, the
+  status's category, wall, cost, tokens, turns, the build lane per plan task, stage minutes, plan and spec lines, fix
+  rounds and findings — never a project name, a path or a status's detail; a rebuilt report adds nothing, a re-run is a
+  new row. `bench-suite.mjs history [<case>…] [--since <date>]` (`/builder:benchmark --history`) shows each case's runs
+  in time order with the change against its previous builder, and marks `⚠ regressed` a case whose newest run is over 10%
+  worse on tokens ÷ task, wall or cost than the one before, or landed before and does not now. `history --backfill`
+  appended the results already on this machine as `schema: 0` rows (measured before the per-task build numbers and the
+  corrected stage split), which are shown but never flagged against. Design: `docs/specs/2026-10-31-benchmark-history-design.md`.
 - **Before a run** `plan` warns when the shell sets `DATABASE_URL` or `PG*`: every case's setup, fleet and sessions inherit them.
 - **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no
   repo's `CLAUDE.md` loads into a case's sessions; a clone inside any git repo is refused.
-- **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`;
+- **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`; `BENCH_HISTORY` (the history file);
   `BENCH_SETUP_TIMEOUT_MS` (20 min), `BENCH_CASE_FLEET_TIMEOUT_MS` (24 h), `BENCH_CASE_KILL_GRACE_MS` (10 s).

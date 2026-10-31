@@ -62,7 +62,7 @@ function setup() {
   put(join(local, 'projects', 'unsafe.json'), { db_prefix: 'bench_', builderMd: '---\nverify:\n  db: DATABASE_URL=postgres://localhost/prod_db npm test\nagent_walk:\n  claude_args: --x\n---\n' })
   const suite = (args, env = {}) => {
     const withBuilder = ['plan', 'run'].includes(args[0]) && !args.includes('--builder') && !args.includes('--resume') ? [...args, '--builder', builder.repo] : args
-    return spawnSync('node', [SUITE, ...withBuilder], { cwd: tmp, encoding: 'utf8', env: { ...process.env, TMPDIR: tmp, BENCH_LOCAL: local, BENCH_SUITE_OUT: out, BENCH_CASE: STUB, STUB_STATE: state, STUB_CASE_MS: '20', ...env } })
+    return spawnSync('node', [SUITE, ...withBuilder], { cwd: tmp, encoding: 'utf8', env: { ...process.env, TMPDIR: tmp, BENCH_LOCAL: local, BENCH_SUITE_OUT: out, BENCH_CASE: STUB, STUB_STATE: state, STUB_CASE_MS: '20', BENCH_HISTORY: '', ...env } })
   }
   const readLog = () => {
     const f = join(state, 'case.log')
@@ -79,6 +79,7 @@ function setup() {
       builders: (id) => of('builder', id).map((l) => l[2]),
       timeouts: (id) => of('timeout', id).map((l) => l[2]),
       cloneRoots: (id) => of('clone-root', id).map((l) => l[2]),
+      histories: (id) => of('history', id).map((l) => l.slice(2)),
     }
   }
   const results = join(local, 'results')
@@ -345,6 +346,9 @@ test('a fixture case runs bench.mjs in the pinned checkout and measures its newe
   assert.deepEqual({ id: res.id, size: res.size, kind: res.kind, project: res.project, control: res.control, status: res.status }, { id: 'edit', size: 'xs', kind: 'fixture', project: 'fixtures', control: false, status: 'done' })
   assert.equal(res.measure.wallMs, 180000)
   assert.equal(res.baseline.wallMs, 600000)
+  // the fixture runner appends its own row to the suite's history (not the pinned worktree's); the suite adds none for it
+  assert.deepEqual(readLog().histories('edit'), [[join(builder.repo, '..', 'out', 'history.jsonl'), '-']])
+  assert.equal(existsSync(join(builder.repo, '..', 'out', 'history.jsonl')), false)
 })
 
 test('a second run waits for nothing: it refuses while a suite holds the lock', async () => {
@@ -444,6 +448,7 @@ test('stop: the running case is stopped, nothing more starts, the reports are wr
   assert.equal(log.starts('c3') + log.starts('c2'), 0)
   assert.match(readFileSync(join(out, dateDir(), 'REPORT.md'), 'utf8'), /\| c1 \| md \| stopped \|/)
   assert.match(suite(['status']).stdout, /⚠ suite stopped mid-run — 3 unfinished; \/builder:benchmark --resume \S+ runs them/)
+  assert.equal(existsSync(join(out, 'history.jsonl')), false, 'a stopped case gets its history row when it runs again')
   assert.match(suite(['stop']).stdout, /no suite is running/)
 })
 
@@ -652,4 +657,66 @@ test('end to end: the suite runs the real case runner on two projects in two lan
   assert.doesNotMatch(committed, /\bpa\b|\bpb\b|proj-a|proj-b|\/private|\/var\//)
   assert.match(readFileSync(join(results, s.id, 'REPORT.md'), 'utf8'), /\| e1 \| sm \| pa \| done \|/)
   assert.deepEqual([a.state(), b.state()], before)
+})
+
+// ── history ──
+const historyOf = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
+test('history: a suite appends one row per finished case when it writes its report — no project name; a rebuilt report appends nothing', async () => {
+  const { suite, out, results, suiteJson, settled } = setup()
+  assert.equal(suite(['run', 'c1,c2,c3', '--lanes', '2', '--control', 'c3', '--detach']).status, 0)
+  await until(() => existsSync(join(results, suiteJson().id, 'REPORT.md')))
+  await settled()
+  const hist = join(out, 'history.jsonl')
+  const rows = historyOf(hist)
+  const id = suiteJson().id
+  assert.deepEqual(rows.map((r) => [r.suite, r.case, r.control, r.kind, r.outcome, r.schema]).sort(), [[id, 'c1', false, 'archived', 'landed', 1], [id, 'c2', false, 'archived', 'landed', 1], [id, 'c3', false, 'archived', 'landed', 1], [id, 'c3', true, 'archived', 'landed', 1]])
+  assert.deepEqual(rows.find((r) => r.case === 'c1').stages, { build: 30 })
+  assert.match(rows.find((r) => !r.control).builder, /^9\.9\.9\+[0-9a-f]{7}$/)
+  assert.doesNotMatch(readFileSync(hist, 'utf8'), /projA|projB|\/Users\/|\/tmp\//)
+  const before = readFileSync(hist, 'utf8')
+  assert.equal(suite(['report', id]).status, 0)
+  assert.equal(readFileSync(hist, 'utf8'), before)
+  // the view
+  const h = suite(['history'])
+  assert.equal(h.status, 0, h.stderr)
+  assert.match(h.stdout, /^# Benchmark history — 4 runs of 3 cases$/m)
+  assert.match(h.stdout, /^## c3 · sm$/m)
+  assert.match(h.stdout, /\(control\)/)
+  const one = suite(['history', 'c1', '--since', '2000-01-01'])
+  assert.match(one.stdout, /^# Benchmark history — 1 run of 1 case since 2000-01-01$/m)
+  assert.equal(suite(['history', '--since', 'yesterday']).status, 2)
+})
+
+test('history: --backfill appends schema-0 rows for the suites and fixture runs already here — skipping a running suite, a case with no result.json, a stopped one and a suite\'s fixture items — and a second backfill appends nothing', () => {
+  const { suite, out, local } = setup()
+  const res = (id, o = {}) => ({ id, size: 'md', kind: 'archived', project: 'projA', control: false, status: 'done', measure: { wallMs: 600000, costUsd: 2, turns: 3, tokens: 1000, stages: { build: 300000 }, byKind: null, quality: null }, baseline: null, specLines: 10, planLines: 20, ...o })
+  const suiteAt = (id, items, results) => {
+    const dir = join(local, 'results', id)
+    put(join(dir, 'suite.json'), { id, treatment: { label: '5.4.0+abcdef0' }, mainLabel: '5.3.0+1234567', items: items.map((it) => ({ out: join(dir, it.id), endedAt: Date.parse('2026-10-30T12:00:00Z'), ...it })) })
+    for (const [item, r] of Object.entries(results)) put(join(dir, item, 'result.json'), r)
+  }
+  suiteAt('2026-10-30-1326-suite', [{ id: 'c1', kind: 'archived', status: 'done' }, { id: 'c1@main', kind: 'archived', control: true, status: 'done' }, { id: 'c2', kind: 'archived', status: 'failed: case process died' }, { id: 'c3', kind: 'archived', status: 'stopped' }, { id: 'tags', kind: 'fixture', status: 'done' }],
+    { c1: res('c1', { status: 'parked: walk env failed in /Users/me/projA' }), 'c1@main': res('c1@main', { control: true }), c3: res('c3', { status: 'failed: stopped' }), tags: res('tags', { kind: 'fixture', project: 'fixtures' }) })
+  // a suite still running: its lock is live (this test's own pid)
+  suiteAt('2026-10-31-1418-suite', [{ id: 'c2', kind: 'archived', status: 'done' }], { c2: res('c2') })
+  put(join(local, 'results', 'lock'), { pid: process.pid, suiteId: '2026-10-31-1418-suite' })
+  put(join(out, '2026-10-30-1334-tags', 'runs.json'), { runId: '2026-10-30-1334-tags', feature: 'tags', endedAt: Date.parse('2026-10-30T13:50:00Z'), versions: { builder: '5.4.0+abcdef0' }, runs: [{ config: 'builder', status: 'done', ms: 600000, sessions: [] }, { config: 'gsd', status: 'crashed: x', ms: 1, sessions: [] }] })
+  put(join(out, '2026-10-30-suite', 'REPORT.md'), '# a committed report, no runs.json\n')
+  const r = suite(['history', '--backfill'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^backfill: 4 rows appended — \S+history\.jsonl$/m)
+  const rows = historyOf(join(out, 'history.jsonl'))
+  assert.deepEqual(rows.map((x) => [x.suite, x.case, x.config, x.control, x.builder, x.outcome, x.reason, x.schema]), [
+    ['2026-10-30-1326-suite', 'c1', null, false, '5.4.0+abcdef0', 'parked', 'parked', 0],
+    ['2026-10-30-1326-suite', 'c1', null, true, '5.3.0+1234567', 'landed', 'done', 0],
+    ['2026-10-30-1334-tags', 'tags', 'builder', false, '5.4.0+abcdef0', 'landed', 'done', 0],
+    ['2026-10-30-1334-tags', 'tags', 'gsd', false, '5.4.0+abcdef0', 'failed', 'failed', 0],
+  ])
+  assert.equal(rows[0].at, '2026-10-30T12:00:00.000Z')
+  assert.equal(rows[2].size, 'sm')
+  assert.doesNotMatch(readFileSync(join(out, 'history.jsonl'), 'utf8'), /projA|\/Users\//)
+  const again = suite(['history', '--backfill'])
+  assert.match(again.stdout, /^backfill: 0 rows appended/m)
+  assert.equal(historyOf(join(out, 'history.jsonl')).length, 4)
+  assert.match(suite(['history']).stdout, /† backfilled/)
 })
