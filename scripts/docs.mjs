@@ -6,6 +6,8 @@
  *   node <builder>/scripts/docs.mjs <step> [--prompts] [--no-config] [--path <folder>]
  *   node <builder>/scripts/docs.mjs --list
  *   node <builder>/scripts/docs.mjs section <file> "<heading>"   (one section, printed as the bundles print it)
+ *   node <builder>/scripts/docs.mjs config-key <key>   (one front-matter block of the repo's .claude/builder.md —
+ *                                                       `verify`, `agent_walk` — which fleet-setup leaves out)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
@@ -118,6 +120,18 @@ export function configForBuild(text) {
   return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
 }
 
+/** One top-level front-matter block (`<key>:` and its indented lines) of a config's text, or null. */
+export function configKey(text, key) {
+  const lines = String(text).split('\n')
+  const close = lines[0] === '---' ? lines.indexOf('---', 1) : -1
+  const fm = lines.slice(1, close > 0 ? close : 0)
+  const at = fm.findIndex((l) => l.startsWith(`${key}:`))
+  if (at < 0) return null
+  let end = at + 1
+  while (end < fm.length && !/^[A-Za-z_][\w-]*:/.test(fm[end])) end++
+  return fm.slice(at, end).join('\n').replace(/\s+$/, '')
+}
+
 const PROMPT_FILES = ['implementer.md', 'task-reviewer.md', 're-review.md', 'final-reviewer.md'].map((f) => FILE(`skills/build/prompts/${f}`))
 
 /**
@@ -197,6 +211,20 @@ async function main(argv) {
       return 1
     }
     process.stdout.write([`--- ${file} §${normTitle(s.title)} (lines ${s.start + 1}–${s.end})`, '', s.text, ''].join('\n'))
+    return 0
+  }
+  if (a._[0] === 'config-key') {
+    const key = a._[1]
+    if (!key) {
+      console.error('usage: docs.mjs config-key <key>')
+      return 2
+    }
+    const block = configKey(read(join(repoRoot(process.cwd()), '.claude', 'builder.md')) ?? '', key)
+    if (!block) {
+      console.error(`builder: docs config-key: no ${key}: block in .claude/builder.md's front matter`)
+      return 1
+    }
+    process.stdout.write([`--- .claude/builder.md ${key}:`, '', block, ''].join('\n'))
     return 0
   }
   const step = a._[0]

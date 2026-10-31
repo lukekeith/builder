@@ -112,7 +112,7 @@ Two things it leaves to this skill:
 
 **Under `--agent-walk`, when `git show HEAD:<folder>/MANIFEST.md` has no `agent-walk:` line, run**
 this before the first dispatch — it also commits one left uncommitted — so a cold session keeps
-agent mode (AGENT-MODE §`--agent-walk`):
+agent mode (AGENT-MODE §Agent mode in the build lane):
 `node <builder>/scripts/advance.mjs <folder> --set "agent-walk=on <YYYY-MM-DD>" --commit "chore({key}): {feature} — agent walk on"`.
 
 ## The task loop
@@ -242,7 +242,8 @@ echo** — when they disagree, the table decides and the mismatch is said out lo
    phase tier again. A consumer app's phase never starts on a red producer. 🔴 **An env-broken
    verdict (exit 3) does not close either** — the verifier never ran the tests, so there is nothing to
    close on. Fix the environment its `⚠` lines name the way the config's `verify:` block expects it
-   (its `setup`, the database `db.url` names, a check's `cwd`) — never a suite run by hand instead —
+   (its `setup`, the database `db.url` names, a check's `cwd`; under the fleet, read it first:
+   `node <builder>/scripts/docs.mjs config-key verify`) — never a suite run by hand instead —
    then request the phase tier again. Env-broken a second time → stop: under `--agent-walk` park
    (`kind: stuck`, §Stops) with the verifier's reason as the `blocked:` line; otherwise say that
    reason and end the turn.
@@ -300,8 +301,8 @@ EXECUTION.md's five stop classes, plus this pipeline's bookkeeping:
 foreground; tests are the verifier's, which runs on its own and is read with `verify.mjs verdict` /
 `wait`.
 
-**Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (resume
-§`--agent-walk`: agent mode builds to done). Of the five stop classes:
+**Under `--agent-walk`, nobody is there to ask — and almost nothing needs asking** (AGENT-MODE
+§Agent mode in the build lane: agent mode builds to done). Of the five stop classes:
 
 - **an irreversible or destructive operation, a security-sensitive action, a side effect outside the
   repo** — none is ever needed to build a feature to merged-locally. Take the path that avoids it (a

@@ -11,6 +11,9 @@ stay in [`SKILL.md`](SKILL.md); this file is printed by `node <builder>/scripts/
 What binds every unattended run, the build loop's included — a fleet build session reads only this
 section of the file (`docs.mjs fleet-build`); `docs.mjs resume-agent` prints all of it.
 
+`--agent-walk` **implies `--auto`**. 🔴 **A go-ahead is never a reason to park**: handing the feature
+to agents was the go-ahead.
+
 🔴 **Never call AskUserQuestion or ExitPlanMode** — nobody is there to answer, and a headless run that
 asks hangs until it times out.
 
@@ -43,9 +46,9 @@ auto-ruled" are never reasons: rule, record the ruling where the hand-off lists 
 | Pause | Under `--agent-walk` |
 |---|---|
 | A merge conflict · a red verdict · a failed agent walk · a stalled step | work it — never a park. The fleet hands conflicts and the walk env to a run of their own (fleet §What it will do) |
-| A dev env or verifier env that won't come up at a phase close (an env-broken verdict, exit 3; build §Phase close step 2) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
+| A dev env or verifier env that won't come up at a phase close (an env-broken verdict, exit 3; build §Phase close step 2) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd` — a fleet build reads it with `node <builder>/scripts/docs.mjs config-key verify`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
-| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
+| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff (the block as it is: `docs.mjs config-key <key>`) and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **Agent mode's job is a feature merged into the target branch.** A run that stops short of that
