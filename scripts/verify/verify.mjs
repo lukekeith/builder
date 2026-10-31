@@ -194,7 +194,10 @@ async function main() {
       // A cancel with no verdict yet is answered only by a live service tick, so make sure one runs.
       if (['queued', 'running', 'folded'].includes(r.state) || (r.state === 'cancelled' && !r.verdict)) ensureService(root)
       if (Date.now() >= until) {
-        console.log(`${id}: still ${r.state} — call wait again`)
+        // A request the service keeps dying on is not "still running": say so. A second crash makes it
+        // env-broken (serve.mjs MAX_CRASHES), so the next wait answers with that verdict.
+        if (r.crashes) console.log(`${id}: ${r.state}, but the verifier service died ${plural(r.crashes, 'time')} running it${r.lastCrash ? ` (last: ${r.lastCrash})` : ''} — see .builder/verify/serve.log; call wait again for its verdict`)
+        else console.log(`${id}: still ${r.state} — call wait again`)
         process.exit(75)
       }
       await new Promise((res) => setTimeout(res, 1000))

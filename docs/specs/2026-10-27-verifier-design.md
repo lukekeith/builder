@@ -194,7 +194,10 @@ At most one run per suite per step, of just that suite's failing tests together;
 ## Failure modes
 
 - **Service crash** — on restart `running` requests return to `queued`; leases carry the owning pid;
-  orphaned `<db>_vt_*` databases are dropped and run checkouts reset.
+  orphaned `<db>_vt_*` databases are dropped and run checkouts reset. A request the service has died
+  running twice is not re-queued again: it is `env-broken`, naming the crash from `serve.log`, and
+  `wait` says the service died on it rather than "still running". A check whose `cwd` the target
+  lacks is missing there (like a test file the branch adds), never a crash.
 - **Two services** — pid lock with a liveness check; the loser exits, its requests are already files.
 - **Untraceable change** — the whole suite, with the reason in the verdict.
 - **Commit gone** (rebased/amended) — verdict `gone`; the build re-requests its head.

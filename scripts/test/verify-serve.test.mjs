@@ -73,6 +73,34 @@ test('crash recovery: a request left running is re-queued and run', async () => 
   assert.equal(l.getRequest(r.id).state, 'done')
 })
 
+test('crash recovery counts: the first restart re-queues the request; one that took the service down twice is env-broken, never run a third time', async () => {
+  const { root, feat } = repo()
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  l.saveRequest({ ...r, state: 'running', startedAt: new Date().toISOString(), pid: 999999 })
+  writeFileSync(join(root, '.builder', 'verify', 'serve.log'), "node:events:497\n      throw er; // Unhandled 'error' event\n      ^\n\nError: spawn /bin/bash ENOENT\n    at ChildProcess._handle.onexit (node:internal/child_process:285:19)\n")
+  let runs = 0
+  const once = async () => {
+    runs++
+    throw new Error('never run a third time')
+  }
+  // First restart: re-queued, and the count kept on the request.
+  await serve(root, opts({ run: async (req) => ({ request: req.id, branch: req.branch, sha: req.sha, tier: req.tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 0 }) }))
+  assert.equal(l.getRequest(r.id).crashes, 1)
+  assert.equal(l.getRequest(r.id).verdict.status, 'green')
+  // A second crash on the same request: no third run.
+  const q = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  l.saveRequest({ ...q, state: 'running', startedAt: new Date().toISOString(), pid: 999999, crashes: 1 })
+  await serve(root, opts({ run: once }))
+  assert.equal(runs, 0)
+  const done = l.getRequest(q.id)
+  assert.equal(done.state, 'done')
+  assert.equal(done.crashes, 2)
+  assert.equal(done.verdict.status, 'env-broken')
+  assert.match(done.verdict.broken[0].reason, /the verifier service died 2 times running this request/)
+  assert.match(done.verdict.broken[0].reason, /spawn \/bin\/bash ENOENT/)
+})
+
 test('folded requests finish with the survivor verdict', async () => {
   const { root, feat } = repo()
   const l = openLedger(root)

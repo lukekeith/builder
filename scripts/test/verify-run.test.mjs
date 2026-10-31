@@ -119,6 +119,40 @@ test('an env-broken run never changes known failures: a failure on both sides is
   assert.ok(ctx.ledger.known('main').ids.has('check::types'))
 })
 
+test('runShell in a cwd that does not exist resolves a failed run — never an unhandled spawn error', async () => {
+  const r = await runShell('echo hi', { cwd: join(tmpdir(), 'vrun-no-such-dir-xyz') })
+  assert.notEqual(r.code, 0)
+  assert.match(r.out, /ENOENT|does not exist/)
+  const l = await runShell('echo hi', { cwd: join(tmpdir(), 'vrun-no-such-dir-xyz'), lines: '' })
+  assert.equal(l.lines.size, 0)
+})
+
+test('a check whose cwd the target lacks: missing there, so a failure here is a regression, not a crash; a lines check reads the target as empty', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  mkdirSync(join(co, 'apps', 'new'), { recursive: true })
+  writeFileSync(join(co, 'apps', 'new', 'lint.txt'), '✗ finding\n')
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'new-app', run: 'exit 1', cwd: 'apps/new', compare: 'exit', match: null, tiers: ['phase'], needs: [] },
+    { name: 'new-lint', run: 'cat lint.txt', cwd: 'apps/new', compare: 'lines', match: '✗', tiers: ['phase'], needs: [] },
+  ] } })
+  const v = await runRequest(req({ tier: 'phase' }), ctx)
+  assert.equal(v.status, 'red')
+  assert.deepEqual(v.regressions.map((r) => r.id).sort(), ['check::new-app', 'check::new-lint'])
+  assert.deepEqual(v.broken, [])
+  assert.equal(ctx.ledger.known('main').ids.size, 0)
+})
+
+test('a check whose cwd this commit lacks cannot run: broken, saying so — never a crash or a regression', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'later-app', run: 'true', cwd: 'apps/later', compare: 'exit', match: null, tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.match(v.broken[0].reason, /check::later-app: its cwd apps\/later does not exist/)
+})
+
 test('checks: exit compare, and lines compare uses match and the target output', async () => {
   const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
   const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
