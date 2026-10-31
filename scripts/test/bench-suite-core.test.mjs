@@ -394,3 +394,23 @@ test('safety: pkill / killall and launchctl stopping a database service are refu
     assert.ok(probe(s).some((x) => x === `setup: stops a database service: ${s}`), `${s} → ${JSON.stringify(probe(s))}`)
   assert.deepEqual(probe('pkill -f "node server.js" && killall bench_worker && launchctl list'), [])
 })
+
+// The build orchestrator per plan task: a --replan case's plan can differ in size from its baseline's.
+const buildRun = (tok, turns, kinds) => ({ lane: 'build', ms: 1, turns, tokens: { input: tok, output: 0, cacheRead: 0, cacheCreation: 0 }, meter: { orchestrator: { turns }, dispatches: kinds.map((kind) => ({ kind })) } })
+test('measureFromRow: the build orchestrator\'s tokens and turns — the runs that dispatched implementers — and the plan\'s task count', () => {
+  const m = measureFromRow({ ...row(60, 9, {}), size: { tasks: 4 }, timing: [buildRun(500, 3, ['audit']), buildRun(8000, 40, ['implement', 'task-review']), buildRun(2000, 10, ['implement']), buildRun(300, 2, ['final-review'])] })
+  assert.deepEqual(m.build, { tokens: 10000, turns: 50, tasks: 4 })
+  assert.equal(measureFromRow({ ...row(1, 1, {}), timing: [buildRun(1, 1, ['audit'])] }).build, null, 'no implementer dispatched: no build run')
+  assert.equal(measureFromRow({ feature: 'x' }).build, null)
+})
+test('renderSuiteReport: the build orchestrator per plan task, against the baseline per task; PLAN.md\'s count when the row has none', () => {
+  const r = { id: 'c1', size: 'md', status: 'done', measure: measureFromRow({ ...row(10, 1, {}), size: { tasks: 10 }, timing: [buildRun(100000, 200, ['implement'])] }), baseline: measureFromRow({ ...row(10, 1, {}), size: { tasks: 5 }, timing: [buildRun(100000, 100, ['implement'])] }) }
+  const noSize = { id: 'c2', size: 'sm', status: 'done', planTasks: 4, measure: measureFromRow({ ...row(10, 1, {}), timing: [buildRun(8000, 20, ['implement'])] }), baseline: null }
+  const md = renderSuiteReport([r, noSize], { names: false })
+  const at = md.indexOf('## Build orchestrator per task')
+  assert.ok(at > md.indexOf('## Cases') && at < md.indexOf('## Stages'), 'right after the totals')
+  const sec = md.slice(at, md.indexOf('## Stages'))
+  assert.match(sec, /\| id \| plan tasks \| build tokens \| build turns \| tokens ÷ task \| turns ÷ task \| Δ tokens ÷ task vs baseline \| Δ turns ÷ task vs baseline \|/)
+  assert.match(sec, /\| c1 \| 10 \| 100k \| 200 \| 10k \| 20 \| -50% \| \+0% \|/)
+  assert.match(sec, /\| c2 \| 4 \| 8k \| 20 \| 2k \| 5 \| — \| — \|/)
+})

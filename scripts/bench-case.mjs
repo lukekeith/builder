@@ -539,6 +539,23 @@ export function maxPlanLines(clone, registry, feature, since) {
   return prepped != null ? lineCount(prepped) : null
 }
 
+/**
+ * The task count (`### Task N` headings) of the plan the build ran: the newest PLAN.md committed past
+ * `since` (found as maxPlanLines finds it, through the merge after the ship condensed it away), else the
+ * prepped one; null with neither. The suite report's per-task numbers fall back to it when the row has no size.
+ */
+export function planTasks(clone, registry, feature, since) {
+  const path = `${registry.replace(/\/+$/, '')}/${feature}/PLAN.md`
+  const count = (text) => (text.match(/^#{2,4}\s+Task\s+\d+\b/gm) ?? []).length || null
+  const shas = (tryGit(clone, 'log', '--all', '--full-history', '--format=%H', '--not', since, '--', path) ?? '').split('\n').filter(Boolean)
+  for (const c of shas) {
+    const text = tryGit(clone, 'show', `${c}:${path}`)
+    if (text != null) return count(text)
+  }
+  const prepped = tryGit(clone, 'show', `${since}:${path}`)
+  return prepped != null ? count(prepped) : null
+}
+
 /** The process groups a fleet records for its sessions and dev envs (each runs in its own group). */
 const fleetPgids = (clone) => {
   const f = readJson(join(clone, '.builder', 'fleet', 'fleet.json'))
@@ -755,6 +772,7 @@ if (isMain) {
     result.status = status
     result.measure = landed ? measureFromRow(landed) : null
     result.planLines = maxPlanLines(prep.clone, plan.registry, plan.feature, prep.prepped)
+    result.planTasks = planTasks(prep.clone, plan.registry, plan.feature, prep.prepped)
   }
   if (stopRequested() && result.status !== 'done') result.status = 'failed: stopped'
   const teardown = await finishCase({ clone: prep.clone, teardown: plan.teardown, setupPgid: prep.setupPgid, out, env: plan.env })

@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, replanCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, saveEvidence, removeClone } from '../bench-case.mjs'
+import { specCommits, replanCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, planTasks, saveEvidence, removeClone } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -282,7 +282,7 @@ function landedRepo({ prepPlan = 0, buildPlan = 0 } = {}) {
     git(r, 'add', '-A')
     git(r, 'commit', '-qm', msg)
   }
-  const lines = (n) => Array.from({ length: n }, (_, i) => `l${i}`).join('\n') + '\n'
+  const lines = (n) => Array.from({ length: n }, (_, i) => `### Task ${i + 1}`).join('\n') + '\n'
   commit({ 'docs/features/f/SPEC.md': 's\n', ...(prepPlan ? { 'docs/features/f/PLAN.md': lines(prepPlan) } : {}) }, 'prepped')
   const prepped = git(r, 'rev-parse', 'HEAD')
   git(r, 'checkout', '-qb', 'builder/f')
@@ -305,6 +305,15 @@ test('maxPlanLines: a case that started planned and never committed a new plan c
   assert.equal(maxPlanLines(r, 'docs/features', 'f', prepped), 7)
   const none = landedRepo()
   assert.equal(maxPlanLines(none.r, 'docs/features', 'f', none.prepped), null)
+})
+
+test('planTasks: the task count of the plan the build ran — through the merge after the ship condensed it away — else the prepped plan, else null', () => {
+  const built = landedRepo({ prepPlan: 3, buildPlan: 12 })
+  assert.equal(planTasks(built.r, 'docs/features', 'f', built.prepped), 12)
+  const prepped = landedRepo({ prepPlan: 7 })
+  assert.equal(planTasks(prepped.r, 'docs/features', 'f', prepped.prepped), 7)
+  const none = landedRepo()
+  assert.equal(planTasks(none.r, 'docs/features', 'f', none.prepped), null)
 })
 
 test('the clone keeps no trace of the source: no reflog entry, no object of the source tip (the landed feature), no source path in its config, no remote or alternates', () => {
