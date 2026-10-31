@@ -6,8 +6,8 @@
 // <out>/result.json; STUB_CASE_DIE (ids) exits 1 instead, writing nothing.
 // Fixture mode writes <cwd>/bench/results/<stamp>-<feature>/runs.json with one done builder run.
 // Both append `start <id> <project> <t>`, `builder <id> <path>` and `end <id> <t>` to $STUB_STATE/case.log;
-// a dry run appends `replan <id> <bool>` to dry.log instead; a run under --replan writes result.json `replan: from-audited`
-// for an id in STUB_REPLAN_AUDITED, else `prefix`; case mode also `replan <id> <bool>`, `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
+// a dry run appends `replan <id> <bool>` to dry.log instead, and under --replan prints `replan: from-audited` for an id in
+// STUB_REPLAN_AUDITED, else `replan: prefix (1 commit)` (a run's result.json carries the same mode); case mode also `replan <id> <bool>`, `timeout <id> <BENCH_CASE_FLEET_TIMEOUT_MS>` and `clone-root <id> <--clone-root>`, and on
 // SIGTERM writes result.json `failed: stopped`, logs `stopped <id> <t>` and exits 0.
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -47,7 +47,8 @@ if (argv.includes('--dry-run')) {
   }
   const ports = portsNamed(frontMatterText(profile.builderMd ?? ''))
   const warnings = profile.builderMd ? bodyWarnings(profile.builderMd, profile) : []
-  console.log([`${id} — dry run`, `  ports:  ${ports.length ? ports.join(' ') : '(none)'}`, ...warnings.map((w) => `  ${w}`)].join('\n'))
+  const replan = argv.includes('--replan') ? [`  replan: ${ids(process.env.STUB_REPLAN_AUDITED).includes(id) ? 'from-audited' : 'prefix (1 commit)'}`] : []
+  console.log([`${id} — dry run`, ...replan, `  ports:  ${ports.length ? ports.join(' ') : '(none)'}`, ...warnings.map((w) => `  ${w}`)].join('\n'))
   process.exit(0)
 }
 const out = opt('--out')

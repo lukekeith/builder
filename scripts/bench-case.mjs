@@ -793,6 +793,8 @@ if (isMain) {
   if (dryRun) {
     const p = planCase(args)
     if (p.refusals.length) refuse(p.refusals)
+    // --replan with no start it can make (neither a pre-audit prefix nor a manifest to take back to audited) refuses: the suite must not plan it as ok
+    if (args.replan && !p.replan) refuse(p.failure ?? '--replan: no start to re-plan from')
     if (p.failure) {
       console.log(`${id}: would fail prep — ${p.failure}`)
       process.exit(0)
@@ -802,7 +804,7 @@ if (isMain) {
       `${id} (${caseDef.size}, ${caseDef.project}) — dry run, nothing is cloned or run`,
       `  clone:  ${p.clone}`,
       `  base:   ${subject(p.base)}`,
-      ...(args.replan ? ['  replan: the fleet starts before the audit'] : []),
+      ...(args.replan ? [`  replan: ${p.replan === 'prefix' ? `prefix (${p.specs.length} commit${p.specs.length === 1 ? '' : 's'})` : p.replan}`] : []),
       `  specs:  ${p.specs.length ? p.specs.map(subject).join('\n          ') : '(none after the base — it holds the spec)'}`,
       '  agent_walk:',
       ...agentWalkLines(p.builderMd).map((l) => `    ${l}`),
