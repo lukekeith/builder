@@ -22,6 +22,7 @@ import { tmpdir, homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { readBrainstormHeader } from './brainstorm-file.mjs'
 import { parseStream, deriveSteps, sessionTotals, runTotals, parseTap, renderReport, renderStatusTable, attachSplits } from './bench-core.mjs'
+import { historyRowsFromRuns, parseHistory, historyKey } from './bench-suite-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const BUILDER = resolve(HERE, '..')
@@ -633,6 +634,35 @@ function versions() {
   return { builder: builderLabel(BUILDER), superpowers: sp ? basename(sp) : null, gsd: null }
 }
 
+/**
+ * Append history rows to `file` (bench/results/history.jsonl): only the rows it does not already hold (historyKey),
+ * oldest first, after every line already there — a line is never rewritten or reordered. No file: nothing. → rows appended
+ */
+export function appendHistory(file, rows) {
+  if (!file || !rows?.length) return 0
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
+  const held = new Set(parseHistory(text).map(historyKey))
+  const fresh = []
+  for (const r of [...rows].sort((a, b) => String(a.at ?? '').localeCompare(String(b.at ?? '')))) {
+    if (held.has(historyKey(r))) continue
+    held.add(historyKey(r))
+    fresh.push(r)
+  }
+  if (!fresh.length) return 0
+  mkdirSync(dirname(file), { recursive: true })
+  appendFileSync(file, `${text && !text.endsWith('\n') ? '\n' : ''}${fresh.map((r) => JSON.stringify(r)).join('\n')}\n`)
+  return fresh.length
+}
+
+/** A fixture feature's size from its feature.json, or null. */
+const featureSize = (feature) => {
+  try {
+    return JSON.parse(readFileSync(join(FEATURES, feature, 'feature.json'), 'utf8')).size ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function runAll(plan) {
   const outRoot = join(RESULTS, plan.id)
   mkdirSync(outRoot, { recursive: true })
@@ -657,6 +687,8 @@ export async function runAll(plan) {
     }
   }
   rmSync(join(outRoot, 'progress.json'), { force: true })
+  // one history row per config; BENCH_CONTROL=1 is the suite running a control
+  appendHistory(HISTORY, historyRowsFromRuns(data, { size: featureSize(data.feature), control: process.env.BENCH_CONTROL === '1' }))
   console.log(`\n${renderStatusTable(data, null)}\nreport: ${join(outRoot, 'REPORT.md')}`)
 }
 
@@ -667,6 +699,8 @@ const flag = (f) => argv.includes(f)
 const opt = (f) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : null)
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd()
 const RESULTS = resultsDir(ROOT)
+/** The history a fixture run appends to: $BENCH_HISTORY, else bench/results/history.jsonl in the builder repo, else none — a run in another repo is not builder's history. */
+const HISTORY = process.env.BENCH_HISTORY || (RESULTS === join(ROOT, 'bench', 'results') ? join(RESULTS, 'history.jsonl') : null)
 const FEATURES = join(BUILDER, 'bench', 'features')
 const FIXTURES = join(BUILDER, 'bench', 'fixtures')
 /** A feature's turn budgets per config (bench/budgets.json), or none. */
