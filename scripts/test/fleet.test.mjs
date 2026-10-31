@@ -1898,3 +1898,15 @@ test('--detach whose child exits before taking the lock says so, with the tail o
   assert.match(r.stdout + r.stderr, /fleet exited at once/)
   assert.match(r.stdout + r.stderr, /no-such-branch/, 'the tail of fleet.out is shown')
 })
+
+test('a planned feature with a go-ahead starts its build lane on /builder:build; one not yet planned on /builder:resume', () => {
+  const root = makeRepo(['p', 's'], { manifest: [] })
+  writeFileSync(join(root, 'docs/features/p/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: t 2026-10-03\nnext: x\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'planned')
+  const r = runFleet(root, ['p', 's'], { p: HAPPY.slice(HAPPY.indexOf('building')), s: HAPPY })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const first = (f) => r.calls.find((l) => l.startsWith(`start ${f} build`))
+  assert.match(first('p'), / cmd=\/builder:build /)
+  assert.match(first('s'), / cmd=\/builder:resume /)
+})

@@ -5,7 +5,7 @@ const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
-import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, STALL_MS } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, STALL_MS } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -916,4 +916,18 @@ test('waitForFleet gives a lock a grace to appear before it concludes no fleet i
   t = 0
   await waitForFleet('/x', { pollMs: 1000, graceMs: 15000, alive: () => false, sleep })
   assert.equal(t, 15000)
+})
+
+test('a planned or building feature starts the build lane on /builder:build', () => {
+  for (const state of ['planned', 'building'])
+    assert.equal(buildLanePrompt(state, { spec: 'docs/features/f', target: 'main' }), '/builder:build --path docs/features/f --agent-walk --into main --no-dev-env')
+})
+test('a feature not yet planned, or already built, still starts on /builder:resume', () => {
+  for (const state of ['spec', 'aligned', 'audited', 'built', 'signed-off', 'verified', null])
+    assert.match(buildLanePrompt(state, { spec: 'docs/features/f', target: 'main' }), /^\/builder:resume --path docs\/features\/f --agent-walk --into main --no-dev-env$/)
+})
+test('the walk lane keeps /builder:resume and its flag, and a park note rides along', () => {
+  assert.equal(buildLanePrompt('building', { spec: 's', target: 't', walkLane: true, split: true }), '/builder:resume --path s --agent-walk --into t --walk-lane')
+  assert.equal(buildLanePrompt('building', { spec: 's', target: 't', walkLane: true }), '/builder:resume --path s --agent-walk --into t')
+  assert.equal(buildLanePrompt('planned', { spec: 's', target: 't', prior: '\n\nX' }), '/builder:build --path s --agent-walk --into t --no-dev-env\n\nX')
 })
