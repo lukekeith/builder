@@ -317,13 +317,16 @@ function copyInto(wt) {
   }
 }
 
+/** A config command with this feature's name filled in for {feature} — the one place every agent_walk hook gets it. */
+const fill = (cmd, feature) => cmd.replaceAll('{feature}', feature)
+
 /** agent_walk.setup in a new worktree ({feature} filled in), output to logs/<feature>-setup.log. Throws, naming the log, on failure. */
 function runSetup(feature, wt) {
   const log = join(DIR, 'logs', `${feature}-setup.log`)
   mkdirSync(dirname(log), { recursive: true })
   const fd = openSync(log, 'w')
   try {
-    execSync(AW.setup.replaceAll('{feature}', feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    execSync(fill(AW.setup, feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
   } catch {
     throw Object.assign(new Error(`setup failed — see ${log}`), { setup: true })
   } finally {
@@ -1279,7 +1282,7 @@ async function envDied(feature, f, headBefore) {
 /** agent_walk.smoke against the running env, up to three tries a few seconds apart. */
 async function smokeOk(feature, f) {
   for (let i = 0; i < 3; i++) {
-    const ok = await new Promise((r) => execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err)))
+    const ok = await new Promise((r) => execFile('sh', ['-c', fill(AW.smoke, feature)], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err)))
     if (ok) return true
     await sleep(Math.min(3000, SMOKE_INTERVAL_MS * 3))
   }
@@ -1290,7 +1293,7 @@ async function smokeOk(feature, f) {
 function hook(cmd, cwd, feature) {
   if (!cmd) return true
   try {
-    execSync(cmd, { cwd, env: envFor(feature, 'walk'), stdio: 'ignore', timeout: 10 * 60 * 1000 })
+    execSync(fill(cmd, feature), { cwd, env: envFor(feature, 'walk'), stdio: 'ignore', timeout: 10 * 60 * 1000 })
     return true
   } catch {
     return false
@@ -1318,7 +1321,7 @@ async function startWalkEnv(feature, f = fleet.features[feature]) {
   mkdirSync(dirname(log), { recursive: true })
   f.startLog = log
   const fd = openSync(log, 'w')
-  const child = spawn('sh', ['-c', AW.start], { cwd: f.worktree, env: envFor(feature, 'walk'), stdio: ['ignore', fd, fd], detached: true })
+  const child = spawn('sh', ['-c', fill(AW.start, feature)], { cwd: f.worktree, env: envFor(feature, 'walk'), stdio: ['ignore', fd, fd], detached: true })
   closeSync(fd) // the child holds its own copy
   let exited = false
   const gone = new Promise((r) => {
@@ -1337,7 +1340,7 @@ async function startWalkEnv(feature, f = fleet.features[feature]) {
   const deadline = Date.now() + SMOKE_TIMEOUT_MS
   const probe = () =>
     new Promise((r) =>
-      execFile('sh', ['-c', AW.smoke], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err))
+      execFile('sh', ['-c', fill(AW.smoke, feature)], { cwd: f.worktree, env: envFor(feature, 'walk'), timeout: SMOKE_ATTEMPT_MS }, (err) => r(!err))
     )
   for (;;) {
     if (exited) return false
@@ -1409,7 +1412,7 @@ async function fixWalkEnv(feature, why) {
   save()
   const prompt =
     `The builder fleet could not bring up the walk env for this worktree — the feature at --path ${specOf(feature)} on branch ${f.branch} — because ${why}. ` +
-    `Find the cause and fix it in this branch — code, a migration, a dependency, a stale install${AW.sync ? ` (agent_walk.sync is \`${AW.sync.replaceAll('{feature}', feature)}\`)` : ''}. ` +
+    `Find the cause and fix it in this branch — code, a migration, a dependency, a stale install${AW.sync ? ` (agent_walk.sync is \`${fill(AW.sync, feature)}\`)` : ''}. ` +
     `The fleet runs ${AW.reset ? `reset \`${AW.reset}\`, then ` : ''}start \`${AW.start ?? '(none)'}\`${AW.smoke ? ` and polls smoke \`${AW.smoke}\`` : ''} with this run's environment; you may run them yourself to check, ` +
     `but stop every process you started before you finish, and kill nothing you did not start — other worktrees share this machine. ` +
     `Commit the fix. Do not edit .claude/builder.md or the feature's MANIFEST.md. If the cause is outside this repo (a port another program holds, a service that is down), change nothing and say so in your last message. ` +
@@ -1686,7 +1689,7 @@ async function syncTarget(wt, why = "its dependencies' code", feature = null) {
     mkdirSync(dirname(log), { recursive: true })
     const fd = openSync(log, 'a')
     try {
-      execSync(AW.sync.replaceAll('{feature}', feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+      execSync(fill(AW.sync, feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
     } catch {
       return `agent_walk.sync failed after merging ${TARGET} (see ${log}) — next: make agent_walk.sync pass in ${wt}, then /builder:agent`
     } finally {
