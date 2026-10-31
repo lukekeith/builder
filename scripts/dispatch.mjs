@@ -284,6 +284,12 @@ const mcpAgent = (f) => {
 const agentTypeOf = (f, kind) => f.cfg?.agentTypes?.[kind] ?? { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }[kind] ?? 'general-purpose'
 
 /** The brief: the task block + build §Composing the brief's four blocks, in order. */
+/** The lines under the ledger's `## env notes` heading, up to the next heading. */
+function envNotesOf(ledger) {
+  const m = /^##\s+env notes\s*$([\s\S]*?)(?=^#{1,6}\s|(?![\s\S]))/im.exec(ledger)
+  return m ? m[1].trim() : ''
+}
+
 function composeBrief(f, n, block, app) {
   const spec = read(f.specPath) ?? ''
   const sec = (name) => mdSection(spec, name, { level: 2 })?.text
@@ -305,6 +311,11 @@ function composeBrief(f, n, block, app) {
   parts.push(`## §Contract — ${c.status}`, '', c.body, '', c.rule, '')
   const recipe = recipeOf(block, f.root)
   if (recipe) parts.push('## Read first — the recipe', '', recipe.text, '')
+  // Environment facts ride in the brief, so the orchestrator's --context needn't carry them.
+  const landmines = configSection(f.cfg, 'Environment landmines').trim()
+  if (landmines) parts.push("## Environment landmines (the project config's, verbatim)", '', landmines, '')
+  const envNotes = envNotesOf(read(join(f.ws(), 'progress.md')) ?? '')
+  if (envNotes) parts.push("## Environment notes (the ledger's)", '', envNotes, '')
   // The craft skills are not repeated here: the implementer's prompt names each with when to read it.
   parts.push("## Global constraints (the project config's, verbatim)", '', constraints(f), '')
   return parts.join('\n')

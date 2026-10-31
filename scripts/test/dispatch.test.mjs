@@ -771,3 +771,22 @@ test('dispatch: --model overrides the printed model and is recorded; rounds 1–
   assert.equal(bad.status, 1)
   assert.match(bad.stderr, /--model must be one of haiku, sonnet, opus/)
 })
+
+test('dispatch implementer: the brief carries the config\'s §Environment landmines and the ledger\'s env notes; with neither it carries neither', () => {
+  const bare = leanRepo('note-tags')
+  assert.equal(run('dispatch.mjs', ['implementer', bare.rel, '--task', '1'], { cwd: bare.root }).status, 0)
+  const b0 = readText(join(WS(bare), 'task-1-brief.md'))
+  assert.doesNotMatch(b0, /Environment landmines|Environment notes/)
+
+  const r = leanRepo('note-tags')
+  const cfg = join(r.root, '.claude', 'builder.md')
+  writeFileSync(cfg, `${readText(cfg).replace(/\s+$/, '')}\n\n## Environment landmines\n\n- Port 5432 is the dev DB; never run tests against it.\n`)
+  mkdirSync(WS(r), { recursive: true })
+  writeFileSync(join(WS(r), 'progress.md'), `# builder ledger — plan: ${r.rel}/PLAN.md\n\n## env notes\n- node 20 needs --experimental-vm-modules for the suite\n- the seed script must run before the first test\n\n## Other\n- not an env note\n`)
+  const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(out.status, 0, out.stderr)
+  const b = readText(join(WS(r), 'task-1-brief.md'))
+  assert.match(b, /## Environment landmines \(the project config's, verbatim\)\n\n- Port 5432 is the dev DB; never run tests against it\./)
+  assert.match(b, /## Environment notes \(the ledger's\)\n\n- node 20 needs --experimental-vm-modules for the suite\n- the seed script must run before the first test\n/)
+  assert.doesNotMatch(b, /not an env note/)
+})

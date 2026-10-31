@@ -161,8 +161,9 @@ in the config's `agent_types:`.
 - **The dispatch carries:** one line on where this task fits (the script writes it: task i of n, its
   phase and goal); the brief path, introduced as *"read this first — it is your requirements, with
   the exact values to use verbatim"*; and the report-file path. **Your `--context` carries only what
-  the script can't know:** interfaces and decisions from earlier tasks the brief cannot know, and
-  your resolution of any ambiguity you noticed.
+  the script can't know:** the hand-over from the previous task — interfaces and decisions the brief
+  cannot know — and your resolution of any ambiguity you noticed. The brief already carries the config's
+  §Environment landmines and the ledger's `## env notes`; do not repeat them in `--context`.
 - **Report file:** `<WS>/task-N-report.md`, named in the dispatch.
 - A dispatch describes ONE task, not the session's history. Do not paste accumulated prior-task
   summaries into later dispatches — a real session's dispatch hit 42k chars of which 99% was pasted
