@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, replanCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, saveEvidence } from '../bench-case.mjs'
+import { specCommits, replanCommits, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, saveEvidence, removeClone } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -779,5 +779,29 @@ test('a fleet.json pgid whose group has no member in the clone is not killed on 
     assert.match(r.stderr, new RegExp(`not signalling process group ${other.pid}: no member runs in the clone`))
   } finally {
     other.kill('SIGKILL')
+  }
+})
+
+test('removeClone: the verifier checkouts and what runs in them go with the clone; a process outside survives', async () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'bench-rm-')))
+  const clone = join(tmp, 'root', 'clone')
+  const dirs = [clone, `${clone}.fleet`, `${clone}-verify`]
+  const strays = dirs.map((d, i) => {
+    const cwd = i === 2 ? join(d, 'co', '0') : d
+    mkdirSync(cwd, { recursive: true })
+    writeFileSync(join(cwd, 'x'), 'x')
+    return spawn('sleep', ['60'], { cwd, stdio: 'ignore', detached: true })
+  })
+  const other = outsider()
+  try {
+    await new Promise((res) => setTimeout(res, 300))
+    removeClone(clone)
+    for (const d of dirs) assert.equal(existsSync(d), false, `${d} remains`)
+    for (let i = 0; i < 100 && strays.some((s) => alive(s.pid)); i++) await new Promise((res) => setTimeout(res, 50))
+    for (const s of strays) assert.equal(alive(s.pid), false, 'a process in the clone outlived it')
+    assert.equal(alive(other.pid), true)
+  } finally {
+    other.kill('SIGKILL')
+    strays.forEach((s) => { try { s.kill('SIGKILL') } catch {} })
   }
 })

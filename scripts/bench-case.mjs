@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url'
 import { applyProfile, safetyRefusals, textRefusals, portsNamed, measureFromRow, estimateFromRow, profileEnv, caseEnv, envLines, walkClaudeArgs, applyReplacements, ownClaudeArgs, bodyWarnings, frontMatterText, mcpConfigs, mcpScanText, agentWalkValue } from './bench-suite-core.mjs'
 import { featureRange } from './bench-replay-core.mjs'
 import { landedRow } from './fleet-core.mjs'
+import { reapStrays } from './verify/run.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { BUILDER, disabledPlugins, fleetRecord, builderLabel } from './bench.mjs'
 
@@ -661,9 +662,14 @@ export function saveEvidence(clone, out, { cap = envBytes('BENCH_EVIDENCE_CAP_BY
   return res
 }
 
-/** The clone and the fleet's worktrees beside it (<clone>.fleet) removed, then the clone root when that leaves it empty. */
+/**
+ * The clone, the fleet's worktrees beside it (<clone>.fleet) and the verifier's checkouts (<clone>-verify) removed,
+ * then the clone root when that leaves it empty — whatever still runs in any of them (a dev server a suite left) reaped first.
+ */
 export function removeClone(clone) {
-  for (const p of [clone, `${clone}.fleet`]) rmSync(p, { recursive: true, force: true })
+  const dirs = [clone, `${clone}.fleet`, `${clone}-verify`]
+  for (const p of dirs) reapStrays(p)
+  for (const p of dirs) rmSync(p, { recursive: true, force: true })
   try {
     rmdirSync(dirname(clone))
   } catch {}
