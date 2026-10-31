@@ -124,7 +124,7 @@ test('dispatch implementer --round 4: a fresh implementer one tier up, with the 
   assert.match(p, /A prior implementer attempted this task 3 times; you own it now\. Read the report file for what was tried\./)
   assert.match(p, /- list prints a trailing space\n- tags ignores rm/)
   assert.ok(p.includes(join(BUILDER, 'skills', 'systematic-debugging', 'SKILL.md') + ' now'))
-  assert.match(out.stdout, /model: opus · /, 'one tier above the task\'s sonnet')
+  assert.match(out.stdout, /model: opus \(one tier above sonnet, round 4\) · /, 'one tier above the task\'s sonnet')
 })
 
 test('dispatch task-review: the review package is generated from the recorded BASE; §Contract verbatim; re-render is identical', () => {
@@ -363,7 +363,7 @@ test('dispatch: every build dispatch names the agent it runs as — builder\'s l
   const impl = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
   assert.equal(impl.status, 0, impl.stderr)
   assert.equal(typeOf(impl), 'builder:implementer', 'a builder-skill recipe is read by path')
-  assert.match(impl.stdout, /^Agent call — subagent_type: builder:implementer · model: \S+ · /m)
+  assert.match(impl.stdout, /^Agent call — subagent_type: builder:implementer · model: \S+ \([^)]+\) · /m)
   commitTask(r)
   assert.equal(typeOf(run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })), 'builder:reviewer')
 
@@ -627,9 +627,9 @@ const agentCall = (res) => {
   const lines = res.stdout.split('\n').filter((l) => /^Agent call\b/.test(l))
   assert.equal(lines.length, 1, `exactly one Agent-call line:\n${res.stdout}`)
   assert.doesNotMatch(res.stdout, /^ {2}(subagent_type|model|prompt):/m, 'no continuation lines')
-  const m = /^Agent call — subagent_type: (\S+) · model: (\S+) · description: (.+) · prompt: (Read \S+ and do what it says\.)$/.exec(lines[0])
+  const m = /^Agent call — subagent_type: (\S+) · model: (\S+) \(([^)]+)\) · description: (.+) · prompt: (Read \S+ and do what it says\.)$/.exec(lines[0])
   assert.ok(m, `the Agent-call line's shape: ${lines[0]}`)
-  return { subagent_type: m[1], model: m[2], description: m[3], prompt: m[4] }
+  return { subagent_type: m[1], model: m[2], why: m[3], description: m[4], prompt: m[5] }
 }
 
 /** Every path a dispatch prints is relative to the repo root: no absolute path, no `brief:` line. */
@@ -742,4 +742,32 @@ test('next --close mid-phase: at most 6 lines — the ledger, the request, the v
   assert.ok(lines.length <= 6, `≤ 6 lines, got ${lines.length}:\n${res.stdout}`)
   assert.equal(lines[0], 'ledger: +1 line')
   assert.equal(agentCall(res).model, 'haiku', 'task 2 is tiny')
+})
+
+test('dispatch: the printed model says why — the default and its reason, the tiny recipe', () => {
+  const r = leanRepo('note-tags')
+  const one = agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root }))
+  assert.deepEqual([one.model, one.why], ['sonnet', 'default'])
+  const two = agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '2'], { cwd: r.root }))
+  assert.deepEqual([two.model, two.why], ['haiku', 'default — tiny'])
+  assert.match(run('dispatch.mjs', ['implementer', r.rel, '--task', '2'], { cwd: r.root }).stdout, / · model: haiku \(default — tiny\) · /)
+})
+
+test('dispatch: --model overrides the printed model and is recorded; rounds 1–3 name it, rounds 4–5 escalate from it', () => {
+  const r = leanRepo('note-tags')
+  const ws = WS(r)
+  const over = agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '2', '--model', 'sonnet'], { cwd: r.root }))
+  assert.deepEqual([over.model, over.why], ['sonnet', '--model'])
+  assert.equal(JSON.parse(readText(join(ws, 'dispatch-state.json'))).tasks['2'].model, 'sonnet', 'the model that ran is recorded')
+  const r1 = agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '2', '--round', '1', '--findings', '- x'], { cwd: r.root }))
+  assert.equal(r1.model, 'sonnet', 'a resumed round names the model that ran')
+  const r4 = agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '2', '--round', '4', '--findings', '- x'], { cwd: r.root }))
+  assert.deepEqual([r4.model, r4.why], ['opus', 'one tier above sonnet, round 4'])
+  // no override: the default is recorded, and escalation starts from it
+  run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+  assert.equal(JSON.parse(readText(join(ws, 'dispatch-state.json'))).tasks['1'].model, 'sonnet')
+  // a bad tier is refused
+  const bad = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--model', 'gpt'], { cwd: r.root })
+  assert.equal(bad.status, 1)
+  assert.match(bad.stderr, /--model must be one of haiku, sonnet, opus/)
 })

@@ -980,10 +980,13 @@ test('one line per fact: short agent replies — the full reports stay in their 
   assert.ok(rr.indexOf('## Your reply') > 0, 'the re-review has a reply section')
   assert.match(rrReply, /one line per finding, in order: `ADDRESSED \| NOT ADDRESSED/)
   assert.match(rrReply, /`new breakage: none`/)
+  assert.match(rrReply, /`out-of-scope: <one-liners or none>`/, 'the orchestrator ledgers them as deferred minors from the reply')
   for (const h of ['### Finding verdicts', '### New breakage in the fix diff', '### Verdict']) assert.ok(rr.includes(h), h)
   // a routine dispatch sends the model the Agent-call line names; §Model selection is for an escalation
   const build = read('skills/build/SKILL.md')
   assert.match(build, /send the model it names/)
+  assert.match(build, /the printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; never lower it/i)
+  assert.match(build, /--model <m>/)
   assert.doesNotMatch(build, /name the model yourself/)
   assert.doesNotMatch(build, /before the first dispatch,\s+`docs\.mjs section skills\/build\/EXECUTION\.md "Model selection"`/)
 })

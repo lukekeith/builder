@@ -103,8 +103,9 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
       one-liner] — file:line`
     - `new breakage: none`, or one line per item: `new breakage: Critical|
       Important|Minor — file:line — what broke`
+    - `out-of-scope: <one-liners or none>` — the controller ledgers them
+      as deferred minors from this line
     - the fix-round verdict line above
-    Out-of-scope observations stay in the file.
 ```
 
 **Placeholders:** `[MODEL]` · `[BRIEF_FILE]` · `[FINDINGS]` (verbatim, one per bullet) ·
