@@ -687,15 +687,19 @@ function walkBatch(features, a, root) {
 
 const verifyBin = () => process.env.BUILDER_VERIFY_BIN || join(BUILDER, 'scripts', 'verify', 'verify.mjs')
 
-/** `verify.mjs <args>` in the worktree → its stdout, whatever its exit (verdict exits 5/75 when there is none yet). */
+/**
+ * `verify.mjs <args>` in the worktree → { out, status }, its stdout verbatim. Exits 0 green, 1 red,
+ * 3 env-broken, 5 none and 75 pending are answers; any other exit is an error carrying its stderr.
+ */
+const VERIFY_ANSWERS = [0, 1, 3, 5, 75]
 function verifyCli(root, args) {
   const r = spawnSync(process.execPath, [verifyBin(), ...args], { cwd: root, encoding: 'utf8' })
   if (r.error) throw r.error
-  if (r.status === 2) throw new Error(`verify.mjs ${args.join(' ')}: ${(r.stderr || r.stdout).trim()}`)
-  return (r.stdout ?? '').replace(/\s+$/, '')
+  if (!VERIFY_ANSWERS.includes(r.status)) throw new Error(`verify.mjs ${args.join(' ')}: exit ${r.status}${r.stderr?.trim() ? ` — ${r.stderr.trim()}` : ''}${r.stdout?.trim() ? `\n${r.stdout.trim()}` : ''}`)
+  return { out: (r.stdout ?? '').replace(/\s+$/, ''), status: r.status }
 }
 
-/** The phase task n belongs to, and the last task of that phase — the ## Phases table, as --phase reads it. */
+/** The phase task n belongs to and the next member of that phase — the ## Phases table's Tasks cell decides membership, as --phase reads it. */
 function phaseEnd(f, n) {
   const plan = read(f.planPath)
   const { tasks } = planOf(f)
@@ -703,12 +707,12 @@ function phaseEnd(f, n) {
   const t = tasks.find((x) => x.n === n)
   if (!t) throw new Error(`task ${n} not found in ${f.planPath}`)
   const p = phaseOf(t)
-  const last = Math.max(...tasks.filter((x) => phaseOf(x) === p).map((x) => x.n))
-  return { phase: p, last: n >= last, next: tasks.find((x) => x.n > n)?.n ?? null }
+  const next = tasks.filter((x) => x.n > n && phaseOf(x) === p).sort((a, b) => a.n - b.n)[0]?.n ?? null
+  return { phase: p, next }
 }
 
 /** EXECUTION §5: the ledger line, the commit-tier request, the verdict, then the next render. → output lines and the render, if any. */
-function close(f, ws, n, line) {
+function close(f, ws, n, line, context) {
   const out = []
   const ledgerText = read(join(ws, 'progress.md')) ?? ''
   const done = ledgerText.split('\n').find((l) => new RegExp(`^Task ${n}: complete\\b`).test(l))
@@ -718,17 +722,23 @@ function close(f, ws, n, line) {
   const head = git(f.root, ['rev-parse', 'HEAD'])
   const filed = openLedger(mainRoot(f.root)).requests((r) => r.sha === head && r.tier === 'commit').at(-1)
   if (filed) out.push(`verify request: already applied (${filed.id}, commit ${head.slice(0, 7)})`)
-  else out.push(`verify request: ${verifyCli(f.root, ['request', f.root, 'HEAD', '--tier', 'commit'])} (commit ${head.slice(0, 7)})`)
+  else out.push(`verify request: ${verifyCli(f.root, ['request', f.root, 'HEAD', '--tier', 'commit']).out} (commit ${head.slice(0, 7)})`)
 
   const branch = git(f.root, ['rev-parse', '--abbrev-ref', 'HEAD'])
-  out.push(verifyCli(f.root, ['verdict', branch]))
+  const verdict = verifyCli(f.root, ['verdict', branch])
+  if (verdict.out) out.push(verdict.out)
 
   const p = phaseEnd(f, n)
-  if (p.last || p.next == null) {
+  if (p.next == null) {
     out.push(`phase ${p.phase ?? '?'} closes — build §Phase close`)
     return { lines: out, render: null }
   }
-  return { lines: out, render: implementer(f, { task: String(p.next) }, ws) }
+  // A red verdict is the orchestrator's to act on before the next task starts: no render, no BASE recorded.
+  if (verdict.status === 1) {
+    out.push(`verdict red — act on it (EXECUTION §5), then dispatch.mjs implementer ${f.rel} --task ${p.next}`)
+    return { lines: out, render: null }
+  }
+  return { lines: out, render: implementer(f, { task: String(p.next), context }, ws) }
 }
 
 function next(f, a, ws) {
@@ -738,9 +748,9 @@ function next(f, a, ws) {
     if (review.startsWith('slice')) return { lines: [], render: taskReview(f, { task: String(n) }, ws) }
     const base = loadState(ws).tasks[n]?.base
     if (!base) throw new Error(`no BASE recorded for task ${n} — its implementer is rendered first (dispatch.mjs implementer --task ${n})`)
-    return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`)
+    return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`, a.context)
   }
-  return close(f, ws, +a.close, a.ledger)
+  return close(f, ws, +a.close, a.ledger, a.context)
 }
 
 /** Write a render's file and print its Agent call; under `next`, the implementer's brief path too. */
@@ -783,7 +793,7 @@ async function main(argv) {
   if (kind === 'next') {
     const ok = folder && (/^\d+$/.test(a['after-implement'] ?? '') ? a.close == null : /^\d+$/.test(a.close ?? '') && a.ledger?.trim())
     if (!ok) {
-      console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>"')
+      console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>" [--context "<one paragraph>"]')
       return 2
     }
     const f = openFeature(folder)
