@@ -9,7 +9,7 @@
  *
  *   node scripts/verify/serve.mjs <main checkout>     (started by verify.mjs; never by hand)
  */
-import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, linkSync, renameSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { randomBytes } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
@@ -26,6 +26,27 @@ import { ensureCheckout, commitExists, checkoutAt, mergedCheckout, copyLocal, se
 import { loadConfig } from '../config.mjs'
 
 const MAX_LAND_ATTEMPTS = 5
+/** A request the service died running this many times is env-broken: running it again would only die again. */
+export const MAX_CRASHES = 2
+
+/** The crash serve.log ends on — its error line (`Error: spawn /bin/bash ENOENT`), else its last line. */
+export function lastCrash(root) {
+  let text = ''
+  try {
+    const p = join(verifyDir(root), 'serve.log')
+    const size = statSync(p).size
+    const fd = openSync(p, 'r')
+    const buf = Buffer.alloc(Math.min(size, 8192))
+    readSync(fd, buf, 0, buf.length, size - buf.length)
+    closeSync(fd)
+    text = buf.toString('utf8')
+  } catch {
+    return null
+  }
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+  const err = lines.findLast((l) => /^(\w*Error|verifier service crashed)\b/.test(l))
+  return (err ?? lines.at(-1) ?? '').slice(0, 300) || null
+}
 // git's empty tree: the base of a root commit, which has no parent to diff against.
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 /** A serve.pid untouched this long is a dead holder even if its pid is alive (reused after a reboot or a kill). */
@@ -151,6 +172,17 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
     dropLock(root)
   }
 
+  /** Done, env-broken: and the requests folded into it take its verdict. */
+  function finishCrashed(r, reason) {
+    const doneAt = new Date().toISOString()
+    const verdict = empty(r, 'env-broken', { broken: [{ suite: '-', reason }] })
+    ledger.saveRequest({ ...r, state: 'done', doneAt, verdict })
+    for (const id of r.foldedFrom ?? []) {
+      const f = ledger.getRequest(id)
+      if (f?.state === 'folded') ledger.saveRequest({ ...f, state: 'done', doneAt, verdict })
+    }
+  }
+
   async function work() {
     let v = verify
     let untested = false
@@ -183,7 +215,16 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       return out
     }
     const pool = createPool(v)
-    for (const r of ledger.requests((x) => x.state === 'running')) ledger.saveRequest({ ...r, state: 'queued', startedAt: undefined })
+    // A request still `running` at start was running when a service died. Back to the queue — unless
+    // it has now taken the service down MAX_CRASHES times: then it is env-broken, with the crash
+    // serve.log ends on, never re-queued into a loop that restarts and dies every few seconds.
+    const crash = lastCrash(root)
+    for (const r of ledger.requests((x) => x.state === 'running')) {
+      const crashes = (r.crashes ?? 0) + 1
+      const noted = { ...r, crashes, ...(crash && { lastCrash: crash }), startedAt: undefined }
+      if (crashes < MAX_CRASHES) ledger.saveRequest({ ...noted, state: 'queued' })
+      else finishCrashed(noted, `the verifier service died ${crashes} times running this request${crash ? ` — last: ${crash}` : ''}`)
+    }
     try {
       pool.dropOrphans()
     } catch {}

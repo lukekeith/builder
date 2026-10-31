@@ -29,6 +29,7 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
     delete childEnv.NODE_TEST_CONTEXT
     const p = spawn('/bin/bash', ['-c', cmd], { cwd, env: childEnv, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
+    let settled = false
     const re = lines === null ? null : lines ? new RegExp(lines) : /./
     const found = new Set()
     // Per stream: a line split across two chunks is joined before it is matched.
@@ -62,15 +63,23 @@ export function runShell(cmd, { cwd, env = process.env, timeoutMs = 0, signal = 
     }
     const t = timeoutMs ? setTimeout(() => ((timedOut = true), kill()), timeoutMs) : null
     signal?.addEventListener('abort', kill, { once: true })
-    p.on('close', (code) => {
+    const settle = (r) => {
+      if (settled) return
+      settled = true
       if (t) clearTimeout(t)
       // A long-lived signal outlives many runs: a listener left behind would pile up and SIGKILL a
       // process group id the OS has since handed to someone else.
       signal?.removeEventListener('abort', kill)
+      resolve(r)
+    }
+    p.on('close', (code) => {
       so.end()
       se.end()
-      resolve({ code: code ?? 1, timedOut, out, ...(re && { lines: found }) })
+      settle({ code: code ?? 1, timedOut, out, ...(re && { lines: found }) })
     })
+    // A spawn that fails (a cwd that doesn't exist: `spawn /bin/bash ENOENT`) emits 'error', which
+    // unheard would take the whole service down. It is a failed run, nothing more.
+    p.on('error', (e) => settle({ code: 127, timedOut: false, out: `could not start: ${e.message}`, spawnError: true, ...(re && { lines: new Set() }) }))
   })
 }
 
@@ -283,6 +292,8 @@ async function judgeRequest(req, ctx, tmp) {
   const runCheck = async (c, where) => {
     if (signal?.aborted) return { code: 1, timedOut: false, aborted: true, out: 'cancelled' }
     const cwd = join(where, c.cwd)
+    // A check whose directory this checkout lacks (an app the branch adds) has nothing to run in.
+    if (!existsSync(cwd)) return { code: 1, timedOut: false, noCwd: true, out: `its cwd ${c.cwd} does not exist`, ...(c.compare === 'lines' && { lines: new Set() }) }
     const lease = await ctx.lease(c.needs, { template: templateFor(c.needs, where), cwd })
     try {
       return await runShell(c.run, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, lines: c.compare === 'lines' ? c.match ?? '' : null })
@@ -294,6 +305,11 @@ async function judgeRequest(req, ctx, tmp) {
     const cached = ledger.readLines(ctx.targetSha, c.name)
     if (cached) return cached
     const r = await runCheck(c, await ctx.targetCheckout())
+    // No such directory on the target: it has none of these lines (the branch adds the app).
+    if (r.noCwd) {
+      ledger.writeLines(ctx.targetSha, c.name, new Set())
+      return new Set()
+    }
     // A target run cut short is not the target's output: caching it would make every later run
     // against this sha a false red. Not cached, and the check is broken this time.
     if (r.timedOut || r.aborted || signal?.aborted) return null
@@ -303,6 +319,9 @@ async function judgeRequest(req, ctx, tmp) {
   }
   const checkFails = async (c, where) => {
     const r = await runCheck(c, where)
+    // Here: the check cannot run at this commit — broken, never a pass or a regression. On the target:
+    // missing there, like a test file the branch adds.
+    if (r.noCwd) return where === checkout ? { fail: false, broken: r.out, msg: '' } : { fail: true, missing: true, msg: r.out }
     if (r.timedOut) return { fail: true, msg: `timed out after ${Math.round(verify.timeoutMs / 60000)}m` }
     if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500) }
     const theirs = await targetLines(c)
@@ -342,7 +361,11 @@ async function judgeRequest(req, ctx, tmp) {
     const k = await judge(
       f,
       async () => ((await checkFails(c, checkout)).fail ? 'fail' : 'pass'),
-      async () => (c.compare === 'lines' ? 'pass' : (await checkFails(c, await ctx.targetCheckout())).fail ? 'fail' : 'pass'),
+      async () => {
+        if (c.compare === 'lines') return 'pass'
+        const t = await checkFails(c, await ctx.targetCheckout())
+        return t.missing ? 'missing' : t.fail ? 'fail' : 'pass'
+      },
     )
     // A judgement cut short by a cancel is not a judgement.
     if (signal?.aborted) break

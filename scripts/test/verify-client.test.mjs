@@ -245,6 +245,32 @@ const pidOf = (root) => {
   }
 }
 
+test('wait on a request that keeps taking the service down: env-broken after the second crash, naming it — not "still running"', () => {
+  const { root, wt } = repo()
+  // A check that kills the service running it: every restart re-runs it and dies again.
+  writeFileSync(join(root, '.claude', 'builder.md'), CONFIG.replace('run: "test -f b.txt"', 'run: "kill -9 $PPID"'))
+  const r = cli(wt, 'request', wt, 'HEAD', '--tier', 'commit')
+  assert.equal(r.status, 0, r.stderr)
+  const w = cli(wt, 'wait', r.stdout.trim(), '--max', '60')
+  assert.equal(w.status, 3, w.stdout + w.stderr)
+  assert.match(w.stdout, /ENV-BROKEN/)
+  assert.match(w.stdout, /the verifier service died 2 times running this request/)
+})
+
+test('wait that times out on a request the service has crashed on says so, with the crash', () => {
+  const { root, wt } = repo()
+  const l = openLedger(root)
+  const q = l.newRequest({ worktree: wt, branch: 'feat', sha: git(wt, 'rev-parse', 'HEAD'), tier: 'phase', target: 'main' })
+  l.saveRequest({ ...q, state: 'running', startedAt: new Date().toISOString(), pid: process.pid, crashes: 1, lastCrash: 'Error: spawn /bin/bash ENOENT' })
+  // A live, fresh lock: no service is started, so the request stays where it is.
+  writeFileSync(join(root, '.builder', 'verify', 'serve.pid'), String(process.pid))
+  const w = cli(wt, 'wait', q.id, '--max', '1')
+  assert.equal(w.status, 75)
+  assert.match(w.stdout, /the verifier service died 1 time running it/)
+  assert.match(w.stdout, /spawn \/bin\/bash ENOENT/)
+  assert.doesNotMatch(w.stdout, /still running — call wait again/)
+})
+
 test('ensureService: a serve.pid naming a live but foreign pid, untouched for over 60 s, is stale — a service starts', async () => {
   const { root } = repo()
   openLedger(root)
