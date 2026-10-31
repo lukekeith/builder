@@ -316,8 +316,9 @@ one parked at the cap, `<plugin>/scripts/dispatch.mjs next <folder> --close N --
 renders the phase's next task (`--context` goes to it) and prints its Agent call. When N ends its phase it prints
 `phase <P> closes — build §Phase close` instead. On `verdict red — act on it (EXECUTION §5)` it renders
 nothing: act on each regression exactly as above, then run the `dispatch.mjs implementer` command it
-names (or close the phase, when that line follows). Exit 3 at the commit tier → go on; the phase
-tier decides. Re-run after a crash: what is done says `already applied`.
+names (or close the phase, when that line follows). An ENV-BROKEN verdict line at the commit tier →
+go on; the phase tier decides. On `paused — …` it renders nothing: park as build §Dispatch, review,
+fix says. Re-run after a crash: what is done says `already applied`.
 
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.

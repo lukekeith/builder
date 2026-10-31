@@ -28,7 +28,9 @@ then `node <builder>/scripts/docs.mjs fleet-setup` — EXECUTION §Setup and the
 `docs.mjs section` at the step that needs it: before the first dispatch,
 `docs.mjs section skills/build/EXECUTION.md "Model selection"`; when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
-pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md. Record every ruling as
+pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md, nor EXECUTION's preamble,
+whose rules still bind: narrate at most one short line between tool calls, execute every task without
+checking in, and type only judgment — the scripts write the rest. Record every ruling as
 `Ruling: <what you decided> — <why> — <what it costs if wrong>`; the SPEC binds and the plan argues
 from it.
 
@@ -107,8 +109,8 @@ Two things it leaves to this skill:
   `Files` stay inside its `App:`. A task reaching into another app breaks the one-app phase the
   verifier waits on.
 
-**Under `--agent-walk`, no committed `agent-walk:` line (`git show HEAD:<folder>/MANIFEST.md`), or
-one left uncommitted → re-run the same command** before the first dispatch, so a cold session keeps
+**Under `--agent-walk`, when `git show HEAD:<folder>/MANIFEST.md` has no `agent-walk:` line, run**
+this before the first dispatch — it also commits one left uncommitted — so a cold session keeps
 agent mode (AGENT-MODE §`--agent-walk`):
 `node <builder>/scripts/advance.mjs <folder> --set "agent-walk=on <YYYY-MM-DD>" --commit "chore({key}): {feature} — agent walk on"`.
 
@@ -211,7 +213,8 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   is its worktree; unset → `.builder/fleet/requests/<feature>.pause` — tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
   manifest and commit it, in one call:
   `node <builder>/scripts/advance.mjs <folder> --set 'blocked="revising — next: /builder:revise --path <folder>"' --ledger "<where it stopped>" --head --commit "chore({key}): {feature} — parked: revising"`,
-  and stop. The ledger keeps every finished task.
+  and stop. The ledger keeps every finished task. Under the fleet, `dispatch.mjs next` makes this
+  check and prints `paused — <the request's first line>` in place of the next render.
 
 ## Phase close — the controller's own work
 

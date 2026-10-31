@@ -51,7 +51,7 @@
         }
       ],
       "stamp": {
-        "hash": "c1befafd8b63",
+        "hash": "66e9334b61da",
         "version": "5.5.0",
         "date": "2026-10-31"
       }
@@ -88,7 +88,7 @@
         },
         {
           "role": "note",
-          "text": "tests: review=end — the recommended plan. A DONE report goes straight to the ledger; the one review is the final whole-branch review when the last phase signs. The implementer runs its own tests and the type-check, never the app's suite: after each task's commit the build asks the verifier for the commit tier and goes on, and reads the latest finished verdict before the next implementer dispatch. A regression it names (introduced by <sha7>) becomes a fix dispatch against that commit's task, ledgered once. Under the fleet one call does that bookkeeping: dispatch.mjs next --after-implement N (or --close N --ledger \"<line>\" after a review) writes the ledger line, files the commit-tier request, prints the verdict and renders the next task's Agent call. Under review=slice the same task looks like this:"
+          "text": "tests: review=end — the recommended plan. A DONE report goes straight to the ledger; the one review is the final whole-branch review when the last phase signs. The implementer runs its own tests and the type-check, never the app's suite: after each task's commit the build asks the verifier for the commit tier and goes on, and reads the latest finished verdict before the next implementer dispatch. A regression it names (introduced by <sha7>) becomes a fix dispatch against that commit's task, ledgered once. Under the fleet one call does that bookkeeping: dispatch.mjs next --after-implement N (or --close N --ledger \"<line>\" after a review) writes the ledger line, files the commit-tier request, prints the verdict and renders the next task's Agent call — or prints paused — <reason> on a fleet pause request. Under review=slice the same task looks like this:"
         },
         {
           "role": "tool",
@@ -122,7 +122,7 @@
         }
       ],
       "stamp": {
-        "hash": "20b0fd64768f",
+        "hash": "a63c49270c0f",
         "version": "5.5.0",
         "date": "2026-10-31"
       }
