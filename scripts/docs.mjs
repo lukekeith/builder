@@ -5,6 +5,7 @@
  *
  *   node <builder>/scripts/docs.mjs <step> [--prompts] [--no-config]
  *   node <builder>/scripts/docs.mjs --list
+ *   node <builder>/scripts/docs.mjs section <file> "<heading>"   (one section, printed as the bundles print it)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
@@ -50,6 +51,11 @@ export const STEPS = {
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
   // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
+  // fleet-build: build SKILL (Task 4 adds the line) — under the fleet, EXECUTION §The task loop (its
+  // five steps), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk`.
+  // Left out (≤ 30,000 chars) for `docs.mjs section`: EXECUTION §Setup, §Model selection, §The final whole-branch
+  // review, §Finish, §Common rationalizations; REFERENCE §SPEC.md, §MANIFEST.md, §Walk readiness.
+  'fleet-build': [['skills/build/EXECUTION.md', 'The task loop'], ...R('Contract and the contract freeze', 'PLAN.md', 'The verifier'), ['skills/resume/AGENT-MODE.md', '`--agent-walk`'], CONFIG],
   // resume SKILL, `state: building` + `ready: pending` (the fleet's walk lane): "run REFERENCE §Walk readiness,
   // then the build's walk script and `state: built`" — build SKILL §When the last phase signs.
   'walk-lane': [...R('Walk readiness'), ['skills/build/SKILL.md', 'When the last phase signs'], CONFIG],
@@ -125,6 +131,21 @@ async function main(argv) {
   const a = parseArgs(argv, { bool: ['prompts', 'no-config', 'list'] })
   if (a.list) {
     for (const step of Object.keys(STEPS)) console.log(`${step.padEnd(11)} ${describe(step)}`)
+    return 0
+  }
+  if (a._[0] === 'section') {
+    const [, file, name] = a._
+    if (!file || !name) {
+      console.error('usage: docs.mjs section <file> "<heading>"')
+      return 2
+    }
+    const abs = join(BUILDER, file)
+    const s = mdSection(read(abs) ?? '', name)
+    if (!s) {
+      console.error(`builder: docs section: not found in ${BUILDER}: ${file} §${name}`)
+      return 1
+    }
+    process.stdout.write([`--- ${file} §${normTitle(s.title)} (lines ${s.start + 1}–${s.end})`, '', s.text, ''].join('\n'))
     return 0
   }
   const step = a._[0]

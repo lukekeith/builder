@@ -57,3 +57,25 @@ test('docs: --list names every step and what it prints; an unknown step is a usa
   assert.equal(run('docs.mjs', ['nope'], { cwd: r.root }).status, 2)
   assert.equal(run('docs.mjs', [], { cwd: r.root }).status, 2)
 })
+
+const BUILD_BEFORE = [['skills/build/EXECUTION.md', null], ...['Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'].map((n) => ['skills/resume/REFERENCE.md', n]), ['<config>', null]]
+const fleetRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags').root })
+
+test('fleet-build fits one Bash output: ≤ 30,000 chars before the config, config printed once', () => {
+  const out = fleetRun(['fleet-build']).stdout
+  const [builderText] = out.split(/^--- .*builder\.md/m)
+  assert.ok(builderText.length <= 30000, `${builderText.length} chars`)
+  assert.equal((out.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1)
+})
+test('fleet-build carries the loop and the rules a fleet build needs', () => {
+  const out = fleetRun(['fleet-build']).stdout
+  for (const h of ['§The task loop', '§The verifier', '§PLAN.md', '§Contract and the contract freeze', '§--agent-walk']) assert.match(out, new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))  // the label drops backticks, as normTitle does
+  for (const h of ['§SPEC.md', '§MANIFEST.md', '§Walk readiness']) assert.doesNotMatch(out, new RegExp(`--- .*${h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\(`))
+})
+test('section prints one heading, and fails naming a missing one', () => {
+  assert.match(fleetRun(['section', 'skills/build/SKILL.md', 'When the last phase signs']).stdout, /When the last phase signs/)
+  const r = fleetRun(['section', 'skills/build/SKILL.md', 'No such heading'])
+  assert.equal(r.status, 1)
+  assert.match(r.stderr, /No such heading/)
+})
+test('build (the human bundle) is unchanged', () => assert.deepEqual(STEPS.build, BUILD_BEFORE))
