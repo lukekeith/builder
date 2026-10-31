@@ -317,8 +317,8 @@ async function judgeRequest(req, ctx, tmp) {
       verdict.flakes.push(f.id)
       if (!k.listed) ledger.recordFlip(f.id)
     } else if (k.kind === 'debt') {
+      // Filed into known failures only once the verdict is known (step 3): never from an env-broken run.
       verdict.debt.push(f.id)
-      ledger.addKnown(req.target, [f.id])
     } else if (k.kind === 'broken') verdict.broken.push({ suite: suiteName, reason: `the re-run on the target could not run: ${f.id}` })
     else verdict.regressions.push({ suite: suiteName, id: f.id, file: f.file, name: f.name, msg: f.msg, ...(k.note && { note: k.note }), introducedBy: null })
   }
@@ -404,7 +404,14 @@ async function judgeRequest(req, ctx, tmp) {
   if (!signal?.aborted) ledger.appendResults(rows.map((r) => ({ run: req.id, sha: req.sha, tier: req.tier, ...r })))
   const passed = rows.filter((r) => r.status === 'pass').map((r) => r.id)
   ledger.recordClean(passed)
-  if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
+  // An env-broken run proves nothing about the target's code: a failure on both sides there is the
+  // environment's (no deps, no database), and a pass beside a broken suite is not a clean merge. So it
+  // never adds to or removes from the target's known failures; its debt stays listed in the verdict only.
+  const envBroken = !signal?.aborted && !verdict.regressions.length && verdict.broken.length > 0
+  if (!envBroken) {
+    if (verdict.debt.length) ledger.addKnown(req.target, verdict.debt)
+    if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
+  }
   if (verdict.regressions.length && (req.commits?.length ?? 0) > 1 && !signal?.aborted) {
     await bisect(verdict.regressions, req.commits, {
       signal,

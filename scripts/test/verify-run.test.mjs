@@ -93,6 +93,32 @@ test('no report → broken, retried once; still broken → env-broken, never red
   assert.match(v.broken[0].reason, /no report|empty report/)
 })
 
+test('an env-broken run never changes known failures: a failure on both sides is listed, not filed; a real red still files its debt', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const brokenSuite = { ...suite, args: '--no-such-flag-xyz' }
+  const both = { name: 'types', run: 'exit 1', cwd: '.', compare: 'exit', match: null, tiers: ['commit', 'phase', 'merge'], needs: [] }
+  const ctx = ctxFor(co, co, { verify: { suites: [brokenSuite], checks: [both], timeoutMs: 60000, db: null } })
+  const before = existsSync(join(ctx.ledger.dir, 'known-failures.json')) ? readFileSync(join(ctx.ledger.dir, 'known-failures.json'), 'utf8') : null
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.debt, ['check::types'])
+  assert.equal(ctx.ledger.known('main').ids.size, 0)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'known-failures.json')) ? readFileSync(join(ctx.ledger.dir, 'known-failures.json'), 'utf8') : null, before)
+  // An env-broken merge run removes nothing either: a pass there proves nothing about the target.
+  ctx.ledger.addKnown('main', ['check::ok'])
+  const pass = { ...both, name: 'ok', run: 'exit 0' }
+  const m = await runRequest(req({ id: 'r2', tier: 'merge' }), { ...ctx, verify: { suites: [brokenSuite], checks: [pass], timeoutMs: 60000, db: null } })
+  assert.equal(m.status, 'env-broken')
+  assert.deepEqual([...ctx.ledger.known('main').ids], ['check::ok'])
+  // The same debt in a run that is not env-broken is filed as before.
+  const red = { ...both, name: 'fresh', run: 'test -f only-here || exit 1' }
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  writeFileSync(join(target, 'only-here'), '')
+  const r = await runRequest(req({ id: 'r3' }), { ...ctx, targetCheckout: async () => target, verify: { suites: [suite], checks: [both, red], timeoutMs: 60000, db: null } })
+  assert.equal(r.status, 'red')
+  assert.ok(ctx.ledger.known('main').ids.has('check::types'))
+})
+
 test('checks: exit compare, and lines compare uses match and the target output', async () => {
   const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
   const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
