@@ -45,12 +45,14 @@
  *
  *   next <folder> --after-implement N   the step after task N's implementer reported DONE: under a
  *                          test plan that reviews tasks (review=slice…), task N's review exactly as
- *                          `task-review --task N`; otherwise the close below with the line
+ *                          `task-review --task N` (under `slice+second`, on a task whose block names
+ *                          §Contract or §Schema, a `second review:` line first); otherwise the close below with the line
  *                          `Task N: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`.
  *   next <folder> --close N --ledger "<line>"   EXECUTION §5 in one call: the ledger line (advance.mjs
  *                          --ledger), the commit-tier request (`verify.mjs request <worktree> HEAD --tier
  *                          commit`), `verify.mjs verdict <branch>` printed verbatim, then the
- *                          implementer render of the next task N's ## Phases row lists (with
+ *                          implementer render of the next task N's ## Phases row lists that has no
+ *                          `Task M: complete` ledger line (with
  *                          --context) — or, when N is its phase's last, `phase <P> closes — build
  *                          §Phase close` and no render. A red verdict (exit 1) renders nothing and
  *                          names the implementer command to run once it is acted on (at a phase's
@@ -59,7 +61,9 @@
  *                          printing `already applied`, when done before (a `Task N: complete` ledger
  *                          line; a commit-tier request for HEAD's sha), so a re-run after a crash
  *                          finishes only what is missing; a re-run with a different ledger line
- *                          keeps the first one. Judgement stays the orchestrator's: whether
+ *                          keeps the first one. A --ledger line not starting `Task N: complete` is
+ *                          refused (exit 2). A pause request ($BUILDER_FLEET_DIR/requests/<feature>.pause)
+ *                          renders nothing and prints `paused — <its first line>`. Judgement stays the orchestrator's: whether
  *                          findings need a fix round, whether a verdict's regression needs a fix dispatch.
  *                          BUILDER_VERIFY_BIN overrides the verify client (tests stub it).
  *
@@ -705,17 +709,32 @@ function verifyCli(root, args) {
   return { out: (r.stdout ?? '').replace(/\s+$/, ''), status: r.status }
 }
 
-/** The phase task n belongs to and the next member of that phase — the ## Phases table's Tasks cell decides membership, as --phase reads it. */
-function phaseEnd(f, n) {
+/**
+ * The phase task n belongs to and the next member of that phase still to do — the ## Phases table's
+ * Tasks cell decides membership, as --phase reads it; the first member after n with no
+ * `Task M: complete` ledger line, as Setup's resume point picks (a batched task is never rendered again).
+ */
+function phaseEnd(f, n, ledgerText = '') {
   const plan = read(f.planPath)
   const { tasks } = planOf(f)
   const phaseOf = (t) => phaseGoal(plan, t.phase ?? null, t.n).phase
   const t = tasks.find((x) => x.n === n)
   if (!t) throw new Error(`task ${n} not found in ${f.planPath}`)
   const p = phaseOf(t)
-  const next = tasks.filter((x) => x.n > n && phaseOf(x) === p).sort((a, b) => a.n - b.n)[0]?.n ?? null
+  const isDone = (m) => new RegExp(`^Task ${m}: complete\\b`, 'm').test(ledgerText)
+  const next = tasks.filter((x) => x.n > n && phaseOf(x) === p && !isDone(x.n)).sort((a, b) => a.n - b.n)[0]?.n ?? null
   return { phase: p, next }
 }
+
+/** `$BUILDER_FLEET_DIR/requests/<feature>.pause` (unset: the main checkout's .builder/fleet) → its first line, or null. */
+function pauseRequest(f) {
+  const dir = process.env.BUILDER_FLEET_DIR || join(mainRoot(f.root), '.builder', 'fleet')
+  const text = read(join(dir, 'requests', `${f.feature}.pause`))
+  return text == null ? null : text.split('\n')[0].trim() || '(no reason given)'
+}
+
+/** build SKILL §The test plan: `slice+second` adds a second reviewer on every task touching §Contract or §Schema & API changes. */
+const SECOND_REVIEW = /§\s*Contract\b|§\s*Schema\b|\bcontract\b|\bschema\b|\bmigrations?\b|\bSC\d+\b/i
 
 /** EXECUTION §5: the ledger line, the commit-tier request, the verdict, then the next render. → output lines and the render, if any. */
 function close(f, ws, n, line, context) {
@@ -734,7 +753,14 @@ function close(f, ws, n, line, context) {
   const verdict = verifyCli(f.root, ['verdict', branch])
   if (verdict.out) out.push(verdict.out)
 
-  const p = phaseEnd(f, n)
+  // A pause request (`fleet.mjs --pause`) stops the build after this task: build SKILL §Dispatch, review, fix parks it.
+  const pause = pauseRequest(f)
+  if (pause != null) {
+    out.push(`paused — ${pause}`)
+    return { lines: out, render: null }
+  }
+
+  const p = phaseEnd(f, n, read(join(ws, 'progress.md')) ?? '')
   if (p.next == null) {
     if (verdict.status === 1) out.push('verdict red — act on it (EXECUTION §5)')
     out.push(`phase ${p.phase ?? '?'} closes — build §Phase close`)
@@ -752,7 +778,11 @@ function next(f, a, ws) {
   if (a['after-implement'] != null) {
     const n = +a['after-implement']
     const review = parseTestPlan(f.manifest).levers.review
-    if (review.startsWith('slice')) return { lines: [], render: taskReview(f, { task: String(n) }, ws) }
+    if (review.startsWith('slice')) {
+      const lines = []
+      if (review === 'slice+second' && SECOND_REVIEW.test(taskOf(f, n).block)) lines.push(`second review: Task ${n} touches §Contract or §Schema & API changes — under review=slice+second, also dispatch a second reviewer on the most capable model (build §The test plan)`)
+      return { lines, render: taskReview(f, { task: String(n) }, ws) }
+    }
     const base = loadState(ws).tasks[n]?.base
     if (!base) throw new Error(`no BASE recorded for task ${n} — its implementer is rendered first (dispatch.mjs implementer --task ${n})`)
     return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`, a.context)
@@ -801,6 +831,10 @@ async function main(argv) {
     const ok = folder && (/^\d+$/.test(a['after-implement'] ?? '') ? a.close == null : /^\d+$/.test(a.close ?? '') && a.ledger?.trim())
     if (!ok) {
       console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>" [--context "<one paragraph>"]')
+      return 2
+    }
+    if (a.close != null && !new RegExp(`^Task ${+a.close}: complete\\b`).test(a.ledger.trim())) {
+      console.error(`dispatch.mjs next --close ${a.close}: the --ledger line must start \`Task ${+a.close}: complete\` (EXECUTION §5's forms) — got: ${a.ledger.trim()}`)
       return 2
     }
     const f = openFeature(folder)
