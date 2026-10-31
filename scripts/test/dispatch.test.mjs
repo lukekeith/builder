@@ -404,7 +404,11 @@ function nextRepo() {
       `  const req = openLedger(mainRoot(wt)).newRequest({ worktree: wt, branch: git(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), sha: git(wt, 'rev-parse', rest[1]), tier: rest[rest.indexOf('--tier') + 1] })`,
       `  console.log(req.id)`,
       `}`,
-      `if (cmd === 'verdict') { console.log('verify ' + rest[0] + ': no verdict'); process.exit(5) }`,
+      `if (cmd === 'verdict') {`,
+      `  if (process.env.STUB_VERDICT_ERR) console.error(process.env.STUB_VERDICT_ERR)`,
+      `  console.log(process.env.STUB_VERDICT_OUT ?? 'verify ' + rest[0] + ': no verdict')`,
+      `  process.exit(+(process.env.STUB_VERDICT_EXIT ?? 5))`,
+      `}`,
     ].join('\n') + '\n',
   )
   run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
@@ -412,7 +416,7 @@ function nextRepo() {
   const env = { BUILDER_VERIFY_BIN: stub, STUB_LOG: log }
   return {
     r,
-    next: (args) => run('dispatch.mjs', ['next', r.rel, ...args], { cwd: r.root, env }),
+    next: (args, more = {}) => run('dispatch.mjs', ['next', r.rel, ...args], { cwd: r.root, env: { ...env, ...more } }),
     ledger: () => (existsSync(join(WS(r), 'progress.md')) ? readText(join(WS(r), 'progress.md')) : ''),
     stubCalls: (cmd) => (existsSync(log) ? readText(log).trim().split('\n').map((l) => JSON.parse(l)) : []).filter((c) => c[0] === cmd),
     setTests: (v) => {
@@ -488,4 +492,48 @@ test('next: usage', () => {
   const { next } = nextRepo()
   assert.equal(next([]).status, 2)
   assert.equal(next(['--close', '1']).status, 2, '--close needs its --ledger line')
+})
+
+test('next --close follows the phase table, not task numbers: the next member of the same phase, then the phase-close line', () => {
+  const { r, next } = nextRepo()
+  const plan = join(r.folder, 'PLAN.md')
+  writeFileSync(plan, readText(plan).replace(/^\| 1 \| notes \| 1–2 \|/m, '| 1 | notes | 1, 3 |').replace(/^\| 2 \| notes \| 3 \|/m, '| 2 | notes | 2 |'))
+  const one = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
+  assert.equal(one.status, 0, one.stderr)
+  assert.match(one.stdout, /task-3-brief\.md/)
+  assert.doesNotMatch(one.stdout, /task-2-brief\.md/)
+  const three = next(['--close', '3', '--ledger', 'Task 3: complete (commits a..b, review clean)'])
+  assert.match(three.stdout, /^phase 1 closes — build §Phase close$/m)
+  assert.doesNotMatch(three.stdout, /Agent call/)
+})
+
+test('next --close on a red verdict renders no brief and records no BASE; green, pending and env-broken render', () => {
+  const { r, next } = nextRepo()
+  const red = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '1', STUB_VERDICT_OUT: 'verify commit abc1234 builder/note-tags: RED · 1 regression · 3s' })
+  assert.equal(red.status, 0, red.stderr)
+  assert.match(red.stdout, /^verify commit abc1234 builder\/note-tags: RED/m)
+  assert.match(red.stdout, new RegExp(`^verdict red — act on it \\(EXECUTION §5\\), then dispatch\\.mjs implementer ${r.rel} --task 2$`, 'm'))
+  assert.doesNotMatch(red.stdout, /Agent call/)
+  assert.equal(JSON.parse(readText(join(WS(r), 'dispatch-state.json'))).tasks['2'], undefined)
+  for (const [code, out] of [['0', 'verify commit abc1234 builder/note-tags: GREEN · 3s'], ['75', 'verify builder/note-tags: pending (commit running)'], ['3', 'verify commit abc1234 builder/note-tags: ENV-BROKEN · 1 broken · 3s']]) {
+    const res = next(['--close', '1', '--ledger', 'x'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
+    assert.equal(res.status, 0, `${code}: ${res.stderr}`)
+    assert.ok(res.stdout.includes(out), code)
+    assert.match(res.stdout, /task-2-brief\.md/, code)
+  }
+})
+
+test('next --close: any other verify exit is an error carrying its stderr', () => {
+  const { next } = nextRepo()
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '4', STUB_VERDICT_ERR: 'boom from verify' })
+  assert.equal(res.status, 1)
+  assert.match(res.stderr, /exit 4/)
+  assert.match(res.stderr, /boom from verify/)
+  assert.doesNotMatch(res.stdout, /Agent call/)
+})
+
+test('next forwards --context to the next implementer render', () => {
+  const { r, next } = nextRepo()
+  next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)', '--context', 'Task 2 reuses tagsOf from task 1.'])
+  assert.match(readText(join(WS(r), 'dispatch-implementer-task-2.md')), /Task 2 reuses tagsOf from task 1\./)
 })
