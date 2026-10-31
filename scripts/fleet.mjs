@@ -32,7 +32,7 @@ import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
-import { rowProgress, parkBlock, stallOf, stallLine, markSeen } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
@@ -724,7 +724,13 @@ const priorPark = (f) =>
       'Park again only if it still stands, with the line and the record rewritten per REFERENCE §How a park reads and §The park record.'
     : ''
 
-async function runClaude(wt, feature, lane, n, prompt = `/builder:resume --path ${specOf(feature)} --agent-walk --into ${TARGET}${lane === 'walk' ? (SPLIT ? ' --walk-lane' : '') : ' --no-dev-env'}${priorPark(fleet.features[feature])}`, rec = fleet.features[feature]) {
+/** A feature's manifest `state:` in its worktree (the main tree before the worktree has it), or null. */
+const stateOf = (wt, feature) => {
+  const text = readManifest(wt, feature) ?? readManifest(ROOT, feature)
+  return text == null ? null : (parseManifest(text).state ?? null)
+}
+
+async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(stateOf(wt, feature), { spec: specOf(feature), target: TARGET, walkLane: lane === 'walk', split: SPLIT, prior: priorPark(fleet.features[feature]) }), rec = fleet.features[feature]) {
   const log = join(DIR, 'logs', `${feature}-${String(n).padStart(2, '0')}.log`)
   mkdirSync(dirname(log), { recursive: true })
   const env = envFor(feature, lane)
