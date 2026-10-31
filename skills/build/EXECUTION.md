@@ -71,13 +71,14 @@ ledger file, not only in todos.**
    ledger. Never re-dispatch a task the ledger calls complete. A task whose last ledger line is a fix
    round is mid-loop — resume the loop at the next round.
 5. **Read the plan's outline once — not the plan:** `node <plugin>/scripts/plan-slices.mjs <folder> --brief`
-   prints the header (Global Constraints, the `## Phases` table) and every task's head — `App:`,
-   `Phase:`, `Recipe:`, **Files**, **Interfaces** — with a count of its steps and tests. The
-   steps and tests are the implementers' (each brief carries its own block); holding all of them
-   here costs the whole plan on every turn of the build, and one measured plan was 386KB. Read one
-   task's block (`<plugin>/scripts/task-brief <folder>/PLAN.md N <WS>/task-N-brief.md`, or the brief
-   once rendered) only when a ruling needs it. Create a todo per task. Read the SPEC too: it is the
-   authority the plan argues from, and conflicts inside the plan resolve against it.
+   prints the plan's header (the `## Phases` table; the Global Constraints are in this brief) and one
+   line per task — `N · app · phase · title · recipe · <k> files`. The
+   steps and tests are the implementers' (each brief carries its own block); holding all of them here costs the whole plan
+   on every turn of the build, and one measured plan was 386KB. A ruling that needs a task's Files or
+   Interfaces reads that task with `task-brief`
+   (`<plugin>/scripts/task-brief <folder>/PLAN.md N <WS>/task-N-brief.md`, or the brief once
+   rendered). Create a todo per task. Read the SPEC too: it is the authority the plan argues from,
+   and conflicts inside the plan resolve against it.
 6. **Before Task 1 only — the pre-flight conflict scan.** Its output is a **table, not a verdict**:
    `node <plugin>/scripts/plan-slices.mjs <folder> --scan` prints its mechanical rows —
    - one row for every file several tasks list, and one per pair of tasks one of which consumes an
