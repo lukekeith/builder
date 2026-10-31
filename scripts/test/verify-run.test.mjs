@@ -709,6 +709,23 @@ test('reapStrays never touches a process outside the checkout, nor a sibling who
   }
 })
 
+test('reapStrays skips a process with a controlling terminal — a person\'s shell or editor in the checkout — and logs it', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-tty-')))
+  const shell = spawnSleep(root)
+  const stray = spawnSleep(root)
+  const logged = []
+  try {
+    const got = reapStrays(root, { ttyOf: (pid) => (pid === shell.pid ? 'ttys003' : '??'), log: (m) => logged.push(m) })
+    assert.deepEqual(got, [stray.pid])
+    assert.equal(alive(stray.pid), false)
+    assert.equal(alive(shell.pid), true, 'a process on a terminal is never signalled')
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], new RegExp(`\\b${shell.pid}\\b.*ttys003`))
+  } finally {
+    for (const p of [shell, stray]) kill(p.pid)
+  }
+})
+
 test('reapStrays matches by real path: a checkout named through a symlink still reaps', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
   mkdirSync(join(root, 'real'))

@@ -105,9 +105,14 @@ const isAlive = (pid) => {
  * after 3 s → the pids signalled. runShell kills its own process group, but a server the run started
  * in a group of its own (a playwright webServer) outlives it — seen running for hours. Matched by real
  * path on a separator boundary (co/1 never takes co/10; /var is /private/var); never this process or
- * its parent, nor the lsof that lists them. No lsof: [].
+ * its parent, nor the lsof that lists them. No lsof: []. A process with a controlling terminal is a
+ * person's — a shell or editor whose cwd is in the checkout (an interactive zsh ignores SIGTERM, and
+ * SIGKILL would close its tab) — never a suite's server: skipped, and `log` says so.
  */
-export function reapStrays(dir) {
+const ttyOfPs = (pid) => spawnSync('ps', ['-o', 'tty=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim() ?? ''
+/** `ps -o tty=` with no terminal: `??` on macOS, `?` on Linux, `-` or empty elsewhere. */
+const hasTty = (tty) => !/^(\?+|-|)$/.test(tty)
+export function reapStrays(dir, { ttyOf = ttyOfPs, log = (m) => console.error(m) } = {}) {
   const root = realOr(resolve(dir))
   if (root === sep) return []
   const r = spawnSync('lsof', ['-nP', '-w', '-d', 'cwd', '-Fpn'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
@@ -119,7 +124,10 @@ export function reapStrays(dir) {
     if (l[0] === 'p') pid = Number(l.slice(1))
     else if (l[0] === 'n' && pid && pid !== process.pid && pid !== process.ppid && pid !== r.pid && !pids.includes(pid)) {
       const cwd = l.slice(1)
-      if (within(cwd) || within(realOr(cwd))) pids.push(pid)
+      if (!within(cwd) && !within(realOr(cwd))) continue
+      const tty = ttyOf(pid)
+      if (hasTty(tty)) log(`reap: skipped pid ${pid} in ${cwd} — it has a terminal (${tty}), so it is a person's shell or editor, not a stray`)
+      else pids.push(pid)
     }
   }
   const signal = (sig) => pids.forEach((p) => {
