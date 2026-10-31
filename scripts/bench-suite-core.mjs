@@ -388,14 +388,15 @@ const anyOf = (xs) => (xs.some((x) => x != null) ? sum(xs.map((x) => x ?? 0)) : 
 
 /**
  * The build orchestrator's own thread — the fleet runs that dispatched an implementer — as
- * { tokens, turns, tasks }, tasks the plan's count (the row's size.tasks; null when it has none). Null without such a run.
+ * { tokens, turns, tasks, peakCtx }, tasks the plan's count (the row's size.tasks; null when it has none). Null without such a run.
  */
 function buildOrchestrator(row) {
   const runs = (row.timing ?? []).filter((t) => (t.meter?.dispatches ?? []).some((d) => d.kind === 'implement'))
   if (!runs.length) return null
   const tokens = sum(runs.map((t) => sum([t.tokens?.input, t.tokens?.output, t.tokens?.cacheRead, t.tokens?.cacheCreation].map((x) => x ?? 0))))
   const turns = sum(runs.map((t) => num(t.turns) ?? num(t.meter?.orchestrator?.turns) ?? 0))
-  return { tokens, turns, tasks: row.size?.tasks > 0 ? row.size.tasks : null }
+  const peaks = runs.map((t) => num(t.meter?.orchestrator?.peakCtx)).filter((x) => x != null)
+  return { tokens, turns, tasks: row.size?.tasks > 0 ? row.size.tasks : null, peakCtx: peaks.length ? Math.max(...peaks) : null }
 }
 
 /** An archive row as a Measure; a field with no source is null. */
@@ -545,4 +546,54 @@ export function renderSuiteReport(results, { names = false, builder } = {}) {
   const top = topSpend(results, 5)
   out.push('## Top 5', '', 'Minutes by stage', '', table(['where', 'minutes'], top.minutes.map((x) => [x.where, x.minutes])), '', 'Tokens by dispatch kind', '', table(['where', 'tokens'], top.tokens.map((x) => [x.where, formatTokens(x.tokens)])), '')
   return out.join('\n')
+}
+
+// ── history: bench/results/history.jsonl, one row per finished case or fixture config ──
+/** The row format's version: 0 is a backfilled row, measured before the per-task build numbers and the corrected stage split. */
+export const HISTORY_SCHEMA = 1
+const OUTCOMES = { done: 'landed', parked: 'parked', 'timed out': 'timed out' }
+/** A finished case: not stopped, waiting, running or refused — those run again, and only then get a row. */
+export const historyFinished = (status) => !['stopped', 'waiting', 'running', 'refused'].includes(statusCategory(status))
+const tenth = (x) => (x == null ? null : Math.round(x * 10) / 10)
+const minutesOf = (ms) => (Number.isFinite(ms) ? tenth(ms / 60000) : null)
+const stageMinutes = (stages) => (stages ? Object.fromEntries(Object.entries(stages).filter(([, ms]) => Number.isFinite(ms)).map(([k, ms]) => [k, minutesOf(ms)])) : null)
+
+/** The build lane's numbers as a row carries them: totals, the plan's task count, each per task, and the peak context. */
+function buildOfRow(b, planTasks) {
+  if (!b) return null
+  const tasks = b.tasks ?? (planTasks > 0 ? planTasks : null)
+  return { tokens: num(b.tokens), turns: num(b.turns), tasks, tokensPerTask: tasks && b.tokens != null ? Math.round(b.tokens / tasks) : null, turnsPerTask: tasks && b.turns != null ? tenth(b.turns / tasks) : null, peakCtx: num(b.peakCtx) }
+}
+
+/** A row's shared shape; a field with no source is null. */
+const historyRow = (o) => ({
+  at: o.at ?? null, suite: o.suite ?? null, case: o.case ?? null, size: o.size ?? null, kind: o.kind ?? null, config: o.config ?? null, builder: o.builder ?? null,
+  control: !!o.control, replan: o.replan ?? null, outcome: o.outcome, reason: o.reason, wallMin: minutesOf(o.measure?.wallMs), costUsd: o.measure?.costUsd == null ? null : cents(o.measure.costUsd),
+  tokens: num(o.measure?.tokens), turns: num(o.measure?.turns), build: o.build ?? null, stages: stageMinutes(o.measure?.stages), planLines: num(o.planLines), specLines: num(o.specLines),
+  fixRounds: num(o.measure?.quality?.fixRounds), findings: o.measure?.quality?.finalFindings ?? null, schema: o.schema ?? HISTORY_SCHEMA,
+})
+
+/**
+ * A suite Result as a history row. Never its project, a path or its status's detail: `reason` is the status's
+ * category alone. `builder` stands in when the Result names none (an older result: the suite's label).
+ */
+export function historyRowFromResult(r, { at, suite, builder = null, schema = HISTORY_SCHEMA } = {}) {
+  const reason = statusCategory(r.status)
+  const control = !!r.control
+  return historyRow({
+    at, suite, case: control ? String(r.id).replace(/@main$/, '') : r.id, size: r.size, kind: r.kind ?? 'archived', builder: r.builder ?? builder, control,
+    replan: r.replan === true ? 'prefix' : r.replan, outcome: OUTCOMES[reason] ?? 'failed', reason, measure: r.measure,
+    build: buildOfRow(r.measure?.build, r.planTasks), planLines: r.planLines, specLines: r.specLines, schema,
+  })
+}
+
+/** A fixture run's runs.json as history rows, one per config: its median done run; landed when any run of it is done. */
+export function historyRowsFromRuns(data, { at, size = null, control = false, schema = HISTORY_SCHEMA } = {}) {
+  const runs = data?.runs ?? []
+  const when = at ?? (data?.endedAt > 0 ? new Date(data.endedAt).toISOString() : data?.startedAt > 0 ? new Date(data.startedAt).toISOString() : null)
+  return [...new Set(runs.map((r) => r.config))].map((config) => {
+    const mine = runs.filter((r) => r.config === config)
+    const reason = mine.some((r) => r.status === 'done') ? 'done' : statusCategory(mine[0]?.status)
+    return historyRow({ at: when, suite: data.runId, case: data.feature, size, kind: 'fixture', config, builder: data.versions?.builder, control, outcome: OUTCOMES[reason] ?? 'failed', reason, measure: measureFromRuns(data, config), schema })
+  })
 }
