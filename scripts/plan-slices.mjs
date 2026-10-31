@@ -143,15 +143,22 @@ export function taskHeads(planText) {
   return out.map(({ open, io, behaviour, fenceAt, head, stepText, consumes, produces, ...t }) => ({ ...t, consumes: [...new Set(consumes)], produces: [...new Set(produces)], head: head.join('\n').replace(/\s+$/, ''), stepText: stepText.join('\n') }))
 }
 
-/** --brief: the header verbatim, then per task its head (App/Phase/Recipe/Files/Interfaces) and a count of its steps and tests. */
+/** The plan's header without its Global Constraints section (the build brief carries those). */
+const dropConstraints = (header) => header.replace(/^## Global Constraints\b[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/im, '').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '')
+
+/** --brief: the header minus Global Constraints, then one line per task: `N · app · phase · title · recipe · k files`. */
 export function planBrief(planText) {
   const firstTask = fenced(planText).findIndex(({ line, inside }) => !inside && HEADING.test(line))
   const lines = String(planText).split('\n')
-  const header = (firstTask < 0 ? lines : lines.slice(0, firstTask)).join('\n').replace(/\s+$/, '')
-  const counts = new Map(slices(planText).map((x) => [x.n, x.tests]))
-  const heads = taskHeads(planText)
-  const out = [header, '', `<!-- plan-slices --brief: each task's head; its behaviour, tests and steps are in PLAN.md (task-brief <plan> <N> <file> cuts one) -->`]
-  for (const t of heads) out.push('', t.head, `(${plural(t.steps, 'step')} · ${plural(counts.get(t.n) ?? 0, 'test case')} in the block)`)
+  const header = dropConstraints((firstTask < 0 ? lines : lines.slice(0, firstTask)).join('\n'))
+  const by = new Map(slices(planText).map((x) => [x.n, x]))
+  const out = [header, '', `<!-- plan-slices --brief: N · app · phase · title · recipe · files; a ruling that needs a task's Files or Interfaces reads it with task-brief <plan> <N> <file> -->`]
+  for (const t of taskHeads(planText)) {
+    const x = by.get(t.n) ?? {}
+    const recipe = t.head.split('\n').map((l) => /^\s*[-*]*\s*\**Recipe:?\**:?\s*(.*)$/i.exec(l)?.[1]).find((r) => r != null)?.replace(/[`*]/g, '').trim() || '—'
+    const title = t.name.replace(/\s+/g, ' ').slice(0, 100)
+    out.push(`${t.n} · ${x.app ?? '—'} · ${x.phase ?? 0} · ${title} · ${recipe.slice(0, 60)} · ${`${new Set(t.files.map((f) => f.path)).size} files`}`)
+  }
   return out.join('\n') + '\n'
 }
 
