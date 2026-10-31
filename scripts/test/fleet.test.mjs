@@ -904,6 +904,20 @@ test('env reaches the hooks', () => {
   assert.equal(readFileSync(join(r.fleet.features.a.worktree, 'reset-env'), 'utf8'), 'x-a\n')
 })
 
+test('reset, start, smoke and stop fill {feature} into the command, as setup does; a command without it is unchanged', async () => {
+  const root = makeRepo(['a'], {
+    reset: 'echo "reset {feature}" >> hooks.log',
+    stop: 'echo "stop {feature}" >> hooks.log; echo plain >> plain.log',
+    lines: ['start: echo "start {feature}" >> hooks.log; sleep 30', 'smoke: echo "smoke {feature}" >> hooks.log; test -f hooks.log'],
+  })
+  const r = runFleet(root, ['a'], { a: ['READY-PENDING', 'BLOCK:walked'] })
+  const wt = r.fleet.features.a.worktree
+  const log = readFileSync(join(wt, 'hooks.log'), 'utf8')
+  for (const w of ['reset a', 'start a', 'smoke a', 'stop a']) assert.match(log, new RegExp(`^${w}$`, 'm'), `${w} was filled in`)
+  assert.doesNotMatch(log, /\{feature\}/)
+  assert.equal(readFileSync(join(wt, 'plain.log'), 'utf8'), 'plain\n')
+})
+
 // The walk env for the start/smoke tests: a tiny server on a port the test picks, which writes
 // its pid once listening and exits on SIGTERM; smoke connects to that port.
 const freePort = () =>
