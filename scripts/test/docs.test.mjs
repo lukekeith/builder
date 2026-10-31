@@ -173,3 +173,13 @@ test('fleet-build carries AGENT-MODE §Agent mode in the build lane, not §--age
   const whole = run('docs.mjs', ['resume-agent', '--no-config'], { cwd: leanRepo('note-tags').root }).stdout
   assert.ok(whole.includes(readFileSync(join(import.meta.dirname, '..', '..', 'skills', 'resume', 'AGENT-MODE.md'), 'utf8').trim()), 'resume-agent prints the whole file')
 })
+test('config-key prints one front-matter block of the repo config — what fleet-setup leaves out, read when a step needs it', () => {
+  const r = leanRepo('note-tags', { extra: { '.claude/builder.md': FULL_CONFIG } })
+  const v = run('docs.mjs', ['config-key', 'verify'], { cwd: r.root })
+  assert.equal(v.status, 0, v.stderr)
+  assert.match(v.stdout, /^--- \.claude\/builder\.md verify:\n\nverify:\n  workers: 2\n  suites:\n    notes: \{ runner: node-test/)
+  assert.doesNotMatch(v.stdout, /agent_walk:|apps:|---\n$/)
+  const n = run('docs.mjs', ['config-key', 'nope'], { cwd: r.root })
+  assert.equal(n.status, 1)
+  assert.match(n.stderr, /nope/)
+})

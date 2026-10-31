@@ -769,7 +769,7 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
   for (const dir of readdirSync(join(ROOT, 'skills'))) {
     for (const file of readdirSync(join(ROOT, 'skills', dir)).filter((x) => x.endsWith('.md'))) {
       const text = read(`skills/${dir}/${file}`)
-      for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(m[1] === 'section' || STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
+      for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(m[1] === 'section' || m[1] === 'config-key' || STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
       // zsh reads a word starting with = as a filename expansion: no `echo =====` separator anywhere
       assert.doesNotMatch(text, /echo +["']?={3,}/, `skills/${dir}/${file} has an echo === separator`)
     }
