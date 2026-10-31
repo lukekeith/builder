@@ -47,24 +47,32 @@ export function buildLanePrompt(state, { goAhead = null, specText = null, spec, 
   return `${cmd} --path ${spec} --agent-walk --into ${target}${walkLane ? (split ? ' --walk-lane' : '') : ' --no-dev-env'}${prior}`
 }
 
-/** A `## <name>` section of a SPEC, to the next `## ` heading; '' when absent. */
+/** A SPEC section whose `## ` heading starts with `name` (`## Decisions (rulings)` too), to the next `## `; '' when absent. */
 const specSection = (text, name) => {
-  const m = new RegExp(`^## ${name}\\s*$`, 'm').exec(text)
+  const m = new RegExp(`^## ${name}\\b.*$`, 'm').exec(text)
   if (!m) return ''
   const rest = text.slice(m.index + m[0].length)
   const end = rest.search(/^## /m)
   return end < 0 ? rest : rest.slice(0, end)
 }
+/** A section's table body rows as trimmed cells, without the header (`#`) and separator rows. */
+const tableRows = (section) =>
+  section
+    .split('\n')
+    .filter((l) => /^\s*\|/.test(l) && !/^\s*\|[\s:|-]*$/.test(l))
+    .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim().replace(/^[*_`]+|[*_`]+$/g, '')))
+    .filter((cells) => cells[0] !== '#')
 
 /**
- * An audited SPEC the plan step will run on (plan §Precondition): no OPEN row in §Decisions and no
- * `blocked:` row in §Findings & risks. A `build-time risk` row is not a blocker. No SPEC read → false.
+ * An audited SPEC the plan step will run on (plan §Precondition): no OPEN row in §Decisions — a Ruling
+ * that is empty or reads OPEN in any case — and no `blocked:` row (bold or not) in §Findings & risks (or
+ * a legacy §Findings). A `build-time risk` row is not a blocker. No SPEC read → false.
  */
 export function planReady(specText) {
   if (typeof specText !== 'string') return false
-  const rows = (name) => specSection(specText, name).split('\n').filter((l) => /^\s*\|/.test(l))
-  if (rows('Decisions').some((l) => /\bOPEN\b/.test(l))) return false
-  return !rows('Findings & risks').some((l) => /\|\s*blocked:/.test(l))
+  const open = (cells) => cells.length < 3 || !cells[2] || cells.some((c) => /^open\b/i.test(c))
+  if (tableRows(specSection(specText, 'Decisions')).some(open)) return false
+  return !tableRows(specSection(specText, 'Findings')).some((cells) => cells.some((c) => /^blocked[*_`]*:/i.test(c)))
 }
 
 /** An open `- [ ]` under the SPEC's `## Fixes` (always its last section). */
