@@ -4,7 +4,7 @@ What `/builder:resume` does when it runs unattended (`/builder:agent`, `/builder
 taken without asking, the feature carried all the way to merged. The route table and everything else
 stay in [`SKILL.md`](SKILL.md); this file is printed by `node <builder>/scripts/docs.mjs resume-agent`.
 
-**Contents:** §`--agent-walk` · §Ship in agent mode (`--agent-walk`)
+**Contents:** §`--agent-walk` · §Agent mode outside the build loop · §Ship in agent mode (`--agent-walk`)
 
 ## `--agent-walk`
 
@@ -55,14 +55,6 @@ Every point that would ask resolves one of two ways:
   `node <builder>/scripts/advance.mjs <folder> --set 'blocked="<why> — next: <step>"' --set "next=/builder:resume --path <folder>" --add <folder>/PARKED.md --head --commit "chore({key}): {feature} — parked: <reason>"` —
   print the footer, and **end the run**. The reason names the decision the spec is missing, in one line the
   human can answer.
-- **A run started after an unpark** — the fleet's prompt says the feature *was parked before* and
-  quotes the old line. **Read `<folder>/PARKED.md` first**: it is the investigation so far. Treat it
-  as a lead, not a verdict — find out whether its cause still holds in the code and the spec as they
-  are now (a newer builder may not stop there at all, a fix may have landed since, a ruling may now
-  settle it). Start from *Where to dig*, find the root cause before trying the same fix again
-  ([`systematic-debugging`](../systematic-debugging/SKILL.md)), and add what you try under *What was
-  tried*. Park again only if it still stands — the line written fresh to REFERENCE §How a park reads
-  and the record's sections rewritten with what this attempt learned, never copied back.
 
 | Pause | Under `--agent-walk` |
 |---|---|
@@ -74,11 +66,7 @@ Every point that would ask resolves one of two ways:
 | An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
-| The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
-| The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
-| The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
 | A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
-| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness and the agent walk; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, verify and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
 | **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
@@ -99,12 +87,34 @@ an orchestrator entered its first implementer dispatch already holding 190–300
 ends any other way (a park, a stop) ends as it always has. Outside the fleet — no `--no-dev-env` —
 the steps run on in one turn, as below.
 
+**Agent mode's job is a feature merged into the target branch.**
+
+## Agent mode outside the build loop
+
+What `--agent-walk` adds past the build loop: a run after an unpark, the walk, the sign-off, the ship, the fleet's walk lane. A fleet build session does not read this (`docs.mjs fleet-build` stops above it); `docs.mjs resume-agent` prints all of it.
+
+- **A run started after an unpark** — the fleet's prompt says the feature *was parked before* and
+  quotes the old line. **Read `<folder>/PARKED.md` first**: it is the investigation so far. Treat it
+  as a lead, not a verdict — find out whether its cause still holds in the code and the spec as they
+  are now (a newer builder may not stop there at all, a fix may have landed since, a ruling may now
+  settle it). Start from *Where to dig*, find the root cause before trying the same fix again
+  ([`systematic-debugging`](../systematic-debugging/SKILL.md)), and add what you try under *What was
+  tried*. Park again only if it still stands — the line written fresh to REFERENCE §How a park reads
+  and the record's sections rewritten with what this attempt learned, never copied back.
+
+| Pause | Under `--agent-walk` |
+|---|---|
+| The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
+| The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
+| The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
+| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness and the agent walk; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, verify and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
+
 **Under `--walk-lane`** (the fleet's walk lane when it owns the walk env) the run does only what needs
 the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
 or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away
 from the folder the env serves from. Never run a test suite or a build in this run.
 
-**Agent mode's job is a feature merged into the target branch.** A run that stops short of that
+A run that stops short of that
 without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
 write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
 `commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
