@@ -16,8 +16,9 @@ picker, nothing written.
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
 `/builder:init`, and stop. One call prints it with the REFERENCE sections this flow reads —
 §Flags · §MANIFEST.md · §Condense · §The two-way footer · §Continuing on "go":
-`node <builder>/scripts/docs.mjs resume` — **`docs.mjs resume-agent` under `--agent-walk`**, which
-adds [`AGENT-MODE.md`](AGENT-MODE.md).
+`node <builder>/scripts/docs.mjs resume` — **`docs.mjs resume-agent` under `--agent-walk`**: §Flags,
+§MANIFEST.md and [`AGENT-MODE.md`](AGENT-MODE.md), one Bash output; nobody reads an unattended footer
+or says go, so §Condense, §The two-way footer and §Continuing on "go" are `docs.mjs section` reads there.
 
 **State changes go through the scripts** (REFERENCE §The scripts): a manifest key, a ledger line and
 its commit are one `node <builder>/scripts/advance.mjs <folder> …` call, never a hand `sed`. 🔴 Each

@@ -36,12 +36,35 @@ export function laneOf(mf, { batched = false, specText = null } = {}) {
 
 /**
  * The default prompt of a build-lane session. A building feature, or a planned one with its go-ahead, starts on /builder:build
- * (the bundle that carries the task loop); any other state (a planned one with no go-ahead too) goes through /builder:resume, which takes the go-ahead.
+ * (the bundle that carries the task loop); an audited one with nothing open (`planReady`) on /builder:plan --auto, which plans,
+ * records the go-ahead and ends the run there; any other state (a planned one with no go-ahead, an audited one with an OPEN
+ * decision or a `blocked:` finding) goes through /builder:resume, whose decisions gate and go-ahead settle it.
  * The walk lane keeps /builder:resume (its walk handling) and its --walk-lane flag; `prior` is priorPark's suffix.
  */
-export function buildLanePrompt(state, { goAhead = null, spec, target, walkLane = false, split = false, prior = '' }) {
+export function buildLanePrompt(state, { goAhead = null, specText = null, spec, target, walkLane = false, split = false, prior = '' }) {
+  if (!walkLane && state === 'audited' && planReady(specText)) return `/builder:plan --path ${spec} --auto --agent-walk --into ${target} --no-dev-env${prior}`
   const cmd = !walkLane && (state === 'building' || (state === 'planned' && isSet(goAhead))) ? '/builder:build' : '/builder:resume'
   return `${cmd} --path ${spec} --agent-walk --into ${target}${walkLane ? (split ? ' --walk-lane' : '') : ' --no-dev-env'}${prior}`
+}
+
+/** A `## <name>` section of a SPEC, to the next `## ` heading; '' when absent. */
+const specSection = (text, name) => {
+  const m = new RegExp(`^## ${name}\\s*$`, 'm').exec(text)
+  if (!m) return ''
+  const rest = text.slice(m.index + m[0].length)
+  const end = rest.search(/^## /m)
+  return end < 0 ? rest : rest.slice(0, end)
+}
+
+/**
+ * An audited SPEC the plan step will run on (plan §Precondition): no OPEN row in §Decisions and no
+ * `blocked:` row in §Findings & risks. A `build-time risk` row is not a blocker. No SPEC read → false.
+ */
+export function planReady(specText) {
+  if (typeof specText !== 'string') return false
+  const rows = (name) => specSection(specText, name).split('\n').filter((l) => /^\s*\|/.test(l))
+  if (rows('Decisions').some((l) => /\bOPEN\b/.test(l))) return false
+  return !rows('Findings & risks').some((l) => /\|\s*blocked:/.test(l))
 }
 
 /** An open `- [ ]` under the SPEC's `## Fixes` (always its last section). */

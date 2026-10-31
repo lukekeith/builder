@@ -1911,6 +1911,20 @@ test('a planned feature with a go-ahead starts its build lane on /builder:build;
   assert.match(first('s'), / cmd=\/builder:resume /)
 })
 
+test('an audited feature with nothing open starts on /builder:plan; one with an OPEN decision on /builder:resume', () => {
+  const root = makeRepo(['a', 'o'], { manifest: ['state: audited'] })
+  const spec = (row) => `# F\n\n## Decisions\n\n| # | Decision | Ruling | Who / date |\n|---|---|---|---|\n${row}\n\n## Findings & risks\n\n| # | Finding | Resolution |\n|---|---|---|\n`
+  writeFileSync(join(root, 'docs/features/a/SPEC.md'), spec('| D1 | x | y — why; not z | auto (recommended) 2026-10-31 |'))
+  writeFileSync(join(root, 'docs/features/o/SPEC.md'), spec('| D1 | x | OPEN — recommend y | |'))
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'audited')
+  const r = runFleet(root, ['a', 'o'], { a: HAPPY.slice(1), o: HAPPY.slice(1) })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const first = (f) => r.calls.find((l) => l.startsWith(`start ${f} build`))
+  assert.match(first('a'), / cmd=\/builder:plan /)
+  assert.match(first('o'), / cmd=\/builder:resume /)
+})
+
 test('the build lane reads the worktree manifest, not the main tree\'s: planned with no go-ahead starts on /builder:resume, and once the worktree is building on /builder:build', () => {
   const root = makeRepo(['n'])
   writeFileSync(join(root, 'docs/features/n/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: none\nnext: x\n')

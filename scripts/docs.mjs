@@ -55,6 +55,9 @@ export const STEPS = {
   // plan SKILL: PLAN-FORMAT.md · REFERENCE (§Sizes · §Contract and the contract freeze · §MANIFEST.md · §Branch and ticket),
   // §The review (the go-ahead's recap), §Flags (--here), §Continuing on "go".
   plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket', 'The review', 'Flags', 'Continuing on "go"'), CONFIG],
+  // plan SKILL under --auto or --agent-walk: the same less §The review (no recap is printed), §Flags and §Continuing on
+  // "go" (nobody answers) — one Bash output (≤ 30,000 chars), where `plan` is over it.
+  'plan-agent': [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket'), CONFIG],
   // build SKILL: EXECUTION.md first, then REFERENCE (§Contract and the contract freeze · §PLAN.md · §SPEC.md ·
   // §MANIFEST.md · §Branch and ticket), and §The verifier, §Walk readiness, §The craft skills where it cites them.
   build: [FILE('skills/build/EXECUTION.md'), ...R('Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'), CONFIG],
@@ -85,8 +88,10 @@ export const STEPS = {
   revise: [...R('Contract and the contract freeze', 'SPEC.md', 'The review', 'Continuing on "go"'), CONFIG],
   // resume SKILL: §Flags, §MANIFEST.md, §Condense (state detection), §The two-way footer, §Continuing on "go".
   resume: [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), CONFIG],
-  // resume SKILL §`--agent-walk`: under --agent-walk, the same plus AGENT-MODE.md.
-  'resume-agent': [...R('Flags', 'MANIFEST.md', 'Condense', 'The two-way footer', 'Continuing on "go"'), FILE('skills/resume/AGENT-MODE.md'), CONFIG],
+  // resume SKILL: under --agent-walk, §Flags, §MANIFEST.md and AGENT-MODE.md — one Bash output (≤ 30,000 chars). Left
+  // out for `docs.mjs section`: §The two-way footer and §Continuing on "go" (no human reads an unattended footer, and
+  // nobody says go), §Condense (a fleet feature always has a MANIFEST; agent-walk and ship print it where they condense).
+  'resume-agent': [...R('Flags', 'MANIFEST.md'), FILE('skills/resume/AGENT-MODE.md'), CONFIG],
 }
 
 /** step → the sections to cut out of it for a feature's test plan (`--path`): [file, section, why]. */

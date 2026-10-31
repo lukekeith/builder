@@ -183,3 +183,23 @@ test('config-key prints one front-matter block of the repo config — what fleet
   assert.equal(n.status, 1)
   assert.match(n.stderr, /nope/)
 })
+
+test('resume-agent is one Bash call (≤ 30,000 with the config): §Flags, §MANIFEST.md and AGENT-MODE — no human footer, no "go", no §Condense', () => {
+  const r = fleetRun(['resume-agent'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(r.stdout.length <= 30000, over(r.stdout.length))
+  assert.ok(r.stdout.length <= 27000, `${r.stdout.length} chars: keep 3,000 of margin for a larger config`)
+  for (const s of ['§Flags', '§MANIFEST.md']) assert.match(r.stdout, new RegExp(`^--- skills/resume/REFERENCE\\.md ${s} `, 'm'))
+  assert.match(r.stdout, /^--- skills\/resume\/AGENT-MODE\.md$/m)
+  for (const s of ['§The two-way footer', '§Continuing on "go"', '§Condense']) assert.ok(!r.stdout.includes(`REFERENCE.md ${s} `), s)
+  assert.equal((r.stdout.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1, 'the config, once')
+})
+test('plan-agent — what an unattended plan reads — is one Bash call (≤ 30,000 with the config): no §The review, §Flags or §Continuing on "go"', () => {
+  const r = fleetRun(['plan-agent'])
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(r.stdout.length <= 27000, `${r.stdout.length} chars: keep 3,000 of margin for a larger config`)
+  assert.match(r.stdout, /^--- skills\/plan\/PLAN-FORMAT\.md$/m)
+  for (const s of ['§Sizes', '§Contract and the contract freeze', '§MANIFEST.md', '§Branch and ticket']) assert.match(r.stdout, new RegExp(`^--- skills/resume/REFERENCE\\.md ${s} `, 'm'))
+  for (const s of ['§The review', '§Flags', '§Continuing on "go"']) assert.ok(!r.stdout.includes(`REFERENCE.md ${s}`), s)
+  assert.equal((r.stdout.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1, 'the config, once')
+})
