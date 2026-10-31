@@ -43,6 +43,21 @@
  *                          directory and report contract, the scope `end` sets; from round 3, the items
  *                          that failed last round, with systematic-debugging.
  *
+ *   next <folder> --after-implement N   the step after task N's implementer reported DONE: under a
+ *                          test plan that reviews tasks (review=slice…), task N's review exactly as
+ *                          `task-review --task N`; otherwise the close below with the line
+ *                          `Task N: complete (commits <base7>..<head7>, no task review (tests: review=<v>))`.
+ *   next <folder> --close N --ledger "<line>"   EXECUTION §5 in one call: the ledger line (advance.mjs
+ *                          --ledger), the commit-tier request (`verify.mjs request <worktree> HEAD --tier
+ *                          commit`), `verify.mjs verdict <branch>` printed verbatim, then task N+1's
+ *                          implementer render — or, when N closes its phase in the ## Phases table,
+ *                          `phase <P> closes — build §Phase close` and no render. Each part is skipped,
+ *                          printing `already applied`, when done before (a `Task N: complete` ledger
+ *                          line; a commit-tier request for HEAD's sha), so a re-run after a crash
+ *                          finishes only what is missing. Judgement stays the orchestrator's: whether
+ *                          findings need a fix round, whether a verdict's regression needs a fix dispatch.
+ *                          BUILDER_VERIFY_BIN overrides the verify client (tests stub it).
+ *
  * Findings travel as files. Every review kind tells its reviewer to write its report to a workspace
  * file — <WS>/task-N-review.md, review-phase-N.md, task-N-re-review-R.md, final-review.md,
  * final-re-review.md — and prints it as `findings: <path>`. The next fix round and re-review take
@@ -64,12 +79,15 @@
  */
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BUILDER, openFeature, read, writeAtomic, git, mdSection, configSection, tableRows, parseArgs, cli } from './feature-core.mjs'
 import { slices } from './plan-slices.mjs'
 import { parseTestPlan } from './profile.mjs'
 import { isSet } from './manifest.mjs'
+import { advance } from './advance.mjs'
+import { openLedger } from './verify/ledger.mjs'
+import { mainRoot } from './verify/git.mjs'
 
 const PROMPTS = join(BUILDER, 'skills', 'build', 'prompts')
 const CRAFT = {
@@ -365,6 +383,7 @@ function implementer(f, a, ws) {
     description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
     model: round >= 4 ? 'REQUIRED — one tier above the implementer that got stuck (EXECUTION.md §Model selection)' : `REQUIRED — EXECUTION.md §Model selection${recipe?.tiny ? ' (Recipe says tiny: the cheapest tier)' : ''}`,
     note: `BASE ${rec.base} recorded for task ${n}`,
+    brief: briefPath,
   }
 }
 
@@ -664,6 +683,80 @@ function walkBatch(features, a, root) {
   return { file: join(ws, 'dispatch-walk-batch.md'), body: lines.join('\n') + '\n', description: `Agent walk — batch of ${walks.length}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
 }
 
+// ---- next: the bookkeeping between two dispatches, in one call -----------------------------------
+
+const verifyBin = () => process.env.BUILDER_VERIFY_BIN || join(BUILDER, 'scripts', 'verify', 'verify.mjs')
+
+/** `verify.mjs <args>` in the worktree → its stdout, whatever its exit (verdict exits 5/75 when there is none yet). */
+function verifyCli(root, args) {
+  const r = spawnSync(process.execPath, [verifyBin(), ...args], { cwd: root, encoding: 'utf8' })
+  if (r.error) throw r.error
+  if (r.status === 2) throw new Error(`verify.mjs ${args.join(' ')}: ${(r.stderr || r.stdout).trim()}`)
+  return (r.stdout ?? '').replace(/\s+$/, '')
+}
+
+/** The phase task n belongs to, and the last task of that phase — the ## Phases table, as --phase reads it. */
+function phaseEnd(f, n) {
+  const plan = read(f.planPath)
+  const { tasks } = planOf(f)
+  const phaseOf = (t) => phaseGoal(plan, t.phase ?? null, t.n).phase
+  const t = tasks.find((x) => x.n === n)
+  if (!t) throw new Error(`task ${n} not found in ${f.planPath}`)
+  const p = phaseOf(t)
+  const last = Math.max(...tasks.filter((x) => phaseOf(x) === p).map((x) => x.n))
+  return { phase: p, last: n >= last, next: tasks.find((x) => x.n > n)?.n ?? null }
+}
+
+/** EXECUTION §5: the ledger line, the commit-tier request, the verdict, then the next render. → output lines and the render, if any. */
+function close(f, ws, n, line) {
+  const out = []
+  const ledgerText = read(join(ws, 'progress.md')) ?? ''
+  const done = ledgerText.split('\n').find((l) => new RegExp(`^Task ${n}: complete\\b`).test(l))
+  if (done) out.push(`ledger: already applied (${done})`)
+  else out.push(...advance(f, { ledger: [line] }).lines)
+
+  const head = git(f.root, ['rev-parse', 'HEAD'])
+  const filed = openLedger(mainRoot(f.root)).requests((r) => r.sha === head && r.tier === 'commit').at(-1)
+  if (filed) out.push(`verify request: already applied (${filed.id}, commit ${head.slice(0, 7)})`)
+  else out.push(`verify request: ${verifyCli(f.root, ['request', f.root, 'HEAD', '--tier', 'commit'])} (commit ${head.slice(0, 7)})`)
+
+  const branch = git(f.root, ['rev-parse', '--abbrev-ref', 'HEAD'])
+  out.push(verifyCli(f.root, ['verdict', branch]))
+
+  const p = phaseEnd(f, n)
+  if (p.last || p.next == null) {
+    out.push(`phase ${p.phase ?? '?'} closes — build §Phase close`)
+    return { lines: out, render: null }
+  }
+  return { lines: out, render: implementer(f, { task: String(p.next) }, ws) }
+}
+
+function next(f, a, ws) {
+  if (a['after-implement'] != null) {
+    const n = +a['after-implement']
+    const review = parseTestPlan(f.manifest).levers.review
+    if (review.startsWith('slice')) return { lines: [], render: taskReview(f, { task: String(n) }, ws) }
+    const base = loadState(ws).tasks[n]?.base
+    if (!base) throw new Error(`no BASE recorded for task ${n} — its implementer is rendered first (dispatch.mjs implementer --task ${n})`)
+    return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`)
+  }
+  return close(f, ws, +a.close, a.ledger)
+}
+
+/** Write a render's file and print its Agent call; under `next`, the implementer's brief path too. */
+function emit(r, { brief = false } = {}) {
+  writeAtomic(r.file, r.body)
+  console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
+  if (brief && r.brief) console.log(`brief: ${r.brief}`)
+  if (r.note) console.log(r.note)
+  if (r.findings) console.log(`findings: ${r.findings} — the reviewer writes its report here; a fix round passes it as --findings-file`)
+  console.log(`Agent call — description: ${r.description}`)
+  // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
+  console.log(`  subagent_type: ${r.agentType ?? 'general-purpose'}${r.agentType && r.agentType !== 'general-purpose' ? ' — if this session has no agent of that type, general-purpose' : ''}`)
+  console.log(`  model: ${r.model}`)
+  console.log(`  prompt: Read ${r.file} and do what it says.`)
+}
+
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
 
 async function main(argv) {
@@ -687,6 +780,19 @@ async function main(argv) {
     console.log(`  prompt: Read ${r.file} and do what it says.`)
     return 0
   }
+  if (kind === 'next') {
+    const ok = folder && (/^\d+$/.test(a['after-implement'] ?? '') ? a.close == null : /^\d+$/.test(a.close ?? '') && a.ledger?.trim())
+    if (!ok) {
+      console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>"')
+      return 2
+    }
+    const f = openFeature(folder)
+    if (!f.cfg) throw new Error(f.cfgError)
+    const r = next(f, a, f.ws())
+    for (const l of r.lines) console.log(l)
+    if (r.render) emit(r.render, { brief: true })
+    return 0
+  }
   if (!kind || !folder || !KINDS.includes(kind)) {
     console.error(`usage: dispatch.mjs <${KINDS.join('|')}> <folder> [--task N | --final] [--round N] [--context "<one paragraph>"] [--findings "<text>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]`)
     return 2
@@ -694,16 +800,7 @@ async function main(argv) {
   const f = openFeature(folder)
   if (!f.cfg) throw new Error(f.cfgError)
   const ws = f.ws()
-  const r = RENDER[kind](f, a, ws)
-  writeAtomic(r.file, r.body)
-  console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
-  if (r.note) console.log(r.note)
-  if (r.findings) console.log(`findings: ${r.findings} — the reviewer writes its report here; a fix round passes it as --findings-file`)
-  console.log(`Agent call — description: ${r.description}`)
-  // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
-  console.log(`  subagent_type: ${r.agentType ?? 'general-purpose'}${r.agentType && r.agentType !== 'general-purpose' ? ' — if this session has no agent of that type, general-purpose' : ''}`)
-  console.log(`  model: ${r.model}`)
-  console.log(`  prompt: Read ${r.file} and do what it says.`)
+  emit(RENDER[kind](f, a, ws))
   return 0
 }
 
