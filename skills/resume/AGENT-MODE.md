@@ -4,15 +4,12 @@ What `/builder:resume` does when it runs unattended (`/builder:agent`, `/builder
 taken without asking, the feature carried all the way to merged. The route table and everything else
 stay in [`SKILL.md`](SKILL.md); this file is printed by `node <builder>/scripts/docs.mjs resume-agent`.
 
-**Contents:** §`--agent-walk` · §Agent mode outside the build loop · §Ship in agent mode (`--agent-walk`)
+**Contents:** §Agent mode in the build lane · §`--agent-walk` · §Agent mode outside the build loop · §Ship in agent mode (`--agent-walk`)
 
-## `--agent-walk`
+## Agent mode in the build lane
 
-Unattended mode, for `/builder:fleet` (REFERENCE §Flags). It **implies `--auto`** and is recorded on
-the manifest as `agent-walk: on YYYY-MM-DD`, so a cold session keeps it. That persisted line governs
-unattended runs only: a human `/builder:signoff` sets it to `agent-walk: off`, so the human's own
-`/builder:resume` afterwards is interactive and offers **Mark PR ready**. No `agent_walk:` block in the
-config → refuse in one line naming `/builder:init --update`.
+What binds every unattended run, the build loop's included — a fleet build session reads only this
+section of the file (`docs.mjs fleet-build`); `docs.mjs resume-agent` prints all of it.
 
 🔴 **Never call AskUserQuestion or ExitPlanMode** — nobody is there to answer, and a headless run that
 asks hangs until it times out.
@@ -43,12 +40,36 @@ human (below) — and an env still broken after one fix, which parks as `stuck` 
 "It's a big call", "the human might want to review this", "a lot of decisions were
 auto-ruled" are never reasons: rule, record the ruling where the hand-off lists it, and keep going.
 
-Every point that would ask resolves one of two ways:
+| Pause | Under `--agent-walk` |
+|---|---|
+| A merge conflict · a red verdict · a failed agent walk · a stalled step | work it — never a park. The fleet hands conflicts and the walk env to a run of their own (fleet §What it will do) |
+| A dev env or verifier env that won't come up at a phase close (an env-broken verdict, exit 3; build §Phase close step 2) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
+| An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
+| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
+| **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
+
+**Agent mode's job is a feature merged into the target branch.** A run that stops short of that
+without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
+write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
+`commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
+left to the human — only `commit: manual` and `hold:` stop the feature, and they park.
+
+A run started after an unpark: read `docs.mjs section skills/resume/AGENT-MODE.md "Agent mode outside the build loop"` first.
+
+## `--agent-walk`
+
+Unattended mode, for `/builder:fleet` (REFERENCE §Flags). It **implies `--auto`** and is recorded on
+the manifest as `agent-walk: on YYYY-MM-DD`, so a cold session keeps it. That persisted line governs
+unattended runs only: a human `/builder:signoff` sets it to `agent-walk: off`, so the human's own
+`/builder:resume` afterwards is interactive and offers **Mark PR ready**. No `agent_walk:` block in the
+config → refuse in one line naming `/builder:init --update`.
+
+Every point that would ask — past the build lane's table above — resolves one of two ways:
 
 - **Take the recommendation** — the default, and the answer for anything local and reversible,
   which after a local-only merge is nearly everything: the human tests the result and changes what
   they don't like.
-- **Park** — only for the cases above. Write `blocked: "<why> — next: <step>"` (REFERENCE §How a park reads) and `next:
+- **Park** — only for the cases §Agent mode in the build lane names. Write `blocked: "<why> — next: <step>"` (REFERENCE §How a park reads) and `next:
   /builder:resume --path <folder>` to the manifest, **and `<folder>/PARKED.md`** (REFERENCE §The park
   record — everything a cold reader needs to dig: what is stuck, what was tried, the evidence quoted,
   where to dig), commit both `chore(<ticket-or-feature>): <feature> — parked: <reason>` — write
@@ -63,13 +84,8 @@ Every point that would ask resolves one of two ways:
 | A plan that wants to split | build it whole — record `Ruling: built as one feature under --agent-walk — <the split it wanted>` (plan §Writing the plan's dials). Never a park |
 | An open scope question the spec can't answer, and no ruling can settle without guessing at what the product should be | park — the spec needs a human. A question a reasonable reading of the SPEC settles is a ruling, not this |
 | An audit `blocked:` finding | park, citing it — it is a spec defect (a released contract it would break, a promise it can't keep) |
-| A merge conflict · a red verdict · a failed agent walk · a stalled step | work it — never a park. The fleet hands conflicts and the walk env to a run of their own (fleet §What it will do) |
-| A dev env or verifier env that won't come up at a phase close (an env-broken verdict, exit 3; build §Phase close step 2) | work it once, the config's way (its `verify:` block's `setup`, `db.url`, a check's `cwd`), and request again; env-broken a second time parks (`kind: stuck`) with the verifier's reason as the `blocked:` line (build §Phase close) |
-| An app the config marks `commit: manual` | park at the start of that app's phase; earlier phases stay committed |
 | Dev-DB migrations (§Walk readiness) | `apply_mode: ask` → apply · `human` → park · `agent` → apply |
 | Starting or restarting the dev env | never, when `agent_walk.start` is set: the fleet owns it (REFERENCE §Walk readiness) |
-| A fix that needs `.claude/builder.md` changed — an `agent_walk.env` value, a `verify:` line, a hook | 🔴 **never edit the config** — the fleet reads the main checkout's copy, so an edit in this worktree does nothing, and the config is the human's to change. Park as a **human step**: `blocked: "config change needed — <what and why> — next: apply the diff in PARKED.md to .claude/builder.md on <target>, then /builder:agent"`, with `<folder>/PARKED.md` (`kind: human-step`) carrying the exact diff and, when you can tell, the value's required form (a JSON list for a pydantic `List[str]`, say). The fleet also parks any branch that changed the config before it merges |
-| **Any other point that would ask, including ones added later** | the rule above. A pause missing from this table is never a reason to ask |
 
 **The flags carry through:** every step this command runs gets `--auto --agent-walk`, and
 `--no-dev-env` when this run has it — `--auto` too, because plan, audit and align read `--agent-walk`
@@ -89,17 +105,9 @@ an orchestrator entered its first implementer dispatch already holding 190–300
 ends any other way (a park, a stop) ends as it always has. Outside the fleet — no `--no-dev-env` —
 the steps run on in one turn, as below.
 
-**Agent mode's job is a feature merged into the target branch.** A run that stops short of that
-without a `blocked:` line has not finished — the fleet runs it again. What it never does, at any step:
-write a **human** sign-off (or run `/builder:signoff`), lift a `hold:`, push, open a PR, commit in a
-`commit: manual` app, or deploy. None of those is needed to reach merged-into-the-target, so they are
-left to the human — only `commit: manual` and `hold:` stop the feature, and they park.
-
-A run started after an unpark: read `docs.mjs section skills/resume/AGENT-MODE.md "Agent mode outside the build loop"` first.
-
 ## Agent mode outside the build loop
 
-What `--agent-walk` adds past the build loop: a run after an unpark, the walk, the sign-off, the ship, the fleet's walk lane. A fleet build session does not read this (`docs.mjs fleet-build` stops above it); `docs.mjs resume-agent` prints all of it.
+What `--agent-walk` adds past the build loop: a run after an unpark, the walk, the sign-off, the ship, the fleet's walk lane. A fleet build session does not read this (`docs.mjs fleet-build` prints only §Agent mode in the build lane); `docs.mjs resume-agent` prints all of it.
 
 - **A run started after an unpark** — the fleet's prompt says the feature *was parked before* and
   quotes the old line. **Read `<folder>/PARKED.md` first**: it is the investigation so far. Treat it

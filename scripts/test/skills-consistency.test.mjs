@@ -784,7 +784,7 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
         assert.ok(existsSync(join(ROOT, m[1])), `skills/${dir}/${file}: docs.mjs section ${m[1]} — no such file`)
         assert.ok(mdSection(read(m[1]), m[2]), `skills/${dir}/${file}: docs.mjs section ${m[1]} "${m[2]}" — no such heading`)
       }
-  assert.ok(pointers >= 6, `only ${pointers} docs.mjs section pointers found`)
+  assert.ok(pointers >= 5, `only ${pointers} docs.mjs section pointers found`)
   // P6 — build writes the hand-off; resume's walk lane reads it and falls back on stale (exit 3)
   assert.match(build, /handoff\.mjs write <folder>/)
   assert.match(resume, /handoff\.mjs read <folder>/)

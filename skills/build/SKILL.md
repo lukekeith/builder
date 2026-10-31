@@ -22,9 +22,10 @@ brief · §House rules · §Environment landmines). Everything below is the bind
 on top of that loop.
 
 **Under the fleet (`BUILDER_FLEET_DIR` is set):** read in two Bash calls instead, each one Bash
-output: `node <builder>/scripts/docs.mjs fleet-build --no-config` — EXECUTION §The task loop,
-REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk` —
-then `node <builder>/scripts/docs.mjs fleet-setup` — EXECUTION §Setup and the config. The rest is read with
+output: `node <builder>/scripts/docs.mjs fleet-build --no-config --path <folder>` — EXECUTION §The task loop
+(without §3 under `review=end`), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier,
+AGENT-MODE §Agent mode in the build lane — then `node <builder>/scripts/docs.mjs fleet-setup` —
+EXECUTION §Setup and the part of the config the build acts on. The rest is read with
 `docs.mjs section` at the step that needs it — never EXECUTION §Model selection for a routine
 dispatch (dispatch.mjs names the model); when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
@@ -324,10 +325,9 @@ Never ask.
 
 **Under the fleet (`BUILDER_FLEET_DIR` is set):** first
 `node <builder>/scripts/docs.mjs section skills/build/SKILL.md "When the last phase signs"` if this
-section is not in context; then `docs.mjs section skills/build/EXECUTION.md "The final whole-branch review"`
-at step 2, `docs.mjs section skills/resume/REFERENCE.md "Walk readiness"` at step 3 when it runs, and
-`docs.mjs section skills/build/EXECUTION.md "Finish"` at step 6. EXECUTION's "Common rationalizations"
-is the same call, read when a step looks skippable.
+section is not in context; then `docs.mjs section skills/resume/REFERENCE.md "Walk readiness"` at
+step 3 when it runs, and `docs.mjs section skills/build/EXECUTION.md "Finish"` at step 6. EXECUTION's
+"Common rationalizations" is the same call, read when a step looks skippable.
 
 1. **The last phase's tier is the end's.** The phase tier of the last phase (§Phase close) is
    green on the last commit; nothing else runs here. After step 2's fix wave commits, request the
