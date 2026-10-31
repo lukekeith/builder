@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
+import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -516,7 +516,7 @@ test('next --close on a red verdict renders no brief and records no BASE; green,
   assert.doesNotMatch(red.stdout, /Agent call/)
   assert.equal(JSON.parse(readText(join(WS(r), 'dispatch-state.json'))).tasks['2'], undefined)
   for (const [code, out] of [['0', 'verify commit abc1234 builder/note-tags: GREEN · 3s'], ['75', 'verify builder/note-tags: pending (commit running)'], ['3', 'verify commit abc1234 builder/note-tags: ENV-BROKEN · 1 broken · 3s']]) {
-    const res = next(['--close', '1', '--ledger', 'x'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
+    const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
     assert.equal(res.status, 0, `${code}: ${res.stderr}`)
     assert.ok(res.stdout.includes(out), code)
     assert.match(res.stdout, /task-2-brief\.md/, code)
@@ -549,9 +549,67 @@ test('next --close: a red verdict on the last task of a phase prints the red lin
 test('next --close: verify exits 4 (conflict) and 6 (cancelled) print verbatim and render as pending', () => {
   const { next } = nextRepo()
   for (const [code, out] of [['4', 'verify commit abc1234 builder/note-tags: CONFLICT · 3s'], ['6', 'verify commit abc1234 builder/note-tags: CANCELLED · 0s']]) {
-    const res = next(['--close', '1', '--ledger', 'x'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
+    const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
     assert.equal(res.status, 0, `${code}: ${res.stderr}`)
     assert.ok(res.stdout.includes(out), code)
     assert.match(res.stdout, /task-2-brief\.md/, code)
   }
+})
+
+test('next --close refuses a --ledger line that is not `Task <N>: complete …` for that N (exit 2), writing nothing', () => {
+  const { next, ledger, stubCalls } = nextRepo()
+  for (const line of ['x', 'Task 2: complete (commits a..b, review clean)', 'Task 1: done']) {
+    const res = next(['--close', '1', '--ledger', line])
+    assert.equal(res.status, 2, line)
+    assert.match(res.stderr, /Task 1: complete/, line)
+  }
+  assert.doesNotMatch(ledger(), /^Task 1/m)
+  assert.equal(stubCalls('request').length, 0)
+})
+
+test('next --close skips a phase member the ledger already calls complete — a batched task is never rendered again', () => {
+  const { r, next } = nextRepo()
+  next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '1' })  // red: no render yet
+  appendFileSync(join(WS(r), 'progress.md'), 'Task 2: complete (commits a..b, review clean)\n')
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(res.stdout, /^phase 1 closes — build §Phase close$/m)
+  assert.doesNotMatch(res.stdout, /task-2-brief\.md/)
+  assert.doesNotMatch(res.stdout, /Agent call/)
+})
+
+test('next --close under a pause request renders nothing and prints `paused — <the pause file\'s first line>`', () => {
+  const { r, next, ledger } = nextRepo()
+  const fleetDir = mkdtempSync(join(tmpdir(), 'fleet-dir-'))
+  mkdirSync(join(fleetDir, 'requests'))
+  writeFileSync(join(fleetDir, 'requests', `${r.feature}.pause`), 'requested 2026-10-31T09:00:00Z\nsecond line\n')
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { BUILDER_FLEET_DIR: fleetDir })
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(ledger(), /^Task 1: complete/m, 'the finished task is still ledgered')
+  assert.match(res.stdout, /^paused — requested 2026-10-31T09:00:00Z$/m)
+  assert.doesNotMatch(res.stdout, /Agent call|task-2-brief\.md|phase 1 closes/)
+  // BUILDER_FLEET_DIR unset: the checkout's own .builder/fleet/requests/<feature>.pause
+  mkdirSync(join(r.root, '.builder', 'fleet', 'requests'), { recursive: true })
+  writeFileSync(join(r.root, '.builder', 'fleet', 'requests', `${r.feature}.pause`), 'requested here\n')
+  const local = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { BUILDER_FLEET_DIR: '' })
+  assert.match(local.stdout, /^paused — requested here$/m)
+  assert.doesNotMatch(local.stdout, /Agent call/)
+})
+
+test('next --after-implement under review=slice+second names the second review on a §Contract or §Schema task, and only there', () => {
+  const { r, next, setTests } = nextRepo()
+  setTests('slice=own end=risk review=slice+second')
+  const plain = next(['--after-implement', '1'])
+  assert.equal(plain.status, 0, plain.stderr)
+  assert.match(plain.stdout, /description: Review Task 1/)
+  assert.doesNotMatch(plain.stdout, /second review/i)
+  const plan = join(r.folder, 'PLAN.md')
+  writeFileSync(plan, readText(plan).replace('### Task 1: Tag parsing, `add --tag`, and the tagged `list` line\n', '### Task 1: Tag parsing, `add --tag`, and the tagged `list` line\nProduces: the SPEC §Schema & API changes row for the tags field.\n'))
+  const touched = next(['--after-implement', '1'])
+  assert.equal(touched.status, 0, touched.stderr)
+  assert.match(touched.stdout, /description: Review Task 1/)
+  assert.equal((touched.stdout.match(/^second review: .*$/gm) ?? []).length, 1)
+  assert.match(touched.stdout, /^second review: Task 1 touches §Contract or §Schema & API changes/m)
+  setTests('slice=own end=risk review=slice')
+  assert.doesNotMatch(next(['--after-implement', '1']).stdout, /second review/i, 'plain slice: no second review')
 })
