@@ -1910,3 +1910,15 @@ test('a planned feature with a go-ahead starts its build lane on /builder:build;
   assert.match(first('p'), / cmd=\/builder:build /)
   assert.match(first('s'), / cmd=\/builder:resume /)
 })
+
+test('the build lane reads the worktree manifest, not the main tree\'s: planned with no go-ahead starts on /builder:resume, and once the worktree is building on /builder:build', () => {
+  const root = makeRepo(['n'])
+  writeFileSync(join(root, 'docs/features/n/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: none\nnext: x\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'planned')
+  const r = runFleet(root, ['n'], { n: HAPPY.slice(HAPPY.indexOf('planned')) })
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  const starts = r.calls.filter((l) => l.startsWith('start n build'))
+  assert.match(starts[0], / cmd=\/builder:resume /, 'planned, no go-ahead')
+  assert.ok(starts.some((l) => / READY-PENDING /.test(l) && / cmd=\/builder:build /.test(l)), 'main tree still says planned; the worktree says building:\n' + starts.join('\n'))
+})
