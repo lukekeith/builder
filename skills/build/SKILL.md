@@ -28,7 +28,9 @@ verifier, AGENT-MODE §`--agent-walk`, the config — and, in the same Bash call
 `docs.mjs section` at the step that needs it: before the first dispatch,
 `docs.mjs section skills/build/EXECUTION.md "Model selection"`; when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
-pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md.
+pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md. Record every ruling as
+`Ruling: <what you decided> — <why> — <what it costs if wrong>`; the SPEC binds and the plan argues
+from it.
 
 **The orchestrator does not type what a script writes** (REFERENCE §The scripts): every subagent
 prompt comes from `dispatch.mjs`, every manifest / ledger / commit change from `advance.mjs`, the walk
@@ -39,8 +41,9 @@ script from `walk-script.mjs`, the walk lane's hand-off from `handoff.mjs`. Each
 Input: `<folder>/PLAN.md` — the plan, and the only thing executed — with `SPEC.md` read for the
 sections a task implements and `MANIFEST.md` for state, plus the ledger. Output: code — **one commit
 per task, written by its implementer** (or staged, where the config says so) — one ledger line per
-phase, and the manifest written **only** at a stop, at the go-ahead when taken here, **at the
-producer's phase close (the contract freeze)**, and when the last phase signs.
+phase, and the manifest written **only** at a stop, at the go-ahead when taken here, at setup
+under `--agent-walk` (`agent-walk: on`), **at the producer's phase close (the contract freeze)**,
+and when the last phase signs.
 
 **The commit key** is `--ticket` when given — and a given `--ticket` is written to the manifest's
 `ticket:` line; absent, the manifest's `ticket:`, and absent that, the feature name.
@@ -104,8 +107,9 @@ Two things it leaves to this skill:
   `Files` stay inside its `App:`. A task reaching into another app breaks the one-app phase the
   verifier waits on.
 
-**Under `--agent-walk`, a manifest with no `agent-walk:` line gets one** before the first dispatch,
-so a cold session keeps agent mode (AGENT-MODE §`--agent-walk`):
+**Under `--agent-walk`, no committed `agent-walk:` line (`git show HEAD:<folder>/MANIFEST.md`), or
+one left uncommitted → re-run the same command** before the first dispatch, so a cold session keeps
+agent mode (AGENT-MODE §`--agent-walk`):
 `node <builder>/scripts/advance.mjs <folder> --set "agent-walk=on <YYYY-MM-DD>" --commit "chore({key}): {feature} — agent walk on"`.
 
 ## The task loop
@@ -298,7 +302,8 @@ foreground; tests are the verifier's, which runs on its own and is read with `ve
   going. Not a park.
 - **a commit in a `commit: manual` app** (from the start of its phase) and **a plan so broken that
   every path forward is a guess at what the product should be** — these park: write
-  `blocked: "<the stop class, and what it stopped on, in plain words> — next: <step>"` (REFERENCE §How a park reads) to the manifest, and `<folder>/PARKED.md` (REFERENCE §The park
+  `blocked: "<the stop class, and what it stopped on, in plain words> — next: <step>"` (REFERENCE §How a park reads; under the fleet, read
+  `docs.mjs section skills/resume/REFERENCE.md "The park record"` and `"How a park reads"` before writing PARKED.md) to the manifest, and `<folder>/PARKED.md` (REFERENCE §The park
   record; `kind: human-step` for a `commit: manual` app, `decision` for a broken plan), in the same
   ledger line and manifest commit as steps 1–3 — that call with `--set 'blocked="…"' --add <folder>/PARKED.md`
   and the subject `chore(<ticket-or-feature>): <feature> — parked: <stop class>` — and
