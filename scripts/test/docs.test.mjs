@@ -63,8 +63,9 @@ const fleetRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags').ro
 
 test('fleet-build fits one Bash output: ≤ 30,000 chars before the config, config printed once', () => {
   const out = fleetRun(['fleet-build']).stdout
-  const [builderText] = out.split(/^--- .*builder\.md/m)
-  assert.ok(builderText.length <= 30000, `${builderText.length} chars`)
+  const [builderText] = out.split(/^--- .*\.claude\/builder\.md/m)
+  assert.ok(builderText.length <= 30000, `${builderText.length} chars: ${builderText.length - 30000} over the 30,000 limit. Keep at least 3,000 of margin; when over, move sections out of the bundle for \`docs.mjs section\` in this order: §Model selection, §Finish, §Common rationalizations, §The final whole-branch review (EXECUTION), then parts of AGENT-MODE §--agent-walk`)
+  assert.ok(builderText.length <= 27000, `${builderText.length} chars: under 3,000 of margin to the 30,000 limit`)
   assert.equal((out.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1)
 })
 test('fleet-build carries the loop and the rules a fleet build needs', () => {
