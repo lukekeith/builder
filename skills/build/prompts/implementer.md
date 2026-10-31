@@ -174,16 +174,16 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     - self-review findings
     - issues or concerns
 
-    Then reply with ONLY (under 15 lines — the detail lives in the report):
+    Then reply with ONLY — at most 6 lines, each under 100 characters; the
+    detail lives in the report, and the controller already knows its path:
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
-    - commits created (short SHA + subject), or the staged diff if your app
-      commits manually
-    - a one-line test summary ("14/14 passing, output pristine")
-    - your concerns, if any
-    - the report file path
+    - the commit (short SHA + subject), or `staged: <n> files` and the
+      proposed subject if your app commits manually
+    - one test line ("14/14 passing, output pristine")
+    - one line per concern, if any
 
-    If BLOCKED or NEEDS_CONTEXT, put the specifics in the reply itself — the
-    controller acts on it directly.
+    If BLOCKED or NEEDS_CONTEXT, those concern lines are the specifics — what
+    blocks you or what you need — because the controller acts on the reply.
 
     Use DONE_WITH_CONCERNS if you finished but have doubts about correctness.
     Never silently produce work you're unsure about.
@@ -191,7 +191,7 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
 
 **Placeholders**
 
-- `[MODEL]` — REQUIRED, per EXECUTION.md §Model selection
+- `[MODEL]` — REQUIRED: the model the dispatch's Agent-call line names (EXECUTION.md §Model selection)
 - `[BRIEF_FILE]` — REQUIRED: `scripts/task-brief PLAN N OUTFILE` prints it
 - `[APP]` — the task block's `App:` line
 - `[COMMIT_INSTRUCTION]` — for an app the config marks `commit: auto`:

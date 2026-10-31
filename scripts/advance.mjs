@@ -94,7 +94,7 @@ export function advance(f, opts) {
 
   if (ledger.length) {
     const r = appendLedger(f.ws(), f.rel, ledger.join('\n'))
-    out.push(r.added.length ? `ledger: +${r.added.length} line${r.added.length === 1 ? '' : 's'} → ${r.path}` : 'ledger: already has it')
+    out.push(r.added.length ? `ledger: +${r.added.length} line${r.added.length === 1 ? '' : 's'}` : 'ledger: already has it')
   }
 
   if (subject && !noCommit) {

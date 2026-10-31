@@ -33,6 +33,7 @@ test('advance: keys, head, branch, ledger line and the commit — one call, only
   const ledger = readText(join(ws(r), 'progress.md'))
   assert.equal(ledger, '# builder ledger — plan: docs/features/note-tags/PLAN.md\nWalk readiness: clean\n')
   assert.match(out.stdout, /commit: [0-9a-f]+ chore\(note-tags\)/)
+  assert.match(out.stdout, /^ledger: \+1 line$/m, 'one line per fact: the ledger echo carries no path')
 })
 
 test('advance: re-running the same call after it landed is a no-op — no second commit, no second ledger line', () => {

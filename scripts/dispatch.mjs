@@ -74,10 +74,12 @@
  * findings (Critical, Important, ❌ — or NOT ADDRESSED and new breakage); `--findings "<text>"`
  * alongside adds the controller's own (a ⚠️ item it confirmed).
  *
- * Prints the file it wrote, then the Agent call's description, the model guidance and its prompt line.
+ * Prints one line per fact, every path relative to the repo root: the file it wrote, the findings
+ * file, and the Agent call on one line — subagent_type, the model tier (modelFor: EXECUTION §Model
+ * selection as a table, the fix-loop escalation included), description and prompt.
  *
- * What stays with the orchestrator (judgment): the model tier (EXECUTION §Model selection — always
- * name one); interfaces and rulings from earlier tasks, and an Environment landmine that applies
+ * What stays with the orchestrator (judgment): a model above the one printed when a task needs it
+ * (EXECUTION §Model selection — an escalation, never a routine dispatch); interfaces and rulings from earlier tasks, and an Environment landmine that applies
  * (--context); a ⚠️ item it confirmed (--findings); whether a finding enters the loop (a plan-mandated
  * ruling, a finding it overrules — say so in --context);
  * batching small same-shape tasks into one dispatch.
@@ -87,7 +89,7 @@
  * later commits, describes the same range.
  */
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BUILDER, openFeature, read, writeAtomic, git, mdSection, configSection, tableRows, parseArgs, cli } from './feature-core.mjs'
@@ -107,6 +109,41 @@ const CRAFT = {
 }
 const skillPath = (name) => join(BUILDER, 'skills', name, 'SKILL.md')
 const KINDS = ['implementer', 'task-review', 're-review', 'final-review', 'agent-walk']
+
+const TIERS = ['haiku', 'sonnet', 'opus']
+const tierUp = (m) => TIERS[Math.min(TIERS.indexOf(m) + 1, TIERS.length - 1)]
+
+/**
+ * EXECUTION §Model selection as a table — the tier the Agent call names, so a routine dispatch never
+ * reads that section. `tiny` is the plan's `Recipe: … · tiny` (a mechanical one-file edit); `models`
+ * the test plan's lever. Implementers: the standard tier (the mid-tier floor for a block that leaves
+ * anything open), the cheapest when tiny or under `economy`, the most capable under `strong`; rounds
+ * 1–3 resume the same agent, rounds 4–5 go one tier up. Reviews: the standard tier, the cheapest for
+ * a tiny task's diff, the most capable under `strong`. The final review and the walker: the most capable.
+ */
+export function modelFor({ kind, tiny = false, round = 0, models = 'default' }) {
+  const strong = models === 'strong'
+  switch (kind) {
+    case 'implementer': {
+      const base = tiny || models === 'economy' ? 'haiku' : strong ? 'opus' : 'sonnet'
+      return round >= 4 ? tierUp(base) : base
+    }
+    case 'final-fix':
+      return strong ? 'opus' : 'sonnet'
+    case 'task-review':
+      return strong ? 'opus' : tiny ? 'haiku' : 'sonnet'
+    case 'phase-review':
+    case 're-review':
+      return strong ? 'opus' : 'sonnet'
+    case 'final-review':
+    case 'agent-walk':
+    case 'walk-batch':
+      return 'opus'
+    default:
+      throw new Error(`no model tier for kind ${kind}`)
+  }
+}
+const modelsLever = (f) => parseTestPlan(f.manifest).levers.models ?? 'default'
 
 /** A prompts/*.md template → { description, body } — the `prompt: |` block, de-indented. */
 export function promptOf(md) {
@@ -346,7 +383,7 @@ function finalFix(f, a, ws) {
     REPORT_FILE: reportPath,
     ...craftValues(),
   })
-  return { file: join(ws, 'dispatch-implementer-final-fix.md'), body, description: `Fix the final review's findings: ${f.feature}`, model: 'REQUIRED — EXECUTION.md §Model selection (a standard model at least: the wave spans the branch)', agentType: agentTypeOf(f, 'implementer') }
+  return { file: join(ws, 'dispatch-implementer-final-fix.md'), body, description: `Fix the final review's findings: ${f.feature}`, model: modelFor({ kind: 'final-fix', models: modelsLever(f) }), agentType: agentTypeOf(f, 'implementer') }
 }
 
 function implementer(f, a, ws) {
@@ -390,9 +427,8 @@ function implementer(f, a, ws) {
     body,
     // A fix round says so — the fleet's meter tells a fix from an implementer by this description.
     description: round ? `Fix Task ${n} round ${round}: ${t.name}` : tpl.description.replace('Task N', `Task ${n}`).replace('[task name]', t.name),
-    model: round >= 4 ? 'REQUIRED — one tier above the implementer that got stuck (EXECUTION.md §Model selection)' : `REQUIRED — EXECUTION.md §Model selection${recipe?.tiny ? ' (Recipe says tiny: the cheapest tier)' : ''}`,
+    model: modelFor({ kind: 'implementer', tiny: !!recipe?.tiny, round, models: modelsLever(f) }),
     note: `BASE ${rec.base} recorded for task ${n}`,
-    brief: briefPath,
   }
 }
 
@@ -437,7 +473,7 @@ function taskReview(f, a, ws) {
       DIFF_FILE: diff,
       FINDINGS_FILE: findingsPath(ws, `review-phase-${a.phase}`),
     })
-    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: 'REQUIRED — EXECUTION.md §Model selection', findings: findingsPath(ws, `review-phase-${a.phase}`), agentType: agentTypeOf(f, 'reviewer') }
+    return { file: join(ws, `dispatch-task-review-phase-${a.phase}.md`), body, description: `Review phase ${a.phase} (${app}, tasks ${members.map((t) => t.n).join(', ')})`, model: modelFor({ kind: 'phase-review', models: modelsLever(f) }), findings: findingsPath(ws, `review-phase-${a.phase}`), agentType: agentTypeOf(f, 'reviewer') }
   }
   const { t } = taskOf(f, a.task)
   const rec = (st.tasks[t.n] ??= {})
@@ -463,7 +499,7 @@ function taskReview(f, a, ws) {
     FINDINGS_FILE: findingsPath(ws, `task-${t.n}-review`),
   })
   const tiny = recipeOf(taskOf(f, t.n).block)?.tiny
-  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), agentType: agentTypeOf(f, 'reviewer'), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: `REQUIRED — EXECUTION.md §Model selection${tiny ? ' (Recipe says tiny: the cheapest tier that can read a diff)' : ''}`, findings: findingsPath(ws, `task-${t.n}-review`) }
+  return { file: join(ws, `dispatch-task-review-task-${t.n}.md`), agentType: agentTypeOf(f, 'reviewer'), body, description: tpl.description.replace('Task N', `Task ${t.n}`), model: modelFor({ kind: 'task-review', tiny: !!tiny, models: modelsLever(f) }), findings: findingsPath(ws, `task-${t.n}-review`) }
 }
 
 function reReview(f, a, ws) {
@@ -499,7 +535,7 @@ function reReview(f, a, ws) {
     file: join(ws, `dispatch-re-review-${a.final ? 'final' : `task-${a.task}`}-round-${round}.md`),
     body,
     description: a.final ? `Re-review the final review's fix wave` : tpl.description.replace('Task N', label).replace('round R', `round ${round}`),
-    model: 'REQUIRED — a cheap-to-mid tier for a small fix diff (EXECUTION.md §Model selection)',
+    model: modelFor({ kind: 're-review', round, models: modelsLever(f) }),
     findings: out,
     agentType: agentTypeOf(f, 'reviewer'),
   }
@@ -535,7 +571,7 @@ function finalReview(f, a, ws) {
     HEAD_SHA: head,
     FINDINGS_FILE: findingsPath(ws, 'final-review'),
   })
-  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: 'the most capable available (EXECUTION.md §The final whole-branch review)', findings: findingsPath(ws, 'final-review'), agentType: agentTypeOf(f, 'reviewer') }
+  return { file: join(ws, 'dispatch-final-review.md'), body, description: tpl.description.replace('<feature>', f.feature), model: modelFor({ kind: 'final-review' }), findings: findingsPath(ws, 'final-review'), agentType: agentTypeOf(f, 'reviewer') }
 }
 
 /**
@@ -623,7 +659,7 @@ function agentWalk(f, a, ws) {
     `Report: ${join(out, 'report.md')} — first line \`sha: <HEAD at walk start>\` (\`git rev-parse --short HEAD\` before your first item: the code this round walked), then a table \`# · App · Item · Result · Evidence\`, then one line: \`verdict: PASS\` or \`verdict: PROBLEMS (<k>)\`.`,
   )
   if (a.context) lines.push('', a.context.trim())
-  return { file: join(ws, `dispatch-agent-walk-round-${n}.md`), body: lines.join('\n') + '\n', description: `Agent walk round ${n}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
+  return { file: join(ws, `dispatch-agent-walk-round-${n}.md`), body: lines.join('\n') + '\n', description: `Agent walk round ${n}`, model: modelFor({ kind: 'agent-walk' }) }
 }
 
 /**
@@ -689,7 +725,7 @@ function walkBatch(features, a, root) {
   )
   if (a.context) lines.push('', a.context.trim())
   const ws = join(root, '.builder', '_walk')
-  return { file: join(ws, 'dispatch-walk-batch.md'), body: lines.join('\n') + '\n', description: `Agent walk — batch of ${walks.length}`, model: 'the most capable available (REFERENCE §Agent model tiering) — foreground, never run_in_background' }
+  return { file: join(ws, 'dispatch-walk-batch.md'), body: lines.join('\n') + '\n', description: `Agent walk — batch of ${walks.length}`, model: modelFor({ kind: 'walk-batch' }) }
 }
 
 // ---- next: the bookkeeping between two dispatches, in one call -----------------------------------
@@ -790,18 +826,19 @@ function next(f, a, ws) {
   return close(f, ws, +a.close, a.ledger, a.context)
 }
 
-/** Write a render's file and print its Agent call; under `next`, the implementer's brief path too. */
-function emit(r, { brief = false } = {}) {
+/**
+ * Write a render's file and print one line per fact, every path relative to the repo root: the file
+ * (with the BASE it recorded), the findings file a reviewer writes, and the Agent call on one line —
+ * its subagent_type (general-purpose only when the session has no agent of that type), the model tier
+ * §Model selection picks (modelFor), the description and the prompt.
+ */
+function emit(r, root) {
   writeAtomic(r.file, r.body)
-  console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
-  if (brief && r.brief) console.log(`brief: ${r.brief}`)
-  if (r.note) console.log(r.note)
-  if (r.findings) console.log(`findings: ${r.findings} — the reviewer writes its report here; a fix round passes it as --findings-file`)
-  console.log(`Agent call — description: ${r.description}`)
+  const rel = (p) => relative(root, p) || '.'
+  console.log(`wrote ${rel(r.file)}${r.note ? ` · ${r.note}` : ''}`)
+  if (r.findings) console.log(`findings: ${rel(r.findings)}`)
   // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
-  console.log(`  subagent_type: ${r.agentType ?? 'general-purpose'}${r.agentType && r.agentType !== 'general-purpose' ? ' — if this session has no agent of that type, general-purpose' : ''}`)
-  console.log(`  model: ${r.model}`)
-  console.log(`  prompt: Read ${r.file} and do what it says.`)
+  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} · description: ${r.description} · prompt: Read ${rel(r.file)} and do what it says.`)
 }
 
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
@@ -818,13 +855,7 @@ async function main(argv) {
     const fs = folders.map((d) => openFeature(d))
     for (const f of fs) if (!f.cfg) throw new Error(f.cfgError)
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
-    const r = walkBatch(fs, a, root)
-    writeAtomic(r.file, r.body)
-    console.log(`wrote ${r.file} (${Buffer.byteLength(r.body)} bytes)`)
-    console.log(`Agent call — description: ${r.description}`)
-    console.log('  subagent_type: general-purpose')
-    console.log(`  model: ${r.model}`)
-    console.log(`  prompt: Read ${r.file} and do what it says.`)
+    emit(walkBatch(fs, a, root), root)
     return 0
   }
   if (kind === 'next') {
@@ -841,7 +872,7 @@ async function main(argv) {
     if (!f.cfg) throw new Error(f.cfgError)
     const r = next(f, a, f.ws())
     for (const l of r.lines) console.log(l)
-    if (r.render) emit(r.render, { brief: true })
+    if (r.render) emit(r.render, f.root)
     return 0
   }
   if (!kind || !folder || !KINDS.includes(kind)) {
@@ -851,7 +882,7 @@ async function main(argv) {
   const f = openFeature(folder)
   if (!f.cfg) throw new Error(f.cfgError)
   const ws = f.ws()
-  emit(RENDER[kind](f, a, ws))
+  emit(RENDER[kind](f, a, ws), f.root)
   return 0
 }
 

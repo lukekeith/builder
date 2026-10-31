@@ -1,16 +1,22 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync } from 'node:fs'
+import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
-import { leanRepo, run, git, readText, SCRIPTS } from './fixtures/lean-repo.mjs'
-import { promptOf, fill, taskBlock } from '../dispatch.mjs'
+import { join, relative, resolve } from 'node:path'
+import { leanRepo, run as runScript, git, readText, SCRIPTS } from './fixtures/lean-repo.mjs'
+import { promptOf, fill, taskBlock, modelFor } from '../dispatch.mjs'
 
 const BUILDER = join(SCRIPTS, '..')
 const WS = (r) => join(r.root, '.builder', r.feature)
 const PLACEHOLDER = /\[(?:MODEL|BRIEF_FILE|APP|COMMIT_INSTRUCTION|GLOBAL_CONSTRAINTS|TDD_PATH|DEBUGGING_PATH|REVIEW_PATH|VERIFICATION_PATH|REPORT_FILE|SPEC_CONTRACT|BASE_SHA|HEAD_SHA|DIFF_FILE|FINDINGS|FIX_BASE_SHA|DESCRIPTION|SPEC_PATH|DEFERRED_AND_PARKED|FINDINGS_FILE|directory|task name|One line on where)\b/
-const pathFrom = (stdout) => /^wrote (\S+)/m.exec(stdout)?.[1]
+/** The CLI run, remembering where it ran: dispatch prints paths relative to the repo root. */
+const run = (script, args, opts = {}) => ({ ...runScript(script, args, opts), cwd: opts.cwd ?? process.cwd() })
+const pathFrom = (res) => {
+  const p = /^wrote (\S+)/m.exec(res.stdout)?.[1]
+  return p && resolve(res.cwd, p)
+}
+const rel = (r, p) => relative(r.root, p)
 const commitTask = (r, file = 'src/cli.mjs', msg = 'feat(note-tags): add --tag and tagged list lines') => {
   mkdirSync(join(r.root, 'src'), { recursive: true })
   writeFileSync(join(r.root, file), `// ${msg} ${Math.random()}\n`)
@@ -45,7 +51,7 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
   const r = leanRepo('note-tags')
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--context', 'Tasks 2 and 3 build on parse/tagsOf/line — use exactly those names.'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const file = pathFrom(out.stdout)
+  const file = pathFrom(out)
   assert.equal(file, join(WS(r), 'dispatch-implementer-task-1.md'))
   assert.match(out.stdout, /description: Implement Task 1: Tag parsing, `add --tag`, and the tagged `list` line/)
   assert.match(out.stdout, /prompt: Read .*dispatch-implementer-task-1\.md and do what it says\./)
@@ -103,7 +109,7 @@ test('dispatch implementer: frozen contract, and commit: manual each change the 
   writeFileSync(cfg, readText(cfg).replace('commit: auto', 'commit: manual'))
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '3'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const p = readText(pathFrom(out.stdout))
+  const p = readText(pathFrom(out))
   assert.match(p, /4\. 🔴 `git add` your work and STOP — stage it and propose the commit message in your report\. Do NOT run `git commit`:\n?\s*a commit in this app is the human's to approve\. Propose: `feat\(note-tags\): show tags and the tags command`\./)
   assert.match(readText(join(WS(r), 'task-3-brief.md')), /## §Contract — FROZEN 2026-10-23\n[\s\S]*the shape is fixed: a mismatch is reported, never worked around/)
 })
@@ -113,12 +119,12 @@ test('dispatch implementer --round 4: a fresh implementer one tier up, with the 
   run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
   const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--round', '4', '--findings', '- list prints a trailing space\n- tags ignores rm'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const p = readText(pathFrom(out.stdout))
-  assert.match(pathFrom(out.stdout), /dispatch-implementer-task-1-round-4\.md$/)
+  const p = readText(pathFrom(out))
+  assert.match(pathFrom(out), /dispatch-implementer-task-1-round-4\.md$/)
   assert.match(p, /A prior implementer attempted this task 3 times; you own it now\. Read the report file for what was tried\./)
   assert.match(p, /- list prints a trailing space\n- tags ignores rm/)
   assert.ok(p.includes(join(BUILDER, 'skills', 'systematic-debugging', 'SKILL.md') + ' now'))
-  assert.match(out.stdout, /one tier above/)
+  assert.match(out.stdout, /model: opus · /, 'one tier above the task\'s sonnet')
 })
 
 test('dispatch task-review: the review package is generated from the recorded BASE; §Contract verbatim; re-render is identical', () => {
@@ -128,7 +134,7 @@ test('dispatch task-review: the review package is generated from the recorded BA
   const head = commitTask(r)
   const out = run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const file = pathFrom(out.stdout)
+  const file = pathFrom(out)
   const p = readText(file)
   assert.doesNotMatch(p, PLACEHOLDER)
   const diff = join(WS(r), `review-${base}..${head}.diff`)
@@ -142,7 +148,7 @@ test('dispatch task-review: the review package is generated from the recorded BA
   assert.match(out.stdout, /description: Review Task 1 \(spec \+ quality\)/)
   commitTask(r, 'src/other.mjs', 'unrelated later commit')
   const again = run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })
-  assert.equal(readText(pathFrom(again.stdout)), p)
+  assert.equal(readText(pathFrom(again)), p)
 })
 
 test('dispatch task-review: no recorded BASE and no --base → refused, naming the fix', () => {
@@ -160,7 +166,7 @@ test('dispatch re-review --round 1: fix base = the head the review saw; findings
   const fixed = commitTask(r, 'src/cli.mjs', 'fix(note-tags): review round 1')
   const out = run('dispatch.mjs', ['re-review', r.rel, '--task', '1', '--round', '1', '--findings', '- **Important:** list prints a trailing space (src/cli.mjs:20)'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const p = readText(pathFrom(out.stdout))
+  const p = readText(pathFrom(out))
   assert.doesNotMatch(p, PLACEHOLDER)
   assert.match(p, new RegExp(`\\*\\*Fix base:\\*\\* ${reviewed} \\(the head the previous review saw\\)\n\\*\\*Head:\\*\\* ${fixed}`))
   assert.match(p, /- \*\*Important:\*\* list prints a trailing space/)
@@ -178,15 +184,15 @@ test('dispatch: findings travel as files — each review names its findings file
   const rev = run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })
   assert.equal(rev.status, 0, rev.stderr)
   const reviewFile = join(ws, 'task-1-review.md')
-  assert.ok(rev.stdout.includes(`findings: ${reviewFile}`))
-  const rp = readText(pathFrom(rev.stdout))
+  assert.ok(rev.stdout.includes(`findings: ${rel(r, reviewFile)}`))
+  const rp = readText(pathFrom(rev))
   assert.ok(rp.includes(`**Write the same report to ${reviewFile}**`))
   // the reviewer wrote its report; the fix round embeds it verbatim, scoped
   writeFileSync(reviewFile, '### Spec compliance\n\n- ✅ Spec compliant\n\n### Issues\n\n#### Important (Should Fix)\n\n- src/cli.mjs:20 — list prints a trailing space\n\n#### Minor (Nice to Have)\n\n- naming\n')
   const fix = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--round', '1', '--findings-file', reviewFile, '--findings', '- ⚠️ confirmed: rm does not drop tags (src/store.mjs:9)'], { cwd: r.root })
   assert.equal(fix.status, 0, fix.stderr)
-  const fp = readText(pathFrom(fix.stdout))
-  assert.match(pathFrom(fix.stdout), /dispatch-implementer-task-1-round-1\.md$/)
+  const fp = readText(pathFrom(fix))
+  assert.match(pathFrom(fix), /dispatch-implementer-task-1-round-1\.md$/)
   assert.ok(fp.includes(`From ${reviewFile} (verbatim):`))
   assert.match(fp, /Critical and Important issues and its ❌ spec-compliance items/)
   assert.match(fp, /- src\/cli\.mjs:20 — list prints a trailing space/)
@@ -194,11 +200,11 @@ test('dispatch: findings travel as files — each review names its findings file
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): review round 1')
   const rr = run('dispatch.mjs', ['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', reviewFile], { cwd: r.root })
   assert.equal(rr.status, 0, rr.stderr)
-  const rrp = readText(pathFrom(rr.stdout))
+  const rrp = readText(pathFrom(rr))
   assert.doesNotMatch(rrp, PLACEHOLDER)
   assert.ok(rrp.includes('- src/cli.mjs:20 — list prints a trailing space'))
-  assert.ok(rr.stdout.includes(`findings: ${join(ws, 'task-1-re-review-1.md')}`))
-  assert.ok(rrp.includes(`**Write the same report to ${join(ws, 'task-1-re-review-1.md')}**`))
+  assert.ok(rr.stdout.includes(`findings: ${rel(r, join(ws, 'task-1-re-review-1.md'))}`))
+  assert.ok(rrp.includes(`**Write your full report to ${join(ws, 'task-1-re-review-1.md')}**`))
   // a findings file that is missing or empty is refused, naming the fix
   const none = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--round', '2', '--findings-file', join(ws, 'task-1-re-review-1.md')], { cwd: r.root })
   assert.equal(none.status, 1)
@@ -211,13 +217,13 @@ test('dispatch implementer --final: the final review\'s one fix wave from final-
   commitTask(r)
   assert.equal(run('dispatch.mjs', ['implementer', r.rel, '--final'], { cwd: r.root }).status, 1, 'no final review recorded yet')
   const fr = run('dispatch.mjs', ['final-review', r.rel], { cwd: r.root })
-  assert.ok(fr.stdout.includes(`findings: ${join(ws, 'final-review.md')}`))
-  assert.ok(readText(pathFrom(fr.stdout)).includes(`**Write the same report to ${join(ws, 'final-review.md')}**`))
+  assert.ok(fr.stdout.includes(`findings: ${rel(r, join(ws, 'final-review.md'))}`))
+  assert.ok(readText(pathFrom(fr)).includes(`**Write your full report to ${join(ws, 'final-review.md')}**`))
   writeFileSync(join(ws, 'final-review.md'), '### Issues\n#### Important (Should Fix)\n- src/cli.mjs:3 — tags not sorted\n')
   const out = run('dispatch.mjs', ['implementer', r.rel, '--final'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  assert.match(pathFrom(out.stdout), /dispatch-implementer-final-fix\.md$/)
-  const p = readText(pathFrom(out.stdout))
+  assert.match(pathFrom(out), /dispatch-implementer-final-fix\.md$/)
+  const p = readText(pathFrom(out))
   assert.doesNotMatch(p, PLACEHOLDER)
   assert.match(p, /^You are implementing the final review's fixes for note-tags\n/)
   assert.match(p, /you are the ONE fix wave/)
@@ -230,9 +236,9 @@ test('dispatch implementer --final: the final review\'s one fix wave from final-
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): final review findings')
   const rr = run('dispatch.mjs', ['re-review', r.rel, '--final', '--round', '1', '--findings-file', join(ws, 'final-review.md')], { cwd: r.root })
   assert.equal(rr.status, 0, rr.stderr)
-  const rrp = readText(pathFrom(rr.stdout))
+  const rrp = readText(pathFrom(rr))
   assert.ok(rrp.includes(`Read the task brief: ${join(ws, 'final-fix-brief.md')}`))
-  assert.ok(rr.stdout.includes(`findings: ${join(ws, 'final-re-review.md')}`))
+  assert.ok(rr.stdout.includes(`findings: ${rel(r, join(ws, 'final-re-review.md'))}`))
 })
 
 test('dispatch final-review: merge-base..HEAD package, the ledger\'s deferred and parked lines, the SPEC path, the Why', () => {
@@ -244,7 +250,7 @@ test('dispatch final-review: merge-base..HEAD package, the ledger\'s deferred an
   commitTask(r)
   const out = run('dispatch.mjs', ['final-review', r.rel], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const p = readText(pathFrom(out.stdout))
+  const p = readText(pathFrom(out))
   assert.doesNotMatch(p, PLACEHOLDER)
   assert.match(p, /Task 1: minor \(deferred\): show calls tagsOf twice\nTask 2: parked — trailing newline/)
   assert.doesNotMatch(p, /Task 1: complete/)
@@ -253,7 +259,7 @@ test('dispatch final-review: merge-base..HEAD package, the ledger\'s deferred an
   assert.match(p, /Apps: notes\./)
   assert.ok(p.includes(`**Diff file:** ${join(ws, 'review-final.diff')}`))
   assert.match(readText(join(ws, 'review-final.diff')), new RegExp(`^# Review package: ${base}`))
-  assert.match(out.stdout, /model: the most capable available/)
+  assert.match(out.stdout, /model: opus/)
 })
 
 test('dispatch agent-walk: round N+1, walk=risk scope, the driver verbatim, the report contract', () => {
@@ -266,8 +272,8 @@ test('dispatch agent-walk: round N+1, walk=risk scope, the driver verbatim, the 
   writeFileSync(join(ws, 'walk.md'), '# note-tags — walk script\n')
   const out = run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
-  const p = readText(pathFrom(out.stdout))
-  assert.match(pathFrom(out.stdout), /dispatch-agent-walk-round-2\.md$/)
+  const p = readText(pathFrom(out))
+  assert.match(pathFrom(out), /dispatch-agent-walk-round-2\.md$/)
   assert.ok(p.includes(`Read in full: ${join(ws, 'walk.md')}`))
   assert.match(p, /the CLI itself — run `node src\/cli\.mjs …` with Bash against a scratch NOTES_FILE and read what it prints/)
   assert.match(p, /every `\[risk\]` item and every step of the `## Cross-app \(verify E2E\)` section/)
@@ -290,7 +296,7 @@ test('dispatch agent-walk: round 3+ names systematic-debugging for what failed l
     writeFileSync(join(ws, 'agent-walk', `round-${n}`, 'report.md'), 'sha: abc\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 3 | notes | list --tag home | FAIL — expected line 1, saw both | 03.txt |\n| 4 | notes | show | PASS | 04.txt |\n\nverdict: PROBLEMS (1)\n')
   }
   writeFileSync(join(ws, 'walk.md'), '# w\n')
-  const p = readText(pathFrom(run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root }).stdout))
+  const p = readText(pathFrom(run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root })))
   assert.ok(p.includes(join(BUILDER, 'skills', 'systematic-debugging', 'SKILL.md')))
   assert.match(p, /- 3 · notes · list --tag home/)
   assert.doesNotMatch(p, /- 4 · notes · show/)
@@ -319,7 +325,7 @@ test('dispatch agent-walk: round 2 walks only what failed, carries the passes wi
   writeFileSync(join(r.root, 'fix.txt'), 'the fix\n')
   git(r.root, 'add', 'fix.txt')
   git(r.root, 'commit', '-qm', 'fix list --tag')
-  const p = readText(pathFrom(run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root }).stdout))
+  const p = readText(pathFrom(run('dispatch.mjs', ['agent-walk', r.rel], { cwd: r.root })))
   assert.match(p, /## Round 2: walk only what the fix could change/)
   assert.match(p, /- 3 · notes · list --tag home — was FAIL — expected line 1, saw both/)
   assert.match(p, new RegExp(`Passed in round 1 at ${sha}: 1, 4\\. Re-walk one only when the fix since then changes code it exercises`))
@@ -341,7 +347,7 @@ test('dispatch walk-batch: one brief for several features — every walk script,
   const out = run('dispatch.mjs', ['walk-batch', a.folder, b.folder], { cwd: walkRoot })
   assert.equal(out.status, 0, out.stderr)
   assert.match(out.stdout, /description: Agent walk — batch of 2/)
-  const p = readText(pathFrom(out.stdout))
+  const p = readText(pathFrom(out))
   assert.match(p, /You are the agent walker for 2 features at once/)
   assert.match(p, /## Walk by screen, across every feature/)
   for (const r of [a, b]) {
@@ -353,11 +359,11 @@ test('dispatch walk-batch: one brief for several features — every walk script,
 
 test('dispatch: every build dispatch names the agent it runs as — builder\'s lean agents, a recipe only the Skill tool reaches, the config\'s override', () => {
   const r = leanRepo('note-tags')
-  const typeOf = (out) => /^ {2}subagent_type: (\S+)/m.exec(out.stdout)?.[1]
+  const typeOf = (out) => /subagent_type: (\S+)/.exec(out.stdout)?.[1]
   const impl = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
   assert.equal(impl.status, 0, impl.stderr)
   assert.equal(typeOf(impl), 'builder:implementer', 'a builder-skill recipe is read by path')
-  assert.match(impl.stdout, /subagent_type: builder:implementer — if this session has no agent of that type, general-purpose/)
+  assert.match(impl.stdout, /^Agent call — subagent_type: builder:implementer · model: \S+ · /m)
   commitTask(r)
   assert.equal(typeOf(run('dispatch.mjs', ['task-review', r.rel, '--task', '1'], { cwd: r.root })), 'builder:reviewer')
 
@@ -436,7 +442,7 @@ test('next --close writes the ledger, files the request, prints the verdict and 
   assert.deepEqual(reqs[0], ['request', r.root, 'HEAD', '--tier', 'commit'])
   assert.deepEqual(stubCalls('verdict')[0], ['verdict', `builder/${r.feature}`])
   assert.match(res.stdout, /^verify builder\/note-tags: no verdict$/m)
-  assert.match(res.stdout, /task-2-brief\.md/)
+  assert.match(res.stdout, /dispatch-implementer-task-2\.md/)
   assert.match(res.stdout, /Read .* and do what it says/)
   assert.match(res.stdout, /description: Implement Task 2: /)
 })
@@ -451,7 +457,7 @@ test('next --close run twice writes one ledger line and one request', () => {
   assert.match(res.stdout, /^ledger: already applied/m)
   assert.match(res.stdout, /^verify request: already applied/m)
   assert.equal(stubCalls('verdict').length, 2, 'the verdict is read every time')
-  assert.match(res.stdout, /task-2-brief\.md/)
+  assert.match(res.stdout, /dispatch-implementer-task-2\.md/)
 })
 
 test('next --close on the last task of a phase renders no brief across the boundary', () => {
@@ -460,7 +466,7 @@ test('next --close on the last task of a phase renders no brief across the bound
   const res = next(['--close', String(lastTaskOfPhase1), '--ledger', `Task ${lastTaskOfPhase1}: complete (commits a..b, review clean)`])
   assert.equal(res.status, 0, res.stderr)
   assert.match(res.stdout, /^phase 1 closes — build §Phase close$/m)
-  assert.doesNotMatch(res.stdout, /task-\d+-brief\.md/)
+  assert.doesNotMatch(res.stdout, /dispatch-implementer-task-\d+\.md/)
   assert.doesNotMatch(res.stdout, /Agent call/)
 })
 
@@ -485,7 +491,7 @@ test('next --after-implement closes with the no-review line when the test plan s
   assert.match(ledger(), /^Task 1: complete \(commits \w+\.\.\w+, no task review \(tests: review=app\)\)$/m)
   assert.ok(ledger().includes(`Task 1: complete (commits ${base}..${head}, no task review (tests: review=app))`))
   assert.equal(stubCalls('request').length, 1)
-  assert.match(res.stdout, /task-2-brief\.md/)
+  assert.match(res.stdout, /dispatch-implementer-task-2\.md/)
 })
 
 test('next: usage', () => {
@@ -500,8 +506,8 @@ test('next --close follows the phase table, not task numbers: the next member of
   writeFileSync(plan, readText(plan).replace(/^\| 1 \| notes \| 1–2 \|/m, '| 1 | notes | 1, 3 |').replace(/^\| 2 \| notes \| 3 \|/m, '| 2 | notes | 2 |'))
   const one = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
   assert.equal(one.status, 0, one.stderr)
-  assert.match(one.stdout, /task-3-brief\.md/)
-  assert.doesNotMatch(one.stdout, /task-2-brief\.md/)
+  assert.match(one.stdout, /dispatch-implementer-task-3\.md/)
+  assert.doesNotMatch(one.stdout, /dispatch-implementer-task-2\.md/)
   const three = next(['--close', '3', '--ledger', 'Task 3: complete (commits a..b, review clean)'])
   assert.match(three.stdout, /^phase 1 closes — build §Phase close$/m)
   assert.doesNotMatch(three.stdout, /Agent call/)
@@ -519,7 +525,7 @@ test('next --close on a red verdict renders no brief and records no BASE; green,
     const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
     assert.equal(res.status, 0, `${code}: ${res.stderr}`)
     assert.ok(res.stdout.includes(out), code)
-    assert.match(res.stdout, /task-2-brief\.md/, code)
+    assert.match(res.stdout, /dispatch-implementer-task-2\.md/, code)
   }
 })
 
@@ -552,7 +558,7 @@ test('next --close: verify exits 4 (conflict) and 6 (cancelled) print verbatim a
     const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
     assert.equal(res.status, 0, `${code}: ${res.stderr}`)
     assert.ok(res.stdout.includes(out), code)
-    assert.match(res.stdout, /task-2-brief\.md/, code)
+    assert.match(res.stdout, /dispatch-implementer-task-2\.md/, code)
   }
 })
 
@@ -574,7 +580,7 @@ test('next --close skips a phase member the ledger already calls complete — a 
   const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
   assert.equal(res.status, 0, res.stderr)
   assert.match(res.stdout, /^phase 1 closes — build §Phase close$/m)
-  assert.doesNotMatch(res.stdout, /task-2-brief\.md/)
+  assert.doesNotMatch(res.stdout, /dispatch-implementer-task-2\.md/)
   assert.doesNotMatch(res.stdout, /Agent call/)
 })
 
@@ -587,7 +593,7 @@ test('next --close under a pause request renders nothing and prints `paused — 
   assert.equal(res.status, 0, res.stderr)
   assert.match(ledger(), /^Task 1: complete/m, 'the finished task is still ledgered')
   assert.match(res.stdout, /^paused — requested 2026-10-31T09:00:00Z$/m)
-  assert.doesNotMatch(res.stdout, /Agent call|task-2-brief\.md|phase 1 closes/)
+  assert.doesNotMatch(res.stdout, /Agent call|dispatch-implementer-task-2\.md|phase 1 closes/)
   // BUILDER_FLEET_DIR unset: the checkout's own .builder/fleet/requests/<feature>.pause
   mkdirSync(join(r.root, '.builder', 'fleet', 'requests'), { recursive: true })
   writeFileSync(join(r.root, '.builder', 'fleet', 'requests', `${r.feature}.pause`), 'requested here\n')
@@ -612,4 +618,128 @@ test('next --after-implement under review=slice+second names the second review o
   assert.match(touched.stdout, /^second review: Task 1 touches §Contract or §Schema & API changes/m)
   setTests('slice=own end=risk review=slice')
   assert.doesNotMatch(next(['--after-implement', '1']).stdout, /second review/i, 'plain slice: no second review')
+})
+
+// ---- one line per fact: relative paths, one Agent-call line with its model ------------------------
+
+/** The one `Agent call —` line → { subagent_type, model, description, prompt }; throws unless there is exactly one. */
+const agentCall = (res) => {
+  const lines = res.stdout.split('\n').filter((l) => /^Agent call\b/.test(l))
+  assert.equal(lines.length, 1, `exactly one Agent-call line:\n${res.stdout}`)
+  assert.doesNotMatch(res.stdout, /^ {2}(subagent_type|model|prompt):/m, 'no continuation lines')
+  const m = /^Agent call — subagent_type: (\S+) · model: (\S+) · description: (.+) · prompt: (Read \S+ and do what it says\.)$/.exec(lines[0])
+  assert.ok(m, `the Agent-call line's shape: ${lines[0]}`)
+  return { subagent_type: m[1], model: m[2], description: m[3], prompt: m[4] }
+}
+
+/** Every path a dispatch prints is relative to the repo root: no absolute path, no `brief:` line. */
+const assertCompact = (r, res) => {
+  assert.equal(res.status, 0, res.stderr)
+  assert.ok(!res.stdout.includes(r.root), `no absolute path:\n${res.stdout}`)
+  assert.doesNotMatch(res.stdout, /^brief:/m)
+  assert.doesNotMatch(res.stdout, /^\s*\//m)
+}
+
+test('modelFor: EXECUTION §Model selection as a table — every kind, the tiny recipe, the fix-loop escalation and the models lever', () => {
+  const cases = [
+    // [kind, opts, model]
+    ['implementer', {}, 'sonnet'], // integration and judgment: a standard model (the mid-tier floor)
+    ['implementer', { tiny: true }, 'haiku'], // Recipe says tiny: the cheapest tier
+    ['implementer', { round: 1 }, 'sonnet'], // rounds 1–3 resume the same implementer
+    ['implementer', { round: 3 }, 'sonnet'],
+    ['implementer', { round: 4 }, 'opus'], // rounds 4–5: one tier above the implementer that got stuck
+    ['implementer', { round: 5 }, 'opus'],
+    ['implementer', { tiny: true, round: 2 }, 'haiku'],
+    ['implementer', { tiny: true, round: 4 }, 'sonnet'],
+    ['implementer', { models: 'economy' }, 'haiku'], // integration drops to the cheapest tier
+    ['implementer', { models: 'economy', round: 4 }, 'sonnet'],
+    ['implementer', { models: 'strong' }, 'opus'], // integration on the most capable
+    ['implementer', { models: 'strong', round: 4 }, 'opus'], // nothing above the top
+    ['implementer', { models: 'strong', tiny: true }, 'haiku'], // mechanical stays the cheapest
+    ['final-fix', {}, 'sonnet'], // a standard model at least: the wave spans the branch
+    ['final-fix', { models: 'economy' }, 'sonnet'],
+    ['final-fix', { models: 'strong' }, 'opus'],
+    ['task-review', {}, 'sonnet'], // reviews: mid-tier floor
+    ['task-review', { tiny: true }, 'haiku'], // tiny: the cheapest tier that can read a diff
+    ['task-review', { models: 'economy' }, 'sonnet'],
+    ['task-review', { models: 'strong' }, 'opus'], // strong: every review on the most capable
+    ['task-review', { models: 'strong', tiny: true }, 'opus'],
+    ['phase-review', {}, 'sonnet'],
+    ['phase-review', { models: 'strong' }, 'opus'],
+    ['re-review', {}, 'sonnet'], // cheap-to-mid for a small fix diff, at the reviewers' mid-tier floor
+    ['re-review', { round: 5 }, 'sonnet'],
+    ['re-review', { models: 'strong' }, 'opus'],
+    ['final-review', {}, 'opus'], // the most capable available
+    ['final-review', { models: 'economy' }, 'opus'],
+    ['agent-walk', {}, 'opus'], // REFERENCE §Agent model tiering
+    ['walk-batch', {}, 'opus'],
+  ]
+  for (const [kind, opts, model] of cases) assert.equal(modelFor({ kind, ...opts }), model, `${kind} ${JSON.stringify(opts)}`)
+  assert.throws(() => modelFor({ kind: 'nope' }), /no model tier for kind nope/)
+})
+
+test('dispatch: every kind prints paths relative to the repo root, no brief: line, and one Agent-call line naming subagent_type and the model §Model selection picks', () => {
+  const r = leanRepo('note-tags')
+  const ws = WS(r)
+  const call = (args, check = {}) => {
+    const res = run('dispatch.mjs', args, { cwd: r.root })
+    assertCompact(r, res)
+    const a = agentCall(res)
+    for (const [k, v] of Object.entries(check)) assert.equal(a[k], v, `${args.join(' ')} → ${k}`)
+    assert.ok(existsSync(resolve(r.root, /^Read (\S+)/.exec(a.prompt)[1])), 'the prompt names the file, relative to the root')
+    return { res, a }
+  }
+  const { res: impl } = call(['implementer', r.rel, '--task', '1'], { subagent_type: 'builder:implementer', model: 'sonnet', prompt: `Read ${rel(r, join(ws, 'dispatch-implementer-task-1.md'))} and do what it says.` })
+  assert.match(impl.stdout, /^wrote \.builder\/note-tags\/dispatch-implementer-task-1\.md · BASE [0-9a-f]{7} recorded for task 1$/m)
+  call(['implementer', r.rel, '--task', '2'], { model: 'haiku' }) // Recipe: … · tiny
+  commitTask(r)
+  const { res: rev } = call(['task-review', r.rel, '--task', '1'], { subagent_type: 'builder:reviewer', model: 'sonnet' })
+  assert.match(rev.stdout, /^findings: \.builder\/note-tags\/task-1-review\.md$/m)
+  writeFileSync(join(ws, 'task-1-review.md'), '#### Important\n- src/cli.mjs:1 — x\n')
+  for (const n of [1, 2, 3]) call(['implementer', r.rel, '--task', '1', '--round', String(n), '--findings-file', join(ws, 'task-1-review.md')], { model: 'sonnet' })
+  call(['implementer', r.rel, '--task', '1', '--round', '4', '--findings-file', join(ws, 'task-1-review.md')], { model: 'opus' })
+  call(['implementer', r.rel, '--task', '2', '--round', '4', '--findings', '- y'], { model: 'sonnet' })
+  commitTask(r, 'src/cli.mjs', 'fix(note-tags): round 1')
+  call(['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', join(ws, 'task-1-review.md')], { subagent_type: 'builder:reviewer', model: 'sonnet' })
+  call(['task-review', r.rel, '--phase', '1'], { subagent_type: 'builder:reviewer', model: 'sonnet' })
+  call(['final-review', r.rel], { subagent_type: 'builder:reviewer', model: 'opus' })
+  writeFileSync(join(ws, 'final-review.md'), '#### Important\n- src/cli.mjs:3 — z\n')
+  call(['implementer', r.rel, '--final'], { subagent_type: 'builder:implementer', model: 'sonnet' })
+  commitTask(r, 'src/cli.mjs', 'fix(note-tags): final')
+  call(['re-review', r.rel, '--final', '--round', '1', '--findings-file', join(ws, 'final-review.md')], { model: 'sonnet' })
+  writeFileSync(join(ws, 'walk.md'), '# w\n')
+  call(['agent-walk', r.rel], { subagent_type: 'general-purpose', model: 'opus' })
+
+  // the models lever moves the tier exactly as §Model selection's economy / strong lines say
+  const mf = join(r.folder, 'MANIFEST.md')
+  writeFileSync(mf, readText(mf).replace(/^tests: .*$/m, 'tests: walk=risk review=slice models=strong'))
+  call(['implementer', r.rel, '--task', '1'], { model: 'opus' })
+  call(['task-review', r.rel, '--task', '1'], { model: 'opus' })
+  writeFileSync(mf, readText(mf).replace(/^tests: .*$/m, 'tests: walk=risk review=slice models=economy'))
+  call(['implementer', r.rel, '--task', '1'], { model: 'haiku' })
+  call(['task-review', r.rel, '--task', '1'], { model: 'sonnet' })
+})
+
+test('dispatch walk-batch: one Agent-call line on the most capable model, paths relative to the walk root', () => {
+  const a = leanRepo('note-tags')
+  mkdirSync(WS(a), { recursive: true })
+  writeFileSync(join(WS(a), 'walk.md'), '# w\n')
+  const walkRoot = realpathSync(mkdtempSync(join(tmpdir(), 'walk-')))
+  execFileSync('git', ['init', '-q'], { cwd: walkRoot })
+  const res = run('dispatch.mjs', ['walk-batch', a.folder], { cwd: walkRoot })
+  assertCompact({ root: walkRoot }, res)
+  const call = agentCall(res)
+  assert.equal(call.subagent_type, 'general-purpose')
+  assert.equal(call.model, 'opus')
+  assert.equal(call.prompt, 'Read .builder/_walk/dispatch-walk-batch.md and do what it says.')
+})
+
+test('next --close mid-phase: at most 6 lines — the ledger, the request, the verdict, the file written, the Agent call', () => {
+  const { r, next } = nextRepo()
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '0', STUB_VERDICT_OUT: 'verify commit abc1234 builder/note-tags: GREEN · 3s' })
+  assertCompact(r, res)
+  const lines = res.stdout.trimEnd().split('\n')
+  assert.ok(lines.length <= 6, `≤ 6 lines, got ${lines.length}:\n${res.stdout}`)
+  assert.equal(lines[0], 'ledger: +1 line')
+  assert.equal(agentCall(res).model, 'haiku', 'task 2 is tiny')
 })

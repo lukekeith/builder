@@ -87,7 +87,11 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     they were intentional. If you find issues with the SPEC itself rather than
     the implementation, say so.
 
-    ## Output format
+    ## Output format — the report file
+
+    **Write your full report to [FINDINGS_FILE]** (create or overwrite it —
+    the one file you write; it is in the git-ignored workspace, not the
+    checkout), in this form. The fix wave works from that file as it is.
 
     ### Strengths
     ### Issues
@@ -104,9 +108,15 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
     **Ready for the human's walk?** [Yes | No | With fixes]
     **Reasoning:** [1-2 sentences]
 
-    **Write the same report to [FINDINGS_FILE]** (create or overwrite it —
-    the one file you write; it is in the git-ignored workspace, not the
-    checkout). The fix wave works from that file as it is.
+    ## Your reply — short; the report is in the file
+
+    Reply with ONLY, one line each, no Strengths and no narration:
+    - `Ready for the human's walk? Yes | No | With fixes`
+    - one line per finding, Critical first, then Important, then Minor:
+      `Critical|Important|Minor — file:line — what is wrong`
+    - `Carried: <k> must fix before merge, <m> agreed to defer`, if any were
+      carried
+    No findings → the verdict line and `No findings.`
 
     **DO:** categorize by actual severity · be specific (file:line, not vague)
     · explain WHY each issue matters · acknowledge strengths · give a clear
@@ -122,6 +132,7 @@ Subagent (builder:reviewer — dispatch.mjs prints the type; general-purpose whe
 `[FINDINGS_FILE]` (`<WS>/final-review.md` — the fix wave's `--findings-file`).
 `scripts/dispatch.mjs final-review` fills every one of them.
 
-**Returns:** Strengths, Issues (Critical/Important/Minor), carried findings triaged, and an
-assessment. Its findings get **ONE** fix dispatch and **one** scoped re-review — there is no second
+**Returns:** the verdict and one line per finding by severity; the full report — Strengths,
+Issues (Critical/Important/Minor), carried findings triaged, the assessment — is in
+`[FINDINGS_FILE]`, which the fix wave and the fleet's review facts read. Its findings get **ONE** fix dispatch and **one** scoped re-review — there is no second
 fix wave.
