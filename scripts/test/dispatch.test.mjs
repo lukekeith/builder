@@ -525,9 +525,9 @@ test('next --close on a red verdict renders no brief and records no BASE; green,
 
 test('next --close: any other verify exit is an error carrying its stderr', () => {
   const { next } = nextRepo()
-  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '4', STUB_VERDICT_ERR: 'boom from verify' })
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '7', STUB_VERDICT_ERR: 'boom from verify' })
   assert.equal(res.status, 1)
-  assert.match(res.stderr, /exit 4/)
+  assert.match(res.stderr, /exit 7/)
   assert.match(res.stderr, /boom from verify/)
   assert.doesNotMatch(res.stdout, /Agent call/)
 })
@@ -536,4 +536,22 @@ test('next forwards --context to the next implementer render', () => {
   const { r, next } = nextRepo()
   next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)', '--context', 'Task 2 reuses tagsOf from task 1.'])
   assert.match(readText(join(WS(r), 'dispatch-implementer-task-2.md')), /Task 2 reuses tagsOf from task 1\./)
+})
+
+test('next --close: a red verdict on the last task of a phase prints the red line, then the phase-close line', () => {
+  const { next } = nextRepo()
+  const res = next(['--close', '2', '--ledger', 'Task 2: complete (commits a..b, review clean)'], { STUB_VERDICT_EXIT: '1', STUB_VERDICT_OUT: 'verify commit abc1234 builder/note-tags: RED · 1 regression · 3s' })
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(res.stdout, /^verdict red — act on it \(EXECUTION §5\)\nphase 1 closes — build §Phase close$/m)
+  assert.doesNotMatch(res.stdout, /Agent call/)
+})
+
+test('next --close: verify exits 4 (conflict) and 6 (cancelled) print verbatim and render as pending', () => {
+  const { next } = nextRepo()
+  for (const [code, out] of [['4', 'verify commit abc1234 builder/note-tags: CONFLICT · 3s'], ['6', 'verify commit abc1234 builder/note-tags: CANCELLED · 0s']]) {
+    const res = next(['--close', '1', '--ledger', 'x'], { STUB_VERDICT_EXIT: code, STUB_VERDICT_OUT: out })
+    assert.equal(res.status, 0, `${code}: ${res.stderr}`)
+    assert.ok(res.stdout.includes(out), code)
+    assert.match(res.stdout, /task-2-brief\.md/, code)
+  }
 })
