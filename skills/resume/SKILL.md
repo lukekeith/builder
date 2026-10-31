@@ -12,6 +12,8 @@ than erroring on it**.
 **`--help` first.** If present, render the `builder:help` card (`../help/SKILL.md`) and stop — no
 picker, nothing written.
 
+**Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
+
 **Read `.claude/builder.md` before anything else.** It is the only place this pipeline learns what
 your project is (REFERENCE §The project's own rules). No config → say so in one line, name
 `/builder:init`, and stop. One call prints it with the REFERENCE sections this flow reads —

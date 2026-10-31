@@ -9,6 +9,8 @@ Invocation: **`/builder:plan --path <folder> [--ticket <id>] [--auto] [--agent-w
 [REFERENCE](../resume/REFERENCE.md) §Flags — **ignore any flag this step does not use rather than
 erroring on it**.
 
+**Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
+
 **Load these three before writing anything — in one call,** `node <builder>/scripts/docs.mjs plan`
 prints all three — and cite them rather than restate them:
 [`PLAN-FORMAT.md`](PLAN-FORMAT.md) (the shape of the file this step writes) · REFERENCE (§Sizes for

@@ -11,6 +11,8 @@ stay in [`SKILL.md`](SKILL.md); this file is printed by `node <builder>/scripts/
 What binds every unattended run, the build loop's included — a fleet build session reads only this
 section of the file (`docs.mjs fleet-build`); `docs.mjs resume-agent` prints all of it.
 
+**Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
+
 `--agent-walk` **implies `--auto`**. 🔴 **A go-ahead is never a reason to park**: handing the feature
 to agents was the go-ahead.
 
