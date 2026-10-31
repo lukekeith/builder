@@ -7,8 +7,8 @@
  *   node scripts/bench-case.mjs <case-id> --builder <checkout> --out <dir> [--clone-root <dir>] [--dry-run] [--replan]
  *
  * --replan starts the fleet before the plan (replanStart): the spec commits before the audit
- * (`prefix`), else every spec commit and one "bench: re-plan from audited" commit that takes the plan
- * and the go-ahead back out (`from-audited`); result.json's `replan` says which.
+ * (`prefix`), else every spec commit squashed with the reset that takes the plan and the go-ahead back out
+ * into one commit on the base, "spec (re-plan from audited)" (`from-audited`); result.json's `replan` says which.
  *
  * Reads $BENCH_LOCAL/cases/<id>.json and $BENCH_LOCAL/projects/<project>.json. Writes <out>/result.json
  * and exits 0 whether the case landed or not; exits 2 on a refusal, the reasons on stderr. Every
@@ -279,13 +279,15 @@ export function replanStart(repo, registry, feature, base, specs) {
 }
 
 /**
- * The clone taken back to `state: audited`, as one commit on its HEAD ("bench: re-plan from audited"):
- * PLAN.md gone, the SPEC's §Plan index stripped (condense's stripPlan), and the manifest — through
- * setManifestKeys, advance.mjs's writer — at `state: audited` with the audit's `next:` and none of
- * REPLAN_UNSETS. The fleet then plans, takes the go-ahead and builds with the builder under test.
- * → null, or the failure.
+ * The clone taken back to `state: audited`: PLAN.md gone, the SPEC's §Plan index stripped (condense's
+ * stripPlan), and the manifest — through setManifestKeys, advance.mjs's writer — at `state: audited`
+ * with the audit's `next:` and none of REPLAN_UNSETS. The cherry-picked spec commits and this reset
+ * land as ONE commit on `base` ("spec (re-plan from audited)", `reset --soft`): no commit the clone
+ * keeps carries the original plan or go-ahead, and the reflog expiry and gc after it drop their objects.
+ * Nothing to commit (the base already held it audited) → no commit. The fleet then plans, takes the
+ * go-ahead and builds with the builder under test. → null, or the failure.
  */
-export function resetToAudited(clone, registry, feature) {
+export function resetToAudited(clone, registry, feature, base) {
   const rel = `${registry.replace(/\/+$/, '')}/${feature}`
   const dir = join(clone, rel)
   try {
@@ -295,7 +297,8 @@ export function resetToAudited(clone, registry, feature) {
     const spec = join(dir, 'SPEC.md')
     if (existsSync(spec)) writeFileSync(spec, stripPlan(readFileSync(spec, 'utf8')))
     git(clone, 'add', '-A', '--', rel)
-    git(clone, 'commit', '-qm', 'bench: re-plan from audited', '--', rel)
+    git(clone, 'reset', '-q', '--soft', base)
+    if (spawnSync('git', ['diff', '--cached', '--quiet'], { cwd: clone }).status !== 0) git(clone, 'commit', '-qm', 'spec (re-plan from audited)')
     return null
   } catch (e) {
     return `could not take the spec back to audited: ${why(e)}`
@@ -517,7 +520,7 @@ export async function prepareClone({ profile, profileDir, caseDef, builder, dest
   }
   const picked = applySpecs(clone, specs)
   if (picked) return { ...none, clone, failure: picked }
-  const reset = plan.replan === 'from-audited' ? resetToAudited(clone, plan.registry, plan.feature) : null
+  const reset = plan.replan === 'from-audited' ? resetToAudited(clone, plan.registry, plan.feature, base) : null
   if (reset) return { ...none, clone, failure: reset }
   // the reflog still holds the source's tip — the landed feature — and `clone: from <the project's path>`:
   // an agent could check out HEAD@{1}. Once the spec commits are in, the reflog goes and every object
