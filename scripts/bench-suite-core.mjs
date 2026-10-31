@@ -386,6 +386,18 @@ export function bodyWarnings(builderMd, profile, { listening = [] } = {}) {
 const num = (x) => (Number.isFinite(x) ? x : null)
 const anyOf = (xs) => (xs.some((x) => x != null) ? sum(xs.map((x) => x ?? 0)) : null)
 
+/**
+ * The build orchestrator's own thread — the fleet runs that dispatched an implementer — as
+ * { tokens, turns, tasks }, tasks the plan's count (the row's size.tasks; null when it has none). Null without such a run.
+ */
+function buildOrchestrator(row) {
+  const runs = (row.timing ?? []).filter((t) => (t.meter?.dispatches ?? []).some((d) => d.kind === 'implement'))
+  if (!runs.length) return null
+  const tokens = sum(runs.map((t) => sum([t.tokens?.input, t.tokens?.output, t.tokens?.cacheRead, t.tokens?.cacheCreation].map((x) => x ?? 0))))
+  const turns = sum(runs.map((t) => num(t.turns) ?? num(t.meter?.orchestrator?.turns) ?? 0))
+  return { tokens, turns, tasks: row.size?.tasks > 0 ? row.size.tasks : null }
+}
+
 /** An archive row as a Measure; a field with no source is null. */
 export function measureFromRow(row) {
   const { ms, usd } = wallCost(row)
@@ -403,13 +415,14 @@ export function measureFromRow(row) {
     stages: row.stages ?? null,
     byKind: row.byKind ?? null,
     quality: row.quality ?? null,
+    build: buildOrchestrator(row),
   }
 }
 
 /** A runs.json's median done run as a Measure; stages are session totals.ms keyed by session name minus its trailing number. */
 export function measureFromRuns(runsJson, config = 'builder') {
   const done = (runsJson?.runs ?? []).filter((r) => r.config === config && r.status === 'done').sort((a, b) => (a.ms ?? 0) - (b.ms ?? 0))
-  if (!done.length) return { wallMs: null, costUsd: null, turns: null, tokens: null, stages: null, byKind: null, quality: null }
+  if (!done.length) return { wallMs: null, costUsd: null, turns: null, tokens: null, stages: null, byKind: null, quality: null, build: null }
   const run = done[done.length >> 1]
   const sessions = run.sessions ?? []
   const t = runTotals(sessions)
@@ -427,6 +440,7 @@ export function measureFromRuns(runsJson, config = 'builder') {
     stages: sessions.length ? stages : null,
     byKind: null,
     quality: null,
+    build: null,
   }
 }
 
@@ -499,6 +513,17 @@ export function renderSuiteReport(results, { names = false, builder } = {}) {
     ]
   })
   out.push('## Cases', '', table(head, rows), '')
+
+  // Per plan task, so cases whose plans differ in size (a --replan run against its baseline) compare fairly.
+  const perTask = (b, tasks) => (b && tasks > 0 ? { tokens: Math.round(b.tokens / tasks), turns: Math.round((b.turns / tasks) * 10) / 10 } : null)
+  const buildRows = results.map((r) => {
+    const b = r.measure?.build
+    const tasks = b?.tasks ?? r.planTasks ?? null
+    const now = perTask(b, tasks)
+    const was = perTask(r.baseline?.build, r.baseline?.build?.tasks)
+    return [r.id, count(tasks), tokStr(b?.tokens), count(b?.turns), tokStr(now?.tokens), count(now?.turns), delta(now?.tokens, was?.tokens), delta(now?.turns, was?.turns)]
+  })
+  out.push('## Build orchestrator per task', '', table(['id', 'plan tasks', 'build tokens', 'build turns', 'tokens ÷ task', 'turns ÷ task', 'Δ tokens ÷ task vs baseline', 'Δ turns ÷ task vs baseline'], buildRows), '')
 
   out.push('## Stages', '', table(['id', ...STAGE_COLUMNS], results.map((r) => [r.id, ...STAGE_COLUMNS.map((k) => (r.measure?.stages?.[k] > 0 ? duration(r.measure.stages[k]) : DASH))])), '')
 
