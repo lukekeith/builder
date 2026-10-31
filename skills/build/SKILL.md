@@ -21,10 +21,10 @@ prints EXECUTION.md, then REFERENCE (§Contract and the contract freeze · §PLA
 brief · §House rules · §Environment landmines). Everything below is the binding this pipeline puts
 on top of that loop.
 
-**Under the fleet (`BUILDER_FLEET_DIR` is set):** read `node <builder>/scripts/docs.mjs fleet-build`
-instead — EXECUTION §The task loop, REFERENCE §Contract and the contract freeze · §PLAN.md · §The
-verifier, AGENT-MODE §`--agent-walk`, the config — and, in the same Bash call, EXECUTION §Setup:
-`node <builder>/scripts/docs.mjs section skills/build/EXECUTION.md "Setup"`. The rest is read with
+**Under the fleet (`BUILDER_FLEET_DIR` is set):** read in two Bash calls instead, each one Bash
+output: `node <builder>/scripts/docs.mjs fleet-build --no-config` — EXECUTION §The task loop,
+REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk` —
+then `node <builder>/scripts/docs.mjs fleet-setup` — EXECUTION §Setup and the config. The rest is read with
 `docs.mjs section` at the step that needs it: before the first dispatch,
 `docs.mjs section skills/build/EXECUTION.md "Model selection"`; when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's

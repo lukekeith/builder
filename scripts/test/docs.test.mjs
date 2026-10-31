@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { leanRepo, run } from './fixtures/lean-repo.mjs'
 import { STEPS, bundle } from '../docs.mjs'
@@ -61,11 +62,20 @@ test('docs: --list names every step and what it prints; an unknown step is a usa
 const BUILD_BEFORE = [['skills/build/EXECUTION.md', null], ...['Contract and the contract freeze', 'PLAN.md', 'SPEC.md', 'MANIFEST.md', 'Branch and ticket', 'The verifier', 'Walk readiness', 'The craft skills'].map((n) => ['skills/resume/REFERENCE.md', n]), ['<config>', null]]
 const fleetRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags').root })
 
-test('fleet-build fits one Bash output: ≤ 30,000 chars before the config, config printed once', () => {
-  const out = fleetRun(['fleet-build']).stdout
-  const [builderText] = out.split(/^--- .*\.claude\/builder\.md/m)
-  assert.ok(builderText.length <= 30000, `${builderText.length} chars: ${builderText.length - 30000} over the 30,000 limit. Keep at least 3,000 of margin; when over, move text out of the bundle for \`docs.mjs section\` in this order: AGENT-MODE §--agent-walk's readiness-only rows ("Dev-DB migrations", "Starting or restarting the dev env"), then REFERENCE §Contract and the contract freeze`)
-  assert.equal((out.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1)
+const MOVE_NEXT = 'Keep at least 3,000 of margin; when over, move text out of the bundle for `docs.mjs section` in this order: AGENT-MODE §--agent-walk\'s readiness-only rows ("Dev-DB migrations", "Starting or restarting the dev env"), then REFERENCE §Contract and the contract freeze'
+const over = (n) => `${n} chars: ${n - 30000} over the 30,000 limit. ${MOVE_NEXT}`
+test('the fleet build\'s first read is two Bash calls, each ≤ 30,000 chars: fleet-build --no-config, then fleet-setup (EXECUTION §Setup + the config, printed once)', () => {
+  const one = fleetRun(['fleet-build', '--no-config'])
+  assert.equal(one.status, 0, one.stderr)
+  assert.ok(one.stdout.length <= 30000, over(one.stdout.length))
+  assert.doesNotMatch(one.stdout, /^--- .*\.claude\/builder\.md/m)
+  const two = fleetRun(['fleet-setup'])
+  assert.equal(two.status, 0, two.stderr)
+  assert.ok(two.stdout.length <= 30000, over(two.stdout.length))
+  assert.match(two.stdout, /^--- skills\/build\/EXECUTION\.md §Setup \(lines/m)
+  assert.equal((two.stdout.match(/^--- .*\.claude\/builder\.md/gm) ?? []).length, 1, 'the config, once')
+  const fixtureConfig = readFileSync(join(import.meta.dirname, 'fixtures', 'lean', 'note-tags', 'builder.md'), 'utf8').trim()
+  assert.ok(two.stdout.includes(fixtureConfig.split('\n')[0]))
 })
 test('fleet-build carries the loop and the rules a fleet build needs', () => {
   const out = fleetRun(['fleet-build']).stdout

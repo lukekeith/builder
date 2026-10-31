@@ -55,7 +55,10 @@ export const STEPS = {
   // five steps), REFERENCE §Contract and the contract freeze · §PLAN.md · §The verifier, AGENT-MODE §`--agent-walk`.
   // Left out (≤ 30,000 chars) for `docs.mjs section`: EXECUTION §Setup, §Model selection, §The final whole-branch
   // review, §Finish, §Common rationalizations; REFERENCE §SPEC.md, §MANIFEST.md, §Walk readiness.
+  // The fleet's first read is two Bash calls, each ≤ 30,000 chars (one Bash output): `fleet-build --no-config`,
+  // then `fleet-setup` — EXECUTION §Setup and the config, which is printed there once.
   'fleet-build': [['skills/build/EXECUTION.md', 'The task loop'], ...R('Contract and the contract freeze', 'PLAN.md', 'The verifier'), ['skills/resume/AGENT-MODE.md', '`--agent-walk`'], CONFIG],
+  'fleet-setup': [['skills/build/EXECUTION.md', 'Setup'], CONFIG],
   // resume SKILL, `state: building` + `ready: pending` (the fleet's walk lane): "run REFERENCE §Walk readiness,
   // then the build's walk script and `state: built`" — build SKILL §When the last phase signs.
   'walk-lane': [...R('Walk readiness'), ['skills/build/SKILL.md', 'When the last phase signs'], CONFIG],
