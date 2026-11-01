@@ -1001,6 +1001,10 @@ test('an unattended plan or resume reads its bundle and its config in two calls,
   assert.match(resume, /docs\.mjs walk-lane --no-config`[\s\S]{0,200}docs\.mjs fleet-config walk-lane`/)
   for (const [p, step] of [['skills/agent-walk/SKILL.md', 'agent-walk'], ['skills/verify/SKILL.md', 'verify'], ['skills/ship/SKILL.md', 'ship']])
     assert.match(read(p), new RegExp(`docs\\.mjs ${step} --no-config\`[\\s\\S]{0,200}docs\\.mjs fleet-config ${step}\``), p)
+  // One wording of the fleet condition in all four, and verify names the sections its cut keeps.
+  for (const p of ['skills/resume/SKILL.md', 'skills/agent-walk/SKILL.md', 'skills/verify/SKILL.md', 'skills/ship/SKILL.md']) assert.match(read(p), /`BUILDER_FLEET_DIR` set, or `--agent-walk`/, p)
+  const verifyCut = read('skills/verify/SKILL.md').match(/docs\.mjs fleet-config verify`\*\*[\s\S]{0,300}?\./)[0]
+  for (const s of ['§Quality gates', '§Walk readiness']) assert.ok(verifyCut.includes(s), `verify's fleet cut names ${s}`)
   // plan-agent drops §The review, where §Under `--auto` and `--agent-walk` lives: the fleet block inlines its rule.
   const fleetBlock = plan.slice(plan.indexOf('**Started by the fleet**'), plan.indexOf('⛔ **A §Findings row'))
   assert.doesNotMatch(fleetBlock, /REFERENCE §Under/)

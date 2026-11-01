@@ -248,10 +248,15 @@ test('the later lanes — walk-lane, agent-walk, verify, ship — read their bun
   // §Environment landmines verbatim into the walker's prompt; registry and apps for the condense.
   has('agent-walk', cut('agent-walk'), ['registry: docs/features', 'base_branch: main', 'merge_into: current', 'apps:', 'agent_walk:', 'driver:', 'batch: 2', '## Walk readiness\n', '## Walk readiness notes', '## Environment landmines'],
     ['\nverify:', 'suites:', '## House rules', '## Companion skills', '## Quality gates', '## Global constraints', '## Verification', '# The fleet'])
+  assert.ok(cut('agent-walk').includes('## Standing traps'), 'fleet-config agent-walk keeps ## Standing traps, as walk-lane does')
+  // A batched agent walk runs REFERENCE §Walk readiness itself: the bundle carries it.
+  assert.match(realRun(['agent-walk', '--no-config']).stdout, /^--- skills\/resume\/REFERENCE\.md §Walk readiness /m)
+  // verify item 4 (the migration re-applies on a clean database) needs §Walk readiness's migrations path and commands.
+  assert.ok(cut('verify').includes('## Walk readiness\n') && cut('verify').includes('migrations: apps/api/migrations'), 'fleet-config verify keeps ## Walk readiness')
   // verify: the verify: block, apps (released_artifact, commit: manual), registry; §Verification (item 9), §House rules
   // (item 7), §Environment landmines, §Global constraints, §Quality gates.
   has('verify', cut('verify'), ['registry: docs/features', 'apps:', 'released_artifact: true', 'commit: auto', '\nverify:', 'suites:', 'tier: merge', '## Verification', '## House rules', '## Environment landmines', '## Global constraints', '## Quality gates'],
-    ['## Walk readiness', '## Companion skills', '## Standing traps', '# The fleet', '# The verifier: every suite'])
+    ['## Walk readiness notes', '## Companion skills', '## Standing traps', '# The fleet', '# The verifier: every suite'])
   // ship: REFERENCE §Condense with registry, merge_into, base_branch and apps; the lesson checks §Standing traps and
   // §House rules; §Companion skills names the ticket command.
   has('ship', cut('ship'), ['registry: docs/features', 'merge_into: current', 'base_branch: main', 'apps:', '## Standing traps', '## House rules', '## Companion skills'],
