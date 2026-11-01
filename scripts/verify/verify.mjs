@@ -31,11 +31,23 @@ const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelle
 export const exitFor = (status) => EXIT[status] ?? 75
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
-/** The lines of a failure message that say what failed (FAIL, ✗, Error, expected); else its last 6 lines. */
-function failingLines(msg) {
+/**
+ * The lines of a failure message worth printing. A test's own failure message is already the failure: its
+ * lines less the stack frames, so the values (`1 !== 2`, a diff, jest's Expected/Received) stay. Raw check
+ * output (`compare: exit`) is filtered to the lines that say what failed (FAIL, ✗, ✖, error, expected — any
+ * case), each with the line after it; else its last 6 lines.
+ */
+function failingLines(msg, raw = false) {
   const all = String(msg ?? '').split('\n')
-  const hit = all.filter((l) => /FAIL|✗|Error|expected/.test(l))
-  return (hit.length ? hit : all.filter((l) => l.trim())).slice(hit.length ? 0 : -6, hit.length ? 6 : undefined)
+  if (!raw) return all.filter((l) => l.trim() && !/^\s*at\s/.test(l)).slice(0, 12)
+  const keep = new Set()
+  const hits = all.flatMap((l, i) => (/fail|✗|✖|error|expected/i.test(l) ? [i] : [])).slice(-6)
+  for (const i of hits) {
+    keep.add(i)
+    const next = all.findIndex((l, k) => k > i && l.trim())
+    if (next > 0) keep.add(next)
+  }
+  return hits.length ? [...keep].sort((a, b) => a - b).map((i) => all[i]) : all.filter((l) => l.trim()).slice(-6)
 }
 export function summarize(v) {
   const head = [
@@ -52,7 +64,7 @@ export function summarize(v) {
   const lines = [head.join(' · ')]
   for (const g of v.regressions) {
     lines.push(`  ✗ ${g.id} — introduced by ${String(g.introducedBy).slice(0, 7)}${g.note ? ` (${g.note})` : ''}`)
-    for (const l of failingLines(g.msg)) lines.push(`      ${l}`)
+    for (const l of failingLines(g.msg, g.raw)) lines.push(`      ${l}`)
   }
   for (const b of v.broken) lines.push(`  ⚠ ${b.suite}: ${b.reason}`)
   if (v.files?.length) lines.push(`  conflict in: ${v.files.join(', ')}`)
