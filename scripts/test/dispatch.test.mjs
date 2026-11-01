@@ -55,6 +55,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
   assert.equal(file, join(WS(r), 'dispatch-implementer-task-1.md'))
   assert.match(out.stdout, /description: Implement Task 1: Tag parsing, `add --tag`, and the tagged `list` line/)
   assert.match(out.stdout, /prompt: Read .*dispatch-implementer-task-1\.md and do what it says\./)
+  // The Agent call's prompt names the file absolutely (Read wants an absolute path); the wrote line stays relative.
+  assert.ok(agentCall(out).prompt.includes(`Read ${file} and`), agentCall(out).prompt)
+  assert.match(out.stdout, /^wrote \.builder\//m)
   const p = readText(file)
   assert.doesNotMatch(p, PLACEHOLDER)
   assert.match(p, /^You are implementing Task 1: Tag parsing, `add --tag`, and the tagged `list` line\n/)
@@ -447,6 +450,13 @@ test('next --close writes the ledger, files the request, prints the verdict and 
   assert.match(res.stdout, /description: Implement Task 2: /)
 })
 
+test('next --close --model renders the next implementer on that model', () => {
+  const { next } = nextRepo()
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)', '--model', 'opus'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.deepEqual([agentCall(res).model, agentCall(res).why], ['opus', '--model'])
+})
+
 test('next --close run twice writes one ledger line and one request', () => {
   const { next, ledger, stubCalls } = nextRepo()
   next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'])
@@ -632,10 +642,12 @@ const agentCall = (res) => {
   return { subagent_type: m[1], model: m[2], why: m[3], description: m[4], prompt: m[5] }
 }
 
-/** Every path a dispatch prints is relative to the repo root: no absolute path, no `brief:` line. */
+/** Every path a dispatch prints is relative to the repo root — except the Agent call's prompt, absolute for Read — and no `brief:` line. */
 const assertCompact = (r, res) => {
   assert.equal(res.status, 0, res.stderr)
-  assert.ok(!res.stdout.includes(r.root), `no absolute path:\n${res.stdout}`)
+  const rest = res.stdout.replace(/ · prompt: Read \S+ and do what it says\./g, '')
+  assert.ok(!rest.includes(r.root), `no absolute path but the prompt's:\n${res.stdout}`)
+  for (const m of res.stdout.matchAll(/ · prompt: Read (\S+) and/g)) assert.ok(m[1].startsWith('/'), `the prompt's path is absolute: ${m[1]}`)
   assert.doesNotMatch(res.stdout, /^brief:/m)
   assert.doesNotMatch(res.stdout, /^\s*\//m)
 }
@@ -686,10 +698,10 @@ test('dispatch: every kind prints paths relative to the repo root, no brief: lin
     assertCompact(r, res)
     const a = agentCall(res)
     for (const [k, v] of Object.entries(check)) assert.equal(a[k], v, `${args.join(' ')} → ${k}`)
-    assert.ok(existsSync(resolve(r.root, /^Read (\S+)/.exec(a.prompt)[1])), 'the prompt names the file, relative to the root')
+    assert.ok(existsSync(resolve(r.root, /^Read (\S+)/.exec(a.prompt)[1])), 'the prompt names the file, absolutely')
     return { res, a }
   }
-  const { res: impl } = call(['implementer', r.rel, '--task', '1'], { subagent_type: 'builder:implementer', model: 'sonnet', prompt: `Read ${rel(r, join(ws, 'dispatch-implementer-task-1.md'))} and do what it says.` })
+  const { res: impl } = call(['implementer', r.rel, '--task', '1'], { subagent_type: 'builder:implementer', model: 'sonnet', prompt: `Read ${join(ws, 'dispatch-implementer-task-1.md')} and do what it says.` })
   assert.match(impl.stdout, /^wrote \.builder\/note-tags\/dispatch-implementer-task-1\.md · BASE [0-9a-f]{7} recorded for task 1$/m)
   call(['implementer', r.rel, '--task', '2'], { model: 'haiku' }) // Recipe: … · tiny
   commitTask(r)
@@ -731,7 +743,7 @@ test('dispatch walk-batch: one Agent-call line on the most capable model, paths 
   const call = agentCall(res)
   assert.equal(call.subagent_type, 'general-purpose')
   assert.equal(call.model, 'opus')
-  assert.equal(call.prompt, 'Read .builder/_walk/dispatch-walk-batch.md and do what it says.')
+  assert.match(call.prompt, /^Read \/\S*\/\.builder\/_walk\/dispatch-walk-batch\.md and do what it says\.$/)
 })
 
 test('next --close mid-phase: at most 6 lines — the ledger, the request, the verdict, the file written, the Agent call', () => {
