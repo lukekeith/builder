@@ -20,7 +20,7 @@ your project is (REFERENCE §The project's own rules). No config → say so in o
 §Flags · §MANIFEST.md · §Condense · §The two-way footer · §Continuing on "go":
 `node <builder>/scripts/docs.mjs resume` — **under `--agent-walk`, two calls: `docs.mjs resume-agent`**
 (§Flags, §MANIFEST.md and [`AGENT-MODE.md`](AGENT-MODE.md)) **then `docs.mjs fleet-config resume`** (the
-config's `agent_walk:` block, §Walk readiness, §Environment landmines, §Standing traps), each one Bash
+config's `agent_walk:` block, §Walk readiness, §Environment landmines, §Standing traps, the opening prose and project sections), each one Bash
 output; nobody reads an unattended footer or says go, so §Condense, §The two-way footer and
 §Continuing on "go" are `docs.mjs section` reads there, and each step it runs prints its own config.
 

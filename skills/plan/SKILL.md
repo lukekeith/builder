@@ -19,7 +19,7 @@ the phase counts · §Contract and the contract freeze, which the phase ORDER ex
 §Global constraints for the plan's header block, §Companion skills for every `Recipe:` line).
 **Under `--agent-walk`, two calls instead: `docs.mjs plan-agent`** — the same less §The review, §Flags
 and §Continuing on "go", which an unattended plan never uses — **then `docs.mjs fleet-config plan`**, the
-config sections named above; each fits one Bash output where `plan` is over it.
+config sections named above, `agent_walk:`, the opening prose and any section the project added; each fits one Bash output where `plan` is over it.
 
 Input: `<folder>/SPEC.md` + `MANIFEST.md`. Output: `<folder>/PLAN.md`, the §Plan index appended to
 that SPEC, the manifest at `state: planned`, and the go-ahead taken in the same turn. **No app code

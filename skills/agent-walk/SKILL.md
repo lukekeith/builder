@@ -15,7 +15,7 @@ Invocation: **`/builder:agent-walk --path <folder> [--ticket <id>]`**. Flags:
 sign-off, REFERENCE §Condense · §How a park reads · §The park record · §Agent model tiering · §Walk readiness, and
 `.claude/builder.md`. **Under the fleet (`BUILDER_FLEET_DIR` set, or `--agent-walk`), two calls, each
 one Bash output: `docs.mjs agent-walk --no-config`, then `docs.mjs fleet-config agent-walk`** — the
-config's front matter less `verify:`, §Walk readiness, §Environment landmines, §Standing traps. The walker's prompt comes from `dispatch.mjs`, the sign-off from `condense.mjs`,
+config's front matter less `verify:`, §Walk readiness, §Environment landmines, §Standing traps, plus the opening prose and any section the project added. The walker's prompt comes from `dispatch.mjs`, the sign-off from `condense.mjs`,
 every other manifest write from `advance.mjs` (REFERENCE §The scripts) — 🔴 each is idempotent:
 **after a crash, re-run the same command**; it finishes what is missing or says `already applied`.
 

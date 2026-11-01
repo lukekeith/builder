@@ -21,7 +21,7 @@ It reads four things, and **trusts nothing remembered from the build** — every
   §Continuing on "go". **Under the fleet (`BUILDER_FLEET_DIR` set, or `--agent-walk`), two calls, each
   one Bash output: `docs.mjs verify --no-config`, then `docs.mjs fleet-config verify`** — the front
   matter and §Verification, §Global constraints, §House rules, §Environment landmines, §Quality gates,
-  §Walk readiness.
+  §Walk readiness, plus the opening prose and any section the project added.
 - **the ledger** — the sign-off removed `PLAN.md`, so the ledger plus `git log` are the record of
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 
