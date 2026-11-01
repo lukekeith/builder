@@ -37,9 +37,16 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
  * output (`compare: exit`) is filtered to the lines that say what failed (FAIL, ✗, ✖, error, expected — any
  * case), each with the line after it; else its last 6 lines.
  */
+/** A message whose first line names a thrown error (`TypeError: …`, `Error: …`) — not an assertion failure, whose values tell the story. */
+const THROWN = /^\s*(Uncaught\s+)?([A-Z]\w*)?Error(\s\[\w+\])?:\s/
+const isThrown = (first) => THROWN.test(first) && !/^\s*(Uncaught\s+)?AssertionError\b|ERR_ASSERTION/.test(first)
 function failingLines(msg, raw = false) {
   const all = String(msg ?? '').split('\n')
-  if (!raw) return all.filter((l) => l.trim() && !/^\s*at\s/.test(l)).slice(0, 12)
+  if (!raw) {
+    // Stack frames are noise — except a thrown error's first one, which says where it was thrown.
+    const frame = isThrown(all.find((l) => l.trim()) ?? '') ? all.findIndex((l) => /^\s*at\s/.test(l)) : -1
+    return all.filter((l, i) => l.trim() && (i === frame || !/^\s*at\s/.test(l))).slice(0, 12)
+  }
   const keep = new Set()
   const hits = all.flatMap((l, i) => (/fail|✗|✖|error|expected/i.test(l) ? [i] : [])).slice(-6)
   for (const i of hits) {

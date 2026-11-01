@@ -415,6 +415,35 @@ test('--dry-run creates nothing', () => {
   assert.equal(r.calls.length, 0)
 })
 
+test('a feature name outside letters, digits, dot, dash and underscore is refused where the fleet takes it — named, --all, --land, --pause', () => {
+  const root = makeRepo(['a', 'b c', 'd$(x)'])
+  for (const args of [['b c', '--dry-run'], ['docs/features/d$(x)/', '--dry-run'], ['a', '..', '--dry-run']]) {
+    const r = runFleet(root, args, {})
+    assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}${r.stdout}`)
+    assert.match(r.stderr, /isn't a feature name the fleet can take — a name uses only letters, digits, "\.", "-" and "_"/)
+    assert.match(r.stderr, /nothing was started/)
+    assert.equal(r.calls.length, 0)
+  }
+  // --all takes the folders it can and says which it left out.
+  const all = runFleet(root, ['--all', '--dry-run'], {})
+  assert.equal(all.status, 0, all.stderr)
+  assert.match(all.stdout, /✓ a → builder\/a/)
+  assert.doesNotMatch(all.stdout, /b c|d\$\(x\)/)
+  assert.match(all.stderr, /--all left out 2 folders whose names the fleet can't take: "b c", "d\$\(x\)"/)
+  for (const args of [['--land', 'b c', '--set-aside'], ['--pause', 'd$(x)']]) {
+    const r = runFleet(root, args, {})
+    assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}${r.stdout}`)
+    assert.match(r.stderr, /isn't a feature name the fleet can take/)
+  }
+  assert.equal(existsSync(join(root, '.builder/fleet/requests')), false, 'no pause request written')
+})
+
+test('every {feature} the fleet fills in goes through fill() — no inline replaceAll beside it', () => {
+  const src = readFileSync(FLEET, 'utf8')
+  const inline = src.split('\n').filter((l) => l.includes("replaceAll('{feature}'") && !/^const fill = /.test(l))
+  assert.deepEqual(inline, [])
+})
+
 test('refusals: uncommitted, already shipped; a feature whose branch is the target gets a builder/ branch', () => {
   const root = makeRepo(['a', 'h', 'k'])
   git(root, 'rm', '-q', 'docs/features/h/MANIFEST.md')

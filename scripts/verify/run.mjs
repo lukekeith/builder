@@ -107,11 +107,16 @@ const isAlive = (pid) => {
  * path on a separator boundary (co/1 never takes co/10; /var is /private/var); never this process or
  * its parent, nor the lsof that lists them. No lsof: []. A process with a controlling terminal is a
  * person's — a shell or editor whose cwd is in the checkout (an interactive zsh ignores SIGTERM, and
- * SIGKILL would close its tab) — never a suite's server: skipped, and `log` says so.
+ * SIGKILL would close its tab) — never a suite's server: skipped, and `log` says so. A pid whose
+ * terminal ps cannot read (ps errors or prints nothing) is skipped too: fail closed.
  */
-const ttyOfPs = (pid) => spawnSync('ps', ['-o', 'tty=', '-p', String(pid)], { encoding: 'utf8' }).stdout?.trim() ?? ''
-/** `ps -o tty=` with no terminal: `??` on macOS, `?` on Linux, `-` or empty elsewhere. */
-const hasTty = (tty) => !/^(\?+|-|)$/.test(tty)
+/** `ps -o tty=` for the pid, or null when ps errors or exits non-zero (no such pid, no ps). */
+const ttyOfPs = (pid) => {
+  const r = spawnSync('ps', ['-o', 'tty=', '-p', String(pid)], { encoding: 'utf8' })
+  return r.error || r.status !== 0 ? null : (r.stdout?.trim() ?? '')
+}
+/** `ps -o tty=` with no terminal: `??` on macOS, `?` on Linux, `-` elsewhere. */
+const hasTty = (tty) => !/^(\?+|-)$/.test(tty)
 export function reapStrays(dir, { ttyOf = ttyOfPs, log = (m) => console.error(m) } = {}) {
   const root = realOr(resolve(dir))
   if (root === sep) return []
@@ -126,7 +131,9 @@ export function reapStrays(dir, { ttyOf = ttyOfPs, log = (m) => console.error(m)
       const cwd = l.slice(1)
       if (!within(cwd) && !within(realOr(cwd))) continue
       const tty = ttyOf(pid)
-      if (hasTty(tty)) log(`reap: skipped pid ${pid} in ${cwd} — it has a terminal (${tty}), so it is a person's shell or editor, not a stray`)
+      // Fail closed: a pid ps cannot inspect (an error, or nothing printed) may be a person's — never killed.
+      if (tty == null || tty === '') log(`reap: skipped pid ${pid} in ${cwd} — its terminal could not be read, so it is left alone`)
+      else if (hasTty(tty)) log(`reap: skipped pid ${pid} in ${cwd} — it has a terminal (${tty}), so it is a person's shell or editor, not a stray`)
       else pids.push(pid)
     }
   }

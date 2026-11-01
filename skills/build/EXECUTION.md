@@ -128,7 +128,9 @@ as the floor for reviewers, and for implementers whose block leaves an algorithm
 **Batch small same-shape work.** Several tasks that are each a small, independent edit of the same
 kind — the same field added across files — go in ONE dispatch listing every file and its change,
 reviewed as one unit. 🔴 **Only ever within one app.** Reserve one-dispatch-per-task for work with
-its own judgment, tests or review surface.
+its own judgment, tests or review surface. When the batch is done, ledger every member but the first
+complete (§5's line, with `advance.mjs`) **before** closing the first — under the fleet with
+`dispatch.mjs next --close <first>` — so the next render skips them instead of dispatching one again.
 
 Everything you paste into a dispatch prompt — and everything a subagent prints back — stays resident
 in your context for the rest of the session. **Hand artifacts over as files.**
