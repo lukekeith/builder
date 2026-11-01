@@ -63,4 +63,5 @@
 - [ ] `reapStrays`: when `ps` errors or returns nothing for a pid, skip it (fail closed). Test with a stubbed failing `ps`.
 - [ ] Batched tasks: EXECUTION's batching paragraph says to ledger every batch member complete before closing the first with `next`; `next --close N` skips members already ledgered (exists) — add a test for the batch order.
 - [ ] Reject feature names outside `[A-Za-z0-9._-]` where the fleet takes them (`nameOf`, `features()`), with a clear message; use `fill()` at the two inline `{feature}` sites. Tests.
-- [ ] Commit `fix: 6.0 release blockers — reap fails closed, batch order, safe feature names`.
+- [ ] A red summary of a thrown error keeps its first `at` frame (verify.mjs); env notes written later in a build reach the brief — gather every `- ` bullet under any `## env notes` heading anywhere in the ledger (dispatch.mjs `envNotesOf`). Tests.
+- [ ] Commit `fix: 6.0 release blockers — reap fails closed, batch order, safe feature names, error frames, late env notes`.
