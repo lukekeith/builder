@@ -9,9 +9,13 @@ Invocation: **`/builder:agent-walk --path <folder> [--ticket <id>]`**. Flags:
 [REFERENCE](../resume/REFERENCE.md) §Flags — ignore any flag this step does not use.
 **`--batch <folder>…`** — the fleet's batched walk: several features in one walk. §Batched walks.
 
+**Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
+
 **Read the docs in one call:** `node <builder>/scripts/docs.mjs agent-walk` — builder:ship §At
 sign-off, REFERENCE §Condense · §How a park reads · §The park record · §Agent model tiering, and
-`.claude/builder.md`. The walker's prompt comes from `dispatch.mjs`, the sign-off from `condense.mjs`,
+`.claude/builder.md`. **Under the fleet (`BUILDER_FLEET_DIR` set, or `--agent-walk`), two calls, each
+one Bash output: `docs.mjs agent-walk --no-config`, then `docs.mjs fleet-config agent-walk`** — the
+config's front matter less `verify:`, §Walk readiness, §Environment landmines. The walker's prompt comes from `dispatch.mjs`, the sign-off from `condense.mjs`,
 every other manifest write from `advance.mjs` (REFERENCE §The scripts) — 🔴 each is idempotent:
 **after a crash, re-run the same command**; it finishes what is missing or says `already applied`.
 

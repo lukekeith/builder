@@ -8,8 +8,9 @@
  *   node <builder>/scripts/docs.mjs section <file> "<heading>"   (one section, printed as the bundles print it)
  *   node <builder>/scripts/docs.mjs config-key <key>   (one front-matter block of the repo's .claude/builder.md —
  *                                                       `verify`, `agent_walk` — which fleet-setup leaves out)
- *   node <builder>/scripts/docs.mjs fleet-config <build|plan|resume>   (the config cut to what that fleet step acts
- *                                                       on, alone — the second of a fleet session's two first reads)
+ *   node <builder>/scripts/docs.mjs fleet-config <step>   (the config cut to what that fleet step acts on, alone —
+ *                                                       the second of a fleet session's two first reads; a step is
+ *                                                       build|plan|resume|walk-lane|agent-walk|verify|ship)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
@@ -112,11 +113,24 @@ const OMIT = {
  *            §House rules (the phase skeleton), §Companion skills (Recipe: lines), §Standing traps.
  *   resume — routing, the walk lane and the park: `agent_walk:` kept; §Walk readiness, §Environment landmines,
  *            §Standing traps. The steps it runs (audit, verify, ship…) print their own config.
+ *   walk-lane  — REFERENCE §Walk readiness (`agent_walk.start`/`smoke`/`env`, migrations against `base_branch`) and
+ *                build §When the last phase signs (walk.md's facts): `agent_walk:` kept; §Walk readiness (and its
+ *                notes), §Environment landmines, §Standing traps.
+ *   agent-walk — the `agent_walk:` precondition, driver, batch and smoke; §Walk readiness for a batch; §Environment
+ *                landmines verbatim into the walker's prompt; `registry`/`apps` for the condense. No §Standing traps.
+ *   verify     — every front-matter block (`verify:`, `apps:` with `released_artifact`/`commit:`, `registry`);
+ *                §Verification, §Global constraints, §House rules, §Environment landmines, §Quality gates.
+ *   ship       — `registry`, `merge_into`, `base_branch`, `apps` for REFERENCE §Condense; §Standing traps and §House
+ *                rules (the lesson), §Companion skills (the ticket command).
  */
 export const FLEET_CONFIG = {
   build: { drop: /^(verify|agent_walk):/, sections: ['House rules', 'Environment landmines', 'Standing traps'] },
   plan: { drop: /^(verify|agent_walk):/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
   resume: { drop: /^verify:/, sections: ['Walk readiness', 'Environment landmines', 'Standing traps'] },
+  'walk-lane': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
+  'agent-walk': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines'] },
+  verify: { drop: null, sections: ['Verification', 'Global constraints', 'House rules', 'Environment landmines', 'Quality gates'] },
+  ship: { drop: /^(verify|agent_walk):/, sections: ['Standing traps', 'House rules', 'Companion skills'] },
 }
 
 /** The config cut to what one fleet step acts on: the front matter less its dropped blocks and comments, then the kept sections. */
@@ -127,12 +141,12 @@ export function configFor(step, text) {
   const fm = []
   let dropping = false
   for (const line of close > 0 ? lines.slice(0, close + 1) : []) {
-    if (/^[A-Za-z_][\w-]*:/.test(line) || line === '---') dropping = drop.test(line)
+    if (/^[A-Za-z_][\w-]*:/.test(line) || line === '---') dropping = !!drop?.test(line)
     if (dropping || /^\s*#/.test(line) || !line.trim()) continue
     fm.push(line)
   }
   const body = close > 0 ? lines.slice(close + 1).join('\n') : String(text)
-  const secs = sections.map((n) => mdSection(body, n, { level: 2 })?.text).filter(Boolean)
+  const secs = sections.map((n) => mdSection(body, n, { level: 2 })?.text).filter((t, i, all) => t && all.indexOf(t) === i)
   return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
 }
 
