@@ -144,7 +144,7 @@ header flip would leave a half-shipped tree.
    <registry>/_archive/<program>`. The collision was ruled out before step 1. Nothing routine reads the archive; `list-features.mjs --archived`
    lists it.
 
-Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> shipped into <branch>` —
+Commit: `docs(<key>): <feature> shipped in PR #N` — agent form: `docs(<key>): <feature> ready to land on <branch>` (the merge does not exist yet, so the subject does not say "shipped"; older commits read `shipped into <branch>`) —
 already merged: `docs(<key>): <feature> shipped — merged <sha>`.
 
 **Before the ship call, one lesson for next time.** The config's §Standing traps is what this repo
