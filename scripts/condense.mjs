@@ -200,7 +200,7 @@ export function ship(a) {
   const { f, src, arch, moved, registry } = openForShip(a._[0])
   const out = []
   const merged = a.merged ? String(a.merged) : null
-  const subject = merged ? `docs({key}): {feature} shipped — merged ${merged}` : a.into ? 'docs({key}): {feature} shipped into ' + a.into : a.pr ? `docs({key}): {feature} shipped in PR #${String(a.pr).replace(/^#/, '')}` : null
+  const subject = merged ? `docs({key}): {feature} shipped — merged ${merged}` : a.into ? 'docs({key}): {feature} ready to land on ' + a.into : a.pr ? `docs({key}): {feature} shipped in PR #${String(a.pr).replace(/^#/, '')}` : null
   if (!subject) throw new Error('--ship needs --pr <N> (the open PR), --into <branch> (agent form) or --merged <sha> (already in the target)')
   if (a.commit) throw new Error('--ship writes its own subject (ship §At ship) — drop --commit')
   const progDirs = programParents(f.root, registry, f.feature)
