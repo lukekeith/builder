@@ -325,6 +325,12 @@ true`** means this repo runs a vendored copy older than the newest release on th
 in one line above the question — `⬆️ builder <latest> is available — this repo carries <have>. Run
 /builder:vendor to update it.` — and carry on; it is never a reason to stop.
 
+**A top-level `needsYou` list** is the fleet's parks waiting on the user's answer — a landing their
+uncommitted changes are in the way of. Name each first, above everything else: `⛔ <feature> needs
+you — <why>`, then the next step in words: *to choose, open `/builder:fleet:status` — it lists the
+files and offers to commit them, set them aside, or leave it.* Never offer those choices here; then
+carry on to the question below.
+
 - **Offerable** — `done` false. A parked row (`manifest.blocked` set) is offered too, its
   description `parked — <why>`; picking it goes to Step 1's parked row, which offers to unpark it.
   `done` rows only as a count.

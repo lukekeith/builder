@@ -635,7 +635,7 @@
       "id": "resume-picker",
       "skill": "resume",
       "title": "Resume with no --path — the picker over in-flight features",
-      "when": "The user types /builder:resume with nothing after it, with several features in flight.",
+      "when": "The user types /builder:resume with nothing after it, with several features in flight — and one fleet landing waiting on their answer.",
       "source": "skills/resume/SKILL.md §The picker (no `--path`, no text)",
       "sources": [
         "skills/resume/REFERENCE.md §Branch and ticket"
@@ -648,7 +648,15 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs --json) — 5 offerable · 2 done"
+          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs --json) — 5 offerable · 2 done · 1 needs you"
+        },
+        {
+          "role": "claude",
+          "text": "⛔ portal-downloads needs you — your uncommitted changes overlap it (2 files)\n\nTo choose, open `/builder:fleet:status` — it lists the files and offers to commit them, set them aside, or leave it."
+        },
+        {
+          "role": "note",
+          "text": "list-features' needsYou: a fleet park waiting on the user's answer is named first, above everything else, with /builder:fleet:status as the place to choose. Resume never offers those choices itself — it carries on to its own question."
         },
         {
           "role": "picker",
@@ -696,9 +704,9 @@
         }
       ],
       "stamp": {
-        "hash": "f29b01fde568",
+        "hash": "701534755c8a",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-11-01"
       }
     },
     {
