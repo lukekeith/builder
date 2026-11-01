@@ -92,7 +92,31 @@ export function setupIfNeeded(path, verify, run = (cmd) => sh(cmd, { cwd: path }
 
 export const changedFiles = (root, from, to) => (tryGit(root, 'diff', '--name-only', from, to) ?? '').split('\n').filter(Boolean)
 
-/** Fast-forward `target` to `tested` only if it still points at `expectedOld` and `tested` descends from it. */
+const lines = (out) => (out ?? '').split('\n').filter(Boolean)
+
+/**
+ * The user's uncommitted work in `root` that a land of `expectedOld..tested` would run into: tracked
+ * files modified or staged, and untracked files only where the feature adds the same path, kept to
+ * the files the feature changes. Changes it doesn't touch are no block — the fast-forward goes
+ * around them. Read-only; sorted.
+ */
+export function landOverlap(root, expectedOld, tested) {
+  const feature = new Set(lines(tryGit(root, 'diff', '--name-only', '--no-renames', expectedOld, tested)))
+  if (!feature.size) return []
+  const added = new Set(lines(tryGit(root, 'diff', '--name-only', '--no-renames', '--diff-filter=A', expectedOld, tested)))
+  const dirty = new Set([
+    ...lines(tryGit(root, 'diff', '--name-only', '--no-renames', 'HEAD')),
+    ...lines(tryGit(root, 'diff', '--name-only', '--no-renames', '--cached')),
+    ...lines(tryGit(root, 'ls-files', '--others', '--exclude-standard')).filter((f) => added.has(f)),
+  ])
+  return [...dirty].filter((f) => feature.has(f)).sort()
+}
+
+/**
+ * Fast-forward `target` to `tested` only if it still points at `expectedOld` and `tested` descends from it.
+ * Checked out in `root` with the user's uncommitted changes overlapping the feature: refused with the
+ * files, before any git write — the user's working tree is never touched.
+ */
 export function land(root, target, tested, expectedOld) {
   const cur = tryGit(root, 'rev-parse', `refs/heads/${target}`)
   if (cur !== expectedOld) return { ok: false, reason: `${target} moved (${cur?.slice(0, 7)} is not ${expectedOld.slice(0, 7)})` }
@@ -103,8 +127,13 @@ export function land(root, target, tested, expectedOld) {
     .slice(1)
     .find((b) => b.split('\n').includes(`branch refs/heads/${target}`))
   if (elsewhere) return { ok: false, reason: `${target} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')} — switch that worktree to another branch, then land again` }
+  const here = checkedOutBranch(root) === target
+  if (here) {
+    const overlap = landOverlap(root, expectedOld, tested)
+    if (overlap.length) return { ok: false, overlap, reason: 'your uncommitted changes overlap this feature' }
+  }
   try {
-    if (checkedOutBranch(root) === target) git(root, 'merge', '--ff-only', '--quiet', tested)
+    if (here) git(root, 'merge', '--ff-only', '--quiet', tested)
     else git(root, 'update-ref', `refs/heads/${target}`, tested, expectedOld)
     return { ok: true }
   } catch (err) {

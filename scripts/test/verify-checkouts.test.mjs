@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync, realpa
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { git, mainRoot } from '../verify/git.mjs'
-import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, commitExists, checkoutsDir, copyLocal } from '../verify/checkouts.mjs'
+import { ensureCheckout, checkoutAt, mergedCheckout, setupIfNeeded, changedFiles, land, landOverlap, commitExists, checkoutsDir, copyLocal } from '../verify/checkouts.mjs'
 
 function repo() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vco-')))
@@ -207,4 +207,66 @@ test('copyLocal: an ignored symlink survives a second move on the slot, and a da
     assert.equal(readFileSync(join(co, 'links/real'), 'utf8'), 'r')
     assert.equal(lstatSync(join(co, 'links/dangling')).isSymbolicLink(), true)
   }
+})
+
+/** A main checkout on main and a feature commit that changes a.txt and adds n.txt — the shape a land sees. */
+function overlapRepo() {
+  const root = repo()
+  const base = git(root, 'rev-parse', 'HEAD')
+  writeFileSync(join(root, 'other.txt'), 'o\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'other')
+  const old = git(root, 'rev-parse', 'HEAD')
+  git(root, 'checkout', '-qb', 'feat')
+  writeFileSync(join(root, 'a.txt'), 'feature\n')
+  writeFileSync(join(root, 'n.txt'), 'new\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'feat')
+  const tested = git(root, 'rev-parse', 'HEAD')
+  git(root, 'checkout', '-q', 'main')
+  return { root, base, old, tested }
+}
+const snapshot = (root) => ({ status: git(root, 'status', '--porcelain', '-uall'), head: git(root, 'rev-parse', 'HEAD'), a: readFileSync(join(root, 'a.txt'), 'utf8') })
+
+test('landOverlap: a tracked file edited in the checkout that the feature also changes overlaps', () => {
+  const { root, old, tested } = overlapRepo()
+  writeFileSync(join(root, 'a.txt'), 'mine\n')
+  assert.deepEqual(landOverlap(root, old, tested), ['a.txt'])
+})
+
+test('landOverlap: a staged change overlaps too', () => {
+  const { root, old, tested } = overlapRepo()
+  writeFileSync(join(root, 'a.txt'), 'mine\n')
+  git(root, 'add', 'a.txt')
+  assert.deepEqual(landOverlap(root, old, tested), ['a.txt'])
+})
+
+test('landOverlap: an untracked file overlaps only when the feature adds that same path', () => {
+  const { root, old, tested } = overlapRepo()
+  writeFileSync(join(root, 'n.txt'), 'my own\n')
+  writeFileSync(join(root, 'scratch.txt'), 'x\n')
+  assert.deepEqual(landOverlap(root, old, tested), ['n.txt'])
+})
+
+test('landOverlap: a dirty file the feature does not touch is no overlap, and the land goes through around it', () => {
+  const { root, old, tested } = overlapRepo()
+  writeFileSync(join(root, 'other.txt'), 'mine\n')
+  writeFileSync(join(root, 'scratch.txt'), 'x\n')
+  assert.deepEqual(landOverlap(root, old, tested), [])
+  assert.deepEqual(land(root, 'main', tested, old), { ok: true })
+  assert.equal(git(root, 'rev-parse', 'refs/heads/main'), tested)
+  assert.equal(readFileSync(join(root, 'other.txt'), 'utf8'), 'mine\n')
+  assert.equal(readFileSync(join(root, 'a.txt'), 'utf8'), 'feature\n')
+})
+
+test('land refuses an overlap before any git write: target, HEAD and the working tree stay exactly as they were', () => {
+  const { root, old, tested } = overlapRepo()
+  writeFileSync(join(root, 'a.txt'), 'mine\n')
+  writeFileSync(join(root, 'n.txt'), 'my own\n')
+  git(root, 'add', 'n.txt')
+  const before = snapshot(root)
+  const r = land(root, 'main', tested, old)
+  assert.deepEqual(r, { ok: false, overlap: ['a.txt', 'n.txt'], reason: 'your uncommitted changes overlap this feature' })
+  assert.deepEqual(snapshot(root), before)
+  assert.equal(git(root, 'rev-parse', 'refs/heads/main'), old)
 })

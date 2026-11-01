@@ -37,6 +37,7 @@ import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
+import { landOverlap } from './verify/checkouts.mjs'
 import { fileURLToPath } from 'node:url'
 
 // Runs per feature per fleet run. The build lane ends a run at the audit's and the go-ahead's commits
@@ -1757,6 +1758,23 @@ for (const [feature, f] of Object.entries(fleet.features)) {
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
   f.autoUnparks = 0 // and a fresh automatic-retry budget
   enqueue(feature)
+}
+
+/**
+ * Once, at fleet start: a feature on its way to landing whose branch changes files the human is
+ * editing in the target checkout would be refused at the merge. Said now, as a note — not a park:
+ * the work goes on, and the edits may be committed or gone by the time it lands. Read-only.
+ */
+const OVERLAP_NOTE = / will need you to land: /
+fleet.notes = (fleet.notes ?? []).filter((n) => !OVERLAP_NOTE.test(n))
+if (tryGit(['branch', '--show-current']) === TARGET) {
+  for (const [feature, f] of Object.entries(fleet.features)) {
+    if (!['queued', 'awaiting-walk', 'awaiting-ship'].includes(f.status) || !f.branch) continue
+    const base = tryGit(['merge-base', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`])
+    if (!base) continue
+    const n = landOverlap(ROOT, base, `refs/heads/${f.branch}`).length
+    if (n) addNote(`⚠ ${feature} will need you to land: ${n} file${n === 1 ? '' : 's'} you are editing overlap${n === 1 ? 's' : ''} it — /builder:fleet:status`)
+  }
 }
 
 /**
