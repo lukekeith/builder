@@ -923,7 +923,7 @@ async function main(argv) {
   if (kind === 'next') {
     const ok = folder && (/^\d+$/.test(a['after-implement'] ?? '') ? a.close == null : /^\d+$/.test(a.close ?? '') && a.ledger?.trim())
     if (!ok) {
-      console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>" [--context "<one paragraph>"]')
+      console.error('usage: dispatch.mjs next <folder> --after-implement N | --close N --ledger "<line>" [--context "<one paragraph>"] [--model <m>]')
       return 2
     }
     if (a.close != null && !new RegExp(`^Task ${+a.close}: complete\\b`).test(a.ledger.trim())) {
