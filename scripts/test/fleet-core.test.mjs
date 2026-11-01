@@ -1013,12 +1013,16 @@ test('D6: every human-step park reason the fleet produces carries a choice that 
   assert.deepEqual(parkChoices({ feature: 'a', reason: 'the walk failed twice — next: /builder:agent' }), [])
 })
 
-test('parkBlock refuses a human-step park without a choice', () => {
+test('parkBlock never prints a human-step park without a choice — it fills one in, and never throws mid-run', () => {
   for (const reason of HUMAN_REASONS) {
-    assert.throws(() => parkBlock({ feature: 'a', status: 'parked', reason }), /human-step park .* no choice/)
-    assert.throws(() => parkBlock({ feature: 'a', status: 'parked', reason, choices: [{ label: 'Leave it for now', command: null }] }), /no choice/)
+    for (const choices of [[], [{ label: 'Leave it for now', command: null }]]) {
+      const block = parkBlock({ feature: 'a', status: 'parked', reason, choices })
+      assert.match(block, /^  choices:\n    1\. .+ — \S/m, block)
+    }
   }
-  assert.doesNotThrow(() => parkBlock({ feature: 'a', status: 'parked', reason: 'stuck — next: x' }))
+  // a human-step reason with no choice of its own still points somewhere
+  assert.match(parkBlock({ feature: 'a', status: 'parked', reason: 'waiting for your walk' }), /— \/builder:fleet:status|— \/builder:resume/)
+  assert.doesNotMatch(parkBlock({ feature: 'a', status: 'parked', reason: 'stuck — next: x' }), /choices:/)
 })
 
 test('the overlap park: three choices with their exact commands; the checked-out refusal: switch, then land', () => {

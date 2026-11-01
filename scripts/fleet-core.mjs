@@ -888,8 +888,13 @@ export function overlapRecord({ feature, reason, files, branch, sha, target, dat
 export function parkBlock({ feature, status, reason, choices = [], record = null, branch = null, log = null, retry = null, at = new Date() }) {
   const { why, next } = parkParts(reason ?? '')
   const stamp = `${at.toISOString().slice(0, 16).replace('T', ' ')}Z`
-  // D6: a park only a person can clear says what they can do about it.
-  if (status === 'parked' && HUMAN_STEP.test(reason ?? '') && !choices.some((c) => c.command)) throw new Error(`a human-step park needs a choice that moves it forward, and has no choice: ${reason}`)
+  // D6: a park only a person can clear says what they can do about it. A caller that passed no choice
+  // gets the reason's own; failing that, the status view — never a throw, which would stop the fleet
+  // silently mid-run (the D6 test holds every producer to a real choice).
+  if (status === 'parked' && HUMAN_STEP.test(reason ?? '') && !choices.some((c) => c.command)) {
+    const own = parkChoices({ feature, reason })
+    choices = own.some((c) => c.command) ? own : [{ label: 'See it and choose', command: '/builder:fleet:status' }, { label: 'Leave it for now', command: null }]
+  }
   return [
     '',
     `[${stamp}] ⛔ ${feature} ${status}`,
