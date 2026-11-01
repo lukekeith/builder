@@ -16,6 +16,9 @@ Several finished folders at once — shipped, merged, abandoned — are `/builde
 
 **Two moments, one file** — REFERENCE §Condense says what each writes; the procedures below say how.
 `node <builder>/scripts/docs.mjs ship` prints §Condense, §Continuing on "go" and the config in one call.
+**Under the fleet (`BUILDER_FLEET_DIR` set, or `--agent-walk`), two calls, each one Bash output:
+`docs.mjs ship --no-config`, then `docs.mjs fleet-config ship`** — `registry`, `merge_into`,
+`base_branch`, `apps`, §Standing traps, §House rules, §Companion skills.
 
 **The script does the mechanical part of both moments** — `node <builder>/scripts/condense.mjs`
 writes exactly what the steps below describe, in one call and one commit. **What stays yours is the

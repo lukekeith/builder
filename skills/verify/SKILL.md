@@ -18,7 +18,9 @@ It reads four things, and **trusts nothing remembered from the build** — every
 - **`.claude/builder.md`** — the `verify:` block and §Verification, §House rules (item 7's
   checklist), §Environment landmines. `node <builder>/scripts/docs.mjs verify` prints it in one call
   with the REFERENCE sections this step cites — §The verifier, §The two-way footer,
-  §Continuing on "go".
+  §Continuing on "go". **Under the fleet (`BUILDER_FLEET_DIR` set, or `--agent-walk`), two calls, each
+  one Bash output: `docs.mjs verify --no-config`, then `docs.mjs fleet-config verify`** — the front
+  matter and §Verification, §Global constraints, §House rules, §Environment landmines.
 - **the ledger** — the sign-off removed `PLAN.md`, so the ledger plus `git log` are the record of
   what was built: `"$(<builder>/scripts/workspace <feature>)/progress.md"`.
 

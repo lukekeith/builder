@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { leanRepo, run } from './fixtures/lean-repo.mjs'
-import { STEPS, bundle } from '../docs.mjs'
+import { STEPS, bundle, configFor } from '../docs.mjs'
 
 test('every step resolves: each mapped file and section exists in this checkout (a renamed heading fails here)', () => {
   for (const step of Object.keys(STEPS)) {
@@ -187,10 +187,11 @@ test('config-key prints one front-matter block of the repo config — what fleet
 const REAL = readFileSync(join(import.meta.dirname, 'fixtures', 'configs', 'realistic-builder.md'), 'utf8')
 const realRun = (args) => run('docs.mjs', args, { cwd: leanRepo('note-tags', { extra: { '.claude/builder.md': REAL } }).root })
 const CONFIG_HEAD = /^--- .*\.claude\/builder\.md/gm
+const LATER_LANES = ['walk-lane', 'agent-walk', 'verify', 'ship']
 test('every fleet first-read call is one Bash output (≤ 30,000) with a 15–20k config: the bundle without the config, then the config in its own call', () => {
   assert.ok(REAL.length >= 15000 && REAL.length <= 20000, `fixture is ${REAL.length}`)
   const sizes = {}
-  for (const args of [['fleet-build', '--no-config'], ['fleet-setup'], ['resume-agent'], ['plan-agent'], ['fleet-config', 'resume'], ['fleet-config', 'plan'], ['fleet-config', 'build']]) {
+  for (const args of [['fleet-build', '--no-config'], ['fleet-setup'], ['resume-agent'], ['plan-agent'], ['fleet-config', 'resume'], ['fleet-config', 'plan'], ['fleet-config', 'build'], ...LATER_LANES.flatMap((s) => [[s, '--no-config'], ['fleet-config', s]])]) {
     const r = realRun(args)
     assert.equal(r.status, 0, args.join(' ') + r.stderr)
     sizes[args.join(' ')] = r.stdout.length
@@ -220,4 +221,43 @@ test('plan-agent — what an unattended plan reads: no §The review, §Flags or 
   assert.match(r.stdout, /^--- skills\/plan\/PLAN-FORMAT\.md$/m)
   for (const s of ['§Sizes', '§Contract and the contract freeze', '§MANIFEST.md', '§Branch and ticket']) assert.match(r.stdout, new RegExp(`^--- skills/resume/REFERENCE\\.md ${s} `, 'm'))
   for (const s of ['§The review', '§Flags', '§Continuing on "go"']) assert.ok(!r.stdout.includes(`REFERENCE.md ${s}`), s)
+})
+
+test('the later lanes — walk-lane, agent-walk, verify, ship — read their bundle without the config, and fleet-config <step> carries what that step acts on', () => {
+  for (const step of LATER_LANES) {
+    const b = realRun([step, '--no-config'])
+    assert.equal(b.status, 0, step + b.stderr)
+    assert.equal((b.stdout.match(CONFIG_HEAD) ?? []).length, 0, `${step} --no-config has no config`)
+    assert.equal((realRun([step]).stdout.match(CONFIG_HEAD) ?? []).length, 1, `a human ${step} still prints the whole config`)
+  }
+  const cut = (step) => {
+    const r = realRun(['fleet-config', step])
+    assert.equal(r.status, 0, step + r.stderr)
+    assert.equal((r.stdout.match(CONFIG_HEAD) ?? []).length, 1, `${step}: the config, once`)
+    return r.stdout
+  }
+  const has = (step, out, keep, drop) => {
+    for (const x of keep) assert.ok(out.includes(x), `fleet-config ${step} keeps ${x}`)
+    for (const x of drop) assert.ok(!out.includes(x), `fleet-config ${step} drops ${x}`)
+  }
+  // The walk lane: REFERENCE §Walk readiness (agent_walk.start/smoke/env, migrations against base_branch, the readiness
+  // facts) and build §When the last phase signs (walk.md's facts from §Environment landmines).
+  has('walk-lane', cut('walk-lane'), ['base_branch: main', 'apps:', 'agent_walk:', 'smoke', 'start: docker compose', '## Walk readiness\n', '## Walk readiness notes', '## Environment landmines', '## Standing traps'],
+    ['\nverify:', 'suites:', '## House rules', '## Companion skills', '## Quality gates', '## Global constraints', '## Verification', '# The fleet'])
+  // The agent walk: the agent_walk: block (precondition, driver, start, batch, smoke, env), §Walk readiness for a batch,
+  // §Environment landmines verbatim into the walker's prompt; registry and apps for the condense.
+  has('agent-walk', cut('agent-walk'), ['registry: docs/features', 'base_branch: main', 'merge_into: current', 'apps:', 'agent_walk:', 'driver:', 'batch: 2', '## Walk readiness\n', '## Walk readiness notes', '## Environment landmines'],
+    ['\nverify:', 'suites:', '## House rules', '## Companion skills', '## Quality gates', '## Global constraints', '## Verification', '# The fleet'])
+  // verify: the verify: block, apps (released_artifact, commit: manual), registry; §Verification (item 9), §House rules
+  // (item 7), §Environment landmines, §Global constraints, §Quality gates.
+  has('verify', cut('verify'), ['registry: docs/features', 'apps:', 'released_artifact: true', 'commit: auto', '\nverify:', 'suites:', 'tier: merge', '## Verification', '## House rules', '## Environment landmines', '## Global constraints', '## Quality gates'],
+    ['## Walk readiness', '## Companion skills', '## Standing traps', '# The fleet', '# The verifier: every suite'])
+  // ship: REFERENCE §Condense with registry, merge_into, base_branch and apps; the lesson checks §Standing traps and
+  // §House rules; §Companion skills names the ticket command.
+  has('ship', cut('ship'), ['registry: docs/features', 'merge_into: current', 'base_branch: main', 'apps:', '## Standing traps', '## House rules', '## Companion skills'],
+    ['\nverify:', 'suites:', '\nagent_walk:', '## Walk readiness', '## Environment landmines', '## Quality gates', '## Global constraints', '## Verification'])
+})
+test('fleet-config prints a section once when two kept names find the same heading (a config with only §Walk readiness notes)', () => {
+  const out = configFor('walk-lane', '---\nproject: x\n---\n\n## Walk readiness notes\n\nthe seeded admin\n')
+  assert.equal(out.split('## Walk readiness notes').length, 2, out)
 })

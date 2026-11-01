@@ -770,7 +770,7 @@ test('lean orchestrator: the skills call the scripts instead of typing what they
     for (const file of readdirSync(join(ROOT, 'skills', dir)).filter((x) => x.endsWith('.md'))) {
       const text = read(`skills/${dir}/${file}`)
       for (const m of text.matchAll(/docs\.mjs ([a-z][a-z-]*)/g)) assert.ok(m[1] === 'section' || m[1] === 'config-key' || m[1] === 'fleet-config' || STEPS[m[1]], `skills/${dir}/${file}: docs.mjs ${m[1]} is not a step in docs.mjs`)
-      for (const m of text.matchAll(/docs\.mjs fleet-config ([a-z]+)/g)) assert.ok(FLEET_CONFIG[m[1]], `skills/${dir}/${file}: docs.mjs fleet-config ${m[1]} is not a fleet config cut`)
+      for (const m of text.matchAll(/docs\.mjs fleet-config ([a-z-]+)/g)) assert.ok(FLEET_CONFIG[m[1]], `skills/${dir}/${file}: docs.mjs fleet-config ${m[1]} is not a fleet config cut`)
       // zsh reads a word starting with = as a filename expansion: no `echo =====` separator anywhere
       assert.doesNotMatch(text, /echo +["']?={3,}/, `skills/${dir}/${file} has an echo === separator`)
     }
@@ -997,6 +997,10 @@ test('an unattended plan or resume reads its bundle and its config in two calls,
   const resume = readFileSync(join(ROOT, 'skills/resume/SKILL.md'), 'utf8')
   assert.match(plan, /docs\.mjs plan-agent`[\s\S]{0,200}docs\.mjs fleet-config plan`/)
   assert.match(resume, /docs\.mjs resume-agent`[\s\S]{0,200}docs\.mjs fleet-config resume`/)
+  // The later lanes too: the walk lane, the agent walk, verify and ship — each its bundle, then its config part.
+  assert.match(resume, /docs\.mjs walk-lane --no-config`[\s\S]{0,200}docs\.mjs fleet-config walk-lane`/)
+  for (const [p, step] of [['skills/agent-walk/SKILL.md', 'agent-walk'], ['skills/verify/SKILL.md', 'verify'], ['skills/ship/SKILL.md', 'ship']])
+    assert.match(read(p), new RegExp(`docs\\.mjs ${step} --no-config\`[\\s\\S]{0,200}docs\\.mjs fleet-config ${step}\``), p)
   // plan-agent drops §The review, where §Under `--auto` and `--agent-walk` lives: the fleet block inlines its rule.
   const fleetBlock = plan.slice(plan.indexOf('**Started by the fleet**'), plan.indexOf('⛔ **A §Findings row'))
   assert.doesNotMatch(fleetBlock, /REFERENCE §Under/)
@@ -1008,10 +1012,10 @@ test('an unattended plan or resume reads its bundle and its config in two calls,
 
 test('the skills a fleet session reads say once that <builder> is "$BUILDER_DIR" under the fleet, and every <builder>/scripts path still exists', () => {
   const ONCE = /Under the fleet \(`BUILDER_DIR` is set\), `<builder>` is `"\$BUILDER_DIR"`/
-  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md']) assert.match(read(p), ONCE, p)
+  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md', 'skills/agent-walk/SKILL.md']) assert.match(read(p), ONCE, p)
   const agent = read('skills/resume/AGENT-MODE.md')
   assert.match(agent.slice(agent.indexOf('## Agent mode in the build lane'), agent.indexOf('## `--agent-walk`')), ONCE, 'AGENT-MODE build lane')
-  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/AGENT-MODE.md']) {
+  for (const p of ['skills/build/SKILL.md', 'skills/plan/SKILL.md', 'skills/resume/SKILL.md', 'skills/resume/AGENT-MODE.md', 'skills/agent-walk/SKILL.md']) {
     for (const m of read(p).matchAll(/(?:<builder>|"\$BUILDER_DIR")\/(scripts\/[\w./-]+?\.(?:mjs|sh))/g)) assert.ok(existsSync(join(ROOT, m[1])), `${p}: ${m[1]}`)
   }
 })
