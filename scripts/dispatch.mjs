@@ -117,9 +117,9 @@ const tierUp = (m) => TIERS[Math.min(TIERS.indexOf(m) + 1, TIERS.length - 1)]
 /**
  * EXECUTION §Model selection as a table — the tier the Agent call names, so a routine dispatch never
  * reads that section. `tiny` is the plan's `Recipe: … · tiny` (a mechanical one-file edit); `models`
- * the test plan's lever. Implementers: the standard tier (the mid-tier floor for a block that leaves
- * anything open), the cheapest when tiny or under `economy`, the most capable under `strong`; rounds
- * 1–3 resume the same agent, rounds 4–5 go one tier up. Reviews: the standard tier, the cheapest for
+ * the test plan's lever. Implementers: the standard tier, the cheapest when tiny or under `economy`,
+ * the most capable under `strong`; rounds 1–3 resume the same agent, rounds 4–5 go one tier up. There
+ * is no floor here: the orchestrator raises with `--model` (build §Dispatch's raise rule — never lower). Reviews: the standard tier, the cheapest for
  * a tiny task's diff, the most capable under `strong`. The final review and the walker: the most capable.
  */
 export function modelFor({ kind, tiny = false, round = 0, models = 'default' }) {
@@ -152,6 +152,11 @@ const overrideOf = (a) => {
   if (a.model == null) return null
   if (!TIERS.includes(a.model)) throw new Error(`--model must be one of ${TIERS.join(', ')} (got ${a.model})`)
   return a.model
+}
+/** `--model` only raises: a tier below the one this dispatch would name is refused (build §Dispatch — never lower it). */
+const raiseOnly = (override, model, kind) => {
+  if (override && TIERS.indexOf(override) < TIERS.indexOf(model)) throw new Error(`--model only raises: ${kind} runs on ${model} at least (got ${override})`)
+  return override
 }
 
 /** A prompts/*.md template → { description, body } — the `prompt: |` block, de-indented. */
@@ -441,17 +446,16 @@ function implementer(f, a, ws) {
   const recipe = recipeOf(block, f.root)
   const lever = { tiny: !!recipe?.tiny, models: modelsLever(f) }
   const dflt = modelFor({ kind: 'implementer', ...lever })
-  const override = overrideOf(a)
   let model, why
   if (round >= 4) {
     const ran = rec.model ?? dflt
-    ;[model, why] = override ? [override, '--model'] : [tierUp(ran), `one tier above ${ran}, round ${round}`]
+    ;[model, why] = [tierUp(ran), `one tier above ${ran}, round ${round}`]
   } else if (round) {
-    ;[model, why] = override ? [override, '--model'] : rec.model ? [rec.model, rec.model === dflt ? defaultWhy(lever) : 'the model that ran the task'] : [dflt, defaultWhy(lever)]
-  } else {
-    ;[model, why] = override ? [override, '--model'] : [dflt, defaultWhy(lever)]
-    rec.model = model
-  }
+    ;[model, why] = rec.model ? [rec.model, rec.model === dflt ? defaultWhy(lever) : 'the model that ran the task'] : [dflt, defaultWhy(lever)]
+  } else [model, why] = [dflt, defaultWhy(lever)]
+  const override = raiseOnly(overrideOf(a), model, 'this implementer')
+  if (override) [model, why] = [override, '--model']
+  if (!round) rec.model = model
   saveState(ws, st)
 
   const briefPath = join(ws, `task-${n}-brief.md`)
@@ -940,8 +944,8 @@ async function main(argv) {
   if (!f.cfg) throw new Error(f.cfgError)
   const ws = f.ws()
   const r = RENDER[kind](f, a, ws)
-  const override = overrideOf(a)
-  if (override && r.why !== '--model') Object.assign(r, { model: override, why: '--model' })
+  const override = r.why === '--model' ? null : raiseOnly(overrideOf(a), r.model, kind)
+  if (override) Object.assign(r, { model: override, why: '--model' })
   emit(r, f.root)
   return 0
 }
