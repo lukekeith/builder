@@ -78,8 +78,8 @@ export const STEPS = {
   // then the build's walk script and `state: built`" — build SKILL §When the last phase signs.
   'walk-lane': [...R('Walk readiness'), ['skills/build/SKILL.md', 'When the last phase signs'], CONFIG],
   // agent-walk SKILL: "Condense exactly as builder:ship §At sign-off does", REFERENCE §How a park reads,
-  // §The park record, §Agent model tiering.
-  'agent-walk': [['skills/ship/SKILL.md', 'At sign-off'], ...R('Condense', 'How a park reads', 'The park record', 'Agent model tiering'), CONFIG],
+  // §The park record, §Agent model tiering, and §Walk readiness (a batched walk runs it once for the batch).
+  'agent-walk': [['skills/ship/SKILL.md', 'At sign-off'], ...R('Condense', 'How a park reads', 'The park record', 'Agent model tiering', 'Walk readiness'), CONFIG],
   // verify SKILL: REFERENCE §The verifier, §The two-way footer, §Continuing on "go".
   verify: [...R('The verifier', 'The two-way footer', 'Continuing on "go"'), CONFIG],
   // signoff SKILL: REFERENCE §Condense's sign-off row, §Walk readiness (step 1b), §The two-way footer.
@@ -117,9 +117,10 @@ const OMIT = {
  *                build §When the last phase signs (walk.md's facts): `agent_walk:` kept; §Walk readiness (and its
  *                notes), §Environment landmines, §Standing traps.
  *   agent-walk — the `agent_walk:` precondition, driver, batch and smoke; §Walk readiness for a batch; §Environment
- *                landmines verbatim into the walker's prompt; `registry`/`apps` for the condense. No §Standing traps.
+ *                landmines verbatim into the walker's prompt; `registry`/`apps` for the condense; §Standing traps.
  *   verify     — every front-matter block (`verify:`, `apps:` with `released_artifact`/`commit:`, `registry`);
- *                §Verification, §Global constraints, §House rules, §Environment landmines, §Quality gates.
+ *                §Verification, §Global constraints, §House rules, §Environment landmines, §Quality gates, and
+ *                §Walk readiness (item 4's clean-database re-apply needs its migrations path and commands).
  *   ship       — `registry`, `merge_into`, `base_branch`, `apps` for REFERENCE §Condense; §Standing traps and §House
  *                rules (the lesson), §Companion skills (the ticket command).
  */
@@ -128,8 +129,8 @@ export const FLEET_CONFIG = {
   plan: { drop: /^(verify|agent_walk):/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
   resume: { drop: /^verify:/, sections: ['Walk readiness', 'Environment landmines', 'Standing traps'] },
   'walk-lane': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
-  'agent-walk': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines'] },
-  verify: { drop: null, sections: ['Verification', 'Global constraints', 'House rules', 'Environment landmines', 'Quality gates'] },
+  'agent-walk': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
+  verify: { drop: null, sections: ['Verification', 'Global constraints', 'House rules', 'Environment landmines', 'Quality gates', 'Walk readiness'] },
   ship: { drop: /^(verify|agent_walk):/, sections: ['Standing traps', 'House rules', 'Companion skills'] },
 }
 
