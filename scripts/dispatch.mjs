@@ -283,12 +283,33 @@ const mcpAgent = (f) => {
 /** The subagent_type a build dispatch runs as — the config's agent_types (builder's lean agents by default). */
 const agentTypeOf = (f, kind) => f.cfg?.agentTypes?.[kind] ?? { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }[kind] ?? 'general-purpose'
 
-/** The brief: the task block + build §Composing the brief's four blocks, in order. */
-/** The lines under the ledger's `## env notes` heading, up to the next heading. */
+const ENV_NOTES_CAP = 2000
+/**
+ * The `- ` bullets directly under the ledger's `## env notes` (or `## env notes (…)`) heading — the ledger is
+ * append-only, so the first non-bullet line (a completion, a ruling) ends them; an indented line continues a
+ * bullet. Capped at ENV_NOTES_CAP chars, whole bullets, with a pointer to the ledger for the rest.
+ */
 function envNotesOf(ledger) {
-  const m = /^##\s+env notes\s*$([\s\S]*?)(?=^#{1,6}\s|(?![\s\S]))/im.exec(ledger)
-  return m ? m[1].trim() : ''
+  const lines = String(ledger).split('\n')
+  const at = lines.findIndex((l) => /^##\s+env notes(\s*\(.*\))?\s*$/i.test(l))
+  if (at < 0) return ''
+  const out = []
+  let i = at + 1
+  while (i < lines.length && !lines[i].trim()) i++
+  for (; i < lines.length; i++) {
+    const l = lines[i]
+    if (/^- /.test(l) || (out.length && /^\s+\S/.test(l))) out.push(l)
+    else break
+  }
+  let kept = ''
+  for (const [k, l] of out.entries()) {
+    if (/^- /.test(l) && k && (kept + '\n' + l).length > ENV_NOTES_CAP) return `${kept}\n… see the ledger (progress.md §env notes) for the rest`
+    kept = kept ? `${kept}\n${l}` : l
+  }
+  return kept.trim()
 }
+
+/** The brief: the task block + build §Composing the brief's four blocks, in order. */
 
 function composeBrief(f, n, block, app) {
   const spec = read(f.specPath) ?? ''
