@@ -106,11 +106,14 @@ const OMIT = {
 }
 
 /**
- * What each fleet step acts on in the config: the front-matter blocks it drops (the verifier and the fleet
- * read `verify:` and `agent_walk:` themselves) and the `## ` sections it keeps. `docs.mjs fleet-config <step>`.
+ * What each fleet step acts on in the config. The cut is a drop list, never an allow-list: the front matter
+ * (less its comments) and the opening prose before the first `## ` and every section a project added are
+ * always kept — real configs put phase-deciding rules there. Per step, only the builder-owned front-matter
+ * blocks and `## ` sections it never acts on are cut. `docs.mjs fleet-config <step>`. What each step keeps:
  *   build  — the task loop: §House rules, §Environment landmines, §Standing traps (fleet-setup prints it).
- *   plan   — writing PLAN.md: §Verification (the phase tier per app), §Global constraints (the plan header),
- *            §House rules (the phase skeleton), §Companion skills (Recipe: lines), §Standing traps.
+ *   plan   — writing PLAN.md: `agent_walk:` (the walk task and the agent-walk precondition); §Verification (the
+ *            phase tier per app), §Global constraints (the plan header), §House rules (the phase skeleton),
+ *            §Companion skills (Recipe: lines), §Standing traps.
  *   resume — routing, the walk lane and the park: `agent_walk:` kept; §Walk readiness, §Environment landmines,
  *            §Standing traps. The steps it runs (audit, verify, ship…) print their own config.
  *   walk-lane  — REFERENCE §Walk readiness (`agent_walk.start`/`smoke`/`env`, migrations against `base_branch`) and
@@ -124,9 +127,10 @@ const OMIT = {
  *   ship       — `registry`, `merge_into`, `base_branch`, `apps` for REFERENCE §Condense; §Standing traps and §House
  *                rules (the lesson), §Companion skills (the ticket command).
  */
+export const BUILDER_SECTIONS = ['Verification', 'Walk readiness', 'Walk readiness notes', 'Global constraints', 'House rules', 'Environment landmines', 'Companion skills', 'Quality gates', 'Standing traps']
 export const FLEET_CONFIG = {
   build: { drop: /^(verify|agent_walk):/, sections: ['House rules', 'Environment landmines', 'Standing traps'] },
-  plan: { drop: /^(verify|agent_walk):/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
+  plan: { drop: /^verify:/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
   resume: { drop: /^verify:/, sections: ['Walk readiness', 'Environment landmines', 'Standing traps'] },
   'walk-lane': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
   'agent-walk': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
@@ -134,7 +138,20 @@ export const FLEET_CONFIG = {
   ship: { drop: /^(verify|agent_walk):/, sections: ['Standing traps', 'House rules', 'Companion skills'] },
 }
 
-/** The config cut to what one fleet step acts on: the front matter less its dropped blocks and comments, then the kept sections. */
+/** The builder-owned section a `## ` heading names (`House rules`, `House rules (web)`, `House rules — api`), or null. */
+const builderSection = (title) => {
+  const t = normTitle(title)
+  const hits = BUILDER_SECTIONS.filter((n) => {
+    const w = normTitle(n)
+    return t === w || (t.startsWith(w) && /^[\s—–:(-]/.test(t.slice(w.length)))
+  })
+  return hits.sort((x, y) => y.length - x.length)[0] ?? null
+}
+
+/**
+ * The config cut to what one fleet step acts on: the front matter less its dropped blocks and comments, the
+ * opening prose, then every `## ` section in order except the builder-owned ones this step does not keep.
+ */
 export function configFor(step, text) {
   const { drop, sections } = FLEET_CONFIG[step]
   const lines = String(text).split('\n')
@@ -146,9 +163,16 @@ export function configFor(step, text) {
     if (dropping || /^\s*#/.test(line) || !line.trim()) continue
     fm.push(line)
   }
-  const body = close > 0 ? lines.slice(close + 1).join('\n') : String(text)
-  const secs = sections.map((n) => mdSection(body, n, { level: 2 })?.text).filter((t, i, all) => t && all.indexOf(t) === i)
-  return [fm.join('\n'), ...secs].filter(Boolean).join('\n\n')
+  const body = (close > 0 ? lines.slice(close + 1) : lines).join('\n')
+  const bl = body.split('\n')
+  const h2 = headings(body).filter((h) => h.level === 2)
+  const parts = [bl.slice(0, h2.length ? h2[0].i : bl.length).join('\n')]
+  h2.forEach((h, k) => {
+    const owned = builderSection(h.title)
+    if (owned && !sections.includes(owned)) return
+    parts.push(bl.slice(h.i, k + 1 < h2.length ? h2[k + 1].i : bl.length).join('\n'))
+  })
+  return [fm.join('\n'), ...parts.map((p) => p.trim())].filter(Boolean).join('\n\n')
 }
 
 /**

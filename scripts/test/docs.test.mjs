@@ -204,8 +204,8 @@ test('resume-agent and plan-agent carry no config; fleet-config prints it once, 
   const plan = realRun(['fleet-config', 'plan']).stdout
   const resume = realRun(['fleet-config', 'resume']).stdout
   for (const out of [plan, resume]) assert.equal((out.match(CONFIG_HEAD) ?? []).length, 1, 'the config, once')
-  for (const x of ['apps:', 'released_artifact: true', 'plan_writers: per-app', '## Verification', '## Global constraints', '## House rules', '## Companion skills', '## Standing traps']) assert.ok(plan.includes(x), `plan: ${x}`)
-  for (const x of ['\nagent_walk:', '\nverify:', 'suites:', '## Walk readiness', '## Environment landmines', '## Quality gates', '# The fleet']) assert.ok(!plan.includes(x), `plan has no ${x}`)
+  for (const x of ['apps:', '\nagent_walk:', 'released_artifact: true', 'plan_writers: per-app', '## Verification', '## Global constraints', '## House rules', '## Companion skills', '## Standing traps']) assert.ok(plan.includes(x), `plan: ${x}`)
+  for (const x of ['\nverify:', 'suites:', '## Walk readiness', '## Environment landmines', '## Quality gates', '# The fleet']) assert.ok(!plan.includes(x), `plan has no ${x}`)
   for (const x of ['apps:', 'agent_walk:', 'start: docker compose', '## Walk readiness', '## Environment landmines', '## Standing traps']) assert.ok(resume.includes(x), `resume: ${x}`)
   for (const x of ['\nverify:', 'suites:', '## House rules', '## Companion skills', '## Quality gates', '## Global constraints']) assert.ok(!resume.includes(x), `resume has no ${x}`)
   assert.equal(realRun(['fleet-config', 'nope']).status, 2)
@@ -261,6 +261,19 @@ test('the later lanes — walk-lane, agent-walk, verify, ship — read their bun
   // §House rules; §Companion skills names the ticket command.
   has('ship', cut('ship'), ['registry: docs/features', 'merge_into: current', 'base_branch: main', 'apps:', '## Standing traps', '## House rules', '## Companion skills'],
     ['\nverify:', 'suites:', '\nagent_walk:', '## Walk readiness', '## Environment landmines', '## Quality gates', '## Global constraints', '## Verification'])
+})
+test('every fleet-config <step> keeps the opening prose and a project-added section — only builder-owned sections are cut', async () => {
+  const { FLEET_CONFIG } = await import('../docs.mjs')
+  const custom = '## Release train\n\nA phase that touches both apps runs the api phase first.\n'
+  const text = REAL.replace('\n## Quality gates', `\n${custom}\n## Quality gates`) + '\n## Design source\n\nThe build never writes it.\n'
+  for (const step of Object.keys(FLEET_CONFIG)) {
+    const out = configFor(step, text)
+    for (const x of ['# sample-monorepo — builder config', 'A three-app monorepo', '## Release train', 'runs the api phase first', '## Design source', 'never writes it'])
+      assert.ok(out.includes(x), `fleet-config ${step} keeps ${x}`)
+    assert.ok(out.length <= 30000, `${step}: ${out.length}`)
+  }
+  // plan decides on agent_walk: (the walk task, the agent-walk precondition): it keeps that block.
+  assert.ok(configFor('plan', text).includes('\nagent_walk:'), 'fleet-config plan keeps agent_walk:')
 })
 test('fleet-config prints a section once when two kept names find the same heading (a config with only §Walk readiness notes)', () => {
   const out = configFor('walk-lane', '---\nproject: x\n---\n\n## Walk readiness notes\n\nthe seeded admin\n')
