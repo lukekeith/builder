@@ -211,10 +211,11 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   EXECUTION.md §5, the ledger line saying so.
 - **Batch small same-shape tasks** per EXECUTION.md — 🔴 **only ever within one app**: render each
   task's dispatch, then send the first one's with `--context` naming the others' brief files.
-- **Carry the config's §Environment landmines into the dispatch** (`--context`) when one applies to this task. A
-  fresh implementer has never met them, and the commonest class — a service that does not reload, a
-  tool that must run from a particular directory, a cache that must be rebuilt first — makes a test
-  pass or fail against a lie. Put the remedy **in the step**, not in the prose.
+- **The brief already carries the config's §Environment landmines** and the ledger's `## env notes`
+  (`dispatch.mjs` writes them in) — never repeat them in `--context` (EXECUTION.md §1). A fresh
+  implementer has never met them, and the commonest class — a service that does not reload, a tool
+  that must run from a particular directory, a cache that must be rebuilt first — makes a test pass or
+  fail against a lie: when one bites mid-build, add it to `## env notes` with its remedy **as a step**.
 - 🔴 **Under `--agent-walk`, after each task (and its review, when there is one):** if `$BUILDER_FLEET_DIR/requests/<feature>.pause`
   exists — the fleet sets `BUILDER_FLEET_DIR` to the main checkout's fleet dir, since this run's cwd
   is its worktree; unset → `.builder/fleet/requests/<feature>.pause` — tick the ledger, write `blocked: "revising — next: /builder:revise --path <folder>"` to the
