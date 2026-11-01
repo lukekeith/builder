@@ -63,17 +63,30 @@ export async function awaitVerdict(root, id, { pollMs = 2000, signal = null, max
   }
 }
 
+/**
+ * A refusal's words as one line (it becomes a park reason, and git's words span several), and the
+ * files the user's uncommitted changes share with the feature — verify.mjs's `overlap:` line.
+ */
+function refusal(out) {
+  const m = /^overlap: (\[.*\])$/m.exec(out)
+  let overlap = null
+  try {
+    overlap = m ? JSON.parse(m[1]) : null
+  } catch {}
+  const reason = (m ? out.replace(m[0], '') : out).replace(/\s+/g, ' ').trim()
+  return { reason, ...(Array.isArray(overlap) && overlap.length && { overlap }) }
+}
+
 /** Land a held green merge: the target fast-forwards to the merge commit it tested. */
 export function release(root, id) {
   const r = client(root, 'release', id, '--in', root)
   if (r.status === 0) return { ok: true, sha: openLedger(root).getRequest(id).verdict.landed }
-  // One line: it becomes a park reason, and git's words span several.
-  return { ok: false, moved: r.status === 7, reason: r.out.replace(/\s+/g, ' ') }
+  return { ok: false, moved: r.status === 7, ...refusal(r.out) }
 }
 
 /** Land a held green merge whose branch has since gained only registry commits (verify.mjs carry). */
 export function carry(root, id) {
   const r = client(root, 'carry', id, '--in', root)
   if (r.status === 0) return { ok: true, sha: openLedger(root).getRequest(id).verdict.landed }
-  return { ok: false, moved: r.status === 7, codeChanged: r.status === 2, reason: r.out.replace(/\s+/g, ' ') }
+  return { ok: false, moved: r.status === 7, codeChanged: r.status === 2, ...refusal(r.out) }
 }

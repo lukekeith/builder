@@ -213,8 +213,10 @@ test('release refused by uncommitted changes in the checkout exits 1 and says so
   writeFileSync(join(root, 'b.txt'), 'mine\n') // untracked here, and the merge brings b.txt
   const rel = cli(wt, 'release', id)
   assert.equal(rel.status, 1, rel.stdout + rel.stderr)
-  assert.match(rel.stdout, /refused the fast-forward .* uncommitted changes there\?/)
+  // The overlap is named, one JSON line the fleet reads, after the human-readable line.
+  assert.match(rel.stdout, /refused the fast-forward \(your uncommitted changes overlap this feature\)\noverlap: \["b\.txt"\]\n$/)
   assert.equal(git(root, 'rev-parse', 'main'), before)
+  assert.equal(readFileSync(join(root, 'b.txt'), 'utf8'), 'mine\n')
 })
 
 test('carry lands a held merge whose branch gained only registry commits; a code commit exits 2', () => {

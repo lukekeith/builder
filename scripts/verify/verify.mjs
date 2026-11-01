@@ -5,7 +5,7 @@
  * fleet call this; it writes requests, starts the service when none runs, and reads verdicts.
  *
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
- *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused)
+ *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused — then, when your uncommitted changes overlap the feature, an `overlap: <JSON list>` line)
  *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
  *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (a `pending: <tier> <state> <id>` line per run still going — after a finished verdict, those newer than it; an id to wait on)
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
@@ -142,7 +142,9 @@ function landHeld(root, ledger, r, tested, extra = {}) {
   if (!l.ok) {
     // The target still where it was tested: git refused the fast-forward (work in the way), not a move.
     if (tryGit(root, 'rev-parse', `refs/heads/${r.target}`) === v.targetSha) {
-      console.log(`${r.id}: ${r.target} refused the fast-forward (${l.reason.replace(/\s+/g, ' ')}) — uncommitted changes there?`)
+      // The user's edits overlap the feature: said, then every file as one JSON line the fleet reads.
+      if (l.overlap?.length) console.log(`${r.id}: ${r.target} refused the fast-forward (${l.reason})\noverlap: ${JSON.stringify(l.overlap)}`)
+      else console.log(`${r.id}: ${r.target} refused the fast-forward (${l.reason.replace(/\s+/g, ' ')}) — uncommitted changes there?`)
       process.exit(1)
     }
     unhold(ledger, r, l.reason)

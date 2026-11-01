@@ -1148,19 +1148,62 @@ test('a child whose dependency is not in the run is refused', () => {
   assert.match(dry.stdout, /✗ ui — waits on api \(spec\) — not in this run/)
 })
 
-test('a merge your uncommitted changes would clobber parks; the next run merges it', () => {
+test('a merge your uncommitted changes would clobber parks as needs you, naming every file and the choices; the next run merges it', () => {
   const root = makeRepo(['a'])
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/x.txt'), 'base\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'app file')
   mkdirSync(join(root, 'docs/features/_archive/a'), { recursive: true })
   writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n') // the ship writes this path
-  const first = runFleet(root, ['a'], { a: HAPPY })
-  assert.equal(first.fleet.features.a.status, 'parked')
-  assert.match(first.fleet.features.a.reason, /the merge tier passed but landing failed: .*uncommitted changes.* — next: \/builder:fleet to retry/)
+  writeFileSync(join(root, 'app/x.txt'), 'mine\n') // tracked, and the feature changes it
+  writeFileSync(join(root, 'notes.txt'), 'not the feature\n') // dirty, but no overlap: never named
+  const steps = HAPPY.map((s) => (s === 'building' ? 'COMMIT:app/x.txt:building' : s))
+  const statusOf = () => git(root, 'status', '--porcelain', '--', '.', ':!.stub')
+  const status = statusOf()
+  const first = runFleet(root, ['a'], { a: steps })
+  const f = first.fleet.features.a
+  assert.equal(f.status, 'parked', JSON.stringify(f))
+  assert.equal(f.reason, 'needs you: your uncommitted changes overlap this feature — 2 files: app/x.txt, docs/features/_archive/a/SPEC.md — next: /builder:fleet:status')
   assert.equal(readFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'utf8'), 'my local edit\n', 'your change is untouched')
+  assert.equal(readFileSync(join(root, 'app/x.txt'), 'utf8'), 'mine\n', 'your change is untouched')
+  assert.equal(statusOf(), status, 'nothing in your checkout moved')
+  // The record: the folder already shipped on the branch, so it sits in the fleet's own dir, uncommitted.
+  const sha = git(root, 'rev-parse', '--short', `refs/heads/${f.branch}`)
+  const rec = readFileSync(join(root, '.builder/fleet/parked/a/PARKED.md'), 'utf8')
+  assert.match(rec, /^kind: human-step$/m)
+  assert.match(rec, new RegExp(`^The work is done and waiting on ${f.branch.replace('/', '\\/')} at ${sha}`, 'm'))
+  assert.match(rec, /^- app\/x\.txt$/m)
+  assert.match(rec, /^- docs\/features\/_archive\/a\/SPEC\.md$/m)
+  assert.doesNotMatch(rec, /notes\.txt/)
+  assert.match(rec, /^1\. Commit my changes, then land — `node <builder>\/scripts\/fleet\.mjs --land a --commit-mine "<message>"`$/m)
+  assert.match(rec, /^2\. Set my changes aside, land, put them back — `node <builder>\/scripts\/fleet\.mjs --land a --set-aside`$/m)
+  assert.match(rec, /^3\. Leave it for now/m)
+  const out = readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8')
+  assert.match(out, /⛔ a parked\n  why: +needs you: your uncommitted changes overlap this feature — 2 files: app\/x\.txt, docs\/features\/_archive\/a\/SPEC\.md\n  next: +\/builder:fleet:status\n  choices:\n    1\. Commit my changes, then land — node <builder>\/scripts\/fleet\.mjs --land a --commit-mine "<message>"\n    2\. Set my changes aside, land, put them back — node <builder>\/scripts\/fleet\.mjs --land a --set-aside\n    3\. Leave it for now\n  record: .*\.builder\/fleet\/parked\/a\/PARKED\.md\n/)
   unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
+  git(root, 'checkout', '--', 'app/x.txt')
   const second = runFleet(root, [], { a: HAPPY })
   assert.equal(second.status, 0, second.stderr)
   assertLanded(second, 'a')
   assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+  assert.equal(existsSync(join(root, '.builder/fleet/parked/a')), false, 'a landing clears its record')
+  assert.equal(readFileSync(join(root, 'notes.txt'), 'utf8'), 'not the feature\n')
+})
+
+test('a target checked out in another worktree parks with its choices: switch that worktree, then land', () => {
+  const root = makeRepo(['a'])
+  git(root, 'switch', '-q', '-c', 'mine')
+  const other = `${root}-main`
+  git(root, 'worktree', 'add', '-q', other, 'main')
+  const r = runFleet(root, ['a', '--into', 'main'], { a: HAPPY })
+  const f = r.fleet.features.a
+  assert.equal(f.status, 'parked', JSON.stringify(f))
+  assert.equal(f.reason, `shipped, but main is checked out in ${realpathSync(other)}, so it can't be landed from here — next: switch that worktree to another branch, then /builder:fleet a`)
+  const rec = readFileSync(join(root, '.builder/fleet/parked/a/PARKED.md'), 'utf8')
+  assert.match(rec, /^kind: human-step$/m)
+  assert.match(rec, new RegExp(`^## Your choices\\n1\\. Switch ${realpathSync(other).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} to another branch, then land it — \`/builder:fleet a\`\\n2\\. Leave it for now`, 'm'))
+  assert.match(readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8'), /  choices:\n    1\. Switch .* to another branch, then land it — \/builder:fleet a\n    2\. Leave it for now\n/)
 })
 
 test('a feature that ships after the human switched branches still lands on the target', () => {
@@ -1483,7 +1526,21 @@ test('a park waiting for your walk is a human step, never retried', () => {
   assert.equal(r.fleet.features.a.status, 'parked')
   assert.equal(r.fleet.features.a.reason, reason)
   assert.equal(r.calls.filter((l) => l.startsWith('start')).length, 2, 'the audited run and the parking run, no retry')
-  assert.match(readFileSync(wtFile(r, 'a', 'PARKED.md'), 'utf8'), /^kind: human-step$/m)
+  const rec = readFileSync(wtFile(r, 'a', 'PARKED.md'), 'utf8')
+  assert.match(rec, /^kind: human-step$/m)
+  assert.match(rec, /^## Your choices\n1\. Walk it yourself now — `\/builder:resume --path docs\/features\/a`\n2\. Leave it for now/m)
+  assert.match(readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8'), /  choices:\n    1\. Walk it yourself now — \/builder:resume --path docs\/features\/a\n/)
+})
+
+test('a human-step park record the run wrote itself gains the choices, committed', () => {
+  const root = makeRepo(['a'])
+  const reason = 'waiting for your walk — next: /builder:resume --path docs/features/a'
+  const r = runFleet(root, ['a'], { a: ['audited', 'PARK-HUMAN:' + reason] })
+  assert.equal(r.fleet.features.a.reason, reason)
+  const rec = readFileSync(wtFile(r, 'a', 'PARKED.md'), 'utf8')
+  assert.match(rec, /^## What is stuck\nwritten by the run$/m, 'kept as the run wrote it')
+  assert.match(rec, /^## Your choices\n1\. Walk it yourself now — `\/builder:resume --path docs\/features\/a`\n2\. Leave it for now/m)
+  assert.equal(git(r.fleet.features.a.worktree, 'status', '--porcelain', '--', 'docs'), '', 'committed')
 })
 
 test('the fleet writes a park record when the parking run left none; an unpark adds to its history', () => {
@@ -1680,7 +1737,7 @@ test('a pause filed while a shipped feature waits to merge parks it as revising;
   mkdirSync(join(root, 'docs/features/_archive/a'), { recursive: true })
   writeFileSync(join(root, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n')
   const first = runFleet(root, ['a'], { a: HAPPY })
-  assert.match(first.fleet.features.a.reason, /the merge tier passed but landing failed: .*uncommitted changes there\?/)
+  assert.match(first.fleet.features.a.reason, /^needs you: your uncommitted changes overlap this feature — 1 file: docs\/features\/_archive\/a\/SPEC\.md/)
   unlinkSync(join(root, 'docs/features/_archive/a/SPEC.md'))
   assert.match(runFleet(root, ['--pause', 'a'], {}).stdout, /pause requested: a/)
   const second = runFleet(root, [], { a: HAPPY })

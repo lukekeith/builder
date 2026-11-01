@@ -805,18 +805,97 @@ export function branchExists(main, branch) {
 }
 
 /**
+ * Parks only a person can clear: your uncommitted work overlapping a landing (and the words a 5.x
+ * fleet row used for it), the target checked out elsewhere, your walk, a revision, the config.
+ * Each one carries choices (parkChoices) — a test feeds every alternative's producer (D6).
+ */
+export const HUMAN_STEP = /^needs you: |uncommitted changes are in the way|is checked out in |waiting for your walk|^revising|^config change needed/
+
+/** The human-step park reasons the fleet writes itself (agent-walk writes `waiting for your walk`). */
+export const PARK_REASONS = {
+  /** D2: the landing ran into the user's uncommitted changes — the count and the first three files. */
+  overlap: (files) => `needs you: your uncommitted changes overlap this feature — ${files.length} file${files.length === 1 ? '' : 's'}: ${[...files.slice(0, 3), ...(files.length > 3 ? ['…'] : [])].join(', ')} — next: /builder:fleet:status`,
+  checkedOut: (target, wt, feature) => `shipped, but ${target} is checked out in ${wt}, so it can't be landed from here — next: switch that worktree to another branch, then /builder:fleet ${feature}`,
+  config: (target, branch, path) => `config change needed — ${branch} changes ${path}, which is yours to change — next: read git diff ${target}...${branch} -- ${path}, apply what you want on ${target}, drop it from the branch (git checkout ${target} -- ${path} in its worktree, commit), then /builder:agent`,
+  revising: (folder) => `revising — next: /builder:revise --path ${folder}`,
+}
+
+const LEAVE = { label: 'Leave it for now', command: null }
+const fleetVerb = (feature, args) => `node <builder>/scripts/fleet.mjs --land ${feature} ${args}`
+
+/**
+ * What a person can do about a human-step park, as `[{ label, command }]` — the options the next
+ * session's picker offers, leaving it always last (command null: nothing changes). `[]` for a park
+ * that is not human-only. `folder` is the feature's registry folder.
+ */
+export function parkChoices({ feature, reason, folder = feature }) {
+  const r = unquote(reason ?? '')
+  if (!HUMAN_STEP.test(r)) return []
+  const { next } = parkParts(r)
+  if (/^needs you: your uncommitted changes overlap|uncommitted changes are in the way/.test(r))
+    return [
+      { label: 'Commit my changes, then land', command: fleetVerb(feature, '--commit-mine "<message>"') },
+      { label: 'Set my changes aside, land, put them back', command: fleetVerb(feature, '--set-aside') },
+      LEAVE,
+    ]
+  const wt = /is checked out in (.+?)(?:, so it can't| — |\)|$)/.exec(r)?.[1]
+  if (wt) return [{ label: `Switch ${wt} to another branch, then land it`, command: `/builder:fleet ${feature}` }, LEAVE]
+  if (/^waiting for your walk/.test(r)) return [{ label: 'Walk it yourself now', command: next ?? `/builder:resume --path ${folder}` }, LEAVE]
+  if (/^revising/.test(r)) return [{ label: 'Revise it', command: next ?? `/builder:revise --path ${folder}` }, LEAVE]
+  if (/^config change needed/.test(r)) return [{ label: 'Take what you want of the config change yourself and drop it from the branch (the next step says how), then rebuild', command: `/builder:agent --path ${folder}` }, LEAVE]
+  return []
+}
+
+/** A park record's `## Your choices` section. */
+export const choicesSection = (choices) => ['## Your choices', ...choices.map((c, i) => `${i + 1}. ${c.label}${c.command ? ` — \`${c.command}\`` : ''}`)].join('\n')
+
+/**
+ * The park record for a landing your uncommitted changes refused (D2): every file, the branch and
+ * the sha the finished work waits at, and the three choices. `history` is the earlier record's.
+ */
+export function overlapRecord({ feature, reason, files, branch, sha, target, date, history = '' }) {
+  const { why } = parkParts(reason)
+  return [
+    `# ${feature} — parked`,
+    `parked: ${date} ${sha} · by the fleet, landing it`,
+    'kind: human-step',
+    `blocked: "${reason}"`,
+    '',
+    '## What is stuck',
+    `The work is done and waiting on ${branch} at ${sha} — built, verified and merge-tested; only landing it on ${target} is left. ` +
+      `Your uncommitted changes in ${target}'s checkout touch ${files.length === 1 ? 'a file' : `${files.length} files`} the feature also changes, so builder stopped before touching any of them:`,
+    ...files.map((f) => `- ${f}`),
+    '',
+    choicesSection(parkChoices({ feature, reason })),
+    '',
+    'Builder never commits, sets aside or discards your changes without one of these answers. Leave it, and the next fleet run lands it once your changes no longer overlap it.',
+    '',
+    '## Recommended next step',
+    '/builder:fleet:status — it shows these choices as one picker',
+    '',
+    '## History',
+    ...(history ? [history] : []),
+    `- ${date} parked — ${why}`,
+    '',
+  ].join('\n')
+}
+
+/**
  * The block route() appends to fleet.out when a feature parks or fails — what stopped, why, the next
  * step, and where the park record is (PARKED.md, committed on the feature's branch, so it outlives
  * the worktree). `retry` names the automatic retry the fleet starts at once, when it does.
  */
-export function parkBlock({ feature, status, reason, record = null, branch = null, log = null, retry = null, at = new Date() }) {
+export function parkBlock({ feature, status, reason, choices = [], record = null, branch = null, log = null, retry = null, at = new Date() }) {
   const { why, next } = parkParts(reason ?? '')
   const stamp = `${at.toISOString().slice(0, 16).replace('T', ' ')}Z`
+  // D6: a park only a person can clear says what they can do about it.
+  if (status === 'parked' && HUMAN_STEP.test(reason ?? '') && !choices.some((c) => c.command)) throw new Error(`a human-step park needs a choice that moves it forward, and has no choice: ${reason}`)
   return [
     '',
     `[${stamp}] ⛔ ${feature} ${status}`,
     `  why:    ${why || 'no reason recorded'}`,
     `  next:   ${next ?? RETRY_NEXT}`,
+    ...(choices.length ? ['  choices:', ...choices.map((c, i) => `    ${i + 1}. ${c.label}${c.command ? ` — ${c.command}` : ''}`)] : []),
     ...(record ? [`  record: ${record}${branch ? ` (committed on ${branch})` : ''}`] : []),
     ...(log && !String(reason).includes(log) ? [`  log:    ${log}`] : []),
     ...(retry ? [`  the fleet retries it now — ${retry}`] : []),
