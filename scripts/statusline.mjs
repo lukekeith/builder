@@ -6,12 +6,16 @@
  * chat whose ledger moved in the last 5 minutes, and the verifier's running requests. A feature the fleet
  * parked or failed reads `⛔ <feature>: <why>` — and stays, from fleet.json, after the fleet has
  * exited, until a new run changes the row; short of room the parks fold into `⛔ 2 parked —
- * /builder:fleet:status`. A running feature with no commit or ledger tick for 45 minutes gets a ⚠.
+ * /builder:fleet:status`. A park that needs your answer (your uncommitted changes in a landing's
+ * way) leads instead: `⛔ <feature> needs you: <why cut to fit> — /builder:fleet:status`, the command
+ * never cut — the why, then the name, the fleet's count, the bar and `builder` give way first.
+ * A running feature with no commit or ledger tick for 45 minutes gets a ⚠.
  * Prints nothing when nothing runs or waits on you — and nothing, exit 0, on any error.
  *
  *   node <plugin>/scripts/statusline.mjs --cwd <dir> [--width <n>] [--now <ms>]
  *
- * `--width` is this segment's budget in columns; whole trailing items drop to fit, `builder` and its bar never.
+ * `--width` is this segment's budget in columns; whole trailing items drop to fit, `builder` and its bar never
+ * (but for a needs-you park's command, above).
  *
  * Runs every couple of seconds, so it reads a handful of known files and spawns nothing.
  */
@@ -20,7 +24,7 @@ import { join, dirname, resolve } from 'node:path'
 import { uptime } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from './config.mjs'
-import { readProgress, rowProgress, progressBar, mergedThisRun, fleetStops, stallOf, newLandings } from './fleet-core.mjs'
+import { readProgress, rowProgress, progressBar, mergedThisRun, fleetStops, stallOf, newLandings, needsYouWhy } from './fleet-core.mjs'
 import { parseManifest } from './manifest.mjs'
 
 export const FRESH_MS = 5 * 60 * 1000
@@ -115,6 +119,31 @@ export function parkItems(stops, budget) {
 }
 
 /**
+ * D4: the parks that need you, as one item in `budget` columns — the longest form that fits, and the
+ * command to choose always whole: `⛔ <f> needs you: <why cut to fit> — /builder:fleet:status`,
+ * `⛔ <f> needs you — …` (`⛔ a, b need you — …`, `⛔ 2 need you — …` for several), then the bare
+ * `⛔ /builder:fleet:status`. null when even that does not fit.
+ */
+export const NEED_CMD = '/builder:fleet:status'
+const NEED_WHY_MIN = 10
+export function needItem(need, budget) {
+  if (!need.length) return null
+  const tail = ` — ${NEED_CMD}`
+  const len = (s) => [...s].length
+  const forms = []
+  if (need.length === 1) {
+    const head = `⛔ ${need[0].name} needs you`
+    // The status line's why is the brief's, shorter: "your changes overlap it (2 files)".
+    const why = needsYouWhy(need[0].why).replace(/^your uncommitted changes /, 'your changes ')
+    const room = Math.min(WHY_MAX, budget - len(head) - 2 - len(tail))
+    if (why && room >= NEED_WHY_MIN) forms.push(`${head}: ${clip(why, room)}${tail}`)
+    forms.push(`${head}${tail}`)
+  } else forms.push(`⛔ ${need.map((s) => s.name).join(', ')} need you${tail}`, `⛔ ${need.length} need you${tail}`)
+  forms.push(`⛔ ${NEED_CMD}`)
+  return forms.find((f) => len(f) <= budget) ?? null
+}
+
+/**
  * What landed since the status was last opened, longest form first:
  * `✔ a merged — /builder:fleet:status` → `✔ a merged` → `✔ 1 merged`.
  */
@@ -198,19 +227,40 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     const builds = buildItems(roots.main, cfg.registry, now, fleet?.names ?? new Set())
     const rest = [...builds.items, ...verifyItems(roots.main, now, bootTime)]
     const [lead, ...running] = fleet?.items ?? []
-    const stops = fleet?.stops ?? []
+    const all = fleet?.stops ?? []
+    const need = all.filter((s) => s.needsYou)
+    const stops = all.filter((s) => !s.needsYou)
     const landings = fleet?.landed ?? []
-    if (!lead && !running.length && !rest.length && !stops.length && !landings.length) return ''
+    if (!lead && !running.length && !rest.length && !all.length && !landings.length) return ''
     // One bar for everything with progress — the mean of the fleet's features and in-chat builds.
     // Verifier runs alone have none, and get the name without a bar.
     const pcts = [...(fleet?.pcts ?? []), ...builds.pcts]
     const head = pcts.length ? `builder ${progressBar(pcts.reduce((a, b) => a + b, 0) / pcts.length)}` : 'builder'
     // The parks get their room first, after `builder` and the fleet's count; the rest fit after them.
-    const fixed = [head, ...(lead ? [lead] : [])]
+    let fixed = [head, ...(lead ? [lead] : [])]
+    const after = [...running, ...rest]
+    // D4: a park that needs you comes before everything but `builder`, and its command is never cut —
+    // the fleet's count, then the bar, then `builder` itself give way first, so it fits down to 24 columns.
+    let needs = null
+    if (need.length) {
+      const n = stops.length + after.length + (landings.length ? 1 : 0)
+      const reserve = n ? [...` +${n} more`].length : 0
+      const tries = [fixed, [head], ['builder'], []]
+      // Room for a ` +N more` after it when there is more to come — unless keeping it would cost the
+      // feature's name (the rest then goes) or what precedes it.
+      for (const t of tries) {
+        const budget = width - [...t.join(' · ')].length - (t.length ? 3 : 0)
+        const roomy = needItem(need, budget - reserve)
+        needs = roomy && roomy !== `⛔ ${NEED_CMD}` ? roomy : needItem(need, budget)
+        if (needs) {
+          fixed = [...t, needs]
+          break
+        }
+      }
+    }
     // A landing is never folded into "+N more": it gets room right after the parks and shrinks to fit.
     // The parks keep their priority, but give up room (down to their folded count) for its short form
     // and for the ` +N more` that follows when more items come after it.
-    const after = [...running, ...rest]
     const tail = after.length ? [...` +${after.length} more`].length : 0
     const room = width - [...fixed.join(' · ')].length - 3
     const forms = landedForms(landings)
@@ -218,7 +268,7 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
     let parks = parkItems(stops, room)
     if (floor && parks.length && [...parks.join(' · ')].length + floor > room) parks = parkItems(stops, room - floor)
     let out
-    if (!forms.length) out = fit([...fixed, ...parks, ...after], width)
+    if (!forms.length) out = fit([...fixed, ...parks, ...after], width, needs ? fixed.length : 1)
     else {
       const keep = fixed.length + parks.length + 1
       for (const form of forms) {
@@ -226,6 +276,8 @@ export function render({ cwd, width = 120, now = Date.now(), bootTime = Date.now
         if ([...out].length <= width) break
       }
     }
+    // What needs you is never cut: when the rest crowds it, the rest goes.
+    if (needs && [...out].length > width) out = fixed.join(' · ')
     // The last resort: a line that still does not fit is cut, never left to overflow.
     return clip(out, width)
   } catch {

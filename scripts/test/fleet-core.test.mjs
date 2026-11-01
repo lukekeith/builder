@@ -5,7 +5,7 @@ const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
-import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -519,6 +519,36 @@ test('renderStatus lists each parked feature with why and the recommended next s
   assert.match(out, /^- \*\*p\*\* — the walk keeps failing on the pane default\n {2}next: a human walk, then \/builder:signoff --path docs\/features\/p$/m)
   assert.match(out, /^- \*\*q\*\* — run cap \(12\) reached\n {2}next: \/builder:agent — naming it again unparks it and retries$/m, 'no next step written → the retry')
   assert.doesNotMatch(out.slice(out.indexOf('## Parked')), /\*\*r\*\*/)
+})
+
+test('a needs-you park: fleetStops marks it, its short why counts the files, --status lists every file', () => {
+  const reason = PARK_REASONS.overlap(['apps/web/a.ts', 'apps/web/b.ts'])
+  const fleet = { features: {
+    n: { status: 'parked', reason, overlap: ['apps/web/a.ts', 'apps/web/b.ts'] },
+    o: { status: 'parked', reason: 'uncommitted changes are in the way — next: /builder:agent' },
+    p: { status: 'parked', reason: 'plan wants to split — next: /builder:revise' },
+  } }
+  const stops = fleetStops(fleet)
+  assert.equal(stops[0].needsYou, true)
+  assert.equal(stops[1].needsYou, true, 'the words a 5.x row used for it')
+  assert.equal('needsYou' in stops[2], false)
+  assert.ok(NEEDS_YOU.test(reason))
+  assert.equal(needsYouWhy(stops[0].why), 'your uncommitted changes overlap it (2 files)')
+  assert.equal(needsYouWhy(parkParts(PARK_REASONS.overlap(['x'])).why), 'your uncommitted changes overlap it (1 file)')
+  assert.equal(needsYouWhy('uncommitted changes are in the way'), 'uncommitted changes are in the way')
+  const out = renderStatus(fleet)
+  assert.match(out, /^- \*\*n\*\* — needs you: your uncommitted changes overlap this feature — 2 files: apps\/web\/a\.ts, apps\/web\/b\.ts\n {2}next: \/builder:fleet:status\n {2}files: apps\/web\/a\.ts, apps\/web\/b\.ts$/m)
+  assert.doesNotMatch(out, /\*\*p\*\*[^\n]*\n[^\n]*\n {2}files:/)
+})
+
+test('setAsideConflicts: the set-aside conflict notes whose stash is still there', () => {
+  const main = mkdtempSync(join(tmpdir(), 'sac-'))
+  mkdirSync(join(main, '.git', 'logs', 'refs'), { recursive: true })
+  const note = (f, sha) => `⚠ ${f} landed on main, but your changes set aside for it came back with conflicts in 1 file: a.ts — resolve them, then git stash drop the stash "builder: before landing ${f}" (${sha}); it is kept until you do`
+  const fleet = { features: {}, notes: [note('kept', 'abc1234'), note('gone', 'def5678'), '⚠ x will need you to land: 2 files you are editing overlap it — /builder:fleet:status', 'No agent_walk.reset — dev-DB state accumulates from one walk to the next.'] }
+  writeFileSync(join(main, '.git', 'logs', 'refs', 'stash'), `0000000000000000000000000000000000000000 abc1234ffffffffffffffffffffffffffffffffff A <a> 1 +0000\tOn main: builder: before landing kept\n`)
+  assert.deepEqual(setAsideConflicts(fleet, main), [note('kept', 'abc1234')])
+  assert.deepEqual(setAsideConflicts(fleet, join(main, 'nowhere')), [note('kept', 'abc1234'), note('gone', 'def5678')], 'no .git to read: every one is kept')
 })
 
 test('duration is compact; laneTotals sums ms per lane', () => {

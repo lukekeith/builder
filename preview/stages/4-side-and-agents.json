@@ -665,9 +665,9 @@
         }
       ],
       "stamp": {
-        "hash": "f47f76b769bb",
+        "hash": "a7f9988a28d4",
         "version": "5.5.0",
-        "date": "2026-10-29"
+        "date": "2026-11-01"
       }
     },
     {
@@ -728,9 +728,9 @@
         }
       ],
       "stamp": {
-        "hash": "7bcc070a6eb1",
+        "hash": "31410c792a23",
         "version": "5.5.0",
-        "date": "2026-10-29"
+        "date": "2026-11-01"
       }
     },
     {
@@ -759,9 +759,9 @@
         }
       ],
       "stamp": {
-        "hash": "50dede0e5e10",
+        "hash": "5d21e789bf68",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-11-01"
       }
     },
     {
@@ -833,6 +833,77 @@
         "hash": "b8133d673dc0",
         "version": "5.5.0",
         "date": "2026-10-29"
+      }
+    },
+    {
+      "id": "fleet-needs-you",
+      "skill": "fleet",
+      "title": "Fleet: a landing that needs you",
+      "when": "The fleet finished a feature, but your uncommitted edits in the target checkout touch files it changes — the landing parks as needs you, and the next session raises it.",
+      "source": "skills/fleet/SKILL.md §A park that needs you — its choices",
+      "sources": [
+        "commands/fleet/status.md §`/builder:fleet:status` — where the fleet stands",
+        "docs/guide.md §Hooks"
+      ],
+      "feature": "portal-downloads",
+      "turns": [
+        {
+          "role": "note",
+          "text": "Overnight the fleet finished portal-downloads, but you had left edits in two of the files it changes on `main`, so it stopped before touching them. This session's brief carried `- ⛔ portal-downloads needs you — your uncommitted changes overlap it (2 files) — /builder:fleet:status to choose`, and the status line reads `builder · ⛔ portal-downloads needs you: your changes overlap it (2 files) — /builder:fleet:status` (narrow: `builder · ⛔ /builder:fleet:status` — the command is never cut)."
+        },
+        {
+          "role": "user",
+          "text": "/builder:fleet:status"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs --status)"
+        },
+        {
+          "role": "claude",
+          "text": "# builder fleet — 1 feature(s): 1 parked · ▓▓▓▓▓▓▓▓▓▓ 97%\n\nmerges into **main**\n\n9 archived (last: cert-tags, 40m ago) · /builder:fleet:status --archived for the latest 20\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| portal-downloads | parked | none · end | ▓▓▓▓▓▓▓▓▓▓ 97% · shipped | 4 | 2h14m | needs you: your uncommitted changes overlap this feature — 2 files: apps/api/src/certs/download.ts, apps/web/src/certs/DownloadButton.tsx | — |\n\n## Parked\n\n- **portal-downloads** — needs you: your uncommitted changes overlap this feature — 2 files: apps/api/src/certs/download.ts, apps/web/src/certs/DownloadButton.tsx\n  next: /builder:fleet:status\n  files: apps/api/src/certs/download.ts, apps/web/src/certs/DownloadButton.tsx\n\n**`portal-downloads` is ready to land on `main`, but it needs you.** It's built, verified and merge-tested on `builder/portal-downloads`. Landing it would change 2 files you have uncommitted edits in, so builder stopped before touching either of them:\n\n- `apps/api/src/certs/download.ts`\n- `apps/web/src/certs/DownloadButton.tsx`\n\nWhat each choice does:\n\n- **Set my changes aside, land, put them back** — all your uncommitted changes go into a stash named `builder: before landing portal-downloads`, the feature lands, and your changes come back on top. If one clashes with what landed, the stash is kept, the files are listed and you're told how to finish — builder never drops or force-resolves them.\n- **Commit my changes, then land** — you see the files and a commit message first; they're committed on `main` only once you approve, then the feature lands on top.\n- **Leave it for now** — nothing changes; the reminder stays, and the next fleet run lands it once your changes no longer overlap it.\n\n**I recommend setting them aside** — only a few files: if one clashes when it comes back, it's quick to settle, and nothing of yours is committed under a message you didn't write."
+        },
+        {
+          "role": "picker",
+          "question": "How should `portal-downloads` land?",
+          "header": "portal-downloads",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Set my changes aside, land, put them back (Recommended)",
+              "description": "Your changes go into a named stash, the feature lands, your changes come back on top. A clash keeps the stash and lists the files."
+            },
+            {
+              "label": "Commit my changes, then land",
+              "description": "You see the files and a commit message first; nothing is committed until you approve."
+            },
+            {
+              "label": "Leave it for now",
+              "description": "Nothing changes; the reminder stays."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Set my changes aside, land, put them back"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs --land portal-downloads --set-aside)"
+        },
+        {
+          "role": "claude",
+          "text": "✓ portal-downloads landed on main — merge 3f9c2ab.\nYour changes were set aside for it and are back as you left them; the stash is dropped.\n\nNext: test portal-downloads on `main` — it's agent-verified, not human-tested."
+        },
+        {
+          "role": "note",
+          "text": "Over 3 files the recommendation flips to **Commit my changes, then land** (a clash on putting them back is likelier, and it would be left in your checkout). That choice shows one more screen first — the files the commit holds and a proposed message, with **Commit with this message (Recommended)** · **I'll write the message** · **Don't commit — leave it** — and commits only on the answer. Exit 1 shows the output whole (a clash: each file and the steps to finish, the stash kept); 2 is a refusal with nothing touched; 3 means a fleet is running — choose again when it ends."
+        }
+      ],
+      "stamp": {
+        "hash": "4e7e0f71c75f",
+        "version": "5.5.0",
+        "date": "2026-11-01"
       }
     },
     {
@@ -1073,9 +1144,9 @@
         }
       ],
       "stamp": {
-        "hash": "c7e5e5c3cf4a",
+        "hash": "e397866e21ea",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-11-01"
       }
     },
     {
@@ -1106,9 +1177,9 @@
         }
       ],
       "stamp": {
-        "hash": "c7e5e5c3cf4a",
+        "hash": "e397866e21ea",
         "version": "5.5.0",
-        "date": "2026-10-28"
+        "date": "2026-11-01"
       }
     }
   ]

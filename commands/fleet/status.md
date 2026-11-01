@@ -13,7 +13,13 @@ brief stop announcing what landed before now (`✔ <feature> merged`).
 Reply with its output **as markdown, never inside a code fence**: the heading line, then the table
 as a markdown table (the terminal renders it; fenced, it shows as raw pipes), then the `## Parked`
 list if there is one — each parked feature with its why and its `next:` step — then any notes as
-bullets. Change no cell. Then stop — unless the fleet has ended (below), when the wrap-up follows.
+bullets. Change no cell. Then stop — unless a park needs you or the fleet has ended (below).
+
+**A park that needs you** — a `## Parked` entry whose why starts `needs you:` (your uncommitted
+changes in a landing's way), or a note that your set-aside changes came back with conflicts: after
+the reply, raise it exactly as the fleet skill's §1 *A park that needs you — its choices* says
+([SKILL](../../skills/fleet/SKILL.md)) — the review of its files in plain words, one picker with its
+three choices, then the `--land` command the answer names, its exit relayed.
 
 How to read it, when asked:
 

@@ -16,7 +16,11 @@
  *                                          own runs found (a merge it could not finish, a walk env
  *                                          that would not start, no progress) is on no manifest's
  *                                          `blocked:` line, so this is the only place a new
- *                                          session hears of it. fleet.json only — no git, no spawn.
+ *                                          session hears of it. A park that needs you (your uncommitted
+ *                                          changes in a landing's way) reads `⛔ <f> needs you — <why> —
+ *                                          /builder:fleet:status to choose`; set-aside changes that came
+ *                                          back with conflicts follow while their stash is kept.
+ *                                          fleet.json and .git's stash log only — no git, no spawn.
  *
  * Prints nothing on any error (the hook stays silent).
  */
@@ -31,18 +35,21 @@ const parksMode = args.includes('--parks')
 const landedMode = args.includes('--landed')
 const project = args.filter((a) => !a.startsWith('--'))[0] || process.env.CLAUDE_PROJECT_DIR || process.cwd()
 
-/** The fleet's parked and failed rows ([] when there is no fleet, or it can't be read). */
-async function stops() {
+/** The fleet's parked and failed rows ([] when there is no fleet, or it can't be read); with `notes`,
+ *  `{ stops, notes }` — the notes that wait on you too (set-aside changes back with conflicts). */
+async function stops({ notes = false } = {}) {
   try {
-    const { fleetStops } = await import('../scripts/fleet-core.mjs')
+    const { fleetStops, setAsideConflicts } = await import('../scripts/fleet-core.mjs')
     const { repoRoots } = await import('../scripts/statusline.mjs')
     // The fleet keeps its state in the main checkout, wherever this session was opened.
     const main = repoRoots(project)?.main ?? project
     const { loadConfig } = await import('../scripts/config.mjs')
     const cfg = loadConfig(main)
-    return fleetStops(JSON.parse(readFileSync(join(main, '.builder', 'fleet', 'fleet.json'), 'utf8')), { main, registry: cfg.ok ? cfg.registry : null })
+    const fleet = JSON.parse(readFileSync(join(main, '.builder', 'fleet', 'fleet.json'), 'utf8'))
+    const rows = fleetStops(fleet, { main, registry: cfg.ok ? cfg.registry : null })
+    return notes ? { stops: rows, notes: setAsideConflicts(fleet, main) } : rows
   } catch {
-    return []
+    return notes ? { stops: [], notes: [] } : []
   }
 }
 
@@ -54,7 +61,15 @@ try {
     const lines = newLandings(repoRoots(project)?.main ?? project).map(landingLine)
     if (lines.length) process.stdout.write(lines.join('\n'))
   } else if (parksMode) {
-    const lines = (await stops()).map((s) => `- ⛔ ${s.name} ${s.status}${s.why ? ` — ${s.why}` : ''} — next: ${s.next}`)
+    // A needs-you park waits on an answer, not a retry: it is raised with its choices (D3).
+    const { needsYouWhy } = await import('../scripts/fleet-core.mjs')
+    const found = await stops({ notes: true })
+    const lines = [
+      ...found.stops.map((s) => s.needsYou
+        ? `- ⛔ ${s.name} needs you — ${needsYouWhy(s.why)} — /builder:fleet:status to choose`
+        : `- ⛔ ${s.name} ${s.status}${s.why ? ` — ${s.why}` : ''} — next: ${s.next}`),
+      ...found.notes.map((n) => `- ${n}`),
+    ]
     if (lines.length) process.stdout.write(lines.join('\n'))
   } else {
     const stopped = new Set((await stops()).map((s) => s.name))

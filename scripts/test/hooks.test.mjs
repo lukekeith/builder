@@ -117,9 +117,26 @@ test('session-start: what the fleet parked or failed is listed with why and next
     busy: { status: 'building' },
   } }))
   const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
-  assert.match(text, /Stopped in the fleet — each waits on you \(\/builder:fleet:status has the table; naming one in \/builder:agent retries it\):\n- ⛔ note-tags parked — merge into main conflicted and an agent run couldn't settle it — next: finish the merge in \/wt\/note-tags, then \/builder:agent\n- ⛔ other failed — run timed out twice — both no output for 30 min \(the idle timeout\) — next: \/builder:agent to retry\n/)
+  assert.match(text, /Stopped in the fleet — each waits on you \(\/builder:fleet:status has the table; naming one in \/builder:agent retries it; [^\n]*\):\n- ⛔ note-tags parked — merge into main conflicted and an agent run couldn't settle it — next: finish the merge in \/wt\/note-tags, then \/builder:agent\n- ⛔ other failed — run timed out twice — both no output for 30 min \(the idle timeout\) — next: \/builder:agent to retry\n/)
   assert.doesNotMatch(text, /busy/)
   assert.doesNotMatch(text, /In flight/, 'the one in-flight feature is the parked one, said once')
+})
+
+test('session-start: a needs-you park is raised to choose, and set-aside changes that came back with conflicts are told while their stash is kept', () => {
+  const { root } = leanRepo('note-tags')
+  mkdirSync(join(root, '.builder', 'fleet'), { recursive: true })
+  const stash = git(root, 'rev-parse', 'HEAD').trim().slice(0, 7) // any sha the stash log names
+  const conflict = `⚠ pay-run landed on main, but your changes set aside for it came back with conflicts in 1 file: apps/web/a.ts — resolve them, then git stash drop the stash "builder: before landing pay-run" (${stash}); it is kept until you do`
+  writeFileSync(join(root, '.builder', 'fleet', 'fleet.json'), JSON.stringify({ features: {
+    'note-tags': { status: 'parked', reason: 'needs you: your uncommitted changes overlap this feature — 2 files: apps/web/a.ts, apps/web/b.ts — next: /builder:fleet:status', overlap: ['apps/web/a.ts', 'apps/web/b.ts'] },
+  }, notes: [conflict, 'No agent_walk.reset — dev-DB state accumulates from one walk to the next.'] }))
+  mkdirSync(join(root, '.git', 'logs', 'refs'), { recursive: true })
+  writeFileSync(join(root, '.git', 'logs', 'refs', 'stash'), `${'0'.repeat(40)} ${stash}${'f'.repeat(33)} A <a> 1 +0000\tOn main: builder: before landing pay-run\n`)
+  const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
+  assert.match(text, /\n- ⛔ note-tags needs you — your uncommitted changes overlap it \(2 files\) — \/builder:fleet:status to choose\n/)
+  assert.ok(text.includes(`\n- ${conflict}\n`), text)
+  assert.match(text, /needs you[^\n]*: say so at the start of your first reply/i)
+  assert.doesNotMatch(text, /dev-DB state/, 'only the notes that wait on you')
 })
 
 test('session-start: what the fleet merged since /builder:fleet:status was opened is told, once opened it is not', () => {
