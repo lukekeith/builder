@@ -29,7 +29,7 @@ output: `node <builder>/scripts/docs.mjs fleet-build --no-config --path <folder>
 AGENT-MODE §Agent mode in the build lane — then `node <builder>/scripts/docs.mjs fleet-setup` —
 EXECUTION §Setup and the part of the config the build acts on. The rest is read with
 `docs.mjs section` at the step that needs it — never EXECUTION §Model selection for a routine
-dispatch (dispatch.mjs names the model); when the last phase closes, this
+dispatch (dispatch.mjs names the model; §Dispatch, review, fix says when to raise it); when the last phase closes, this
 skill's §When the last phase signs (it names the others there); after an unpark, AGENT-MODE's
 pointer. A fleet build never reads REFERENCE §SPEC.md or §MANIFEST.md, nor EXECUTION's preamble,
 whose rules still bind: narrate at most one short line between tool calls, execute every task without
@@ -167,7 +167,7 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   included — the reason is printed beside it, e.g. `model: haiku (default — tiny)`), its `description`
   and its prompt. Every path it prints is relative to the repo root. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
-  the file and survives a crash. **The printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; never lower it.**
+  the file and survives a crash. **The printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; architecture or design work → opus; under `models=economy`, a block that leaves an algorithm or a multi-file choice open → sonnet. Never lower it** — `dispatch.mjs` refuses a `--model` below the printed one.
   Raise it with `--model <m>` on the dispatch, so the model that ran is recorded and rounds 4–5
   escalate one tier above it. The kinds:
 

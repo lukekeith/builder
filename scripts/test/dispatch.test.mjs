@@ -772,6 +772,23 @@ test('dispatch: --model overrides the printed model and is recorded; rounds 1–
   assert.match(bad.stderr, /--model must be one of haiku, sonnet, opus/)
 })
 
+test('dispatch: --model is raise-only — a tier below the default is refused for the final review, the agent walk and an implementer', () => {
+  const r = leanRepo('note-tags')
+  commitTask(r)
+  const ws = WS(r)
+  mkdirSync(join(ws, 'agent-walk', 'round-1'), { recursive: true })
+  writeFileSync(join(ws, 'agent-walk', 'round-1', 'report.md'), 'sha: abc\n')
+  writeFileSync(join(ws, 'walk.md'), '# note-tags — walk script\n')
+  for (const [args, low] of [[['final-review', r.rel], 'sonnet'], [['agent-walk', r.rel], 'haiku'], [['implementer', r.rel, '--task', '1'], 'haiku']]) {
+    const bad = run('dispatch.mjs', [...args, '--model', low], { cwd: r.root })
+    assert.equal(bad.status, 1, `${args[0]} --model ${low}`)
+    assert.match(bad.stderr, /--model only raises/, args[0])
+  }
+  // the default tier itself, or above it, is accepted
+  assert.equal(run('dispatch.mjs', ['final-review', r.rel, '--model', 'opus'], { cwd: r.root }).status, 0)
+  assert.equal(agentCall(run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--model', 'opus'], { cwd: r.root })).model, 'opus')
+})
+
 test('dispatch implementer: the brief carries the config\'s §Environment landmines and the ledger\'s env notes; with neither it carries neither', () => {
   const bare = leanRepo('note-tags')
   assert.equal(run('dispatch.mjs', ['implementer', bare.rel, '--task', '1'], { cwd: bare.root }).status, 0)

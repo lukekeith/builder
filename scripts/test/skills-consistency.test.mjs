@@ -986,7 +986,7 @@ test('one line per fact: short agent replies — the full reports stay in their 
   // a routine dispatch sends the model the Agent-call line names; §Model selection is for an escalation
   const build = read('skills/build/SKILL.md')
   assert.match(build, /send the model it names/)
-  assert.match(build, /the printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; never lower it/i)
+  assert.match(build, /the printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; architecture or design work → opus; under `models=economy`, a block that leaves an algorithm or a multi-file choice open → sonnet\. Never lower it\*\* — `dispatch\.mjs` refuses a `--model` below/i)
   assert.match(build, /--model <m>/)
   assert.doesNotMatch(build, /name the model yourself/)
   assert.doesNotMatch(build, /before the first dispatch,\s+`docs\.mjs section skills\/build\/EXECUTION\.md "Model selection"`/)
