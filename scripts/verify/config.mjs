@@ -231,6 +231,7 @@ export function normalizeVerify(raw) {
   return {
     workers,
     timeoutMs: durationMs(r.timeout, 15 * 60000),
+    runTimeoutMs: durationMs(r.run_timeout, 90 * 60000),
     setup: r.setup ?? null,
     setupInputs: list(r.setup_inputs ?? ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'composer.lock', 'Podfile.lock']),
     db,

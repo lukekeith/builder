@@ -215,7 +215,12 @@ async function main() {
         // A request the service keeps dying on is not "still running": say so. A second crash makes it
         // env-broken (serve.mjs MAX_CRASHES), so the next wait answers with that verdict.
         if (r.crashes) console.log(`${id}: ${r.state}, but the verifier service died ${plural(r.crashes, 'time')} running it${r.lastCrash ? ` (last: ${r.lastCrash})` : ''} — see .builder/verify/serve.log; call wait again for its verdict`)
-        else console.log(`${id}: still ${r.state} — call wait again`)
+        else {
+          // How long it has run, so a caller polling for hours sees that it has, not just "still running".
+          const t = r.startedAt ?? r.createdAt
+          const mins = t ? Math.floor((Date.now() - Date.parse(t)) / 60000) : null
+          console.log(`${id}: still ${r.state}${mins === null ? '' : ` (${mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}m`} so far)`} — call wait again`)
+        }
         process.exit(75)
       }
       await new Promise((res) => setTimeout(res, 1000))

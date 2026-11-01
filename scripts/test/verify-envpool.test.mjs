@@ -149,3 +149,16 @@ test('psql missing from PATH says verify.db needs it', async () => {
     process.env.PATH = saved
   }
 })
+
+test('probe: null when the server answers quickly; a reason when it fails or answers slowly; null with no db', () => {
+  const at = (ms) => {
+    let t = 0
+    return () => (t += ms)
+  }
+  assert.equal(createPool(V(), { probeDb: () => {}, now: at(10) }).probe(), null)
+  const refused = createPool(V(), { probeDb: () => { throw new Error('could not connect: Connection refused (postgres://u:p@localhost:5432/app)') } }).probe()
+  assert.match(refused, /did not answer SELECT 1: .*Connection refused/)
+  assert.doesNotMatch(refused, /u:p@/)
+  assert.match(createPool(V(), { probeDb: () => {}, now: at(12000) }).probe(), /took 12s to answer SELECT 1/)
+  assert.equal(createPool(V({ db: null }), {}).probe(), null)
+})
