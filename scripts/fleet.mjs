@@ -518,7 +518,10 @@ const TARGET_FROM = flag('--into') ? '--into' : CFG.mergeIntoCurrent ? 'merge_in
 // --land: before the target is resolved — the row lands where its fleet lands.
 if (LAND) {
   const row = Object.hasOwn(fleet.features, LAND.feature) ? fleet.features[LAND.feature] : null
-  if (runningPid) refuseLand(`A fleet is running in this repo (pid ${runningPid}) — wait for it to finish (fleet.mjs --wait), then run this again`, 3)
+  if (runningPid) {
+    console.error(`A fleet is running in this repo (pid ${runningPid}), so ${LAND.feature} can't land now — nothing was changed. When the run ends, choose again from /builder:fleet:status.`)
+    process.exit(3)
+  }
   if (!row) refuseLand(`${LAND.feature} isn't in this fleet`)
   if (row.status !== 'parked' || !LAND_PARK.test(row.reason ?? '')) refuseLand(`${LAND.feature} isn't parked waiting on your uncommitted changes (it is ${row.status}${row.reason ? `: ${parkParts(row.reason).why}` : ''})`)
 }

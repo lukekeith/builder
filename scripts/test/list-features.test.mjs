@@ -32,6 +32,27 @@ function repo(manifests, files = {}) {
   return Object.fromEntries(JSON.parse(r.stdout).features.map((f) => [f.feature, f]))
 }
 
+test('--json raises a fleet park that needs you, with its short why and where to choose — other parks are not in it', () => {
+  const root = setup({ a: 'state: building\nbranch: builder/a', b: 'state: building\nbranch: builder/b' })
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: root })
+  for (const b of ['builder/a', 'builder/b']) execFileSync('git', ['branch', b], { cwd: root })
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  const fleet = {
+    features: {
+      a: { status: 'parked', branch: 'builder/a', reason: 'needs you: your uncommitted changes overlap this feature — 2 files: app/x.txt, app/y.txt — next: /builder:fleet:status to choose', overlap: ['app/x.txt', 'app/y.txt'] },
+      b: { status: 'parked', branch: 'builder/b', reason: 'the merge tier went red — next: /builder:agent to work the fixes' },
+    },
+  }
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify(fleet))
+  const r = list(root, '--json')
+  assert.equal(r.status, 0, r.stderr)
+  const out = JSON.parse(r.stdout)
+  assert.deepEqual(out.needsYou, [{ feature: 'a', why: 'your uncommitted changes overlap it (2 files)', choose: '/builder:fleet:status' }])
+  // With no fleet, or none waiting on you, the field is absent.
+  const quiet = list(setup({ c: 'state: building' }), '--json')
+  assert.equal(JSON.parse(quiet.stdout).needsYou, undefined)
+})
+
 test('a parked feature says so, with its reason', () => {
   const rows = repo({ p: 'state: audited\nblocked: "plan wants to split — clears when you split it"' })
   assert.equal(rows.p.nextStep, '⛔ parked — plan wants to split — clears when you split it')

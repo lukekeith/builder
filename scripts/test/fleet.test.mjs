@@ -1365,7 +1365,9 @@ test('--land refuses, touching nothing: no message, an unknown feature, one not 
   refused(['--land', 'a', '--commit-mine', 'x'], 2, /^This checkout is on other, not main/)
   git(root, 'switch', '-q', 'main')
   writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
-  refused(['--land', 'a', '--set-aside'], 3, /A fleet is running in this repo/)
+  refused(['--land', 'a', '--set-aside'], 3, /^A fleet is running in this repo \(pid \d+\), so a can't land now — nothing was changed\. When the run ends, choose again from \/builder:fleet:status\.$/m)
+  const named = runFleet(root, ['--land', 'a', '--set-aside'], { a: [] })
+  assert.doesNotMatch(named.stderr, /Name specs to add them|run this again|Usage:/, 'the running-fleet refusal is its own message, not the generic one')
   unlinkSync(join(root, '.builder/fleet/lock'))
   const other = JSON.parse(readFileSync(fj, 'utf8'))
   other.features.a.reason = 'the merge tier went red on main as it is now: t1 — next: /builder:agent to work the fixes and land it'

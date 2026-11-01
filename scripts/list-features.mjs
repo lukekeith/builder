@@ -27,7 +27,7 @@
  * (scripts/brainstorm-file.mjs). Listed with their resume command; only the header is read.
  *
  *   node <plugin>/scripts/list-features.mjs               # table
- *   node <plugin>/scripts/list-features.mjs --json        # machine-readable
+ *   node <plugin>/scripts/list-features.mjs --json        # machine-readable; `needsYou` lists fleet parks waiting on your answer
  *   node <plugin>/scripts/list-features.mjs --check       # resume-safety + size warnings
  *   node <plugin>/scripts/list-features.mjs --all         # include DONE features
  *   node <plugin>/scripts/list-features.mjs --status      # /builder:status — markdown table, most recent first
@@ -42,7 +42,8 @@ import { parseManifest, isSet } from './manifest.mjs'
 import { parseTestPlan } from './profile.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { draftRows, openRevision } from './brainstorm-file.mjs'
-import { ago, landedRows, buildingInSession, sharedBranch } from './fleet-core.mjs'
+import { ago, landedRows, buildingInSession, sharedBranch, loadFleet, fleetStops, needsYouWhy } from './fleet-core.mjs'
+import { repoRoots } from './statusline.mjs'
 import { newerRelease, newerLine } from './newer.mjs'
 import { fileURLToPath } from 'node:url'
 
@@ -538,8 +539,25 @@ if (asStatus) {
   process.exit(0)
 }
 
+/**
+ * The fleet's parks that wait on the user's answer (a landing their uncommitted changes refused) — D3:
+ * /builder:resume names them above its picker and sends the user to /builder:fleet:status to choose.
+ * Read from the main checkout's fleet.json; none, or no fleet → [].
+ */
+function needsYou() {
+  try {
+    const main = repoRoots(ROOT)?.main ?? ROOT
+    return fleetStops(loadFleet(main), { main, registry: CFG.registry })
+      .filter((s) => s.needsYou)
+      .map((s) => ({ feature: s.name, why: needsYouWhy(s.why), choose: '/builder:fleet:status' }))
+  } catch {
+    return []
+  }
+}
+
 if (asJson) {
-  console.log(JSON.stringify({ features: rows, ...(newer?.vendored && { builder: newer }) }, null, 2))
+  const waiting = needsYou()
+  console.log(JSON.stringify({ features: rows, ...(waiting.length && { needsYou: waiting }), ...(newer?.vendored && { builder: newer }) }, null, 2))
   process.exit(0)
 }
 
