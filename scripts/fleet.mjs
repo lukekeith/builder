@@ -1398,7 +1398,7 @@ function clearBlocked(wt, feature) {
  *  mid-walk skips the reset: the walk's database already carries its migrations and its data, and a
  *  reset can take minutes (a copy of the dev database). */
 async function bringUpWalkEnv(feature, { reset = true } = {}, f = fleet.features[feature]) {
-  if (reset && !hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${AW.reset}`
+  if (reset && !hook(AW.reset, f.worktree, feature)) return `agent_walk.reset failed: ${fill(AW.reset, feature)}`
   // `smoke` without `start` has nothing to probe — ignored, as the spec says.
   if (AW.start && !(await startWalkEnv(feature, f))) return `walk env didn't come up — see ${f.startLog}`
   return null
@@ -1413,7 +1413,7 @@ async function fixWalkEnv(feature, why) {
   const prompt =
     `The builder fleet could not bring up the walk env for this worktree — the feature at --path ${specOf(feature)} on branch ${f.branch} — because ${why}. ` +
     `Find the cause and fix it in this branch — code, a migration, a dependency, a stale install${AW.sync ? ` (agent_walk.sync is \`${fill(AW.sync, feature)}\`)` : ''}. ` +
-    `The fleet runs ${AW.reset ? `reset \`${AW.reset}\`, then ` : ''}start \`${AW.start ?? '(none)'}\`${AW.smoke ? ` and polls smoke \`${AW.smoke}\`` : ''} with this run's environment; you may run them yourself to check, ` +
+    `The fleet runs ${AW.reset ? `reset \`${fill(AW.reset, feature)}\`, then ` : ''}start \`${AW.start ? fill(AW.start, feature) : '(none)'}\`${AW.smoke ? ` and polls smoke \`${fill(AW.smoke, feature)}\`` : ''} with this run's environment; you may run them yourself to check, ` +
     `but stop every process you started before you finish, and kill nothing you did not start — other worktrees share this machine. ` +
     `Commit the fix. Do not edit .claude/builder.md or the feature's MANIFEST.md. If the cause is outside this repo (a port another program holds, a service that is down), change nothing and say so in your last message. ` +
     `Never ask a question and run nothing in the background — nobody is there to answer, and this run ends when your last turn does.`
@@ -1474,7 +1474,7 @@ async function walkOne(feature) {
   } finally {
     await killStart(f)
     if (!hook(AW.stop, f.worktree, feature)) {
-      addNote(`agent_walk.stop failed after ${feature}: ${AW.stop}`)
+      addNote(`agent_walk.stop failed after ${feature}: ${fill(AW.stop, feature)}`)
       save()
     }
   }
@@ -2100,7 +2100,7 @@ async function walkBatch(batch) {
     for (const x of active) route(x, park(fleet.features[x], `the walk batch made no headway in four sessions — next: /builder:agent to retry; the last log says where it stopped`))
   } finally {
     await killStart(rec)
-    if (!hook(AW.stop, WALK_WT, '_walk')) addNote(`agent_walk.stop failed after a walk batch: ${AW.stop}`)
+    if (!hook(AW.stop, WALK_WT, '_walk')) addNote(`agent_walk.stop failed after a walk batch: ${fill(AW.stop, '_walk')}`)
     save()
   }
 }

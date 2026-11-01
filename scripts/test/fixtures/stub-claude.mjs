@@ -71,6 +71,7 @@ if (/stopped on conflicts/.test(prompt)) {
 if (/could not bring up the walk env/.test(prompt)) {
   const step = next(`${feature}:env`, 'NOOP')
   log(`envfix ${feature} ${step}`)
+  writeFileSync(join(S, `${feature}.envfix-prompt.txt`), prompt)
   if (step === 'FIX') {
     writeFileSync('walk-env-fixed', 'yes\n')
     execFileSync('git', ['add', 'walk-env-fixed'])

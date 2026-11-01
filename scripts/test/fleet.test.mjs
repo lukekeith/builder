@@ -1035,6 +1035,16 @@ test('a smoke that never passes gets one agent fix run, then parks and skips the
   assert.equal(alive(pid), false, 'the start process is gone')
 })
 
+test('the walk-env fix run and its park name reset, start and smoke with {feature} filled in', () => {
+  const root = makeRepo(['s'], { reset: 'test -f reset-ok-{feature}', lines: ['start: echo up-{feature}; sleep 30', 'smoke: test -f smoke-ok-{feature}'] })
+  const r = runFleet(root, ['s'], { s: HAPPY }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '1500' })
+  assert.equal(r.fleet.features.s.status, 'parked')
+  assert.match(r.fleet.features.s.reason, /agent_walk\.reset failed: test -f reset-ok-s\b/)
+  const prompt = readFileSync(join(root, '.stub', 's.envfix-prompt.txt'), 'utf8')
+  for (const x of ['reset `test -f reset-ok-s`', 'start `echo up-s; sleep 30`', 'smoke `test -f smoke-ok-s`']) assert.ok(prompt.includes(x), x)
+  assert.doesNotMatch(prompt + r.fleet.features.s.reason, /\{feature\}/)
+})
+
 test('a walk env the agent fix run repairs comes up, and the walk goes on', () => {
   const root = makeRepo(['s'], { lines: ['start: test -f walk-env-fixed && sleep 30', 'smoke: test -f walk-env-fixed'] })
   const r = runFleet(root, ['s'], { s: HAPPY, 's:env': ['FIX'] }, { ...FAST, FLEET_SMOKE_TIMEOUT_MS: '3000' })
