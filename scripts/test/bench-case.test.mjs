@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { specCommits, replanCommits, resetToAudited, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, planTasks, saveEvidence, removeClone } from '../bench-case.mjs'
+import { specCommits, replanCommits, resetToAudited, killableGroup, prepareClone, finishCase, applySpecs, maxPlanLines, planTasks, saveEvidence, removeClone, preflight } from '../bench-case.mjs'
 import { featureRange } from '../bench-replay-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -89,7 +89,7 @@ function fixture({ md = MD, base = {}, into = 'main', mfTarget, drift = false, s
   const clones = join(tmp, 'clones')
   // the clone for --out <tmp>/out: $BENCH_TMP/<out's parent's name>/<out's name>/clone
   const clone = join(clones, basename(tmp), 'out', 'clone')
-  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: clones, BENCH_KEEP_CLONES: '1', BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', ...env } })
+  const run = (args, env = {}) => spawnSync('node', [CASE, ...args], { encoding: 'utf8', env: { ...process.env, BENCH_LOCAL: local, BENCH_TMP: clones, BENCH_KEEP_CLONES: '1', BENCH_FLEET: STUB, BENCH_INSTALLED_PLUGINS: '/nonexistent', BENCH_PREFLIGHT: '0', ...env } })
   return { tmp, local, repo, merged, setRow, writeProfile, out, clone, run, range: featureRange(repo, merged) }
 }
 
@@ -221,6 +221,77 @@ test('--dry-run --replan names the mode, and refuses only when neither works', (
   const c = none.run(['c1', '--builder', REPO, '--out', none.out, '--dry-run', '--replan'])
   assert.equal(c.status, 2, c.stdout)
   assert.match(c.stderr, /^refused: --replan: /m)
+})
+
+/** A stub for preflight's commands: `answers` by the command and its first arg, else not found. */
+const stubExec = (answers, calls = []) => (cmd, args) => {
+  calls.push([cmd, ...args].join(' '))
+  const a = answers[`${cmd} ${args[0]}`] ?? answers[cmd]
+  return a ?? { status: null, error: { code: 'ENOENT' }, stdout: '', stderr: '' }
+}
+const GB = 1024 ** 3
+const DF = (freeKb) => ({ status: 0, stdout: `Filesystem 1024-blocks Used Available Capacity Mounted on\noverlay 61255492 39321600 ${freeKb} 68% /\n`, stderr: '' })
+const PG = { PGHOST: 'localhost', PGPORT: '55432' }
+
+test('preflight: nothing to say when the disk has room, Postgres answers and its container has room', () => {
+  const calls = []
+  const exec = stubExec({ pg_isready: { status: 0, stdout: 'accepting connections', stderr: '' }, 'docker ps': { status: 0, stdout: 'bench-pg\n', stderr: '' }, 'docker exec': DF(30 * 1024 * 1024) }, calls)
+  assert.deepEqual(preflight(PG, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec }), [])
+  assert.ok(calls.some((c) => /^pg_isready -h localhost -p 55432 /.test(c)), calls.join('\n'))
+  assert.ok(calls.some((c) => /^docker ps -a --filter publish=55432 /.test(c)), calls.join('\n'))
+  assert.ok(calls.some((c) => /^docker exec bench-pg df -Pk /.test(c)), calls.join('\n'))
+})
+
+test('preflight: a short host disk, a Postgres that does not answer, and a full container disk each refuse, saying how to fix it', () => {
+  const low = preflight({}, { cloneRoot: '/tmp', freeBytes: () => 5 * GB, minFreeGb: 20, exec: stubExec({}) })
+  assert.equal(low.length, 1)
+  assert.match(low[0], /only 5GB free under \/tmp .*BENCH_MIN_FREE_GB/)
+
+  const down = preflight(PG, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec: stubExec({ pg_isready: { status: 2, stdout: 'localhost:55432 - no response', stderr: '' }, 'docker ps': { status: 0, stdout: 'bench-pg\tExited (1) 12 hours ago\n', stderr: '' } }) })
+  assert.equal(down.length, 1)
+  assert.match(down[0], /Postgres at localhost:55432 is not accepting connections \(pg_isready: localhost:55432 - no response\)/)
+  assert.match(down[0], /container bench-pg is Exited \(1\) 12 hours ago — docker start bench-pg/)
+
+  const full = preflight(PG, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec: stubExec({ pg_isready: { status: 0, stdout: '', stderr: '' }, 'docker ps': { status: 0, stdout: 'bench-pg\n', stderr: '' }, 'docker exec': DF(3 * 1024 * 1024) }) })
+  assert.equal(full.length, 1)
+  assert.match(full[0], /the Docker container bench-pg serving Postgres :55432 has only 3GB free/)
+  assert.match(full[0], /Docker Desktop/)
+})
+
+test('preflight: the port comes from a postgres URL when PGPORT is unset; no Postgres in the env, no pg or docker check; missing tools are skipped', () => {
+  const calls = []
+  preflight({ DATABASE_URL: 'postgresql://u:p@db.local:6543/x' }, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec: stubExec({ pg_isready: { status: 0, stdout: '', stderr: '' } }, calls) })
+  assert.ok(calls.some((c) => /^pg_isready -h db\.local -p 6543 /.test(c)), calls.join('\n'))
+  const none = []
+  assert.deepEqual(preflight({ FOO: '1' }, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec: stubExec({}, none) }), [])
+  assert.deepEqual(none, [])
+  // pg_isready and docker absent: nothing to check with, nothing refused
+  assert.deepEqual(preflight(PG, { cloneRoot: '/tmp', freeBytes: () => 100 * GB, exec: stubExec({}) }), [])
+})
+
+test('a case whose preflight fails is refused at the dry run, before anything is cloned', () => {
+  const f = fixture()
+  const r = f.run(['c1', '--builder', REPO, '--out', f.out, '--dry-run'], { BENCH_PREFLIGHT: '1', BENCH_MIN_FREE_GB: '999999999' })
+  assert.equal(r.status, 2, r.stdout)
+  assert.match(r.stderr, /^refused: preflight: only \d+GB free under /m)
+  assert.equal(existsSync(f.clone), false)
+})
+
+test('a base that already holds a build of the feature is refused — its code would be in the clone, and the build would only re-check it', () => {
+  for (const state of ['building', 'built', 'shipped']) {
+    const f = fixture({ base: { 'docs/features/f/MANIFEST.md': `size: sm\nstate: ${state}\n`, 'docs/features/f/SPEC.md': '# f\n' } })
+    for (const extra of [[], ['--replan']]) {
+      const r = f.run(['c1', '--builder', REPO, '--out', f.out, '--dry-run', ...extra])
+      assert.equal(r.status, 2, `${state} ${extra}: ${r.stdout}`)
+      assert.match(r.stderr, new RegExp(`^refused: the base [0-9a-f]{12} already holds a build of f \\(its manifest says state: ${state}\\)`, 'm'))
+    }
+  }
+  // a base holding only the spec, at any state before the build, is a start like any other
+  for (const state of ['spec', 'audited', 'planned']) {
+    const f = fixture({ base: { 'docs/features/f/MANIFEST.md': `size: sm\nstate: ${state}\n`, 'docs/features/f/SPEC.md': '# f\n' } })
+    const r = f.run(['c1', '--builder', REPO, '--out', f.out, '--dry-run'])
+    assert.equal(r.status, 0, `${state}: ${r.stderr}`)
+  }
 })
 
 test('a case runs in a clone and never touches the repo', () => {

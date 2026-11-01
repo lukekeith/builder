@@ -27,11 +27,12 @@
  * Env: BENCH_LOCAL (<builder>/bench/local), BENCH_TMP ($TMPDIR/bench-suite), BENCH_FLEET (the fleet script — tests point it at a stub),
  * BENCH_CASE_FLEET_TIMEOUT_MS (24h, the fleet's whole run; the suite passes 3× the estimate), BENCH_SETUP_TIMEOUT_MS (20 min, the
  * profile's setup and teardown), BENCH_CASE_KILL_GRACE_MS (10s, SIGTERM to SIGKILL on a timeout or a stop),
- * BENCH_EVIDENCE_CAP_BYTES (50 MB, the largest file saveEvidence copies), BENCH_EVIDENCE_JSONL_CAP_BYTES (500 MB, the
+ * BENCH_MIN_FREE_GB (20, the free disk preflight asks for — under the clone root and in the Postgres's Docker container),
+ * BENCH_PREFLIGHT (0 skips preflight — tests only), BENCH_EVIDENCE_CAP_BYTES (50 MB, the largest file saveEvidence copies), BENCH_EVIDENCE_JSONL_CAP_BYTES (500 MB, the
  * same for a .jsonl transcript), BENCH_EVIDENCE_TOTAL_CAP_BYTES (2 GB, all of it), BENCH_KEEP_CLONES, BENCH_INSTALLED_PLUGINS (as bench.mjs).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync, readdirSync, statSync, lstatSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, openSync, closeSync, realpathSync, rmSync, rmdirSync, readdirSync, statSync, lstatSync, statfsSync } from 'node:fs'
 import { join, dirname, resolve, relative, isAbsolute, basename, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -83,6 +84,62 @@ function real(p) {
 const within = (child, parent) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep)
 /** The root clones go under: $BENCH_TMP, else $TMPDIR/bench-suite — outside every repo. */
 export const benchTmp = () => process.env.BENCH_TMP || join(tmpdir(), 'bench-suite')
+
+const GB = 1024 ** 3
+/** Free bytes on the filesystem holding `path` (its nearest existing ancestor). */
+const freeBytesAt = (path) => {
+  let p = path
+  while (!existsSync(p) && dirname(p) !== p) p = dirname(p)
+  const s = statfsSync(p)
+  return s.bavail * s.bsize
+}
+const execOut = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8', timeout: 20000 })
+/** Where the env's Postgres is: PGHOST/PGPORT, else the first postgres URL among its values; null when it names none. */
+const pgOf = (env) => {
+  if (env.PGHOST || env.PGPORT) return { host: env.PGHOST || 'localhost', port: env.PGPORT || '5432' }
+  for (const v of Object.values(env)) {
+    if (!/^postgres(?:ql)?:\/\//.test(String(v))) continue
+    try {
+      const u = new URL(v)
+      return { host: u.hostname || 'localhost', port: u.port || '5432' }
+    } catch {}
+  }
+  return null
+}
+
+/**
+ * Is this machine fit to run a case? → the reasons it is not ([] when it is). Checked before a case
+ * clones anything, and again by its dry run, so a suite never starts — or a later case never begins —
+ * on an environment that would only park or crash it hours in (seen: the bench Postgres's Docker disk
+ * filled mid-suite, every case on it parked or timed out).
+ *   - free disk under the clone root ≥ minFreeGb (BENCH_MIN_FREE_GB, default 20)
+ *   - the Postgres the profile's env names accepts connections (pg_isready)
+ *   - the Docker container publishing that port, if one does, has ≥ minFreeGb free for its data
+ * A tool that is not installed (pg_isready, docker) skips its check rather than refusing.
+ */
+export function preflight(env, { cloneRoot = benchTmp(), minFreeGb = Number(process.env.BENCH_MIN_FREE_GB) || 20, freeBytes = freeBytesAt, exec = execOut, enabled = process.env.BENCH_PREFLIGHT !== '0' } = {}) {
+  const out = []
+  if (!enabled) return out
+  const ran = (r) => r && !r.error && r.status !== null
+  const free = Math.floor(freeBytes(cloneRoot) / GB)
+  if (free < minFreeGb) out.push(`only ${free}GB free under ${cloneRoot} (BENCH_MIN_FREE_GB ${minFreeGb}) — clones, node_modules and test databases need room; free some space`)
+  const pg = pgOf(env)
+  if (!pg) return out
+  const ready = exec('pg_isready', ['-h', pg.host, '-p', pg.port, '-t', '10'])
+  // the container publishing the port, running or not — its name and state
+  const ps = exec('docker', ['ps', '-a', '--filter', `publish=${pg.port}`, '--format', '{{.Names}}\t{{.Status}}'])
+  const [name, state = ''] = ran(ps) && ps.status === 0 ? String(ps.stdout).trim().split('\n')[0].split('\t') : []
+  if (ran(ready) && ready.status !== 0) {
+    const stopped = name && !/^Up\b/.test(state) && state ? ` — its container ${name} is ${state} — docker start ${name}` : ''
+    out.push(`Postgres at ${pg.host}:${pg.port} is not accepting connections (pg_isready: ${String(ready.stdout || ready.stderr).trim() || `exit ${ready.status}`})${stopped}`)
+    return out
+  }
+  if (!name || (state && !/^Up\b/.test(state))) return out
+  const df = exec('docker', ['exec', name, 'df', '-Pk', '/var/lib/postgresql/data'])
+  const kb = ran(df) && df.status === 0 ? Number(String(df.stdout).trim().split('\n').at(-1).split(/\s+/)[3]) : NaN
+  if (Number.isFinite(kb) && Math.floor(kb / 1024 / 1024) < minFreeGb) out.push(`the Docker container ${name} serving Postgres :${pg.port} has only ${Math.floor(kb / 1024 / 1024)}GB free (BENCH_MIN_FREE_GB ${minFreeGb}) — Postgres crashes when it fills; raise Docker Desktop's disk limit (Settings → Resources) or free space (docker builder prune, unused volumes)`)
+  return out
+}
 /** The git work tree a path (which may not exist yet) would be inside, or null. */
 function gitTop(p) {
   let head = p
@@ -237,6 +294,8 @@ export function specCommits(repo, registry, feature, commits) {
 }
 
 const STATE_BEFORE_AUDIT = new Set(['spec', 'aligned'])
+/** A manifest state no build has begun from: a base at one of these holds the spec and no code of it. */
+const BEFORE_BUILD = new Set(['spec', 'aligned', 'audited', 'planned'])
 
 /**
  * The longest prefix of `specs` that comes before the audit: it stops at the first commit whose
@@ -407,6 +466,11 @@ export function planCase({ profile, profileDir = '.', caseDef, builder, dest, ou
   const registry = /^registry:\s*(\S+)/m.exec(forkMd)?.[1] ?? 'docs/features'
   const start = caseStart(repo, registry, feature, range)
   const { base, spec } = start
+  // A feature built twice in the project's history (built, then re-specced and built again) starts
+  // from a base that already holds the first build: its code is in the clone, the implementers find
+  // it and commit nothing, and the case measures a re-check, not a build. Seen: 9 minutes for 17 tasks.
+  const builtState = /^state:\s*["']?([\w-]+)/m.exec(tryGit(repo, 'show', `${base}:${registry.replace(/\/+$/, '')}/${feature}/MANIFEST.md`) ?? '')?.[1]
+  if (builtState && !BEFORE_BUILD.has(builtState)) return { refusals: [...refusals, `the base ${base.slice(0, 12)} already holds a build of ${feature} (its manifest says state: ${builtState}) — its code is in the clone, so the case would measure a re-check, not a build; drop the case or pick another feature`], row }
   const rs = replan && spec ? replanStart(repo, registry, feature, base, start.specs) : null
   const specs = rs?.specs ?? (replan ? [] : start.specs)
   let baseMd
@@ -796,6 +860,8 @@ if (isMain) {
   if (dryRun) {
     const p = planCase(args)
     if (p.refusals.length) refuse(p.refusals)
+    const unfit = preflight(p.env ?? {}, { cloneRoot })
+    if (unfit.length) refuse(unfit.map((r) => `preflight: ${r}`))
     // --replan with no start it can make (neither a pre-audit prefix nor a manifest to take back to audited) refuses: the suite must not plan it as ok
     if (args.replan && !p.replan) refuse(p.failure ?? '--replan: no start to re-plan from')
     if (p.failure) {
@@ -823,6 +889,12 @@ if (isMain) {
   }
 
   for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, onStopSignal)
+  // hours may have passed since the suite's dry run: the machine is checked again before anything is cloned
+  const planned = planCase(args)
+  if (!planned.refusals.length) {
+    const unfit = preflight(planned.env ?? {}, { cloneRoot })
+    if (unfit.length) refuse(unfit.map((r) => `preflight: ${r}`))
+  }
   const prep = await prepareClone(args)
   if (prep.refusals.length) refuse(prep.refusals)
   const { plan } = prep

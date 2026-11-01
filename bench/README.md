@@ -98,6 +98,14 @@ cases scheduled into lanes that fit a night. Design: `docs/specs/2026-10-29-benc
   Regressions compare a case's newest run with its newest earlier run under a different builder. Outside the builder
   repo a fixture run writes no history unless `BENCH_HISTORY` is set. Design: `docs/specs/2026-10-31-benchmark-history-design.md`.
 - **Before a run** `plan` warns when the shell sets `DATABASE_URL` or `PG*`: every case's setup, fleet and sessions inherit them.
+- **Preflight.** Each case's dry run — and the case again when it starts, hours into a suite — refuses on a machine that
+  would only park or crash it: under `BENCH_MIN_FREE_GB` (20) free where clones go; the profile's Postgres (its `PG*` or
+  first postgres URL) not answering `pg_isready` (a stopped container that publishes the port is named, with
+  `docker start`); or that container's data disk under the same minimum (raise Docker Desktop's disk limit). A missing
+  `pg_isready` or `docker` skips its check.
+- **A feature built twice is not a case.** When the base a case starts from already holds a build of its feature (the
+  manifest there is past `planned`: the project built it, then re-specced and built it again), the case is refused: its
+  code is in the clone, and the build would measure a re-check, not a build.
 - **Clones** live outside every repo — `$BENCH_TMP/<suite-id>/<item>/clone` (`$TMPDIR/bench-suite` by default) — so no
   repo's `CLAUDE.md` loads into a case's sessions; a clone inside any git repo is refused.
 - **Env.** `BENCH_LOCAL`, `BENCH_SUITE_OUT`, `BENCH_FLEET`, `BENCH_CASE`, `BENCH_FIXTURE_RUNNER` (test stubs); `BENCH_TMP`; `BENCH_HISTORY` (the history file);
