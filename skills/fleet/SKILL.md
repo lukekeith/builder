@@ -75,6 +75,77 @@ waiters too, naming it.
 `/builder:fleet:status` (commands/fleet/status.md) shows the table and says how to read it; asked
 here, follow that file. `--status` on this skill still works and means the same.
 
+### A park that needs you — its choices
+
+A `## Parked` entry whose why starts `needs you:` (or, from a 5.x row, `uncommitted changes are in
+the way`) is a landing your uncommitted changes refused: the feature is built, verified and
+merge-tested on its branch, but landing it would change files you are editing in the target's
+checkout, so the fleet stopped before touching any of them. Its `files:` line lists every one (a 5.x
+row has none: `git status --porcelain` then names your changes); the record is
+`.builder/fleet/parked/<feature>/PARKED.md`. After the status reply, raise each such park — one
+screen each, never as a path to go and read:
+
+1. **The review**, in plain words — what it is, every file, and what each choice does:
+
+   > **`<feature>` is ready to land on `<target>`, but it needs you.** It's built, verified and
+   > merge-tested on `builder/<feature>`. Landing it would change <n> file(s) you have uncommitted
+   > edits in, so builder stopped before touching any of them:
+   >
+   > - `<file>` (one bullet per file)
+   >
+   > What each choice does:
+   >
+   > - **Set my changes aside, land, put them back** — all your uncommitted changes go into a stash
+   >   named `builder: before landing <feature>`, the feature lands, and your changes come back on
+   >   top. If one clashes with what landed, the stash is kept, the files are listed and you're told
+   >   how to finish — builder never drops or force-resolves them.
+   > - **Commit my changes, then land** — you see the files and a commit message first; they're
+   >   committed on `<target>` only once you approve, then the feature lands on top.
+   > - **Leave it for now** — nothing changes; the reminder stays, and the next fleet run lands it
+   >   once your changes no longer overlap it.
+   >
+   > **I recommend <the choice>** — <why, below>.
+
+   **The recommendation:** 3 files or fewer → **Set my changes aside, land, put them back** — "only a
+   few files: if one clashes when it comes back, it's quick to settle, and nothing of yours is
+   committed under a message you didn't write". More than 3 → **Commit my changes, then land** —
+   "with this many files a clash on putting them back is likelier, and it would be left in your
+   checkout; committed first, your work is safe in git and any clash is the landing's to settle on
+   the feature's branch".
+2. **One picker** (AskUserQuestion, header `<feature>`, question "How should `<feature>` land?"):
+   the recommended choice first with ` (Recommended)` on its label, then the other, then **Leave it
+   for now**. Nothing else on the screen is a list of options.
+3. **On the answer**, from the repo root (`<builder>` per [REFERENCE](../resume/REFERENCE.md) §The scripts):
+   - **Set aside** → `node <builder>/scripts/fleet.mjs --land <feature> --set-aside`.
+   - **Commit** → one more screen first. The commit takes every tracked change (`git add -u`) and the
+     untracked files among the park's files — no other untracked file, never an ignored one. From
+     `git status --porcelain` show *This commit holds <n> files:* and each file, then any untracked
+     file it leaves out, then a proposed message — one line, in the style of `git log -5 --oneline`,
+     drawn from `git diff HEAD` of those files. One picker, header `Commit`: **Commit with this
+     message (Recommended)** · **I'll write the message** · **Don't commit — leave it**. Only on the
+     first (or the message the user writes) run
+     `node <builder>/scripts/fleet.mjs --land <feature> --commit-mine "<message>"`; on the last,
+     nothing runs.
+   - **Leave it** → nothing runs. Say it stays parked, the status line keeps `⛔ <feature> needs you`,
+     and the next session's brief raises it again.
+4. **Its exit**, relayed — never a silent stop:
+   - **0** — landed, and your changes are where you left them (or committed, as it says). Relay its
+     lines; next step, in words: test `<feature>` on `<target>` — agent-verified, not human-tested.
+   - **1** — something is left for you, and the output says what: show it whole (the file list and
+     the steps to finish), then say the next step in words — resolve those files, then drop the
+     stash as its last line says; or, when it didn't land, its `next:`. Offer to go through the
+     conflicts with them file by file; never resolve them or drop the stash unasked.
+   - **2** — refused, nothing touched: say why (its one line) and that nothing of yours changed.
+   - **3** — a fleet is running in this repo: nothing was touched; the landing waits for it.
+     `/builder:fleet:status` shows when it has finished — then choose again.
+
+A note under the table reading `⚠ <feature> landed on <target>, but your changes set aside for it
+came back with conflicts in …` (or, when the landing failed, `⚠ <feature> your changes set aside for
+it came back …`) is the same story a session later: say it in words right after the table — the
+files, that nothing of theirs was dropped (it is all in the kept stash), and the two steps to finish:
+resolve those files, then `git stash drop` the stash the note names. Offer to go through them; run
+nothing unasked.
+
 ## 2. Always dry-run first
 
 ```bash
@@ -189,7 +260,10 @@ and "test it yourself" — both until `/builder:fleet:status` is opened, which t
 fixtures, the merged branches — in one answer. Say that, rather than offering to run those steps
 yourself later. A park: the status line reads `⛔ <feature>: <why>` (and keeps it
 after the fleet exits, until a new run changes the row), the next session's brief lists each parked
-or failed feature with its next step, and `.builder/fleet/fleet.out` gets a block per park — why,
+or failed feature with its next step — one that needs you (your uncommitted changes in a landing's
+way) leads the status line as `⛔ <feature> needs you: <why> — /builder:fleet:status`, the command
+never cut, and the brief says `⛔ <feature> needs you — <why> — /builder:fleet:status to choose`
+(§1 *A park that needs you*), and `.builder/fleet/fleet.out` gets a block per park — why,
 next, and its PARKED.md. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
 a line under `/builder:fleet:status`. A fleet whose process is gone with work mid-run shows
 `⚠ fleet stopped` under the table, with the `--detach` command that resumes it.

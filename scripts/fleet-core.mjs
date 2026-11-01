@@ -773,8 +773,45 @@ export function fleetStops(fleet, { main = null, registry = null } = {}) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, f]) => {
       const { why, next } = parkParts(f.reason ?? '')
-      return { name, status: f.status, why: why.replace(/\s—\ssee\s\S+$/, '').trim(), next: next ?? RETRY_NEXT }
+      const stop = { name, status: f.status, why: why.replace(/\s—\ssee\s\S+$/, '').trim(), next: next ?? RETRY_NEXT }
+      return f.status === 'parked' && NEEDS_YOU.test(unquote(f.reason ?? '')) ? { ...stop, needsYou: true } : stop
     })
+}
+
+/**
+ * A park that waits on your answer to its choices (D3): a landing your uncommitted changes refused —
+ * and the words a 5.x fleet row used for it. The status line, the session brief and
+ * /builder:fleet:status raise it with `/builder:fleet:status` to choose.
+ */
+export const NEEDS_YOU = /^needs you: |uncommitted changes are in the way/
+
+/** A needs-you park's why, short: `your uncommitted changes overlap it (2 files)` — the files are --status's to list. */
+export function needsYouWhy(why) {
+  const w = String(why ?? '').replace(/^needs you:\s*/, '').trim()
+  const m = /^your uncommitted changes overlap this feature — (\d+) files?\b/.exec(w)
+  return m ? `your uncommitted changes overlap it (${m[1]} file${m[1] === '1' ? '' : 's'})` : w
+}
+
+/**
+ * The fleet notes for changes `--land --set-aside` put back with conflicts — only while the stash
+ * they name is still in `.git/logs/refs/stash` (dropped → nothing left to say). File reads only; no
+ * .git to read → every one is kept.
+ */
+export function setAsideConflicts(fleet, main) {
+  const notes = (fleet?.notes ?? []).filter((n) => /your changes set aside for it came back with conflicts/.test(n))
+  if (!notes.length) return []
+  let log
+  try {
+    if (!statSync(join(main, '.git')).isDirectory()) return notes
+    log = existsSync(join(main, '.git', 'logs', 'refs', 'stash')) ? readFileSync(join(main, '.git', 'logs', 'refs', 'stash'), 'utf8') : ''
+  } catch {
+    return notes
+  }
+  const kept = new Set(log.split('\n').map((l) => l.split(' ')[1]?.slice(0, 7)).filter(Boolean))
+  return notes.filter((n) => {
+    const sha = /\(([0-9a-f]{7,40})\); it is kept until you do/.exec(n)?.[1]
+    return !sha || kept.has(sha.slice(0, 7))
+  })
 }
 
 /**
@@ -1057,6 +1094,8 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
     for (const [name, f] of parked) {
       const { why, next } = parkParts(f.reason)
       lines.push(`- **${name}** — ${why || 'no reason recorded'}`, `  next: ${next ?? RETRY_NEXT}`)
+      // A needs-you park's every file, for the review /builder:fleet:status shows before its choices.
+      if (NEEDS_YOU.test(unquote(f.reason ?? '')) && f.overlap?.length) lines.push(`  files: ${f.overlap.join(', ')}`)
     }
   }
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))

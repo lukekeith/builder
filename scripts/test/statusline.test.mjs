@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, realpathSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -253,4 +253,45 @@ test('a live fleet with no landing renders as it always did: the parks first, wh
   const root = liveFleet()
   assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 60 }), 'builder ▓▓░░░░░░░░ 17% · ⚙ fleet 0/4 +3 more')
   assert.equal(render({ cwd: root, now: NOW, bootTime: BOOT, width: 120 }), 'builder ▓▓░░░░░░░░ 17% · ⚙ fleet 0/4 · ⛔ c: the spec leaves open whether a re… · ⛔ d: run timed out twice +2 more')
+})
+
+// D4: a park that needs you leads with the need, and the command to choose is never cut.
+const NEED = 'needs you: your uncommitted changes overlap this feature — 2 files: apps/web/a.ts, apps/web/b.ts — next: /builder:fleet:status'
+const commandWhole = (out) => out.includes(' /builder:fleet:status') || out.startsWith('⛔ /builder:fleet:status')
+
+test('a needs-you park reads ⛔ <feature> needs you: <why> — /builder:fleet:status, cut to fit; the command never is', () => {
+  const root = repo()
+  write(root, '.builder/fleet/lock', String(DEAD))
+  write(root, '.builder/fleet/fleet.json', JSON.stringify({ features: { 'invoice-export': { status: 'parked', reason: NEED } } }))
+  const at = (width) => render({ cwd: root, now: NOW, bootTime: BOOT, width })
+  assert.equal(at(120), 'builder · ⛔ invoice-export needs you: your changes overlap it (2 files) — /builder:fleet:status')
+  assert.equal(at(80), 'builder · ⛔ invoice-export needs you: your changes over… — /builder:fleet:status')
+  assert.equal(at(60), 'builder · ⛔ invoice-export needs you — /builder:fleet:status')
+  assert.equal(at(40), 'builder · ⛔ /builder:fleet:status')
+  assert.equal(at(26), '⛔ /builder:fleet:status', 'narrower still, the command outlasts builder itself')
+  for (const w of [120, 100, 80, 70, 60, 50, 40, 34, 30, 24]) {
+    const out = at(w)
+    assert.ok([...out].length <= w, `@${w}: ${out}`)
+    assert.ok(commandWhole(out), `@${w}: the command is whole: ${out}`)
+  }
+})
+
+test('a needs-you park on a live, busy line: the need before the other parks and the running ones', () => {
+  const root = liveFleet()
+  const fleet = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8'))
+  fleet.features['invoice-export'] = { status: 'parked', reason: NEED }
+  write(root, '.builder/fleet/fleet.json', JSON.stringify(fleet))
+  write(root, '.builder/fleet/archive.jsonl', row('order-flow', NOW - 3600000) + '\n')
+  for (const w of [200, 120, 80, 60, 40, 30]) {
+    const out = render({ cwd: root, now: NOW, bootTime: BOOT, width: w })
+    assert.ok([...out].length <= w, `@${w}: ${out}`)
+    assert.ok(commandWhole(out), `@${w}: the command is whole: ${out}`)
+    const need = out.indexOf('invoice-export')
+    const other = out.indexOf('⛔ c')
+    assert.ok(other < 0 || (need >= 0 && need < other), `@${w}: the need leads: ${out}`)
+  }
+  assert.match(render({ cwd: root, now: NOW, bootTime: BOOT, width: 200 }), /^builder [▓░]{10} \d+% · ⚙ fleet 0\/5 · ⛔ invoice-export needs you: your changes overlap it \(2 files\) — \/builder:fleet:status · ⛔ c/)
+  fleet.features['pay-run'] = { status: 'parked', reason: NEED }
+  write(root, '.builder/fleet/fleet.json', JSON.stringify(fleet))
+  assert.match(render({ cwd: root, now: NOW, bootTime: BOOT, width: 120 }), /⛔ invoice-export, pay-run need you — \/builder:fleet:status/)
 })

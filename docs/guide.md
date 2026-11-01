@@ -275,7 +275,8 @@ builder is working — one bar for everything running, then what each part is do
 
 It shows a running fleet, a build in the chat (while its ledger has moved in the last five minutes)
 and the verifier's running requests, refreshes every two seconds, and reads `builder ░░░░░░░░░░ idle` when
-nothing runs. A plugin
+nothing runs. A fleet landing that waits on your answer leads the line —
+`⛔ <feature> needs you: <why> — /builder:fleet:status` — with the why cut to fit and the command never. A plugin
 can't set the status line itself, so the skill writes the `statusLine` key of your user settings: it
 points at a small launcher in `<config>/builder/` that runs your previous status line first and finds
 the current builder on every refresh — so updates need no re-run (a release that changes the launcher
@@ -292,7 +293,9 @@ The plugin ships two hooks (`hooks/hooks.json`), and both are silent in any repo
   `/builder:resume` for work in flight, the features in flight (up to five) with their next step,
   and that in this repo builder's skills take precedence over their superpowers twins (brainstorm,
   plan and build, test-driven-development, systematic-debugging, verification-before-completion,
-  receiving-code-review). Skipped under unattended runs.
+  receiving-code-review). What the fleet landed or parked since you last looked comes first; a
+  landing your uncommitted changes are in the way of reads `⛔ <feature> needs you — <why> —
+  /builder:fleet:status to choose`, and Claude raises it in its first reply. Skipped under unattended runs.
 - **The PR lock** (PreToolUse on Bash) — `gh pr create` on a builder feature's branch is denied
   until the feature has been walked and signed off (`walk: none` → "🔒 walk it, then
   `/builder:signoff`"); an agent's sign-off passes only in agent mode. A PR on any other branch is
