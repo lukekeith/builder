@@ -398,7 +398,7 @@ async function judgeRequest(req, ctx, tmp, slots) {
     // missing there, like a test file the branch adds.
     if (r.noCwd) return where === checkout ? { fail: false, broken: r.out, msg: '' } : { fail: true, missing: true, msg: r.out }
     if (r.timedOut) return { fail: true, msg: `timed out after ${Math.round(verify.timeoutMs / 60000)}m` }
-    if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500) }
+    if (c.compare === 'exit') return { fail: r.code !== 0, msg: r.out.slice(-1500), raw: true }
     const theirs = await targetLines(c)
     if (!theirs) return { fail: false, broken: `the run on the target ${signal?.aborted ? 'was cancelled' : `timed out after ${Math.round(verify.timeoutMs / 60000)}m`}`, msg: '' }
     const fresh = [...(r.lines ?? linesOf(r.out, c.match))].filter((l) => !theirs.has(l))
@@ -414,7 +414,7 @@ async function judgeRequest(req, ctx, tmp, slots) {
       // Filed into known failures only once the verdict is known (step 3): never from an env-broken run.
       verdict.debt.push(f.id)
     } else if (k.kind === 'broken') verdict.broken.push({ suite: suiteName, reason: `the re-run on the target could not run: ${f.id}` })
-    else verdict.regressions.push({ suite: suiteName, id: f.id, file: f.file, name: f.name, msg: f.msg, ...(k.note && { note: k.note }), introducedBy: null })
+    else verdict.regressions.push({ suite: suiteName, id: f.id, file: f.file, name: f.name, msg: f.msg, ...(f.raw && { raw: true }), ...(k.note && { note: k.note }), introducedBy: null })
   }
   const judge = (f, rerunHere, rerunOnTarget) => classify(f, { known, isFlaky: ledger.isFlaky, branchOwns, rerunHere, rerunOnTarget })
 
@@ -432,7 +432,7 @@ async function judgeRequest(req, ctx, tmp, slots) {
     rows.push({ id, status: r.fail ? 'fail' : 'pass' })
     if (!r.fail) continue
     checksRun.set(id, c)
-    const f = { id, file: null, name: c.name, msg: r.msg }
+    const f = { id, file: null, name: c.name, msg: r.msg, ...(r.raw && { raw: true }) }
     const k = await judge(
       f,
       async () => ((await checkFails(c, checkout)).fail ? 'fail' : 'pass'),

@@ -139,6 +139,8 @@ test('a check whose cwd the target lacks: missing there, so a failure here is a 
   const v = await runRequest(req({ tier: 'phase' }), ctx)
   assert.equal(v.status, 'red')
   assert.deepEqual(v.regressions.map((r) => r.id).sort(), ['check::new-app', 'check::new-lint'])
+  // An exit check's message is its raw output (summarize filters it); a lines check's is already its new lines.
+  assert.deepEqual(v.regressions.map((r) => [r.id, !!r.raw]).sort(), [['check::new-app', true], ['check::new-lint', false]])
   assert.deepEqual(v.broken, [])
   assert.equal(ctx.ledger.known('main').ids.size, 0)
 })

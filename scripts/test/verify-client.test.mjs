@@ -115,15 +115,35 @@ test('summarize and exitFor', () => {
 test('summarize shows the failing lines of a red check, not its banner', () => {
   const base = { tier: 'commit', sha: 'abcdef1234', branch: 'f', status: 'red', ms: 1, flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0 }
   const msg = '> x@1 test\n> node --test\n\nstarting\nrunning\n  ✗ test/x.test.mjs > y\n    expected 1, got 2\nmore\nnoise'
-  const s = summarize({ ...base, regressions: [{ id: 'c', msg, introducedBy: '1234567abc' }] })
+  const s = summarize({ ...base, regressions: [{ id: 'c', msg, raw: true, introducedBy: '1234567abc' }] })
   assert.match(s, /✗ test\/x\.test\.mjs > y/)
   assert.match(s, /expected 1, got 2/)
   assert.doesNotMatch(s, /npm|> x@1|starting/)
   const tail = Array.from({ length: 10 }, (_, i) => `l${i}`).join('\n')
-  const t = summarize({ ...base, regressions: [{ id: 'c', msg: tail, introducedBy: '1234567abc' }] })
+  const t = summarize({ ...base, regressions: [{ id: 'c', msg: tail, raw: true, introducedBy: '1234567abc' }] })
   assert.match(t, /l9/)
   assert.match(t, /l4/)
   assert.doesNotMatch(t, /l3\b/)
+  // Raw check output: node's ✖ and a lowercase error count, each with the line that follows it.
+  const node = summarize({ ...base, regressions: [{ id: 'c', raw: true, msg: '> build\nok\n✖ parses tags (2ms)\n  got [] for "a,b"\nok 2\ntypecheck error: TS2322\n  src/a.ts:3 string is not number', introducedBy: '1234567abc' }] })
+  for (const x of ['✖ parses tags', 'got [] for "a,b"', 'typecheck error: TS2322', 'src/a.ts:3']) assert.ok(node.includes(x), x)
+  assert.doesNotMatch(node, /> build|ok 2/)
+})
+
+test('summarize keeps the values of a test failure — a node-test AssertionError and a jest toBe — not only the line that names it', () => {
+  const base = { tier: 'commit', sha: 'abcdef1234', branch: 'f', status: 'red', ms: 1, flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0 }
+  const nodeMsg = "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n1 !== 2\n\n    at TestContext.<anonymous> (file:///repo/test/x.test.mjs:5:10)\n    at Test.runInAsyncScope (node:async_hooks:206:9)"
+  const n = summarize({ ...base, regressions: [{ id: 'u::x', msg: nodeMsg, introducedBy: '1234567abc' }] })
+  assert.match(n, /Expected values to be strictly equal/)
+  assert.match(n, /1 !== 2/)
+  assert.doesNotMatch(n, /runInAsyncScope/)
+  const deep = summarize({ ...base, regressions: [{ id: 'u::y', msg: 'AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n+   a: 1\n-   a: 2\n  }\n    at x (file:///y.mjs:1:1)', introducedBy: '1234567abc' }] })
+  assert.match(deep, /\+ {3}a: 1/)
+  assert.match(deep, /- {3}a: 2/)
+  const jestMsg = 'expect(received).toBe(expected) // Object.is equality\n\nExpected: 2\nReceived: 1\n\n  at Object.<anonymous> (src/sum.test.js:3:13)'
+  const j = summarize({ ...base, regressions: [{ id: 'u::z', msg: jestMsg, introducedBy: '1234567abc' }] })
+  for (const x of ['toBe(expected)', 'Expected: 2', 'Received: 1']) assert.ok(j.includes(x), x)
+  assert.doesNotMatch(j, /sum\.test\.js:3:13/)
 })
 
 test('cancel never overwrites a finished request and cancels a queued one at once', () => {
