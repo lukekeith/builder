@@ -32,7 +32,7 @@ import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
-import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
@@ -978,6 +978,8 @@ function archiveRow(feature, facts, thisRun = true) {
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]
+  // A landing park's record (recordOf) has nothing left to say.
+  rmSync(join(DIR, 'parked', feature), { recursive: true, force: true })
   fleet.archived = (fleet.archived ?? 0) + 1
   if (thisRun) fleet.landedThisRun = [...new Set([...(fleet.landedThisRun ?? []), feature])]
   landed.add(feature)
@@ -1011,7 +1013,7 @@ async function landNow(feature) {
   if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
     // The config is the human's: a branch that changes it never lands it unseen.
     const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
-    if (cfgDiff) return park(f, configParkReason(f.branch))
+    if (cfgDiff) return park(f, PARK_REASONS.config(TARGET, f.branch, CONFIG_PATH))
     const why = await mergeThroughVerifier(feature, f)
     if (why) return park(f, why)
   }
@@ -1051,7 +1053,7 @@ async function mergeThroughVerifier(feature, f) {
   const here = tryGit(['branch', '--show-current'])
   if (here !== TARGET) {
     const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
-    if (elsewhere) return `shipped, but ${TARGET} is checked out in ${elsewhere.split('\n')[0].replace(/^worktree /, '')}, so it can't be landed from here — next: /builder:fleet from that checkout`
+    if (elsewhere) return PARK_REASONS.checkedOut(TARGET, elsewhere.split('\n')[0].replace(/^worktree /, ''), feature)
   }
   // The merge tier tests the branch as its worktree holds it; without one there is nothing to request on.
   if (!f.worktree || !existsSync(f.worktree)) return `shipped, but its worktree is gone, so the merge tier can't run on ${f.branch} — next: /builder:agent to recreate it and land it`
@@ -1063,6 +1065,11 @@ async function mergeThroughVerifier(feature, f) {
     addNote(`${feature} merged into ${TARGET} while ${now || 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
     const added = newMigrations(before, sha)
     if (added.length) addNote(`${feature} brought ${added.length} new migration${added.length === 1 ? '' : 's'} to ${TARGET} — when you switch to it, apply them to the dev DB first (§Walk readiness \`apply:\`)`)
+  }
+  // D2: the user's uncommitted changes overlap the feature — the files go on the row for its record.
+  const needsYou = (files) => {
+    f.overlap = files
+    return PARK_REASONS.overlap(files)
   }
   let gone = 0
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -1076,6 +1083,7 @@ async function mergeThroughVerifier(feature, f) {
         landed(before, c.sha)
         return null
       }
+      if (c.overlap) return needsYou(c.overlap)
       // Code changed since the held run, or the target moved (carry un-held it): a new run below.
       if (!c.moved && !c.codeChanged) return `the merge tier passed but landing failed: ${c.reason} — next: /builder:fleet to retry`
     }
@@ -1107,6 +1115,7 @@ async function mergeThroughVerifier(feature, f) {
       landed(before, r.sha)
       return null
     }
+    if (r.overlap) return needsYou(r.overlap)
     if (!r.moved) return `the merge tier passed but landing failed: ${r.reason} — next: /builder:fleet to retry`
   }
   return `${TARGET} kept moving while ${feature} was being landed — next: /builder:fleet to retry`
@@ -1166,7 +1175,7 @@ function devDbPending(readiness) {
 /** A pause request parks the feature at once — before a sync, a walk env or a run. No run counted. */
 function parkIfPaused(f, feature) {
   if (!existsSync(pauseFile(feature))) return false
-  park(f, `revising — next: /builder:revise --path ${specOf(feature)}`)
+  park(f, PARK_REASONS.revising(specOf(feature)))
   return true
 }
 
@@ -1179,6 +1188,7 @@ function startRun(f) {
 function park(f, reason) {
   Object.assign(f, { status: 'parked', reason })
   delete f.lastPark // superseded — the new reason is the one to act on
+  if (!/^needs you: your uncommitted changes overlap/.test(reason)) delete f.overlap
   save()
   return 'parked'
 }
@@ -1527,13 +1537,24 @@ function enqueue(feature) {
 
 // ---- the park record (REFERENCE §The park record) -------------------------------------------
 const today = () => new Date().toISOString().slice(0, 10)
-/** Parks only a person can clear: your own uncommitted work, or the target checked out elsewhere. */
-const HUMAN_STEP = /uncommitted changes are in the way|is checked out in |waiting for your walk|^revising|^config change needed/
-
-/** Why a branch that changes the config parks, and the human's next step. */
-const configParkReason = (branch) =>
-  `config change needed — ${branch} changes ${CONFIG_PATH}, which is yours to change — next: read git diff ${TARGET}...${branch} -- ${CONFIG_PATH}, apply what you want on ${TARGET}, drop it from the branch (git checkout ${TARGET} -- ${CONFIG_PATH} in its worktree, commit), then /builder:agent`
 const YOUR_WALK = /^waiting for your walk/
+const OVERLAP_PARK = /^needs you: your uncommitted changes overlap/
+
+/**
+ * Where a parked feature's record is: beside MANIFEST.md, committed, while its folder is live. Once
+ * the ship has moved the folder to the archive (a landing park), in the fleet's own dir and never
+ * committed — on the branch it would land on the target with the feature.
+ */
+const landingRecord = (feature) => join(DIR, 'parked', feature, 'PARKED.md')
+function recordOf(feature) {
+  const f = fleet.features[feature]
+  const folder = f?.worktree && join(f.worktree, specOf(feature))
+  if (folder && existsSync(join(folder, 'MANIFEST.md'))) return { path: join(folder, 'PARKED.md'), committed: true }
+  return { path: landingRecord(feature), committed: false }
+}
+
+/** A park's choices (D6), from its reason. */
+const choicesOf = (feature, reason) => parkChoices({ feature, reason, folder: specOf(feature) })
 
 /** `- <date> <what>` at the end of the record's History, which is always its last section. */
 function appendHistory(path, what) {
@@ -1544,8 +1565,8 @@ function appendHistory(path, what) {
 /** The record's `kind:`, or what the reason implies when there is no record. */
 function parkKind(feature) {
   const f = fleet.features[feature]
-  const p = f.worktree && join(f.worktree, specOf(feature), 'PARKED.md')
-  const kind = p && existsSync(p) ? /^kind:\s*(\S+)/m.exec(readFileSync(p, 'utf8'))?.[1] : null
+  const { path: p } = recordOf(feature)
+  const kind = existsSync(p) ? /^kind:\s*(\S+)/m.exec(readFileSync(p, 'utf8'))?.[1] : null
   return kind ?? (HUMAN_STEP.test(f.reason ?? '') ? 'human-step' : 'stuck')
 }
 
@@ -1554,19 +1575,40 @@ function parkKind(feature) {
  * one (the skills do) → kept as written. None, or one left from an earlier park → the fleet writes
  * what it knows: the reason split into why and next, the log of the run that parked it with its
  * last lines quoted (logs live outside the worktree), and the history carried over. Committed, so
- * it travels with the branch.
+ * it travels with the branch. A human-step park's record always offers its choices (D6) — one a run
+ * wrote without them gains them. A landing park (the folder already shipped) is recorded only when
+ * it is a human step, in the fleet's dir (recordOf); the overlap record names every file.
  */
 function ensureParkRecord(feature) {
   const f = fleet.features[feature]
-  const folder = f.worktree && join(f.worktree, specOf(feature))
-  if (!folder || !existsSync(join(folder, 'MANIFEST.md')) || !f.reason) return
-  const p = join(folder, 'PARKED.md')
+  if (!f.reason) return
+  const { path: p, committed } = recordOf(feature)
+  const human = HUMAN_STEP.test(f.reason)
+  if (!committed && !human) return void rmSync(dirname(p), { recursive: true, force: true })
   const old = existsSync(p) ? readFileSync(p, 'utf8') : ''
-  if (old && unquote(/^blocked:\s*(.*)$/m.exec(old)?.[1]) === f.reason) return
+  const commit = (why) => {
+    if (!committed) return
+    const rel = join(specOf(feature), 'PARKED.md')
+    tryGit(['add', '--', rel], f.worktree)
+    tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
+  }
+  if (old && unquote(/^blocked:\s*(.*)$/m.exec(old)?.[1]) === f.reason) {
+    if (!human || /^## Your choices$/m.test(old)) return
+    const section = `${choicesSection(choicesOf(feature, f.reason))}\n\n`
+    const at = old.search(/^## (Recommended next step|History)$/m)
+    writeFileSync(p, at < 0 ? `${old.trimEnd()}\n\n${section}` : old.slice(0, at) + section + old.slice(at))
+    return commit('its choices')
+  }
   const { why, next } = parkParts(f.reason)
   const history = /^## History\n([\s\S]*)$/m.exec(old)?.[1]?.trimEnd()
+  mkdirSync(dirname(p), { recursive: true })
+  if (OVERLAP_PARK.test(f.reason) && f.overlap?.length) {
+    const sha = tryGit(['rev-parse', '--short', `refs/heads/${f.branch}`]) ?? ''
+    writeFileSync(p, overlapRecord({ feature, reason: f.reason, files: f.overlap, branch: f.branch, sha, target: TARGET, date: today(), history }))
+    return commit(why)
+  }
   const tail = f.log && existsSync(f.log) ? readFileSync(f.log, 'utf8').trim().split('\n').slice(-25).join('\n') : ''
-  const kind = HUMAN_STEP.test(f.reason) ? 'human-step' : 'stuck'
+  const kind = human ? 'human-step' : 'stuck'
   const text = [
     `# ${feature} — parked`,
     `parked: ${today()} ${tryGit(['rev-parse', '--short', 'HEAD'], f.worktree) ?? ''} · by the fleet (the run that parked it wrote no record)`,
@@ -1586,6 +1628,7 @@ function ensureParkRecord(feature) {
     '## Where to dig',
     "- start from the run's last lines above and the evidence it names; nothing has been ruled out yet",
     '',
+    ...(human ? [choicesSection(choicesOf(feature, f.reason)), ''] : []),
     '## Recommended next step',
     next ?? '/builder:agent — naming it again unparks it and retries',
     '',
@@ -1595,9 +1638,7 @@ function ensureParkRecord(feature) {
     '',
   ].join('\n')
   writeFileSync(p, text)
-  const rel = join(specOf(feature), 'PARKED.md')
-  tryGit(['add', '--', rel], f.worktree)
-  tryGit(['commit', '-qm', `docs(${feature}): park record — ${why}`, '--', rel], f.worktree)
+  commit(why)
 }
 
 /** agent_walk.auto_unpark, except 0 for a feature whose test plan has low persistence (persist=low; an old rush). */
@@ -1877,11 +1918,12 @@ function route(feature, outcome) {
  * `f` is the row as it parked (autoRetry has already unparked the live one when it retries).
  */
 function tellStop(feature, f, retry = null) {
-  const rel = join(specOf(feature), 'PARKED.md')
-  const record = f.status === 'parked' && f.worktree && existsSync(join(f.worktree, rel)) ? join(f.worktree, rel) : null
+  const { path, committed } = recordOf(feature)
+  const record = f.status === 'parked' && existsSync(path) ? path : null
+  const choices = f.status === 'parked' ? choicesOf(feature, f.reason) : []
   try {
     mkdirSync(DIR, { recursive: true })
-    appendFileSync(join(DIR, 'fleet.out'), parkBlock({ feature, status: f.status, reason: f.reason, record, branch: f.branch, log: f.log, retry }))
+    appendFileSync(join(DIR, 'fleet.out'), parkBlock({ feature, status: f.status, reason: f.reason, choices, record, branch: committed ? f.branch : null, log: f.log, retry }))
   } catch {}
 }
 

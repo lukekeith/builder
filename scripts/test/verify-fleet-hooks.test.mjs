@@ -64,6 +64,27 @@ test('carry: registry-only commits after the held run land without a second run;
   assert.equal(heldMerge(root, 'builder/f'), null)
 })
 
+test('release and carry refused by an overlap hand the fleet every file, apart from the reason', async () => {
+  process.env.BUILDER_VERIFY_IDLE_MS = '500'
+  const { root, wt } = repo()
+  writeFileSync(join(wt, 'g.txt'), '1\n')
+  git(wt, 'add', '.')
+  git(wt, 'commit', '-qm', 'g')
+  const id = requestMerge(root, wt, { target: 'main', message: 'merge(f): x' })
+  assert.equal((await awaitVerdict(root, id, { pollMs: 200 })).status, 'green')
+  writeFileSync(join(root, 'f.txt'), 'mine\n') // untracked here, and the feature adds f.txt
+  writeFileSync(join(root, 'g.txt'), 'mine\n')
+  const before = git(root, 'rev-parse', 'main')
+  const r = release(root, id)
+  assert.deepEqual(r.overlap, ['f.txt', 'g.txt'])
+  assert.equal(r.ok, false)
+  assert.equal(r.moved, false)
+  assert.doesNotMatch(r.reason, /overlap: \[/, 'the JSON line is not part of the reason')
+  const c = carry(root, id)
+  assert.deepEqual(c.overlap, ['f.txt', 'g.txt'])
+  assert.equal(git(root, 'rev-parse', 'main'), before)
+})
+
 test('awaitVerdict on a request with no file returns null instead of waiting forever', async () => {
   const { root } = repo()
   assert.equal(await awaitVerdict(root, 'no-such-request', { pollMs: 50 }), null)

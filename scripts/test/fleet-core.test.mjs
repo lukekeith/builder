@@ -5,7 +5,7 @@ const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
-import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -974,4 +974,86 @@ test('planReady reads the SPEC as people write it: lowercase open, an empty ruli
   // the header and separator rows are not rows, and a resolved finding that quotes "was blocked:" is not a blocker.
   assert.equal(planReady(SPEC_OK.replace(rowOk, '| D1 | tags | keep the panel open on load — why; not closed | auto (recommended) 2026-10-31 |')), true)
   assert.equal(planReady(SPEC_OK.replace('## Decisions', '## Decisions (rulings)')), true)
+})
+
+test('an overlap parks as needs you: the count, the first three files, and the status command', () => {
+  assert.equal(PARK_REASONS.overlap(['app/a.ts']), 'needs you: your uncommitted changes overlap this feature — 1 file: app/a.ts — next: /builder:fleet:status')
+  assert.equal(PARK_REASONS.overlap(['a', 'b', 'c']), 'needs you: your uncommitted changes overlap this feature — 3 files: a, b, c — next: /builder:fleet:status')
+  assert.equal(PARK_REASONS.overlap(['a', 'b', 'c', 'd', 'e']), 'needs you: your uncommitted changes overlap this feature — 5 files: a, b, c, … — next: /builder:fleet:status')
+})
+
+/**
+ * D6: every reason the fleet classes human-only, as its producers write it — each HUMAN_STEP
+ * alternative must be matched by one, so a new alternative without a producer here fails.
+ */
+const HUMAN_REASONS = [
+  PARK_REASONS.overlap(['app/a.ts', 'app/b.ts', 'app/c.ts', 'app/d.ts']),
+  PARK_REASONS.checkedOut('main', '/repo-other', 'a'),
+  PARK_REASONS.config('main', 'builder/a', '.claude/builder.md'),
+  PARK_REASONS.revising('docs/features/a'),
+  'waiting for your walk — next: /builder:resume --path docs/features/a', // agent-walk writes it (skills/agent-walk)
+  // the verifier's release refusing because the target is checked out in another worktree
+  'the merge tier passed but landing failed: r1: main refused the fast-forward (main is checked out in /repo-other — switch that worktree to another branch, then land again) — uncommitted changes there? — next: /builder:fleet to retry',
+  // a fleet row a 5.x fleet left behind
+  'shipped, but merging into main failed: x — your uncommitted changes are in the way — next: commit or stash them, then /builder:fleet to merge it',
+]
+
+test('D6: every human-step park reason the fleet produces carries a choice that moves the work forward', () => {
+  for (const alt of HUMAN_STEP.source.split('|')) assert.ok(HUMAN_REASONS.some((r) => new RegExp(alt).test(r)), `no producer feeds the HUMAN_STEP alternative ${alt}`)
+  for (const reason of HUMAN_REASONS) {
+    assert.match(reason, HUMAN_STEP)
+    const choices = parkChoices({ feature: 'a', reason, folder: 'docs/features/a' })
+    assert.ok(choices.some((c) => c.command), `${reason}\n→ ${JSON.stringify(choices)}`)
+    assert.equal(choices.at(-1).label, 'Leave it for now', 'leaving it is always one of them, last')
+    const block = parkBlock({ feature: 'a', status: 'parked', reason, choices })
+    assert.match(block, /^  choices:\n    1\. .+ — \S/m, block)
+    assert.match(choicesSection(choices), /^## Your choices\n1\. /)
+  }
+  // A park that is not human-only needs none.
+  assert.deepEqual(parkChoices({ feature: 'a', reason: 'the walk failed twice — next: /builder:agent' }), [])
+})
+
+test('parkBlock refuses a human-step park without a choice', () => {
+  for (const reason of HUMAN_REASONS) {
+    assert.throws(() => parkBlock({ feature: 'a', status: 'parked', reason }), /human-step park .* no choice/)
+    assert.throws(() => parkBlock({ feature: 'a', status: 'parked', reason, choices: [{ label: 'Leave it for now', command: null }] }), /no choice/)
+  }
+  assert.doesNotThrow(() => parkBlock({ feature: 'a', status: 'parked', reason: 'stuck — next: x' }))
+})
+
+test('the overlap park: three choices with their exact commands; the checked-out refusal: switch, then land', () => {
+  const overlap = parkChoices({ feature: 'a', reason: PARK_REASONS.overlap(['x']) })
+  assert.deepEqual(overlap, [
+    { label: 'Commit my changes, then land', command: 'node <builder>/scripts/fleet.mjs --land a --commit-mine "<message>"' },
+    { label: 'Set my changes aside, land, put them back', command: 'node <builder>/scripts/fleet.mjs --land a --set-aside' },
+    { label: 'Leave it for now', command: null },
+  ])
+  assert.equal(PARK_REASONS.checkedOut('main', '/repo other', 'a'), "shipped, but main is checked out in /repo other, so it can't be landed from here — next: switch that worktree to another branch, then /builder:fleet a")
+  assert.deepEqual(parkChoices({ feature: 'a', reason: PARK_REASONS.checkedOut('main', '/repo other', 'a') }), [
+    { label: 'Switch /repo other to another branch, then land it', command: '/builder:fleet a' },
+    { label: 'Leave it for now', command: null },
+  ])
+  const block = parkBlock({ feature: 'a', status: 'parked', reason: PARK_REASONS.overlap(['x']), choices: overlap, at: new Date('2026-11-01T09:00:00Z') })
+  assert.equal(block, [
+    '',
+    '[2026-11-01 09:00Z] ⛔ a parked',
+    '  why:    needs you: your uncommitted changes overlap this feature — 1 file: x',
+    '  next:   /builder:fleet:status',
+    '  choices:',
+    '    1. Commit my changes, then land — node <builder>/scripts/fleet.mjs --land a --commit-mine "<message>"',
+    '    2. Set my changes aside, land, put them back — node <builder>/scripts/fleet.mjs --land a --set-aside',
+    '    3. Leave it for now',
+    '',
+  ].join('\n'))
+})
+
+test('the overlap park record lists every file, the branch and its sha, and the three choices', () => {
+  const files = ['app/a.ts', 'app/b.ts', 'app/c.ts', 'app/d.ts']
+  const reason = PARK_REASONS.overlap(files)
+  const rec = overlapRecord({ feature: 'a', reason, files, branch: 'builder/a', sha: 'abc1234', target: 'main', date: '2026-11-01', history: '- 2026-10-31 parked — before' })
+  assert.match(rec, /^# a — parked\nparked: 2026-11-01 abc1234 · by the fleet, landing it\nkind: human-step\nblocked: "needs you: .*"$/m)
+  assert.match(rec, /^The work is done and waiting on builder\/a at abc1234/m)
+  for (const f of files) assert.match(rec, new RegExp(`^- ${f}$`, 'm'))
+  assert.match(rec, /^## Your choices\n1\. Commit my changes, then land — `node <builder>\/scripts\/fleet\.mjs --land a --commit-mine "<message>"`\n2\. Set my changes aside, land, put them back — `node <builder>\/scripts\/fleet\.mjs --land a --set-aside`\n3\. Leave it for now/m)
+  assert.match(rec, /^## History\n- 2026-10-31 parked — before\n- 2026-11-01 parked — needs you: your uncommitted changes overlap this feature — 4 files: app\/a\.ts, app\/b\.ts, app\/c\.ts, …$/m)
 })
