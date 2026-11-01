@@ -817,3 +817,67 @@ test('one reap per request run, at its end; a timed-out run is reaped at once, b
     pids.forEach(kill)
   }
 })
+
+const DB = { url: 'postgres://u@localhost/app' }
+
+test('failures while the test database is unhealthy are not judged: env-broken, never red, nothing re-runs on the target', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  let targetAsked = 0
+  const ctx = ctxFor(co, co, {
+    verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB },
+    pool: { probe: () => 'the test database did not answer SELECT 1: timeout' },
+    targetCheckout: async () => (targetAsked++, co),
+  })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.equal(targetAsked, 0)
+  assert.ok(v.broken.some((b) => b.suite === 'unit' && /1 failing test not judged/.test(b.reason) && /did not answer SELECT 1/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('a healthy test database: failures are judged as before', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  let probes = 0
+  const ctx = ctxFor(co, target, { verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB }, pool: { probe: () => (probes++, null) } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'red')
+  assert.equal(v.regressions.length, 1)
+  assert.ok(probes >= 1)
+})
+
+test('the database going down after a regression was judged turns the verdict env-broken', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  let probes = 0
+  const ctx = ctxFor(co, target, { verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB }, pool: { probe: () => (++probes === 1 ? null : 'connection refused') } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.ok(v.broken.some((b) => /unit::test\/a\.test\.mjs::adds/.test(b.reason) && /connection refused/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('no db configured: no probe', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  const ctx = ctxFor(co, target, { pool: { probe: () => assert.fail('probed with no db') } })
+  assert.equal((await runRequest(req(), ctx)).status, 'red')
+})
+
+test('a run past verify.run_timeout stops: env-broken naming the limit, not cancelled and not red', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('slow', async () => { await new Promise((r) => setTimeout(r, 20000)) })`) })
+  const ctx = ctxFor(co, co, { verify: { suites: [suite], checks: [], timeoutMs: 60000, runTimeoutMs: 800, db: null } })
+  const t0 = Date.now()
+  const v = await runRequest(req(), ctx)
+  assert.ok(Date.now() - t0 < 15000, 'stopped at the limit, not after the test')
+  assert.equal(v.status, 'env-broken')
+  assert.ok(v.broken.some((b) => /run_timeout/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('a cancel is still a cancel when a run limit is set', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('slow', async () => { await new Promise((r) => setTimeout(r, 20000)) })`) })
+  const ac = new AbortController()
+  setTimeout(() => ac.abort(), 300)
+  const v = await runRequest(req(), ctxFor(co, co, { signal: ac.signal, verify: { suites: [suite], checks: [], timeoutMs: 60000, runTimeoutMs: 60000, db: null } }))
+  assert.equal(v.status, 'cancelled')
+})

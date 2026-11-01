@@ -260,6 +260,9 @@ const linesOf = (out, match) => {
   )
 }
 
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+const span = (ms) => (ms < 60000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60000)}m`)
+
 export async function runRequest(req, ctx) {
   // Report files for this request; removed however the run ends, a throw included.
   const tmp = join(ctx.ledger.dir, 'reports', req.id)
@@ -267,9 +270,30 @@ export async function runRequest(req, ctx) {
   // Every slot a suite or check ran in. Only this request uses a slot while it runs, so whatever is
   // still running in one once every lease is released is a stray: reaped once, at the end, whole.
   const slots = new Set()
+  // verify.run_timeout bounds the whole request — every suite, re-run and bisect step together — so a
+  // caller polling `wait` is never left waiting for hours on a run that will not end. It stops the run
+  // the way a cancel does; the verdict then says it ran out of time, which is env-broken, not a cancel.
+  const limit = ctx.verify.runTimeoutMs
+  const ac = limit ? new AbortController() : null
+  let expired = false
+  const passOn = () => ac.abort()
+  const timer = ac && setTimeout(() => ((expired = true), ac.abort()), limit)
+  if (ac) {
+    if (ctx.signal?.aborted) ac.abort()
+    else ctx.signal?.addEventListener('abort', passOn, { once: true })
+  }
   try {
-    return await judgeRequest(req, ctx, tmp, slots)
+    const verdict = await judgeRequest(req, ac ? { ...ctx, signal: ac.signal } : ctx, tmp, slots)
+    if (expired && !ctx.signal?.aborted) {
+      for (const g of verdict.regressions) verdict.broken.push({ suite: g.suite, reason: `${g.id} failed, not judged — the run was stopped` })
+      verdict.regressions = []
+      verdict.broken.push({ suite: '-', reason: `the run passed its ${span(limit)} limit (verify.run_timeout) and was stopped — find what made it slow (a loaded database, a hung test), or raise run_timeout` })
+      verdict.status = 'env-broken'
+    }
+    return verdict
   } finally {
+    if (timer) clearTimeout(timer)
+    ctx.signal?.removeEventListener?.('abort', passOn)
     rmSync(tmp, { recursive: true, force: true })
     for (const where of slots) reapStrays(where)
   }
@@ -417,6 +441,13 @@ async function judgeRequest(req, ctx, tmp, slots) {
     else verdict.regressions.push({ suite: suiteName, id: f.id, file: f.file, name: f.name, msg: f.msg, ...(f.raw && { raw: true }), ...(k.note && { note: k.note }), introducedBy: null })
   }
   const judge = (f, rerunHere, rerunOnTarget) => classify(f, { known, isFlaky: ledger.isFlaky, branchOwns, rerunHere, rerunOnTarget })
+  // Why the test database can't be trusted right now, or null (none configured, or it answers).
+  const dbIll = () => (verify.db && ctx.pool?.probe ? ctx.pool.probe() : null)
+  // Every regression so far → broken, with why it was not a judgement: the verdict is env-broken.
+  const unjudge = (why) => {
+    for (const g of verdict.regressions) verdict.broken.push({ suite: g.suite, reason: `${g.id} failed, not judged — ${why}` })
+    verdict.regressions = []
+  }
 
   // 1. Checks.
   const checksRun = new Map()
@@ -484,17 +515,30 @@ async function judgeRequest(req, ctx, tmp, slots) {
       continue
     }
     const failing = res.results.filter((r) => r.status === 'fail').map((r) => ({ id: testId(s.name, r), file: r.file, name: r.name, msg: r.msg }))
-    const batched = batchedJudging(s, failing)
+    // Judging re-runs each failure here and on the target. On a database that is down or overloaded
+    // those re-runs are hours of noise and their verdict a false red: ask the server first.
+    const toJudge = failing.filter((f) => !known.has(f.id) && !ledger.isFlaky(f.id))
+    const ill = toJudge.length ? dbIll() : null
+    if (ill) verdict.broken.push({ suite: s.name, reason: `${plural(toJudge.length, 'failing test')} not judged — ${ill}` })
+    const unjudged = new Set(ill ? toJudge.map((f) => f.id) : [])
+    const batched = batchedJudging(s, failing.filter((f) => !unjudged.has(f.id)))
     for (const r of res.results) {
       if (signal?.aborted) break
       const id = testId(s.name, r)
       rows.push({ id, status: r.status, ms: r.ms })
-      if (r.status !== 'fail') continue
+      if (r.status !== 'fail' || unjudged.has(id)) continue
       const f = { id, file: r.file, name: r.name, msg: r.msg }
       const k = await judge(f, batched.rerunHere, batched.rerunOnTarget)
       if (signal?.aborted) break
       record(f, k, s.name)
     }
+  }
+
+  // A regression judged while the database was failing is the database's as likely as the code's:
+  // asked once more before any fix is dispatched for it.
+  if (verdict.regressions.length && !signal?.aborted) {
+    const late = dbIll()
+    if (late) unjudge(late)
   }
 
   // 3. The ledger, then which commit broke what.

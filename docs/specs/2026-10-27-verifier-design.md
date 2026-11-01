@@ -68,6 +68,7 @@ The old `## Quality gates` section and its `### <app> — fast` / `### Deep set`
 verify:
   workers: 3                      # test workers on this machine
   timeout: 15m                    # per suite run
+  run_timeout: 90m                # a whole request — suites, re-runs, bisect; past it: env-broken
   db:                             # optional — the isolated-DB pool
     kind: postgres
     url: postgres://app:app@localhost:5432/app
@@ -205,6 +206,12 @@ At most one run per suite per step, of just that suite's failing tests together;
   as a commit object without touching the branch.
 - **Hung test** — the suite timeout; timed-out tests are failures judged as above; no report at all is
   env-broken.
+- **Sick test database** — before a suite's failures are judged (and again before a red verdict), the
+  verifier asks the `db.url` server `SELECT 1`. No answer, or slower than 5s: the failures are not
+  judged (no re-runs here or on the target) and the verdict is env-broken naming why — a database that
+  is down, full or overloaded fails tests that are fine, and their re-runs only add hours.
+- **A run that will not end** — `run_timeout` (default 90m) bounds the whole request; past it the run
+  stops and the verdict is env-broken naming the limit. `wait` says how long a run has gone.
 
 ## What changes in builder
 

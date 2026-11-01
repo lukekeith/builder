@@ -65,7 +65,20 @@ const withDb = (url, name) => {
   return u.toString()
 }
 
-export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = freePort, alive = pidAlive } = {}) {
+/** One `SELECT 1` against the server, bounded: a database that is down or wedged must not hang the probe. */
+export const probeDb = (url, timeoutMs = 10000) => {
+  try {
+    execFileSync('psql', [url, '-tAc', 'SELECT 1'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, env: { ...process.env, PGCONNECT_TIMEOUT: String(Math.ceil(timeoutMs / 1000)) } })
+  } catch (e) {
+    if (e.code === 'ETIMEDOUT' || e.signal === 'SIGTERM') throw new Error(`no answer within ${Math.round(timeoutMs / 1000)}s`)
+    throw new Error(`${String(e.stderr ?? '').trim() || e.message}`)
+  }
+}
+
+/** Slower than this to answer SELECT 1 and the database is too loaded for a failure there to mean anything. */
+export const PROBE_SLOW_MS = 5000
+
+export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = freePort, alive = pidAlive, probeDb: probe = probeDb, now = Date.now } = {}) {
   // Every project command is bounded by verify.timeout: a hung hook must not hang the service.
   const sh = (cmd, o) => run(cmd, { timeout: verify.timeoutMs, ...o })
   const used = { db: 0, simulator: 0, 'walk-env': 0, hook: 0 }
@@ -136,6 +149,21 @@ export function createPool(verify, { sh: run = shell, psql: pg = psql, ports = f
           unwind()
         },
       }
+    },
+    /**
+     * Is the test database server fit to judge a failure on? → null when it answers SELECT 1 quickly,
+     * else why not (password redacted). No verify.db → null: there is nothing to ask.
+     */
+    probe() {
+      if (!verify.db) return null
+      const t0 = now()
+      try {
+        probe(verify.db.url)
+      } catch (e) {
+        return redact(verify.db.url, `the test database did not answer SELECT 1: ${String(e.message ?? e).split('\n')[0]}`)
+      }
+      const ms = now() - t0
+      return ms > PROBE_SLOW_MS ? `the test database took ${Math.round(ms / 1000)}s to answer SELECT 1 (over ${PROBE_SLOW_MS / 1000}s: overloaded)` : null
     },
     templateName: (hash) => `${base}_vt_tpl_${hash.slice(0, 12)}`,
     ensureTemplate(checkout, hash) {
