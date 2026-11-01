@@ -75,7 +75,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Agent(builder:implementer, sonnet — Task 2: Tag create / rename / delete endpoints — \"Read .builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
+          "text": "⏺ Agent(builder:implementer, sonnet — Task 2: Tag create / rename / delete endpoints — \"Read /Users/sam/code/acme-certs.fleet/cert-tags/.builder/cert-tags/dispatch-implementer-task-2.md and do what it says.\") — DONE · 1 commit · its 6 new tests and api typecheck green"
         },
         {
           "role": "claude",
@@ -105,7 +105,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · SendMessage(implementer — Task 2, fix round 1: \"Read .builder/cert-tags/dispatch-implementer-task-2-round-1.md and do what it says.\")"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs implementer docs/features/cert-tags --task 2 --round 1 --findings-file .builder/cert-tags/task-2-review.md) · SendMessage(implementer — Task 2, fix round 1: \"Read /Users/sam/code/acme-certs.fleet/cert-tags/.builder/cert-tags/dispatch-implementer-task-2-round-1.md and do what it says.\")"
         },
         {
           "role": "tool",
@@ -122,9 +122,9 @@
         }
       ],
       "stamp": {
-        "hash": "347958de7c1f",
+        "hash": "fd7a0ebd8440",
         "version": "5.5.0",
-        "date": "2026-10-31"
+        "date": "2026-11-01"
       }
     },
     {
@@ -888,7 +888,7 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs agent-walk docs/features/cert-tags) · Agent(walker — round 1, most capable model, foreground — \"Read .builder/cert-tags/dispatch-agent-walk-round-1.md and do what it says.\") — .builder/cert-tags/agent-walk/round-1/report.md"
+          "text": "⏺ Bash(node <builder>/scripts/dispatch.mjs agent-walk docs/features/cert-tags) · Agent(walker — round 1, most capable model, foreground — \"Read /Users/sam/code/acme-certs.fleet/cert-tags/.builder/cert-tags/dispatch-agent-walk-round-1.md and do what it says.\") — .builder/cert-tags/agent-walk/round-1/report.md"
         },
         {
           "role": "tool",

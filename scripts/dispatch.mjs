@@ -834,7 +834,7 @@ function pauseRequest(f) {
 const SECOND_REVIEW = /§\s*Contract\b|§\s*Schema\b|\bcontract\b|\bschema\b|\bmigrations?\b|\bSC\d+\b/i
 
 /** EXECUTION §5: the ledger line, the commit-tier request, the verdict, then the next render. → output lines and the render, if any. */
-function close(f, ws, n, line, context) {
+function close(f, ws, n, line, context, model) {
   const out = []
   const ledgerText = read(join(ws, 'progress.md')) ?? ''
   const done = ledgerText.split('\n').find((l) => new RegExp(`^Task ${n}: complete\\b`).test(l))
@@ -868,7 +868,7 @@ function close(f, ws, n, line, context) {
     out.push(`verdict red — act on it (EXECUTION §5), then dispatch.mjs implementer ${f.rel} --task ${p.next}`)
     return { lines: out, render: null }
   }
-  return { lines: out, render: implementer(f, { task: String(p.next), context }, ws) }
+  return { lines: out, render: implementer(f, { task: String(p.next), context, model }, ws) }
 }
 
 function next(f, a, ws) {
@@ -882,9 +882,9 @@ function next(f, a, ws) {
     }
     const base = loadState(ws).tasks[n]?.base
     if (!base) throw new Error(`no BASE recorded for task ${n} — its implementer is rendered first (dispatch.mjs implementer --task ${n})`)
-    return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`, a.context)
+    return close(f, ws, n, `Task ${n}: complete (commits ${base}..${short(f.root, 'HEAD')}, no task review (tests: review=${review}))`, a.context, a.model)
   }
-  return close(f, ws, +a.close, a.ledger, a.context)
+  return close(f, ws, +a.close, a.ledger, a.context, a.model)
 }
 
 /**
@@ -899,7 +899,8 @@ function emit(r, root) {
   console.log(`wrote ${rel(r.file)}${r.note ? ` · ${r.note}` : ''}`)
   if (r.findings) console.log(`findings: ${rel(r.findings)}`)
   // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
-  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} (${r.why ?? 'default'}) · description: ${r.description} · prompt: Read ${rel(r.file)} and do what it says.`)
+  // The prompt's path stays absolute: the agent's Read wants one, and its cwd may not be the repo root.
+  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} (${r.why ?? 'default'}) · description: ${r.description} · prompt: Read ${r.file} and do what it says.`)
 }
 
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
@@ -933,6 +934,9 @@ async function main(argv) {
     if (!f.cfg) throw new Error(f.cfgError)
     const r = next(f, a, f.ws())
     for (const l of r.lines) console.log(l)
+    // The next implementer takes --model itself (it records the model that ran); a task review is overridden here.
+    const override = r.render && r.render.why !== '--model' ? raiseOnly(overrideOf(a), r.render.model, 'task-review') : null
+    if (override) Object.assign(r.render, { model: override, why: '--model' })
     if (r.render) emit(r.render, f.root)
     return 0
   }
