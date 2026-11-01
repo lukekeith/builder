@@ -290,22 +290,29 @@ const agentTypeOf = (f, kind) => f.cfg?.agentTypes?.[kind] ?? { implementer: 'bu
 
 const ENV_NOTES_CAP = 2000
 /**
- * The `- ` bullets directly under the ledger's `## env notes` (or `## env notes (…)`) heading — the ledger is
- * append-only, so the first non-bullet line (a completion, a ruling) ends them; an indented line continues a
- * bullet. Capped at ENV_NOTES_CAP chars, whole bullets, with a pointer to the ledger for the rest.
+ * The `- ` bullets directly under every `## env notes` (or `## env notes (…)`) heading in the ledger, in
+ * order — a note found late in the build gets a heading of its own further down. The ledger is append-only,
+ * so under each heading the first non-bullet line (a completion, a ruling) ends its bullets; an indented line
+ * continues a bullet. Capped at ENV_NOTES_CAP chars, whole bullets, with a pointer to the ledger for the rest.
  */
 function envNotesOf(ledger) {
   const lines = String(ledger).split('\n')
-  const at = lines.findIndex((l) => /^##\s+env notes(\s*\(.*\))?\s*$/i.test(l))
-  if (at < 0) return ''
   const out = []
-  let i = at + 1
-  while (i < lines.length && !lines[i].trim()) i++
-  for (; i < lines.length; i++) {
-    const l = lines[i]
-    if (/^- /.test(l) || (out.length && /^\s+\S/.test(l))) out.push(l)
-    else break
+  for (let at = 0; at < lines.length; at++) {
+    if (!/^##\s+env notes(\s*\(.*\))?\s*$/i.test(lines[at])) continue
+    let i = at + 1
+    while (i < lines.length && !lines[i].trim()) i++
+    let any = false
+    for (; i < lines.length; i++) {
+      const l = lines[i]
+      if (/^- /.test(l) || (any && /^\s+\S/.test(l))) {
+        out.push(l)
+        any = true
+      } else break
+    }
+    at = i - 1
   }
+  if (!out.length) return ''
   let kept = ''
   for (const [k, l] of out.entries()) {
     if (/^- /.test(l) && k && (kept + '\n' + l).length > ENV_NOTES_CAP) return `${kept}\n… see the ledger (progress.md §env notes) for the rest`

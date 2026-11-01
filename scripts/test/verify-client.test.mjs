@@ -146,6 +146,20 @@ test('summarize keeps the values of a test failure — a node-test AssertionErro
   assert.doesNotMatch(j, /sum\.test\.js:3:13/)
 })
 
+test('summarize keeps the first stack frame of a thrown error — where it was thrown — and only for a thrown error', () => {
+  const base = { tier: 'commit', sha: 'abcdef1234', branch: 'f', status: 'red', ms: 1, flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0 }
+  const thrown = "TypeError: Cannot read properties of undefined (reading 'split')\n    at tagsOf (file:///repo/src/tags.mjs:12:5)\n    at TestContext.<anonymous> (file:///repo/test/tags.test.mjs:8:3)\n    at Test.runInAsyncScope (node:async_hooks:206:9)"
+  const t = summarize({ ...base, regressions: [{ id: 'u::t', msg: thrown, introducedBy: '1234567abc' }] })
+  assert.match(t, /TypeError: Cannot read properties of undefined/)
+  assert.match(t, /^ {10}at tagsOf \(file:\/\/\/repo\/src\/tags\.mjs:12:5\)$/m)
+  assert.doesNotMatch(t, /tags\.test\.mjs:8:3|runInAsyncScope/, 'only the first frame')
+  const plain = summarize({ ...base, regressions: [{ id: 'u::e', msg: 'Error: boom\n    at go (file:///repo/src/go.mjs:1:1)', introducedBy: '1234567abc' }] })
+  assert.match(plain, /at go \(file:\/\/\/repo\/src\/go\.mjs:1:1\)/)
+  // An assertion failure is not a thrown error: its values are the story, its frames are the test's own.
+  const assertion = summarize({ ...base, regressions: [{ id: 'u::a', msg: 'AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n1 !== 2\n\n    at TestContext.<anonymous> (file:///repo/test/x.test.mjs:5:10)', introducedBy: '1234567abc' }] })
+  assert.doesNotMatch(assertion, /x\.test\.mjs:5:10/)
+})
+
 test('cancel never overwrites a finished request and cancels a queued one at once', () => {
   const { root, wt } = repo()
   const ledger = openLedger(root)

@@ -510,6 +510,19 @@ test('next: usage', () => {
   assert.equal(next(['--close', '1']).status, 2, '--close needs its --ledger line')
 })
 
+test('next --close on a batch: members ledgered first, then closing the first renders none of them and writes no second line', () => {
+  // EXECUTION's task loop: a batch (tasks 1 and 2 in one dispatch) ledgers every member complete, then closes the first with next.
+  const { r, next, ledger } = nextRepo()
+  const member = run('advance.mjs', [r.rel, '--ledger', 'Task 2: complete (commits a..b, review clean — batched with Task 1)'], { cwd: r.root })
+  assert.equal(member.status, 0, member.stderr)
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean — batch of Tasks 1–2)'])
+  assert.equal(res.status, 0, res.stderr)
+  assert.doesNotMatch(res.stdout, /dispatch-implementer-task-2\.md/, 'a ledgered batch member is never dispatched again')
+  assert.match(res.stdout, /^phase 1 closes — build §Phase close$/m)
+  assert.equal((ledger().match(/^Task 2: complete/gm) ?? []).length, 1)
+  assert.equal((ledger().match(/^Task 1: complete/gm) ?? []).length, 1)
+})
+
 test('next --close follows the phase table, not task numbers: the next member of the same phase, then the phase-close line', () => {
   const { r, next } = nextRepo()
   const plan = join(r.folder, 'PLAN.md')
@@ -819,6 +832,19 @@ test('dispatch implementer: the brief carries the config\'s §Environment landmi
   assert.match(b, /## Environment landmines \(the project config's, verbatim\)\n\n- Port 5432 is the dev DB; never run tests against it\./)
   assert.match(b, /## Environment notes \(the ledger's\)\n\n- node 20 needs --experimental-vm-modules for the suite\n- the seed script must run before the first test\n/)
   assert.doesNotMatch(b, /not an env note|Task 1: complete/)
+})
+
+test('dispatch implementer: env notes written later in the build reach the brief — every bullet under any env notes heading', () => {
+  const r = leanRepo('note-tags')
+  mkdirSync(WS(r), { recursive: true })
+  writeFileSync(
+    join(WS(r), 'progress.md'),
+    `# builder ledger — plan: ${r.rel}/PLAN.md\n\n## env notes\n- the seed script must run before the first test\nTask 1: complete (commit abc1234)\n- Task 2: minor (deferred): not an env note\n\n## env notes (found in task 2)\n- port 4100 is taken by the walk env; the suite uses 4200\n  (set PORT=4200)\nTask 2: complete (commit def5678)\n`,
+  )
+  assert.equal(run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root }).status, 0)
+  const b = readText(join(WS(r), 'task-1-brief.md'))
+  assert.match(b, /## Environment notes \(the ledger's\)\n\n- the seed script must run before the first test\n- port 4100 is taken by the walk env; the suite uses 4200\n {2}\(set PORT=4200\)\n/)
+  assert.doesNotMatch(b, /not an env note|Task 2: complete/)
 })
 
 test('dispatch implementer: the ledger\'s env notes are capped in the brief, pointing at the ledger for the rest', () => {

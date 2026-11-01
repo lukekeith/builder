@@ -728,6 +728,24 @@ test('reapStrays skips a process with a controlling terminal — a person\'s she
   }
 })
 
+test('reapStrays fails closed: a pid whose terminal cannot be read (ps errors or prints nothing) is never signalled', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-nops-')))
+  const unread = spawnSleep(root)
+  const blank = spawnSleep(root)
+  const stray = spawnSleep(root)
+  const logged = []
+  try {
+    const ttyOf = (pid) => (pid === unread.pid ? null : pid === blank.pid ? '' : '??')
+    const got = reapStrays(root, { ttyOf, log: (m) => logged.push(m) })
+    assert.deepEqual(got, [stray.pid])
+    assert.equal(alive(unread.pid), true, 'a pid ps could not inspect is never signalled')
+    assert.equal(alive(blank.pid), true, 'a pid ps said nothing about is never signalled')
+    assert.equal(logged.filter((m) => /could not be read/.test(m)).length, 2)
+  } finally {
+    for (const p of [unread, blank, stray]) kill(p.pid)
+  }
+})
+
 test('reapStrays matches by real path: a checkout named through a symlink still reaps', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
   mkdirSync(join(root, 'real'))

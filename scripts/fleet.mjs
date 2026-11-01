@@ -87,6 +87,13 @@ if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
   process.exit(2)
 }
 const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into', '--pause', '--land', '--commit-mine'].includes(argv[i - 1]))
+/**
+ * A feature name the fleet can take: letters, digits, ".", "-" and "_" only (never all dots). The name
+ * becomes a branch, a worktree folder, a log file and a `{feature}` filled into shell hooks, so anything
+ * else is refused before it reaches one of them.
+ */
+const SAFE_NAME = /^(?!\.+$)[A-Za-z0-9._-]+$/
+const nameRefusal = (n) => `"${n}" isn't a feature name the fleet can take — a name uses only letters, digits, ".", "-" and "_" (rename its folder to one that does)`
 
 /**
  * `--land <feature> --commit-mine "<message>" | --set-aside` — the choices a landing parked on the
@@ -102,6 +109,7 @@ const refuseLand = (why, code = 2, usage = false) => {
 }
 if (LAND) {
   if (!LAND.feature || LAND.feature.startsWith('--') || /[/\\]|\.\./.test(LAND.feature)) refuseLand(`--land needs a feature name (no slashes)`, 2, true)
+  if (!SAFE_NAME.test(LAND.feature)) refuseLand(nameRefusal(LAND.feature))
   if (flag('--commit-mine') === flag('--set-aside')) refuseLand(`--land takes one of --commit-mine "<message>" or --set-aside`, 2, true)
   if (LAND.mode === 'commit-mine' && !(LAND.message ?? '').trim()) refuseLand(`--commit-mine needs the message to commit your changes with`, 2, true)
   const extra = [...['--all', '--dry-run', '--detach', '--status', '--wait', '--archived', '--pause', '--parallel'].filter(flag), ...positional]
@@ -164,6 +172,10 @@ if (flag('--pause')) {
     console.error(`--pause needs a feature name (no slashes)`, 2, true)
     process.exit(2)
   }
+  if (!SAFE_NAME.test(name)) {
+    console.error(`${nameRefusal(name)} — nothing was paused.`)
+    process.exit(2)
+  }
   const features = existsSync(join(DIR, 'fleet.json')) ? (loadFleet(ROOT).features ?? {}) : {}
   const row = Object.hasOwn(features, name) ? features[name] : null
   if (row && row.status !== 'done') {
@@ -220,8 +232,19 @@ const BY_PERSON = 'a person — named to /builder:agent or /builder:fleet'
 const nameOf = (a) => basename(a.replace(/\/(MANIFEST|SPEC)\.md$/, '').replace(/\/+$/, ''))
 
 function requested() {
-  if (!flag('--all')) return positional.map(nameOf)
-  return features(ROOT, CFG.registry).filter((n) => {
+  if (!flag('--all')) {
+    const names = positional.map(nameOf)
+    const bad = names.find((n) => !SAFE_NAME.test(n))
+    if (bad != null) {
+      console.error(`${nameRefusal(bad)} — nothing was started.`)
+      process.exit(2)
+    }
+    return names
+  }
+  const all = features(ROOT, CFG.registry)
+  const bad = all.filter((n) => !SAFE_NAME.test(n))
+  if (bad.length) console.error(`--all left out ${bad.length} folder${bad.length === 1 ? '' : 's'} whose name${bad.length === 1 ? '' : 's'} the fleet can't take: ${bad.map((n) => `"${n}"`).join(', ')} — a name uses only letters, digits, ".", "-" and "_"; rename ${bad.length === 1 ? 'it' : 'them'} to run ${bad.length === 1 ? 'it' : 'them'}`)
+  return all.filter((n) => SAFE_NAME.test(n)).filter((n) => {
     const t = readManifest(ROOT, n)
     if (!t) return false
     const mf = parseManifest(t)
@@ -297,8 +320,8 @@ function envFor(feature, lane) {
   const env = { ...process.env }
   // worktree_env first, every lane: it is how each worktree's tests get their own database, which
   // is what lets `parallel` builds share a machine without sharing a test DB.
-  for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = v.replaceAll('{feature}', feature)
-  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = v.replaceAll('{feature}', feature)
+  for (const [k, v] of Object.entries(AW.worktreeEnv)) env[k] = fill(v, feature)
+  if (lane === 'walk') for (const [k, v] of Object.entries(AW.env)) env[k] = fill(v, feature)
   // Deleted AFTER the merge: agent_walk.env accepts any key, and letting it put this one back
   // would point every child at one fixed checkout — the bug the delete exists to prevent.
   delete env.CLAUDE_PROJECT_DIR
@@ -2230,7 +2253,7 @@ function prepareWalkTree(features) {
     mkdirSync(dirname(log), { recursive: true })
     const fd = openSync(log, 'w')
     try {
-      execSync(AW.sync.replaceAll('{feature}', '_walk'), { cwd: WALK_WT, env: envFor('_walk', 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+      execSync(fill(AW.sync, '_walk'), { cwd: WALK_WT, env: envFor('_walk', 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
     } catch {
       throw new Error(`agent_walk.sync failed in the walk worktree — see ${log}`)
     } finally {
@@ -2411,11 +2434,11 @@ async function envPreflight() {
       // Setup can take many minutes (an install): run it off the event loop, logged like a feature's.
       const log = join(DIR, 'logs', '_envcheck-setup.log')
       mkdirSync(dirname(log), { recursive: true })
-      const r = await execAsync('sh', ['-c', AW.setup.replaceAll('{feature}', '_envcheck')], { cwd: ENVCHECK_WT, env: envFor('_envcheck', 'build') })
+      const r = await execAsync('sh', ['-c', fill(AW.setup, '_envcheck')], { cwd: ENVCHECK_WT, env: envFor('_envcheck', 'build') })
       writeFileSync(log, r.output)
       if (r.status !== 0) throw new Error(`setup failed — see ${log}`)
     }
-    const empty = Object.entries(AW.env ?? {}).filter(([, v]) => !String(v).replaceAll('{feature}', '_envcheck').trim()).map(([k]) => k)
+    const empty = Object.entries(AW.env ?? {}).filter(([, v]) => !fill(String(v), '_envcheck').trim()).map(([k]) => k)
     if (empty.length) why = `agent_walk.env leaves ${empty.join(', ')} empty`
     else if (!(await startWalkEnv('_envcheck', rec))) why = `start/smoke failed — see ${rec.startLog}`
   } catch (e) {
