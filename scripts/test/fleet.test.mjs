@@ -1191,6 +1191,161 @@ test('a merge your uncommitted changes would clobber parks as needs you, naming 
   assert.equal(readFileSync(join(root, 'notes.txt'), 'utf8'), 'not the feature\n')
 })
 
+/**
+ * A feature parked on the user's uncommitted changes (D2): app/x.txt is tracked and both sides change
+ * it — the feature by `step` (APPEND merges around the user's edit to its first line; COMMIT
+ * rewrites it). notes.txt is untracked and not the feature's; ignored.txt is ignored. `before`
+ * dirties the checkout further before the fleet runs.
+ */
+function parkedOnOverlap(step = 'APPEND:app/x.txt:building', before = () => {}) {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, '.git/info/exclude'), '.stub/\nignored.txt\n')
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/x.txt'), 'one\ntwo\nthree\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'app file')
+  writeFileSync(join(root, 'app/x.txt'), 'ONE\ntwo\nthree\n')
+  writeFileSync(join(root, 'notes.txt'), 'not the feature\n')
+  writeFileSync(join(root, 'ignored.txt'), 'ignored\n')
+  before(root)
+  const first = runFleet(root, ['a'], { a: HAPPY.map((s) => (s === 'building' ? step : s)) })
+  const f = first.fleet.features.a
+  assert.equal(f.status, 'parked', JSON.stringify(f))
+  assert.match(f.reason, /^needs you: your uncommitted changes overlap this feature/)
+  assert.ok(existsSync(join(root, '.builder/fleet/parked/a/PARKED.md')))
+  return { root, first }
+}
+const land = (root, ...args) => runFleet(root, ['--land', 'a', ...args], { a: [] })
+const stashList = (root) => git(root, 'stash', 'list', '--format=%H %gs')
+
+test('--land --commit-mine commits exactly your changes, then lands the parked feature and clears the park', () => {
+  const { root } = parkedOnOverlap('APPEND:app/x.txt:APPEND:app/new.txt:building', (r) => writeFileSync(join(r, 'app/new.txt'), 'mine\n'))
+  const r = land(root, '--commit-mine', 'wip: my edits')
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assert.match(r.stdout, /^✓ a landed on main — merge [0-9a-f]{7}\.$/m)
+  assert.match(r.stdout, /^Your changes are committed on main as [0-9a-f]{7} "wip: my edits" \(2 files\), before it\.$/m)
+  // Your commit: every tracked change, and the untracked file the feature adds too — nothing else.
+  const mine = git(root, 'log', '--format=%H', '--grep=^wip: my edits$', 'main')
+  assert.ok(mine, git(root, 'log', '--oneline', 'main'))
+  assert.deepEqual(git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', mine).split('\n'), ['app/new.txt', 'app/x.txt'])
+  assert.equal(git(root, 'show', `${mine}:app/x.txt`), 'ONE\ntwo\nthree')
+  // Landed by the fleet's own path: a merge commit after yours, the row archived, the record gone.
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(join(root, '.builder/fleet/parked/a')), false)
+  assert.equal(readFileSync(join(root, 'app/x.txt'), 'utf8'), 'ONE\ntwo\nthree\na was here\n')
+  // Never another untracked file, never an ignored one.
+  assert.equal(git(root, 'status', '--porcelain'), '?? notes.txt')
+  assert.equal(readFileSync(join(root, 'ignored.txt'), 'utf8'), 'ignored\n')
+})
+
+test('--land --set-aside sets your changes aside by name, lands, puts them back and drops only that stash', () => {
+  const { root } = parkedOnOverlap('APPEND:app/x.txt:building', (r) => {
+    // Someone else's stash, made before: it is never the one applied or dropped.
+    writeFileSync(join(r, 'app/x.txt'), 'theirs\n')
+    git(r, 'stash', 'push', '-q', '-m', 'unrelated work')
+    writeFileSync(join(r, 'app/x.txt'), 'ONE\ntwo\nthree\n')
+  })
+  const stashed = stashList(root)
+  const r = land(root, '--set-aside')
+  assert.equal(r.status, 0, r.stderr + r.stdout)
+  assert.match(r.stdout, /^✓ a landed on main — merge [0-9a-f]{7}\.\nYour changes were set aside for it and are back as you left them; the stash is dropped\.$/m)
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+  assertLanded(r, 'a')
+  assert.equal(existsSync(join(root, '.builder/fleet/parked/a')), false)
+  assert.equal(readFileSync(join(root, 'app/x.txt'), 'utf8'), 'ONE\ntwo\nthree\na was here\n', 'yours, on the landed code')
+  assert.equal(readFileSync(join(root, 'notes.txt'), 'utf8'), 'not the feature\n')
+  assert.equal(readFileSync(join(root, 'ignored.txt'), 'utf8'), 'ignored\n')
+  assert.equal(git(root, 'status', '--porcelain'), 'M app/x.txt\n?? notes.txt')
+  assert.equal(stashList(root), stashed, 'only the stash it made is gone')
+})
+
+test('--land --set-aside whose changes conflict on the way back keeps the stash, lists the files and says how to finish', () => {
+  const { root } = parkedOnOverlap('COMMIT:app/x.txt:building', (r) => {
+    // The ship writes this path: yours is untracked, so git can't put it back over the feature's.
+    mkdirSync(join(r, 'docs/features/_archive/a'), { recursive: true })
+    writeFileSync(join(r, 'docs/features/_archive/a/SPEC.md'), 'my local edit\n')
+  })
+  const r = land(root, '--set-aside')
+  assert.equal(r.status, 1, r.stderr + r.stdout)
+  // The target landed whole: the merge commit, the row archived.
+  assert.match(git(root, 'log', '--oneline', '-1'), /merge\(a\)/)
+  assertLanded(r, 'a')
+  const [sha] = stashList(root).split('\n').find((l) => l.endsWith('On main: builder: before landing a')).split(' ')
+  assert.ok(sha, 'the stash is kept')
+  const short = sha.slice(0, 7)
+  assert.match(r.stdout, /^✓ a landed on main — merge [0-9a-f]{7}\.$/m)
+  assert.ok(r.stdout.includes([
+    'Your changes came back with conflicts in 2 files:',
+    '  - app/x.txt — both sides changed it: resolve the conflict markers',
+    `  - docs/features/_archive/a/SPEC.md — not put back (a has its own copy now); yours is in the stash: git show ${short}^3:docs/features/_archive/a/SPEC.md`,
+    `Nothing of yours was dropped: it is all still in the stash "builder: before landing a" (stash@{0}, ${short}).`,
+    'To finish:',
+    '  1. resolve those files — keep what you want of both sides',
+    '  2. git add -- app/x.txt',
+    '  3. git stash drop stash@{0}   (stashed since? find it in git stash list by its name first)',
+  ].join('\n')), r.stdout)
+  assert.match(readFileSync(join(root, 'app/x.txt'), 'utf8'), /^<<<<<<< [^\n]*\n[\s\S]*ONE\ntwo\nthree\n>>>>>>> /m)
+  assert.equal(git(root, 'show', `${sha}^3:docs/features/_archive/a/SPEC.md`), 'my local edit')
+  assert.equal(readFileSync(join(root, 'notes.txt'), 'utf8'), 'not the feature\n')
+  // The next session sees it: a fleet note, in the status.
+  assert.ok(r.fleet.notes.some((n) => n.startsWith('⚠ a landed on main, but your changes set aside for it came back with conflicts in 2 files: app/x.txt, docs/features/_archive/a/SPEC.md') && n.includes(short)), JSON.stringify(r.fleet.notes))
+  assert.match(readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8'), /⚠ a landed on main, but your changes set aside/)
+})
+
+test('--land --set-aside whose landing fails puts your changes straight back and stays parked', () => {
+  const { root, first } = parkedOnOverlap()
+  // The branch changes the config after it parked: the landing refuses it (a human's file).
+  const wt = first.fleet.features.a.worktree
+  writeFileSync(join(wt, '.claude/builder.md'), readFileSync(join(wt, '.claude/builder.md'), 'utf8') + '\n<!-- loosened -->\n')
+  git(wt, 'commit', '-qam', 'config')
+  const head = git(root, 'rev-parse', 'main')
+  const stashed = stashList(root)
+  const r = land(root, '--set-aside')
+  assert.equal(r.status, 1, r.stderr + r.stdout)
+  assert.match(r.stdout, /^✗ a didn't land: config change needed — /m)
+  assert.match(r.stdout, /^Your changes were set aside while it tried and are back as you left them; the stash is dropped\.$/m)
+  assert.equal(git(root, 'rev-parse', 'main'), head, 'the target never moved')
+  assert.equal(readFileSync(join(root, 'app/x.txt'), 'utf8'), 'ONE\ntwo\nthree\n')
+  assert.equal(git(root, 'status', '--porcelain'), 'M app/x.txt\n?? notes.txt')
+  assert.equal(stashList(root), stashed)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /^config change needed/)
+})
+
+test('--land refuses, touching nothing: no message, an unknown feature, one not parked on your changes, a running fleet, another branch', () => {
+  const { root } = parkedOnOverlap()
+  const fj = join(root, '.builder/fleet/fleet.json')
+  const snap = () => [git(root, 'status', '--porcelain'), git(root, 'rev-parse', 'HEAD'), stashList(root), readFileSync(fj, 'utf8'), readFileSync(join(root, 'app/x.txt'), 'utf8')]
+  const was = snap()
+  const refused = (args, code, re) => {
+    const r = runFleet(root, args, { a: [] })
+    assert.equal(r.status, code, `${args.join(' ')}: ${r.stderr}${r.stdout}`)
+    assert.match(r.stderr, re)
+    assert.match(r.stderr, /nothing was changed/)
+    assert.deepEqual(snap(), was, args.join(' '))
+  }
+  refused(['--land', 'a', '--commit-mine'], 2, /--commit-mine needs the message/)
+  refused(['--land', 'a', '--commit-mine', '  '], 2, /--commit-mine needs the message/)
+  refused(['--land', 'a'], 2, /--land takes one of --commit-mine "<message>" or --set-aside/)
+  refused(['--land', 'a', '--commit-mine', 'x', '--set-aside'], 2, /--land takes one of/)
+  refused(['--set-aside'], 2, /go with --land <feature>/)
+  refused(['--land', 'nope', '--set-aside'], 2, /^nope isn't in this fleet/)
+  refused(['--land', 'a', 'b', '--set-aside'], 2, /takes no b/)
+  git(root, 'switch', '-q', '-c', 'other') // your changes come along; main is no longer here
+  refused(['--land', 'a', '--commit-mine', 'x'], 2, /^This checkout is on other, not main/)
+  git(root, 'switch', '-q', 'main')
+  writeFileSync(join(root, '.builder/fleet/lock'), String(process.pid))
+  refused(['--land', 'a', '--set-aside'], 3, /A fleet is running in this repo/)
+  unlinkSync(join(root, '.builder/fleet/lock'))
+  const other = JSON.parse(readFileSync(fj, 'utf8'))
+  other.features.a.reason = 'the merge tier went red on main as it is now: t1 — next: /builder:agent to work the fixes and land it'
+  writeFileSync(fj, JSON.stringify(other, null, 2))
+  const red = snap()
+  was.splice(0, was.length, ...red)
+  refused(['--land', 'a', '--commit-mine', 'x'], 2, /^a isn't parked waiting on your uncommitted changes \(it is parked: the merge tier went red/)
+})
+
 test('a target checked out in another worktree parks with its choices: switch that worktree, then land', () => {
   const root = makeRepo(['a'])
   git(root, 'switch', '-q', '-c', 'mine')

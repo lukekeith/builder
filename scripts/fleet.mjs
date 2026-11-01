@@ -55,9 +55,10 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --wait | --pause <feature>   (named while a fleet runs: added to its queue)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--wait', '--archived', '--pause', '--no-env-check'])
-for (const a of argv) {
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --wait | --pause <feature>   (named while a fleet runs: added to its queue) | --land <feature> --commit-mine "<message>" | --set-aside   (a landing parked on your uncommitted changes: commit them first, or set them aside and put them back)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--wait', '--archived', '--pause', '--no-env-check', '--land', '--commit-mine', '--set-aside'])
+for (const [i, a] of argv.entries()) {
+  if (argv[i - 1] === '--commit-mine') continue // the message, whatever it starts with
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
     console.error(`Unknown flag ${a}. ${USAGE}`)
     process.exit(2)
@@ -85,7 +86,29 @@ if (flag('--into') && !/^[^-\s][^\s]*$/.test(opt('--into') ?? '')) {
   console.error(`--into needs a branch name. ${USAGE}`)
   process.exit(2)
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into', '--pause'].includes(argv[i - 1]))
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--parallel', '--archived', '--into', '--pause', '--land', '--commit-mine'].includes(argv[i - 1]))
+
+/**
+ * `--land <feature> --commit-mine "<message>" | --set-aside` — the choices a landing parked on the
+ * user's uncommitted changes offers (D3), done for them: commit those changes first, or set them aside
+ * in a named stash and put them back after; then the feature lands by the fleet's own path (landNow).
+ * Exit 0: landed and your changes are where you left them · 1: something is left for you (said how)
+ * · 2: refused, nothing touched · 3: a fleet is running.
+ */
+const LAND = flag('--land') ? { feature: opt('--land'), mode: flag('--commit-mine') ? 'commit-mine' : 'set-aside', message: opt('--commit-mine') } : null
+const refuseLand = (why, code = 2, usage = false) => {
+  console.error(`${why} — nothing was changed.${usage ? ` ${USAGE}` : ''}`)
+  process.exit(code)
+}
+if (LAND) {
+  if (!LAND.feature || LAND.feature.startsWith('--') || /[/\\]|\.\./.test(LAND.feature)) refuseLand(`--land needs a feature name (no slashes)`, 2, true)
+  if (flag('--commit-mine') === flag('--set-aside')) refuseLand(`--land takes one of --commit-mine "<message>" or --set-aside`, 2, true)
+  if (LAND.mode === 'commit-mine' && !(LAND.message ?? '').trim()) refuseLand(`--commit-mine needs the message to commit your changes with`, 2, true)
+  const extra = [...['--all', '--dry-run', '--detach', '--status', '--wait', '--archived', '--pause', '--parallel'].filter(flag), ...positional]
+  if (extra.length) refuseLand(`--land lands one parked feature on its own; it takes no ${extra.join(', ')}`, 2, true)
+} else if (flag('--commit-mine') || flag('--set-aside')) refuseLand(`--commit-mine and --set-aside go with --land <feature>`, 2, true)
+/** A landing parked on the user's uncommitted changes — and the words a 5.x fleet row used for it. */
+const LAND_PARK = /^needs you: your uncommitted changes overlap|uncommitted changes are in the way/
 
 const CFG = requireConfig()
 const ROOT = CFG.root
@@ -138,7 +161,7 @@ if (flag('--status') || flag('--archived') || flag('--wait')) {
 if (flag('--pause')) {
   const name = opt('--pause')
   if (!name || name.startsWith('--') || name.includes('/') || name.includes('..') || name.includes('\\')) {
-    console.error(`--pause needs a feature name (no slashes). ${USAGE}`)
+    console.error(`--pause needs a feature name (no slashes)`, 2, true)
     process.exit(2)
   }
   const features = existsSync(join(DIR, 'fleet.json')) ? (loadFleet(ROOT).features ?? {}) : {}
@@ -469,7 +492,14 @@ const fleet = loadFleet(ROOT)
  * launch. Kept in fleet.json; a fleet with unfinished rows keeps its target until they finish.
  */
 const TARGET_FROM = flag('--into') ? '--into' : CFG.mergeIntoCurrent ? 'merge_into: current' : 'merge_into'
-const TARGET = opt('--into') ?? CFG.mergeInto
+// --land: before the target is resolved — the row lands where its fleet lands.
+if (LAND) {
+  const row = Object.hasOwn(fleet.features, LAND.feature) ? fleet.features[LAND.feature] : null
+  if (runningPid) refuseLand(`A fleet is running in this repo (pid ${runningPid}) — wait for it to finish (fleet.mjs --wait), then run this again`, 3)
+  if (!row) refuseLand(`${LAND.feature} isn't in this fleet`)
+  if (row.status !== 'parked' || !LAND_PARK.test(row.reason ?? '')) refuseLand(`${LAND.feature} isn't parked waiting on your uncommitted changes (it is ${row.status}${row.reason ? `: ${parkParts(row.reason).why}` : ''})`)
+}
+const TARGET = opt('--into') ?? ((LAND && fleet.target) || CFG.mergeInto)
 if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${TARGET}`]) === null) {
   console.error(`The branch to merge into, ${TARGET}, does not exist — create it (git branch ${TARGET}) or set merge_into in .claude/builder.md.`)
   process.exit(2)
@@ -485,6 +515,16 @@ if (!hasAgentWalk(tryGit(['show', `refs/heads/${TARGET}:${CONFIG_PATH}`]))) {
 if (fleet.target && fleet.target !== TARGET && Object.values(fleet.features).some((f) => f.status !== 'done')) {
   console.error(`This fleet merges into ${fleet.target}, not ${TARGET} — finish or clear it first, or continue it with --into ${fleet.target}.`)
   process.exit(2)
+}
+
+// --land: your changes are in the target's checkout, here, and nothing half-done is in the way.
+if (LAND) {
+  const here = tryGit(['branch', '--show-current'])
+  if (here !== TARGET) refuseLand(`This checkout is on ${here || 'a detached HEAD'}, not ${TARGET}, which ${LAND.feature} lands on — switch back to ${TARGET} (where your changes were in the way) and run this again; with nothing in the way, /builder:fleet ${LAND.feature} lands it`)
+  const busy = [['MERGE_HEAD', 'a merge'], ['REBASE_HEAD', 'a rebase'], ['CHERRY_PICK_HEAD', 'a cherry-pick'], ['REVERT_HEAD', 'a revert']].find(([ref]) => tryGit(['rev-parse', '-q', '--verify', ref]) !== null)
+  if (busy) refuseLand(`${busy[1]} is in progress in this checkout — finish or abort it, then run this again`)
+  const unmerged = tryGit(['diff', '--name-only', '--diff-filter=U'])
+  if (unmerged) refuseLand(`This checkout has unresolved conflicts (${unmerged.split('\n').join(', ')}) — resolve them, then run this again`)
 }
 
 /**
@@ -701,7 +741,7 @@ if (tookOverStaleLock) {
 // before `fleet.target` moves to this checkout, so the row records the target it landed on.
 // The run's progress counts what it merges (renderStatus, the status line): a new run starts the
 // count empty; one that took over a dead fleet's lock carries on that fleet's count, leftovers too.
-if (!tookOverStaleLock) fleet.landedThisRun = []
+if (!tookOverStaleLock && !LAND) fleet.landedThisRun = []
 for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'done') archiveRow(feature, null, tookOverStaleLock)
 pruneArchivedLogs(ROOT, AW.keepLogs)
 
@@ -1794,6 +1834,188 @@ function release() {
   save()
 }
 
+/**
+ * A parked or failed feature, as a fleet leaves it: its worktree goes (the branch keeps every
+ * finished task; picking it again recreates it). FLEET_KEEP_STOPPED_WORKTREES=1 keeps them, for
+ * looking inside one while debugging the fleet itself.
+ */
+function settleStopped(feature, f) {
+  if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') return
+  if (!['parked', 'failed'].includes(f.status) || !f.worktree) return
+  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it — and so
+  // does one waiting for your walk, which /builder:resume starts in this worktree.
+  if ((f.reason ?? '').includes(f.worktree) || YOUR_WALK.test(f.reason ?? '')) return
+  const r = clearWorktree(ROOT, f.worktree, feature)
+  if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
+  if (r.removed || !existsSync(f.worktree)) f.worktree = null
+  else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
+}
+
+// ---- --land: the needs-you choices (D3) ------------------------------------------------------
+const linesOf = (out) => (out ?? '').split('\n').filter(Boolean)
+const gitWords = (e) => String(e.stderr || e.message).trim().split('\n').slice(-3).join(' ')
+const stashName = (feature) => `builder: before landing ${feature}`
+/** The stash stack as [{ ref, sha, subject }] — an entry is found by its sha, never by its place. */
+const stashes = () => linesOf(tryGit(['stash', 'list', '--format=%gd%x09%H%x09%gs'])).map((l) => {
+  const [ref, sha, subject] = l.split('\t')
+  return { ref, sha, subject }
+})
+
+/**
+ * Commit exactly the user's changes: every tracked change, and the untracked files the feature adds
+ * too (`overlap`) — never another untracked file, never an ignored one. A refused commit (a hook)
+ * puts the index back as it was. → { sha, files } | { sha: null } (nothing to commit) | { error }.
+ */
+function commitMine(message, overlap) {
+  const index = tryGit(['write-tree'])
+  if (index === null) return { error: 'git could not read the index' }
+  const untracked = new Set(linesOf(tryGit(['ls-files', '--others', '--exclude-standard'])))
+  try {
+    git(['add', '-u'])
+    const extra = overlap.filter((p) => untracked.has(p))
+    if (extra.length) git(['add', '--', ...extra])
+    if (tryGit(['diff', '--cached', '--quiet']) !== null) return { sha: null }
+    git(['commit', '-q', '-m', message])
+  } catch (e) {
+    tryGit(['read-tree', index])
+    tryGit(['update-index', '-q', '--refresh'])
+    return { error: `git refused the commit: ${gitWords(e)}` }
+  }
+  return { sha: tryGit(['rev-parse', '--short', 'HEAD']), files: linesOf(tryGit(['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'])) }
+}
+
+/** Set every uncommitted change aside (untracked included, ignored never) → { sha } | { sha: null } (nothing to set aside) | { error }. */
+function setAside(feature) {
+  if (!tryGit(['status', '--porcelain', '--untracked-files=all'])) return { sha: null }
+  const before = new Set(stashes().map((s) => s.sha))
+  try {
+    git(['stash', 'push', '-q', '--include-untracked', '-m', stashName(feature)])
+  } catch (e) {
+    return { error: `git could not set your changes aside: ${gitWords(e)}` }
+  }
+  const mine = stashes().find((s) => !before.has(s.sha) && s.subject.endsWith(`: ${stashName(feature)}`))
+  return mine ? { sha: mine.sha } : { error: `git set your changes aside but the stash "${stashName(feature)}" can't be found — git stash list` }
+}
+
+/**
+ * Put a set-aside stash back. Clean → that one entry dropped. Else the stash stays, and the files
+ * that need the user: conflicted ones, and untracked ones git could not restore (the feature added
+ * the same path, so the user's copy is only in the stash).
+ */
+function putBack(sha) {
+  if (tryGit(['stash', 'apply', '-q', sha]) !== null) {
+    const s = stashes().find((x) => x.sha === sha)
+    if (s) tryGit(['stash', 'drop', '-q', s.ref])
+    return { clean: true }
+  }
+  const unmerged = linesOf(tryGit(['diff', '--name-only', '--diff-filter=U']))
+  const notBack = linesOf(tryGit(['ls-tree', '-r', '--name-only', `${sha}^3`])).filter((p) => {
+    const now = existsSync(join(ROOT, p)) ? tryGit(['hash-object', '--', p]) : null
+    return now !== tryGit(['rev-parse', `${sha}^3:${p}`])
+  })
+  return { clean: false, unmerged, notBack, ref: stashes().find((x) => x.sha === sha)?.ref ?? null }
+}
+
+/** The words for set-aside changes that came back with conflicts — printed, and kept as a fleet note. */
+function conflictReport(feature, sha, back) {
+  const short = sha.slice(0, 7)
+  const ref = back.ref ?? `the stash "${stashName(feature)}"`
+  const files = [...new Set([...back.unmerged, ...back.notBack])]
+  return {
+    files,
+    text: [
+      `Your changes came back with conflicts in ${files.length} file${files.length === 1 ? '' : 's'}:`,
+      ...back.unmerged.map((p) => `  - ${p} — both sides changed it: resolve the conflict markers`),
+      ...back.notBack.filter((p) => !back.unmerged.includes(p)).map((p) => `  - ${p} — not put back (${feature} has its own copy now); yours is in the stash: git show ${short}^3:${p}`),
+      ...(files.length ? [] : ['  (git named none — it could not apply the stash at all)']),
+      `Nothing of yours was dropped: it is all still in the stash "${stashName(feature)}" (${back.ref ? `${back.ref}, ` : ''}${short}).`,
+      'To finish:',
+      '  1. resolve those files — keep what you want of both sides',
+      ...(back.unmerged.length ? [`  2. git add -- ${back.unmerged.join(' ')}`] : []),
+      `  ${back.unmerged.length ? 3 : 2}. git stash drop ${ref}   (stashed since? find it in git stash list by its name first)`,
+    ].join('\n'),
+  }
+}
+
+/**
+ * --land <feature> --commit-mine "<message>" | --set-aside, under the fleet's lock: the worktree is
+ * made ready first, so nothing of the user's is touched for a landing that can't start; then their
+ * changes are committed or set aside, and the feature lands by landNow — the fleet's own path. A
+ * landing that fails after a set-aside puts the changes straight back. Exits.
+ */
+async function landChoice({ feature, mode, message }) {
+  const f = fleet.features[feature]
+  const was = { reason: f.reason, overlap: f.overlap }
+  markUnpark(f)
+  f.runsThisTime = 0
+  enqueue(feature)
+  const at = pool.findIndex((p) => p.feature === feature && p.lane === 'land')
+  if (at < 0) {
+    pool.length = 0
+    walkQueue.length = 0
+    const now = fleet.features[feature]
+    if (!now) {
+      save()
+      console.log(`${feature} is already merged into ${TARGET} — nothing to land; your changes are untouched.`)
+      process.exit(0)
+    }
+    // Not ready to land after all: the row goes back as it was, unless enqueue found a reason of its own.
+    if (!['parked', 'failed'].includes(now.status) || now.reason === was.reason) Object.assign(now, { status: 'parked', reason: was.reason, ...(was.overlap && { overlap: was.overlap }) })
+    delete now.unpark
+    settleStopped(feature, now)
+    save()
+    console.error(`${feature} can't be landed from here: ${parkParts(now.reason ?? '').why || now.status} — your changes are untouched.`)
+    process.exit(1)
+  }
+  pool.splice(at, 1)
+  const base = tryGit(['merge-base', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`])
+  const overlap = base ? landOverlap(ROOT, base, `refs/heads/${f.branch}`) : []
+  const yours = mode === 'commit-mine' ? commitMine(message, overlap) : setAside(feature)
+  if (yours.error) {
+    Object.assign(f, { status: 'parked', reason: was.reason, ...(was.overlap && { overlap: was.overlap }) })
+    settleStopped(feature, f)
+    save()
+    console.error(`${yours.error}\n${feature} stays parked, and your changes are as you left them.`)
+    process.exit(1)
+  }
+  f.status = RUNNING.land
+  save()
+  let outcome
+  try {
+    outcome = await land(feature)
+  } catch (e) {
+    outcome = park(f, `the landing stopped: ${String(e.message).split('\n')[0]} — next: /builder:fleet ${feature} to retry`)
+  }
+  const merged = outcome === 'done'
+  const lines = []
+  let code = merged ? 0 : 1
+  if (merged) lines.push(`✓ ${feature} landed on ${TARGET} — merge ${tryGit(['rev-parse', '--short', `refs/heads/${TARGET}`])}.`)
+  else lines.push(`✗ ${feature} didn't land: ${parkParts(f.reason ?? '').why || f.status}`)
+  if (mode === 'commit-mine')
+    lines.push(yours.sha ? `Your changes are committed on ${TARGET} as ${yours.sha} "${message}" (${yours.files.length} file${yours.files.length === 1 ? '' : 's'})${merged ? ', before it' : ' — they stay committed'}.` : 'You had no changes left to commit.')
+  else if (yours.sha) {
+    const back = putBack(yours.sha)
+    if (back.clean) lines.push(`Your changes were set aside ${merged ? 'for it' : 'while it tried'} and are back as you left them; the stash is dropped.`)
+    else {
+      code = 1
+      const r = conflictReport(feature, yours.sha, back)
+      lines.push(r.text)
+      addNote(`⚠ ${feature}${merged ? ` landed on ${TARGET}, but` : ''} your changes set aside for it came back with conflicts in ${r.files.length} file${r.files.length === 1 ? '' : 's'}: ${r.files.join(', ') || 'none named'} — resolve them, then git stash drop the stash "${stashName(feature)}" (${yours.sha.slice(0, 7)}); it is kept until you do`)
+    }
+  } else lines.push('You had no changes to set aside.')
+  if (!merged) {
+    ensureParkRecord(feature)
+    tellStop(feature, f)
+    settleStopped(feature, f)
+    const { next } = parkParts(f.reason ?? '')
+    if (next) lines.push(`next: ${next}`)
+  }
+  save()
+  console.log(lines.join('\n'))
+  process.exit(code)
+}
+if (LAND) await landChoice(LAND)
+
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
@@ -2269,17 +2491,7 @@ for (const [feature, f] of Object.entries(fleet.features))
 // An unfinished feature keeps its branch — every finished task is committed there — and loses its
 // worktree; picking it again recreates the worktree from the branch. FLEET_KEEP_STOPPED_WORKTREES=1
 // keeps them, for looking inside one while debugging the fleet itself.
-for (const [feature, f] of Object.entries(fleet.features)) {
-  if (process.env.FLEET_KEEP_STOPPED_WORKTREES === '1') break
-  if (!['parked', 'failed'].includes(f.status) || !f.worktree) continue
-  // A park that sends the human into this worktree ("finish the merge in <wt>") keeps it — and so
-  // does one waiting for your walk, which /builder:resume starts in this worktree.
-  if ((f.reason ?? '').includes(f.worktree) || YOUR_WALK.test(f.reason ?? '')) continue
-  const r = clearWorktree(ROOT, f.worktree, feature)
-  if (r.stash) addNote(`${feature} ${f.status}; uncommitted changes from its worktree are in stash "${r.stash}" — git stash list`)
-  if (r.removed || !existsSync(f.worktree)) f.worktree = null
-  else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
-}
+for (const [feature, f] of Object.entries(fleet.features)) settleStopped(feature, f)
 // The walk worktree and its branch are the batches' scratch, never merged: gone when the fleet is.
 if (existsSync(WALK_WT)) {
   tryGit(['worktree', 'remove', '--force', WALK_WT])

@@ -14,6 +14,7 @@
 //   TOUCH:<path>:<step>  rewrite <path> (relative to the worktree) without committing it, then <step>
 //   CONFIG:<step>   edit .claude/builder.md in the worktree and commit it, then <step>
 //   COMMIT:<path>:<step>  write <path> (relative to the worktree, outside the spec folder too) and commit it, then <step>
+//   APPEND:<path>:<step>  add one line to <path> and commit it (a change other edits merge around), then <step>
 //   FIXES / FIXED   a walk's open ## Fixes row (state untouched) / every row ticked + ready: pending
 // The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
@@ -132,6 +133,15 @@ if (step.startsWith('COMMIT:')) {
   writeFileSync(join(process.cwd(), path), `code ${Date.now()}\n`)
   execFileSync('git', ['add', '--', path], { stdio: 'ignore' })
   execFileSync('git', ['commit', '-qm', `stub: ${feature} commits ${path}`], { stdio: 'ignore' })
+  step = rest.join(':')
+}
+// APPEND:<path>:<step> — as COMMIT, but one line added at the end: a change other edits merge around.
+while (step.startsWith('APPEND:')) {
+  const [, path, ...rest] = step.split(':')
+  mkdirSync(dirname(join(process.cwd(), path)), { recursive: true })
+  appendFileSync(join(process.cwd(), path), `${feature} was here\n`)
+  execFileSync('git', ['add', '--', path], { stdio: 'ignore' })
+  execFileSync('git', ['commit', '-qm', `stub: ${feature} appends to ${path}`], { stdio: 'ignore' })
   step = rest.join(':')
 }
 // CONFIG:<step> — the run edits .claude/builder.md in its worktree and commits it, then <step>.
