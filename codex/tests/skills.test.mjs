@@ -82,7 +82,7 @@ test('5.x ports: build options read as a decision, the test plan is chosen at th
   assert.match(p, /approve <feature> --tests/);
   assert.match(p, /`merge_into: current` means the branch checked out where the feature starts/);
   assert.match(p, /A landing target with no `agent_walk:` block/);
-  assert.match(p, /the merged result is tested fresh before it lands/);
+  assert.match(p, /the merged result the merge tier tested is exactly what lands/);
   assert.match(ref('planning'), /A\. Build it with this plan[\s\S]*B\. Change the test plan[\s\S]*C\. Keep planning/);
   const d = ref('delivery');
   assert.match(d, /One app in scope → the verification script is the walk/);
@@ -162,4 +162,35 @@ test('6.0 plan task: six parts, decisions not bodies, code only where pinned; th
   assert.match(plan, /\.builder\/<feature>\/audit-digest\.md/);
   assert.match(ref('discovery'), /\*\*Leave a code map for the plan\.\*\* Write `\.builder\/<feature>\/audit-digest\.md`/);
   assert.match(ref('discovery'), /A child dropped or closed without landing never satisfies another child's dependency/);
+});
+
+test('6.0 landing: the merge queue, READY = merge tier green + walk passed, no integration worktree and no gate anywhere in the skill', () => {
+  const d = ref('delivery');
+  assert.match(d, /\*\*READY = the merge tier green \+ the walk passed\.\*\*/);
+  assert.match(d, /lifecycle\.mjs prepare <feature>`[\s\S]*\*\*held\*\*/);
+  assert.match(d, /verify\/verify\.mjs wait <request>/);
+  assert.match(d, /lifecycle\.mjs deliver <feature>`[\s\S]*compare-and-swap[\s\S]*`release`, or `carry`/);
+  assert.match(d, /`conflict` \(exit 4\)[\s\S]*Merge the target into the feature worktree/);
+  assert.match(d, /ready to land on `<target>`\*\* — never "landed"/);
+  for (const rel of ['skills/builder/SKILL.md', ...['conversation', 'delivery', 'discovery', 'execution', 'models', 'persistence', 'planning', 'profiles', 'version'].map(n => `skills/builder/references/${n}.md`)]) {
+    const text = read(rel).split('\n').filter(l => !/^\*\*Tests are the `verify:` block|^`\$builder init --update` on a config/.test(l)).join('\n').replace(/an old `\.builder\/gates\/` folder is ignored/g, '');
+    assert.doesNotMatch(text, /integration worktree|merge candidate|gate\.mjs|gates-core|@walk|@delta|flaky:|\.builder\/gates|Quality gates|fresh gate runs/, rel);
+  }
+});
+
+test('a landing that needs you asks with three choices, recommended first, the files shown as a review, and never touches the owner\'s changes unasked', () => {
+  const d = ref('delivery');
+  const order = ['**Commit my changes, then land** (recommended)', '**Set my changes aside, land, put them back**', '**Leave it for now**'].map(s => d.indexOf(s));
+  assert.ok(order.every(i => i > 0) && order[0] < order[1] && order[1] < order[2], 'the three choices, in order, leave it last');
+  assert.match(d, /\*\*Never commit, set aside or discard the owner's changes without their answer\*\*, and never choose for them under `--auto` or an agent handoff/);
+  assert.match(d, /Your uncommitted changes in `<checkout>` overlap the feature in 2 files:\n> - `app\/settings\.ts`/);
+  assert.match(d, /Nothing of yours has been touched\./);
+  assert.match(d, /deliver <feature> --commit-mine "<message>"`/);
+  assert.match(d, /deliver <feature> --set-aside` stashes[\s\S]*keeps the stash/);
+  assert.match(d, /Only on A run/);
+  const p = ref('persistence');
+  assert.match(p, /\*\*Every human-only park names a choice\.\*\*[\s\S]*at least one option that moves the work forward, and \*leave it for now\* as the last/);
+  assert.match(p, /`\$builder resume <feature>` raises it first/);
+  assert.match(read('skills/builder/SKILL.md'), /`needsYou` in the result[\s\S]*raised first/);
+  assert.doesNotMatch(d + p, /\bfleet\.mjs|\/builder:/, 'Codex names its own steps');
 });

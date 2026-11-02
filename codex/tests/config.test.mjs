@@ -136,15 +136,12 @@ test('worktree_env is parsed like env, and a bad pair names itself', () => {
   assert.match(bad.reason, /agent_walk\.worktree_env: "NOPE" is not KEY=VALUE/)
 })
 
-test('flaky: a list of match + optional rerun; entries without a match or with placeholders are dropped', () => {
-  assert.deepEqual(cfgWith('').flaky, [])
-  const cfg = cfgWith('flaky:\n  - match: intake\\.test\\.ts\n    rerun: node --test apps/server/test/intake.test.ts\n  - match: two servers race\n  - rerun: no match here\n  - match: <pattern>')
-  assert.deepEqual(cfg.flaky, [
-    { match: 'intake\\.test\\.ts', rerun: 'node --test apps/server/test/intake.test.ts' },
-    { match: 'two servers race', rerun: null },
-  ])
-})
 
+test('an old flaky: list is no longer read — the verifier learns flakes itself; the rest of the config loads', () => {
+  const cfg = cfgWith('flaky:\n  - match: intake\\.test\\.ts\n    rerun: node --test x')
+  assert.equal(cfg.ok, true)
+  assert.equal('flaky' in cfg, false)
+})
 test('copy, setup, sync, env, start and smoke are all parsed', () => {
   const cfg = cfgWith(
     'agent_walk:\n  driver: x\n  claude_args: --a\n  copy: .env, .env.local\n  setup: npm install\n  sync: npm install && make migrate\n  env: A=1 B="x y"\n  start: npm run dev\n  smoke: curl -sf localhost:3000'

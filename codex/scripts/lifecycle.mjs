@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWalkReadiness, landedMigrations, wrapUp } from './landing.mjs';
+import { parseWalkReadiness, landedMigrations, wrapUp, needsYou, stashName } from './landing.mjs';
 import { agentOffer, buildingInSession } from './offer.mjs';
+
+const VERIFY = fileURLToPath(new URL('./verify/verify.mjs', import.meta.url));
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const head = root => git(root, 'rev-parse', 'HEAD');
@@ -39,24 +41,18 @@ function identity(m) {
   if (m.checkpointHead) assert(ancestor(m.worktree, m.checkpointHead, head(m.worktree)), 'Recorded checkpoint commit is not in feature ancestry');
   if (m.verifiedHead) assert(ancestor(m.worktree, m.verifiedHead, head(m.worktree)), 'Recorded verified commit is not in feature ancestry');
 }
-function candidateIdentity(m, requireAncestry = true) {
-  const c = m.integration;
-  assert(c && fs.existsSync(c.worktree), 'Integration candidate is missing');
-  assert(!c.targetBranch || c.targetBranch === targetBranch(m), 'Integration candidate target changed');
-  assert(git(c.worktree, 'rev-parse', '--show-toplevel') === c.worktree && common(c.worktree) === m.commonDir, 'Integration candidate repository changed');
-  assert(branch(c.worktree) === c.branch, 'Integration candidate branch changed');
-  idle(c.worktree);
-  assert(!dirty(c.worktree), 'Integration candidate must retain its branch and be clean');
-  if (requireAncestry) assert(ancestor(c.worktree, c.targetHead, head(c.worktree)) && ancestor(c.worktree, c.featureHead, head(c.worktree)), 'Integration candidate must contain target and feature commits');
-}
 function originReady(m) {
   assert(git(m.originRoot, 'rev-parse', '--show-toplevel') === m.originRoot, 'Origin root changed');
   assert(common(m.originRoot) === m.commonDir, 'Origin repository changed');
   assert(branch(m.originRoot) === m.originBranch, 'Origin branch changed');
   idle(m.originRoot);
-  assert(!dirty(m.originRoot), 'Origin checkout must be clean');
 }
 const targetBranch = m => m.targetBranch || m.originBranch;
+/**
+ * Where the target is checked out (if anywhere) and its tip. Uncommitted changes there are no
+ * block by themselves: the verifier's release lands around changes that don't overlap the feature,
+ * and refuses — before any write — those that do (a needs-you, below).
+ */
 function targetReady(m) {
   // Old records deliberately retain the original checkout/branch contract.
   if (!m.targetBranch) { originReady(m); return { worktree: m.originRoot, head: head(m.originRoot) }; }
@@ -69,11 +65,108 @@ function targetReady(m) {
   if (worktree) {
     assert(fs.existsSync(worktree) && common(worktree) === m.commonDir && branch(worktree) === m.targetBranch, 'Landing target worktree changed');
     idle(worktree);
-    assert(!dirty(worktree), 'Landing target checkout must be clean (Origin checkout must be clean when it holds the target)');
   }
   return { worktree, head: git(m.originRoot, 'rev-parse', `refs/heads/${m.targetBranch}`) };
 }
-function invalidate(m) { m.verifiedHead = null; if (m.integration) m.integration.candidateHead = null; }
+function invalidate(m) { m.verifiedHead = null; }
+
+// ---- Landing through the verifier's merge queue (codex/PORT-6.0.md Decision 3) ----------------
+const lines = text => String(text ?? '').split('\n').filter(Boolean);
+const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+function verifyCli(cwd, ...args) {
+  const r = spawnSync(process.execPath, [VERIFY, ...args], { cwd, encoding: 'utf8' });
+  return { code: r.status, out: String(r.stdout ?? '').trim(), err: String(r.stderr ?? '').trim() };
+}
+/** The verifier's main checkout and its ledger (requests and verdicts live there for every worktree). */
+async function verifier(m) {
+  const [{ openLedger }, { mainRoot }] = await Promise.all([import('./verify/ledger.mjs'), import('./verify/git.mjs')]);
+  const root = mainRoot(m.originRoot);
+  return { root, ledger: openLedger(root) };
+}
+/**
+ * The verifier lands only into the main checkout or a branch checked out nowhere: a target checked
+ * out in another linked worktree would be left behind its own branch. Refused before anything is
+ * requested, with what to do.
+ */
+function landable(m, target, root) {
+  if (!target.worktree || real(target.worktree) === real(root)) return;
+  throw new Error(`${targetBranch(m)} is checked out in ${target.worktree}, and the verifier lands only into the main checkout (${root}) or a branch checked out nowhere — next: switch ${target.worktree} to another branch (or leave it for now), then run prepare again`);
+}
+const PENDING = ['queued', 'running', 'folded'];
+/** Ask the merge tier to test the feature merged onto the target's tip, held until delivery releases it. */
+function requestMerge(m, target) {
+  const featureHead = head(m.worktree);
+  const r = verifyCli(m.worktree, 'request', m.worktree, featureHead, '--tier', 'merge', '--hold', '--target', targetBranch(m), '--message', `Merge builder feature ${m.name}`);
+  assert(r.code === 0 && /^\S+$/.test(r.out), `The verifier did not take the merge request: ${r.err || r.out}`);
+  m.merge = { request: r.out, featureHead, targetHead: target.head, requestedAt: new Date().toISOString() };
+  return m.merge;
+}
+/** The owner's uncommitted changes in the target checkout that the feature's changes `from..to` would run into. */
+async function overlapOf(target, root, from, to) {
+  if (!target.worktree || real(target.worktree) !== real(root)) return [];
+  const { landOverlap } = await import('./verify/checkouts.mjs');
+  return landOverlap(target.worktree, from, to);
+}
+/** True when `from..to` changes only the feature registry — what the verifier's `carry` lands without a second run. */
+function docsOnly(root, from, to, registry) {
+  const prefix = `${String(registry || 'docs/features').replace(/\/+$/, '')}/`;
+  return lines(git(root, 'diff', '--name-only', '--no-renames', from, to)).every(f => f.startsWith(prefix));
+}
+const stashes = wt => lines(git(wt, 'stash', 'list', '--format=%gd%x09%H%x09%gs')).map(l => { const [ref, sha, subject] = l.split('\t'); return { ref, sha, subject }; });
+/**
+ * Commit exactly the owner's changes on the target: every tracked change, and the untracked files
+ * the feature adds too (`overlap`) — never another untracked or ignored file. A refused commit (a
+ * hook) puts the index back. → { sha, files } | { sha: null } (nothing to commit).
+ */
+function commitMine(wt, message, overlap) {
+  const index = git(wt, 'write-tree');
+  const untracked = new Set(lines(git(wt, 'ls-files', '--others', '--exclude-standard')));
+  try {
+    git(wt, 'add', '-u');
+    const extra = overlap.filter(f => untracked.has(f));
+    if (extra.length) git(wt, 'add', '--', ...extra);
+    try { git(wt, 'diff', '--cached', '--quiet'); return { sha: null }; } catch { /* staged changes: commit them */ }
+    git(wt, 'commit', '-q', '-m', message);
+  } catch (error) {
+    try { git(wt, 'read-tree', index); } catch { /* best effort */ }
+    throw new Error(`git refused the commit of your changes: ${String(error.stderr || error.message).trim().split('\n').slice(-2).join(' ')} — your changes are as you left them`);
+  }
+  return { sha: head(wt), files: lines(git(wt, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')) };
+}
+/** Set every uncommitted change aside (untracked included, ignored never) in a named stash, found by its sha. */
+function setAside(wt, feature) {
+  if (!dirty(wt)) return { sha: null };
+  const before = new Set(stashes(wt).map(s => s.sha));
+  git(wt, 'stash', 'push', '-q', '--include-untracked', '-m', stashName(feature));
+  const mine = stashes(wt).find(s => !before.has(s.sha) && s.subject.endsWith(`: ${stashName(feature)}`));
+  assert(mine, `git set your changes aside but the stash "${stashName(feature)}" can't be found — git stash list`);
+  return { sha: mine.sha, name: stashName(feature) };
+}
+/**
+ * Put a set-aside stash back. Clean → that one entry is dropped. Otherwise the stash is kept —
+ * never dropped, never force-resolved — and the files that need the owner are named: those with
+ * conflicts, and untracked ones git could not restore (the feature added the same path).
+ */
+function putBack(wt, aside) {
+  try {
+    git(wt, 'stash', 'apply', '-q', aside.sha);
+    const s = stashes(wt).find(x => x.sha === aside.sha);
+    if (s) git(wt, 'stash', 'drop', '-q', s.ref);
+    return { clean: true };
+  } catch { /* reported below */ }
+  const unmerged = lines((() => { try { return git(wt, 'diff', '--name-only', '--diff-filter=U'); } catch { return ''; } })());
+  let notBack = [];
+  try {
+    notBack = lines(git(wt, 'ls-tree', '-r', '--name-only', `${aside.sha}^3`)).filter(p => {
+      let now = null;
+      try { now = fs.existsSync(path.join(wt, p)) ? git(wt, 'hash-object', '--', p) : null; } catch { /* unreadable */ }
+      return now !== git(wt, 'rev-parse', `${aside.sha}^3:${p}`);
+    });
+  } catch { /* no untracked part */ }
+  const ref = stashes(wt).find(x => x.sha === aside.sha)?.ref ?? null;
+  const files = [...new Set([...unmerged, ...notBack])];
+  return { clean: false, files, unmerged, notBack, stash: aside.sha, ref, note: `your changes came back with conflicts in ${files.length ? files.join(', ') : 'files git did not name'}; nothing of yours was dropped — it is all still in the stash "${aside.name}" (${ref ? `${ref}, ` : ''}${aside.sha.slice(0, 7)}): resolve those files${unmerged.length ? `, git add -- ${unmerged.join(' ')}` : ''}, then git stash drop ${ref ?? aside.sha.slice(0, 7)}` };
+}
 function active(m) { assert(!m.paused, 'Feature is paused; explicit unpause is required'); }
 async function humanReady(m) {
   const { runtimeTestPlan } = await import('./profile.mjs');
@@ -190,7 +283,7 @@ function newMigrations(root, dir, from, to) {
 async function migrateAfterLanding(m, worktree, before, after) {
   try {
     const { loadConfig } = await import('./config.mjs');
-    const config = loadConfig(worktree || m.integration.worktree);
+    const config = loadConfig(worktree || m.worktree);
     const readiness = config.ok ? parseWalkReadiness(config.body) : {};
     const files = newMigrations(m.originRoot, readiness.migrations, before, after);
     let plan = landedMigrations({ files, readiness, checkedOut: Boolean(worktree), target: targetBranch(m) });
@@ -206,10 +299,12 @@ async function migrateAfterLanding(m, worktree, before, after) {
     const log = path.join(m.commonDir, 'builder-codex', 'logs', `${m.name}-land.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
     const n = `${files.length} new migration${files.length === 1 ? '' : 's'}`;
-    // The target was clean before delivery (targetReady); anything the commands left behind would
-    // block every later prepare/deliver/cleanup, so it is named for its owner instead of hidden.
-    const leftovers = () => { try { const d = dirty(worktree); return d ? d.split('\n').map(l => l.trim().replace(/^\S+\s+/, '')).filter(Boolean) : []; } catch { return []; } };
-    const changed = files => files.length ? ` It changed ${files.join(', ')} in ${worktree}: commit them under the project's policy or restore them (git -C ${worktree} restore/clean) — the target checkout must be clean before another prepare, deliver or cleanup.` : '';
+    // What the commands leave behind in the owner's checkout is named for them, not hidden — only
+    // what the commands changed: uncommitted work of the owner's own was there before them.
+    const changedNow = () => { try { const d = dirty(worktree); return d ? d.split('\n').map(l => l.trim().replace(/^\S+\s+/, '')).filter(Boolean) : []; } catch { return []; } };
+    const owners = new Set(changedNow());
+    const leftovers = () => changedNow().filter(f => !owners.has(f));
+    const changed = files => files.length ? ` It changed ${files.join(', ')} in ${worktree}: commit them under the project's policy or restore them (git -C ${worktree} restore/clean).` : '';
     const done = [];
     for (const cmd of plan.commands) {
       const fd = fs.openSync(log, 'a');
@@ -316,13 +411,14 @@ export async function run(command, name, options = {}) {
   if (command === 'pause') {
     assert(m.phase !== 'merged', 'Merged feature cannot be paused');
     if (!m.paused) m.pauseState = { phase: m.phase, nextAction: m.nextAction };
-    m.paused = true; invalidate(m); m.nextAction = 'Explicit unpause required'; atomic(file, m); return m;
+    // A paused landing is never resumed from its old merge request: prepare asks again.
+    m.paused = true; invalidate(m); m.merge = null; m.nextAction = 'Explicit unpause required'; atomic(file, m); return m;
   }
   if (command === 'unpause') {
     assert(m.paused && m.pauseState, 'Feature is not paused');
     m.phase = m.pauseState.phase;
     m.nextAction = m.pauseState.nextAction; m.paused = false; delete m.pauseState;
-    invalidate(m); atomic(file, m); return m;
+    invalidate(m); m.merge = null; atomic(file, m); return m;
   }
   active(m);
   if (command === 'retry-import') {
@@ -388,56 +484,115 @@ export async function run(command, name, options = {}) {
     atomic(file, m); return m;
   }
   if (command === 'prepare') {
-    assert(m.phase === 'verified' && m.verifiedHead === head(m.worktree), 'Feature must be verified at exact current HEAD');
-    await humanReady(m);
-    idle(m.worktree); assert(!dirty(m.worktree), 'Feature worktree must be clean'); const target = targetReady(m);
-    if (m.integration) candidateIdentity(m, false);
-    else {
-      const integrationBranch = `builder-integrate/${name}`;
-      const worktree = `${m.worktree}-integration`;
-      assert(!existsBranch(m.originRoot, integrationBranch) && !fs.existsSync(worktree), 'Integration branch or worktree already exists');
-      m.integration = { branch: integrationBranch, worktree, targetBranch: targetBranch(m), targetHead: target.head, featureHead: head(m.worktree), candidateHead: null };
-      git(m.originRoot, 'worktree', 'add', '-b', integrationBranch, worktree, m.integration.targetHead);
-    }
-    assert(ancestor(m.originRoot, m.integration.targetHead, target.head), 'Landing target history was rewritten after candidate preparation');
-    m.integration.targetHead = target.head;
-    m.integration.featureHead = head(m.worktree);
-    m.integration.candidateHead = null;
+    // The merge tier is asked once the feature is built — when its walk starts, or later — so the
+    // walk (an agent's or the owner's) runs beside it; deliver holds the verified and walk guards.
+    assert(['built', 'signed-off', 'verified'].includes(m.phase), 'Prepare asks for the merge once the feature is built (when its walk starts, or later)');
+    idle(m.worktree); assert(!dirty(m.worktree), 'Feature worktree must be clean');
+    const target = targetReady(m); const v = await verifier(m); landable(m, target, v.root);
+    const featureHead = head(m.worktree);
+    const prev = m.merge && v.ledger.getRequest(m.merge.request);
+    const usable = prev && m.merge.featureHead === featureHead && m.merge.targetHead === target.head
+      && (PENDING.includes(prev.state) || (prev.state === 'done' && prev.verdict?.status === 'green' && prev.verdict.held));
+    if (!usable) requestMerge(m, target);
+    // Caught early (while the tests run): the owner's uncommitted changes the landing would run into.
+    const overlap = await overlapOf(target, v.root, git(m.originRoot, 'merge-base', target.head, featureHead), featureHead);
+    if (overlap.length) m.needsYou = needsYou({ feature: name, files: overlap, target: targetBranch(m), checkout: target.worktree });
+    else delete m.needsYou;
+    m.nextAction = m.needsYou
+      ? `${m.needsYou.reason} — ask the owner: commit theirs, then land · set theirs aside, land, put them back · leave it`
+      : `Ready to land on ${targetBranch(m)} once the merge tier is green and the walk passed — verify.mjs wait ${m.merge.request}, then deliver`;
     atomic(file, m);
-    git(m.integration.worktree, 'merge', '--no-ff', '-m', `Integrate current target for ${name}`, m.integration.targetHead);
-    git(m.integration.worktree, 'merge', '--no-ff', '-m', `Merge builder feature ${name}`, m.integration.featureHead);
-    candidateIdentity(m);
-    m.integration.candidateHead = head(m.integration.worktree); atomic(file, m);
-    return { ...m, candidatePath: m.integration.worktree, candidateHead: m.integration.candidateHead };
+    return { ...m, status: 'requested', request: m.merge.request, overlap };
   }
   if (command === 'deliver') {
     await humanReady(m);
-    assert(m.integration?.candidateHead, 'Prepare an integration candidate first');
     assert(m.phase === 'verified' && m.verifiedHead === head(m.worktree), 'Feature must remain verified at exact current HEAD');
-    const target = targetReady(m); idle(m.worktree); idle(m.integration.worktree);
-    assert(target.head === m.integration.targetHead, 'Landing target / Origin advanced after candidate preparation');
-    assert(head(m.worktree) === m.integration.featureHead && !dirty(m.worktree), 'Feature changed after candidate preparation');
-    candidateIdentity(m);
-    assert(options.verifiedHead === m.integration.candidateHead && head(m.integration.worktree) === options.verifiedHead, 'Delivery requires exact verified candidate HEAD');
-    if (target.worktree) {
-      assert(branch(target.worktree) === targetBranch(m) && head(target.worktree) === m.integration.targetHead, 'Landing target changed before delivery');
-      git(target.worktree, 'merge', '--ff-only', options.verifiedHead);
-    } else {
-      // Compare-and-swap prevents overwriting an independently advanced ref.
-      git(m.originRoot, 'update-ref', `refs/heads/${targetBranch(m)}`, options.verifiedHead, m.integration.targetHead);
+    idle(m.worktree); assert(!dirty(m.worktree), 'Feature worktree must be clean');
+    assert(m.merge?.request, `No merge requested yet — run prepare ${name} first`);
+    assert(!(options.setAside && options.commitMine !== undefined), 'Pick one: --commit-mine or --set-aside');
+    assert(options.commitMine === undefined || (typeof options.commitMine === 'string' && options.commitMine.trim()), '--commit-mine needs the message to commit your changes with');
+    const target = targetReady(m); const v = await verifier(m); landable(m, target, v.root);
+    const t = targetBranch(m);
+    const done = extra => { atomic(file, m); return { ...m, ...extra }; };
+    const again = why => { requestMerge(m, target); m.nextAction = `${why} — the merge tier is testing it again: verify.mjs wait ${m.merge.request}, then deliver`; return done({ status: 'testing', request: m.merge.request, why }); };
+    const r = v.ledger.getRequest(m.merge.request);
+    if (!r) return again(`The verifier has no record of merge request ${m.merge.request}`);
+    if (PENDING.includes(r.state)) { m.nextAction = `Ready to land on ${t} once the merge tier is green — verify.mjs wait ${r.id}, then deliver`; return done({ status: 'testing', request: r.id }); }
+    const verdict = r.verdict ?? { status: r.state };
+    if (verdict.status === 'conflict') {
+      m.nextAction = `The feature conflicts with ${t} in ${(verdict.files ?? []).join(', ')} — merge ${t} into the feature worktree, resolve those files, commit, verify again, then prepare`;
+      return done({ status: 'conflict', files: verdict.files ?? [], request: r.id });
     }
-    m.phase = 'merged'; m.mergedHead = options.verifiedHead; m.nextAction = 'Optional explicit cleanup'; atomic(file, m);
+    if (verdict.status !== 'green') {
+      const { summarize } = await import('./verify/verify.mjs');
+      let summary = verdict.status; try { summary = summarize(verdict); } catch { /* a bare status */ }
+      m.nextAction = verdict.status === 'env-broken' ? `The merge tier could not run (env-broken) — fix what its ⚠ lines name, then prepare again` : `The merge tier is ${verdict.status} on ${t} — fix what it names in the feature, verify again, then prepare`;
+      return done({ status: verdict.status, summary, request: r.id });
+    }
+    // Landed by an earlier deliver that stopped before recording it: record it now, never land twice.
+    const recovered = verdict.landed && ancestor(m.originRoot, verdict.landed, target.head) ? verdict.landed : null;
+    if (!recovered && !verdict.held) return again(`The tested merge of ${r.id} can no longer land (${t} moved since)`);
+    // What it tested is HEAD, or HEAD gained only registry commits since (walk results, the manifest): those carry.
+    const now = head(m.worktree);
+    const mode = recovered ? null : now === r.sha ? 'release' : ancestor(m.worktree, r.sha, now) && docsOnly(m.worktree, r.sha, now, m.registry) ? 'carry' : null;
+    if (!recovered && !mode) return again('The feature changed since the merge was tested');
+    // The owner's uncommitted changes the landing would run into: none of theirs is touched without an answer.
+    const overlap = !recovered && target.head === verdict.targetSha ? await overlapOf(target, v.root, verdict.targetSha, verdict.merged) : [];
+    const park = files => {
+      m.needsYou = needsYou({ feature: name, files, target: t, checkout: target.worktree });
+      m.nextAction = `${m.needsYou.reason} — ask the owner: commit theirs, then land · set theirs aside, land, put them back · leave it`;
+      return done({ status: 'needs-you', overlap: files, choices: m.needsYou.choices });
+    };
+    if (overlap.length && !options.setAside && options.commitMine === undefined) return park(overlap);
+    let committed = null; let aside = null; let back = null;
+    if (!recovered && options.commitMine !== undefined) {
+      assert(target.worktree, `${t} is checked out nowhere, so there are no changes of yours to commit`);
+      committed = commitMine(target.worktree, options.commitMine.trim(), overlap);
+      if (committed.sha) { delete m.needsYou; return { ...again(`Your changes are committed on ${t} as ${committed.sha.slice(0, 7)}`), committed }; }
+    }
+    if (!recovered && options.setAside && target.worktree) aside = setAside(target.worktree, name);
+    let landed = recovered ?? undefined;
+    if (!landed) {
+      try {
+        const cli = verifyCli(v.root, mode, r.id, '--in', v.root);
+        if (cli.code === 0) landed = v.ledger.getRequest(r.id)?.verdict?.landed;
+        else if (cli.code === 7 || (mode === 'carry' && cli.code === 2)) landed = { again: cli.out.split('\n')[0] || `${t} moved` };
+        else {
+          const o = /^overlap: (.*)$/m.exec(cli.out);
+          landed = o ? { overlap: JSON.parse(o[1]) } : { refused: cli.out || cli.err || `exit ${cli.code}` };
+        }
+      } finally {
+        // Put back before anything else runs in the owner's checkout — landed or not.
+        if (aside?.sha) back = putBack(target.worktree, aside);
+      }
+    }
+    const kept = back && !back.clean ? { setAside: back } : back ? { setAside: { clean: true } } : {};
+    if (typeof landed !== 'string') {
+      if (landed?.again) return { ...again(landed.again), ...kept };
+      if (landed?.overlap) return { ...park(landed.overlap), ...kept };
+      throw new Error(`The landing was refused: ${landed?.refused ?? 'the verifier recorded no landed commit'}${back && !back.clean ? ` — and ${back.note}` : ''}`);
+    }
+    m.phase = 'merged'; m.mergedHead = landed; delete m.needsYou; m.nextAction = 'Optional explicit cleanup';
+    if (back && !back.clean) m.setAside = back;
+    atomic(file, m);
     // The merge is final; what follows only brings the dev DB along and never undoes the landing.
-    m.landing = await migrateAfterLanding(m, target.worktree, m.integration.targetHead, options.verifiedHead);
+    m.landing = await migrateAfterLanding(m, target.worktree, verdict.targetSha, landed);
     if (m.landing.note) m.nextAction = `${m.landing.note}; then optional explicit cleanup`;
+    if (back && !back.clean) m.nextAction = `Landed — but ${back.note}; ${m.nextAction}`;
     m.wrapUp = await wrapUpAfterLanding(target.worktree, m.landing);
-    atomic(file, m); return m;
+    try {
+      const { recordLanding } = await import('./history.mjs');
+      const metrics = options.metrics ? JSON.parse(fs.readFileSync(options.metrics, 'utf8')) : null;
+      m.history = { recorded: true, row: recordLanding(m, { metrics }) };
+    } catch (error) { m.history = { recorded: false, why: error.message }; }
+    return done({ status: 'landed', ...(committed ? { committed } : {}), ...kept });
   }
   if (command === 'cleanup') {
     const target = targetReady(m);
     assert(m.phase === 'merged' && m.mergedHead && ancestor(m.originRoot, m.mergedHead, target.head), 'Merged result must be proven in target ancestry');
     assert(!dirty(m.worktree), 'Feature worktree must be clean'); idle(m.worktree);
     assert(ancestor(m.originRoot, head(m.worktree), target.head), 'Feature contains unmerged commits');
+    // A 5.x landing's integration worktree; the verifier's own checkouts (<root>-verify/) are never touched.
     if (m.integration && fs.existsSync(m.integration.worktree)) {
       assert(branch(m.integration.worktree) === m.integration.branch && !dirty(m.integration.worktree), 'Integration worktree must retain its branch and be clean'); idle(m.integration.worktree);
       assert(ancestor(m.originRoot, head(m.integration.worktree), target.head), 'Integration contains unmerged commits');
@@ -449,15 +604,22 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args.includes('--help') || !args.length) console.log(help);
     else {
       const command = args.shift(); const name = args[0]?.startsWith('--') ? undefined : args.shift(); const options = {};
-      while (args.length) { const key = args.shift(); assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--tests', '--profile', '--report'].includes(key) && args.length, `Invalid option: ${key}`); options[key.slice(2).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = args.shift(); }
-      console.log(JSON.stringify(await run(command, name, options), null, 2));
+      while (args.length) {
+        const key = args.shift();
+        if (key === '--set-aside') { options.setAside = true; continue; }
+        assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--tests', '--profile', '--report', '--commit-mine', '--metrics'].includes(key) && args.length, `Invalid option: ${key}`);
+        options[key.slice(2).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = args.shift();
+      }
+      const result = await run(command, name, options);
+      console.log(JSON.stringify(result, null, 2));
+      if (command === 'deliver') process.exitCode = { landed: 0, 'needs-you': 3, conflict: 4, testing: 75 }[result?.status] ?? 1;
     }
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

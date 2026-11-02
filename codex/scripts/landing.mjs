@@ -107,3 +107,38 @@ export function wrapUp({ readiness = {}, checkedOut = true, migrated = false }) 
   if (readiness.smoke && (steps.length || migrated)) steps.push({ id: 'smoke', title: 'check the running dev app answers', command: readiness.smoke })
   return steps
 }
+
+/**
+ * A landing the owner's uncommitted changes are in the way of — "needs you" (Claude 6.0's landing
+ * needs-you design, adapted: Codex has no fleet, so the coordinator asks in the session). The
+ * verifier's release refuses before any git write when the target checkout's uncommitted changes
+ * overlap the files the feature changes (verify/checkouts.mjs landOverlap); changes that don't
+ * overlap are no block. `files` is that overlap, `checkout` the target checkout holding them.
+ *
+ * Every needs-you carries choices: at least one moves the work forward, and leaving it is always
+ * one of them, last. Builder never commits, sets aside or discards the owner's changes without one
+ * of these answers.
+ */
+export const NEEDS_YOU_CHOICES = [
+  { id: 'commit-mine', label: 'Commit my changes, then land', does: 'commits your changes on the target with a message you approve, tests the feature merged onto that, then lands it', run: 'deliver <feature> --commit-mine "<message>"' },
+  { id: 'set-aside', label: 'Set my changes aside, land, put them back', does: 'sets your changes aside in a named stash, lands the feature, then puts them back; if they clash on the way back the stash is kept and the files are listed', run: 'deliver <feature> --set-aside' },
+  { id: 'leave', label: 'Leave it for now', does: 'nothing changes; the feature lands once your changes no longer overlap it', run: null },
+]
+
+const listed = (files) => [...files.slice(0, 3), ...(files.length > 3 ? ['…'] : [])].join(', ')
+
+/** The needs-you record a feature keeps while its landing waits on the owner's changes. */
+export function needsYou({ feature, files, target, checkout }) {
+  const n = `${files.length} file${files.length === 1 ? '' : 's'}`
+  return {
+    kind: 'overlap',
+    reason: `needs you: your uncommitted changes in ${checkout} overlap this feature — ${n}: ${listed(files)}`,
+    files: [...files],
+    target,
+    checkout,
+    choices: NEEDS_YOU_CHOICES.map((c) => ({ ...c, run: c.run && c.run.replace('<feature>', feature) })),
+  }
+}
+
+/** The stash a set-aside landing keeps the owner's changes in; found again by its sha, never by its place. */
+export const stashName = (feature) => `builder: before landing ${feature}`

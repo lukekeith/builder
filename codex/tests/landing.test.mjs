@@ -5,10 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { run } from '../scripts/lifecycle.mjs';
-import { parseWalkReadiness, landedMigrations, isDestructive, wrapUp } from '../scripts/landing.mjs';
+import { parseWalkReadiness, landedMigrations, isDestructive, wrapUp, needsYou, NEEDS_YOU_CHOICES, stashName } from '../scripts/landing.mjs';
+import { waitFor, settle } from './land-helpers.mjs';
 
 const BODY = [
-  '## Quality gates', '', '```', 'x: y', '```', '',
+  '## Verification', '', 'prose', '',
   '## Walk readiness', '', '```',
   'migrations: packages/db/prisma/migrations',
   'status:     npx prisma migrate status   # against the DEV db',
@@ -92,7 +93,7 @@ function repo(t, mode, apply = APPLY, { regenerate = REGEN, ignore = true, extra
   fs.writeFileSync(path.join(root, '.builder/config.md'), `---\napps:\n  - name: app\n    path: app\n---\n\n## Walk readiness\n\n\`\`\`\nmigrations: db/migrations\napply:      ${apply}\napply_mode: ${mode}   # test\nregenerate: ${regenerate}\n${extra}\`\`\`\n`);
   if (ignore) fs.writeFileSync(path.join(root, '.gitignore'), 'applied.txt\nregenerated.txt\n');
   git(root, 'add', '.'); git(root, 'commit', '-m', 'seed');
-  t.after(() => fs.rmSync(folder, { recursive: true, force: true })); return root;
+  t.after(() => { settle(root); fs.rmSync(folder, { recursive: true, force: true }); }); return root;
 }
 async function land(root, sql = 'CREATE TABLE "a" ();', { away = false, file = 'db/migrations/001/migration.sql' } = {}) {
   const m = await run('start', 'mig', { root });
@@ -100,9 +101,9 @@ async function land(root, sql = 'CREATE TABLE "a" ();', { away = false, file = '
   fs.writeFileSync(path.join(m.worktree, file), sql);
   git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'a migration');
   await run('checkpoint', 'mig', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
-  const p = await run('prepare', 'mig', { root });
+  const p = await run('prepare', 'mig', { root }); waitFor(root, p.request);
   if (away) git(root, 'checkout', '-q', '-b', 'elsewhere');
-  return run('deliver', 'mig', { root, verifiedHead: p.candidateHead });
+  return run('deliver', 'mig', { root });
 }
 
 test('delivery applies an additive landed migration in the target checkout under apply_mode agent, then regenerates', async t => {
@@ -156,7 +157,7 @@ test('a feature that brings no migrations lands with nothing to do', async t => 
   const root = repo(t, 'agent'); const m = await run('start', 'plain', { root });
   fs.writeFileSync(path.join(m.worktree, 'x.txt'), 'x\n'); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'x');
   await run('checkpoint', 'plain', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
-  const p = await run('prepare', 'plain', { root }); const d = await run('deliver', 'plain', { root, verifiedHead: p.candidateHead });
+  const p = await run('prepare', 'plain', { root }); waitFor(root, p.request); const d = await run('deliver', 'plain', { root });
   assert.equal(d.landing.action, 'none'); assert.ok(!fs.existsSync(path.join(root, 'applied.txt')));
 });
 
@@ -197,15 +198,13 @@ test('an additive Alembic migration is applied at landing; an op.drop_column one
   assert.ok(!fs.existsSync(path.join(drop, 'applied.txt')));
 });
 
-test('commands that leave the target checkout dirty are reported by file, and the checkout can be cleaned up afterwards', async t => {
-  const root = repo(t, 'agent', APPLY, { ignore: false }); const d = await land(root);
+test('commands that leave the target checkout dirty are reported by file — only theirs, not the owner\'s own edits — and cleanup still runs', async t => {
+  const root = repo(t, 'agent', APPLY, { ignore: false }); fs.writeFileSync(path.join(root, 'mine.txt'), 'owner\n'); const d = await land(root);
   assert.equal(d.phase, 'merged'); assert.equal(d.landing.action, 'applied-dirty');
   assert.deepEqual([...d.landing.dirty].sort(), ['applied.txt', 'regenerated.txt']);
-  assert.match(d.landing.note, /It changed applied\.txt, regenerated\.txt in .*: commit them under the project's policy or restore them .* must be clean before another prepare, deliver or cleanup/);
+  assert.match(d.landing.note, /It changed applied\.txt, regenerated\.txt in .*: commit them under the project's policy or restore them .*\(git -C .* restore\/clean\)\.$/);
   assert.match(d.nextAction, /regenerated\.txt/);
-  await assert.rejects(run('cleanup', 'mig', { root }), /must be clean/);
-  for (const f of d.landing.dirty) fs.unlinkSync(path.join(root, f));
-  await run('cleanup', 'mig', { root });
+  await run('cleanup', 'mig', { root }); assert.equal(fs.readFileSync(path.join(root, 'mine.txt'), 'utf8'), 'owner\n');
 });
 
 test('a regenerate that fails after apply succeeded is reported as such, naming what is left to run', async t => {
@@ -214,4 +213,17 @@ test('a regenerate that fails after apply succeeded is reported as such, naming 
   assert.deepEqual(d.landing.ran, [APPLY]); assert.equal(d.landing.failed, 'node -e "process.exit(4)"');
   assert.ok(fs.existsSync(path.join(root, 'applied.txt')));
   assert.match(d.landing.note, /1 new migration landed and `node -e .*applied.txt.*` ran, but `node -e "process.exit\(4\)"` failed in .* then run `node -e "process.exit\(4\)"` by hand/);
+});
+
+test('a needs-you names the files and the target checkout, and always carries a way forward with leaving it last', () => {
+  const n = needsYou({ feature: 'f', files: ['a', 'b', 'c', 'd'], target: 'main', checkout: '/repo' });
+  assert.equal(n.reason, 'needs you: your uncommitted changes in /repo overlap this feature — 4 files: a, b, c, …');
+  assert.deepEqual(n.files, ['a', 'b', 'c', 'd']);
+  assert.deepEqual(n.choices.map(c => c.id), ['commit-mine', 'set-aside', 'leave']);
+  assert.ok(n.choices.filter(c => c.run).length >= 1, 'at least one choice moves the work forward');
+  assert.equal(n.choices.at(-1).label, 'Leave it for now'); assert.equal(n.choices.at(-1).run, null);
+  assert.equal(n.choices[1].run, 'deliver f --set-aside');
+  assert.equal(NEEDS_YOU_CHOICES[0].run, 'deliver <feature> --commit-mine "<message>"', 'the template is not changed by a record');
+  assert.equal(needsYou({ feature: 'f', files: ['x'], target: 'main', checkout: '/r' }).reason, 'needs you: your uncommitted changes in /r overlap this feature — 1 file: x');
+  assert.equal(stashName('f'), 'builder: before landing f');
 });

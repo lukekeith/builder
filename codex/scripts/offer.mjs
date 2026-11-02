@@ -6,8 +6,9 @@
  * A feature another session is building right now is never handed over: two coordinators on one
  * feature worktree is how work is lost. The signal is activity in the feature worktree within the
  * last ACTIVE_MS while the feature is approved-planned, planned to build here, or building: any file
- * under its scratch `.builder/<feature>/` (briefs, reports) or `.builder/gates/` (gate memos, logs,
- * running.json), its tracked ledger.md, its Git index (staging) or its HEAD commit time.
+ * under its scratch `.builder/<feature>/` (briefs, reports), its tracked ledger.md, its Git index
+ * (staging) or its HEAD commit time. Test runs are the verifier's, in its own checkouts; an old
+ * `.builder/gates/` folder left by a 5.x build is ignored.
  * A feature only specced in a session is still offered.
  */
 import fs from 'node:fs'
@@ -32,7 +33,6 @@ export function lastActivity(m) {
   }
   if (m?.worktree) {
     visit(path.join(m.worktree, '.builder', m.name))
-    visit(path.join(m.worktree, '.builder', 'gates'))
     const git = (...args) => execFileSync('git', ['-C', m.worktree, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
     try { stat(path.resolve(m.worktree, git('rev-parse', '--git-path', 'index'))) } catch { /* not a worktree */ }
     try { const t = Number(git('log', '-1', '--format=%ct')) * 1000; if (Number.isFinite(t) && t > 0) times.push(t) } catch { /* no commits */ }

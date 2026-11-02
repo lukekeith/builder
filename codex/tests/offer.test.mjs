@@ -35,7 +35,7 @@ test('a session is building a feature only when it is approved-planned, here-pla
   assert.equal(buildingInSession({ ...other, phase: 'building' }, Date.now()), true);
 });
 
-test('activity in scratch subfolders and gate logs counts, not only top-level files', async t => {
+test('activity in scratch subfolders counts, not only top-level files; an old 5.x gate memo folder does not', async t => {
   const root = repo(t); const m = await run('start', 'nested', { root });
   const later = Date.now() + 4 * ACTIVE_MS; const at = (file) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, 'x\n'); fs.utimesSync(file, later / 1000, later / 1000); };
   const building = { ...m, phase: 'building' };
@@ -44,7 +44,7 @@ test('activity in scratch subfolders and gate logs counts, not only top-level fi
   assert.ok(Math.abs(lastActivity(m) - later) < 1, 'filesystem mtimes keep sub-millisecond precision'); assert.equal(buildingInSession(building, later + 1000), true);
   const g = await run('start', 'gated', { root });
   at(path.join(g.worktree, '.builder', 'gates', 'app-fast-logs', '01.log'));
-  assert.equal(buildingInSession({ ...g, phase: 'building' }, later + 1000), true);
+  assert.equal(buildingInSession({ ...g, phase: 'building' }, later + 1000), false, 'old .builder/gates/ memos are ignored');
 });
 
 test('a Thorough + you feature is offered before it is built; once built its pending walk is refused', async t => {
