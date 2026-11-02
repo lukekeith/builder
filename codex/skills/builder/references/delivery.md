@@ -2,7 +2,7 @@
 
 ## Walk and sign-off
 
-**What the walk covers** follows the plan's `end` lever: `everything` walks the whole acceptance script and runs the deep set and the cross-app end-to-end walk; `risk` walks the `[risk]` items; `touched` and `none` walk nothing: record that plainly — *no walk; not human-tested, not agent-walked* — and the delivery report says the same, never "agent-tested". Keep walks lean:
+**What the walk covers** follows the plan's `walk` lever: `full` walks the whole acceptance script and the cross-app end-to-end walk; `risk` walks the `[risk]` items and the cross-app steps; `none` walks nothing: record that plainly — *no walk; not human-tested, not agent-walked* — and the delivery report says the same, never "agent-tested". Keep walks lean:
 
 - **One app in scope → the verification script is the walk.** Write no cross-app section repeating it; per-app test items are the gates' to prove.
 - **Walk by screen** — every item on one screen in one visit, from one launch of the app, not a fresh launch per item.
@@ -17,7 +17,7 @@ Record each acceptance ID with environment, action, observed result, SHA, and ev
 
 ## Feature verification
 
-Resolve final-review blockers, complete the required gates and acceptance proof, and commit tracked spec/plan/ledger/handoff evidence under the project's commit policy. Verify the final clean feature HEAD. Run affected app fast gates (quoted when nothing changed since the end-of-build run) plus, when the plan's `end` is `everything`, the deep checks they do not already cover; `@walk` deep lines run against the walk environment. Require fresh execution for live/environment-sensitive proof; memoized checks are labeled reused. Missing required proof prevents verified state.
+Resolve final-review blockers, complete the required acceptance proof, and commit tracked spec/plan/ledger/handoff evidence under the project's commit policy. Verify the final clean feature HEAD: the verifier's phase tier must be green **at that sha** — `verify.mjs verdict <branch> --tier phase` names the sha it ran at; when it is not HEAD, request the phase tier again and wait (execution.md §Phase close, red and env-broken handled the same way). Require fresh execution for live/environment-sensitive proof. Missing required proof prevents verified state.
 
 Record the exact verified feature HEAD via lifecycle checkpoint (persistence.md). Never make unrelated changes after that claim; changes require re-verification.
 
