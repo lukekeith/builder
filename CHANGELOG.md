@@ -4,6 +4,115 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.0.0
+
+**Run `/builder:init --update` in each repo before its next build.** 6.0 replaces the
+`## Quality gates` section of `.claude/builder.md` — its fast and deep sets, `flaky:` and the
+`@delta` / `@scoped` / `@known-red` markers — with a `verify:` block, and nothing lands until it is
+migrated: a 5.x config with a gates section reads as env-broken, never as an untested green, and says
+to run `/builder:init --update`. Behind the new block, tests no longer run in front of the build. A
+**verifier** runs them beside it, judges each failure by test identity, and lands every feature
+through a merge queue on exactly the commit it tested. The test plan is now **walk · review**.
+
+**Upgrading:**
+- **`/builder:init --update`** reads your gate blocks, infers each suite's runner from its command, and
+  shows the migrated `verify:` block — suites, checks, the test database — as a review in the chat,
+  asking only what it couldn't tell. It writes the block, and removes the gates section and `flaky:`,
+  only on your approval. A new repo gets the block from `/builder:init`.
+- **Features already in flight keep working.** A manifest's old test plan maps on read — an `end=`
+  line becomes the walk it meant, `slice=` is dropped, an old `profile:` line still reads.
+- **Old gate memos and baselines are ignored** — nothing reads them, nothing needs cleaning up.
+- **`verify.run_timeout`** (optional, default `90m`) bounds a whole request — suites, re-runs and
+  bisect; past it the run stops and the verdict is env-broken, naming the limit. `verify.timeout`
+  (default `15m`) bounds one suite run.
+- A vendored copy updates with `/builder:vendor` as before; then run `/builder:init --update`.
+- The Codex edition takes the same changes and follows as its own 6.0.0 release.
+
+**Added:**
+- **The verifier** — one background service per repo, started by the first request and gone after
+  10 idle minutes, its state in `.builder/verify/`. Three tiers:
+  - **Commit** — after each task commit the build files a request and moves on. Only the test files
+    the change reaches run (from the import graph); a change it can't trace — config, lockfile,
+    schema — runs the whole suite and says why. A regression comes back pinned to the commit, and so
+    the task, that introduced it, and becomes one fix aimed at that task.
+  - **Phase** — the build's only wait. A consumer app's phase starts only on green; a test whose
+    inputs haven't changed since it last passed on the branch is not run again.
+  - **Merge — the merge queue.** The target's tip with the branch merged in, every suite whole and
+    every check. Green fast-forwards the target to exactly the tested commit; if the target moved,
+    the feature runs again on the new tip. One feature at a time per target, so main is never red.
+- **Failures judged by test identity, not counts.** A failing test is *env-broken* (no report, a
+  failed lease, a crash — retried once, never a fix), *known* (it fails on the target too: debt,
+  ignored), a *flake* (fails then passes on the same commit — listed and recorded, never failing a
+  verdict, unless the branch changed that test's file; it leaves the list after 20 clean runs), or a
+  *regression* — the only outcome that dispatches a fix. Judging re-runs only the failing tests,
+  never a whole suite.
+- **Suites by runner.** Adapters for node:test, vitest, jest, phpunit, xcodebuild and Playwright, plus
+  a generic JUnit one, each reporting per test. Commands that can't — a type-check, lint, a build —
+  are **checks**: all-or-nothing, and with `compare: lines` (which replaces `@delta`) failing only on
+  an output line the target doesn't print, so inherited lint or CSS debt passes and a new finding is
+  named.
+- **Every run is isolated.** A clean checkout beside your main one (`<repo>-verify/co/`, which
+  `/builder:tidy` knows), its own Postgres database cloned from a template (`verify.db`), its own
+  ports, a cloned simulator (`verify.simulator`), or your own `verify.env` lease/release hooks;
+  `setup` reinstalls when a lockfile changes, and `agent_walk.copy` files are copied in. A test
+  database that doesn't answer is reported as env-broken, not as red tests.
+- **A landing that can't finish asks.** Before it lands, the fleet checks your target checkout for
+  uncommitted changes overlapping the feature's files. An overlap parks the feature as **needs you**,
+  naming every file and touching none of them. `/builder:fleet:status`, `/builder:resume` and the
+  session brief raise it with one picker: **Set my changes aside, land, put them back** · **Commit
+  my changes, then land** (the files and a proposed message shown first; committed only on approval)
+  · **Leave it for now**. A clash on putting them back keeps the stash and lists the files — never
+  dropped or force-resolved. The status line reads `⛔ <feature> needs you: … — /builder:fleet:status`.
+  Every park only a person can settle now carries a way forward.
+- **The chat hears when the fleet ends.** `/builder:fleet` starts a watcher beside the detached fleet
+  and reports when it exits; a landing notice on the status line shrinks to fit and never folds into
+  "+N more".
+
+**Changed:**
+- **The test plan is `walk · review`.** The go-ahead asks how far an agent walks the feature (`none`,
+  `risk`, `full`) and how it is reviewed; `human=yes` asks for your own test too. `slice` and `end`
+  are gone — what runs, and the full suite, belong to the verifier.
+- **Verify is READY when the merge tier is green on HEAD and the walk passed** — there is no separate
+  deep set. The walk runs beside the merge tier: the fleet holds the tested merge while the walk runs
+  and releases it when the walk passes; a walk that commits fixes sends the feature back through the
+  queue. A merge that goes red at landing parks with the failing tests named.
+- The fleet no longer runs a baseline at start; the status line shows the verifier's runs and
+  verdicts instead of running gates. Landed merges carry your git identity.
+- **PLAN.md carries decisions, not bodies.** Each task is files, interfaces, behaviour, tests, pattern
+  and steps; test assertions stay as code with the spec's values, a code step names the signature,
+  file and pinned values, and the implementer writes the body. Code stays in the plan only where a
+  wrong body could pass — a frozen contract, an algorithm the tests don't determine, migrations and
+  security mechanisms. Plans are much shorter.
+- **A leaner fleet build.** The build lane starts on `/builder:build` with a fleet bundle that fits one
+  read; `dispatch.mjs next` does a task's bookkeeping — its ledger line, its commit-tier request, the
+  next brief and the Agent call — in one call; script output and agent replies are one line per fact,
+  with full reports kept in their files. An audited feature with nothing open goes straight to
+  `/builder:plan`. Every implementer brief carries the config's environment landmines and the
+  ledger's env notes, and a red verdict shows the failing lines rather than the first ones.
+- The model `dispatch.mjs` prints is a default with its reason; `--model` can only raise it and is
+  recorded.
+
+**Removed:** `gate.mjs`, `gates-core.mjs` and `job.mjs`; the config template's §Quality gates and §Deep
+set; `flaky:`, `--baseline` and the `@delta`, `@scoped`, `@parallel`, `@typecheck`, `@walk`, `@local`
+and `@known-red` markers.
+
+**Fixed:**
+- The ship commit says the feature is ready to land on `<target>` until the merge exists; "shipped
+  into" is written only after.
+- The fleet's reset, start, smoke and stop hooks fill in `{feature}` in the command, as setup does.
+- A script run through a symlinked path (`/var` → `/private/var`) no longer prints nothing and exits 0.
+- Output past 64 KB — `--json` from `list-features`, `check-obligations` and `tidy`, and the
+  verifier's verdicts — is no longer cut off when piped.
+- Clean-up never kills a process that has a terminal — your shell in a test checkout is left alone —
+  and stops rather than guesses when it can't list processes.
+
+**For maintainers:** the benchmark gains a suite — archived features re-run through the fleet in
+scratch clones outside every repo, scheduled into lanes that fit a night, reported per case and per
+stage — a history of every run with regressions judged against the previous builder, `--replan` (a
+case starts before its audit), safety checks that refuse a profile touching your own databases,
+ports or services, a preflight that refuses a machine short of disk or with its Postgres down, and a
+refusal of a case whose base already holds a build of its feature.
+
 ## 5.5.0
 
 **The wrap-up.** When a fleet lands features, the checkout it lands into is left behind: the dev DB
