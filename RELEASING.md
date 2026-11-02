@@ -30,6 +30,17 @@
    agree** — which is the check that stops a release where one says 2.1.0 and the other 2.0.0. Add
    `--dry-run` first to see what it would tag.
 
+5. **Publish the release notes** — every release gets a GitHub release whose body is its CHANGELOG
+   section (no project names):
+
+   ```bash
+   V=$(node -p "require('./.claude-plugin/plugin.json').version")
+   node scripts/release-notes.mjs "$V" > /tmp/builder-notes.md   # refuses if the section is missing or empty
+   gh release create "builder--v$V" --title "builder $V" --notes-file /tmp/builder-notes.md --verify-tag
+   ```
+
+   A Codex release gets its page from `codex/scripts/release.mjs --publish` (below).
+
 ## What consumers do
 
 ```bash
