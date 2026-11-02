@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { run } from '../scripts/lifecycle.mjs';
-import { parseWalkReadiness, landedMigrations, isDestructive } from '../scripts/landing.mjs';
+import { parseWalkReadiness, landedMigrations, isDestructive, wrapUp } from '../scripts/landing.mjs';
 
 const BODY = [
   '## Quality gates', '', '```', 'x: y', '```', '',
@@ -36,22 +36,60 @@ test('landedMigrations: none, additive under agent, destructive, ask/human, no a
   const files = [{ path: 'm/1.sql', text: 'CREATE TABLE "A" ();' }];
   for (const mode of ['ask', 'human', undefined]) {
     const x = landedMigrations({ files, readiness: { ...r, apply_mode: mode } });
-    assert.equal(x.action, 'note'); assert.match(x.why, /1 new migration landed — the dev DB is behind: run `npm run db:migrate`, then `npm run db:generate`/);
+    assert.equal(x.action, 'note'); assert.equal(x.kind, 'maybe');
+    assert.match(x.why, /1 new migration landed — the dev DB may be behind: if it lacks them, run `npm run db:migrate`, then `npm run db:generate`/);
   }
   assert.match(landedMigrations({ files, readiness: { migrations: 'm' } }).why, /no `apply:` command/);
   const away = landedMigrations({ files, readiness: r, checkedOut: false, target: 'work' });
   assert.equal(away.action, 'note'); assert.match(away.why, /work, which is checked out nowhere — when you switch to it/);
 });
 
+test('pending: the dev DB\'s own answer settles an ask-mode note; without it the note says may be behind', () => {
+  const r = { ...parseWalkReadiness(BODY), apply_mode: 'ask', pending: 'npx prisma migrate status' };
+  const files = [{ path: 'm/1.sql', text: 'CREATE TABLE "A" ();' }];
+  assert.deepEqual(landedMigrations({ files, readiness: r, pending: false }), { action: 'none', why: '1 new migration landed; `npx prisma migrate status` says the dev DB already has them' });
+  const behind = landedMigrations({ files, readiness: r, pending: true });
+  assert.equal(behind.action, 'note'); assert.match(behind.why, /the dev DB is behind, or `npx prisma migrate status` couldn't reach it: run `npm run db:migrate`/);
+  assert.equal(landedMigrations({ files, readiness: r }).kind, 'maybe');
+  assert.match(landedMigrations({ files: [{ path: 'm/1.sql', text: 'DROP TABLE "A";' }], readiness: r, pending: false }).why, /drops or rewrites data/, 'a destructive migration is noted whatever pending says');
+});
+
+test('parseWalkReadiness reads pending, restart, fixtures and smoke; wrapUp offers them after a landing, smoke last', () => {
+  const body = BODY.replace('regenerate: npm run db:generate', 'regenerate: npm run db:generate\npending:    npx prisma migrate status\nrestart:    docker compose restart api   # no reload\nfixtures:   npm run db:seed\nsmoke:      curl -sf localhost:3000/health');
+  const r = parseWalkReadiness(body);
+  assert.equal(r.pending, 'npx prisma migrate status'); assert.equal(r.restart, 'docker compose restart api'); assert.equal(r.fixtures, 'npm run db:seed');
+  assert.deepEqual(wrapUp({ readiness: r, checkedOut: true }).map((s) => [s.id, s.command]), [['restart', 'docker compose restart api'], ['fixtures', 'npm run db:seed'], ['smoke', 'curl -sf localhost:3000/health']]);
+  assert.match(wrapUp({ readiness: r, checkedOut: true })[0].title, /restart what doesn't reload by itself/);
+  assert.deepEqual(wrapUp({ readiness: r, checkedOut: false }), [], 'a target checked out nowhere serves no dev env here');
+  assert.deepEqual(wrapUp({ readiness: { smoke: 'curl x' }, checkedOut: true }), [], 'smoke alone only follows another step');
+  assert.deepEqual(wrapUp({ readiness: { smoke: 'curl x' }, checkedOut: true, migrated: true }).map((s) => s.id), ['smoke']);
+  assert.deepEqual(wrapUp({ readiness: {}, checkedOut: true }), []);
+});
+
+test('destructive detection: each migration tool\'s own data-changing operations', () => {
+  const js = (body) => `export async function up(queryInterface) {\n  ${body}\n}\nexport async function down() {}\n`;
+  for (const body of ['await queryInterface.bulkDelete("users", null, {})', 'await queryInterface.bulkUpdate("users", { a: 1 }, {})', 'await queryInterface.removeColumn("users", "a")', 'await queryInterface.changeColumn("users", "a", {})', 'await queryInterface.removeConstraint("users", "c")', 'await queryInterface.removeIndex("users", "i")', 'await prisma.user.deleteMany({})', 'await db.collection("u").deleteOne({})', 'await db.collection("u").updateMany({}, {})', 'await db.dropCollection("u")'])
+    assert.equal(isDestructive({ path: 'm/1.js', text: js(body) }), true, body);
+  assert.equal(isDestructive({ path: 'm/1.js', text: js('await queryInterface.addColumn("users", "a", {})') }), false);
+  for (const text of ['ALTER TABLE "A" ALTER COLUMN b SET DATA TYPE int;', 'UPDATE "A" AS a SET b = 1;', 'UPDATE public.a x SET b = 1;'])
+    assert.equal(isDestructive({ path: 'm/1.sql', text }), true, text);
+  const rb = (body) => `class X < ActiveRecord::Migration[7.0]\n  def up\n    ${body}\n  end\nend\n`;
+  for (const body of ['User.delete_all', 'User.update_all(a: 1)', 'User.destroy_all', 'change_table :users do |t| t.remove :a end'])
+    assert.equal(isDestructive({ path: 'db/migrate/1_x.rb', text: rb(body) }), true, body);
+  const py = (body) => `def upgrade():\n    ${body}\n\ndef downgrade():\n    pass\n`;
+  for (const body of ['op.drop_constraint("c", "t")', 'with op.batch_alter_table("t") as b: b.add_column(x)'])
+    assert.equal(isDestructive({ path: 'v/1.py', text: py(body) }), true, body);
+});
+
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const APPLY = `node -e "require('fs').writeFileSync('applied.txt','yes')"`;
 const REGEN = `node -e "require('fs').writeFileSync('regenerated.txt','yes')"`;
-function repo(t, mode, apply = APPLY, { regenerate = REGEN, ignore = true } = {}) {
+function repo(t, mode, apply = APPLY, { regenerate = REGEN, ignore = true, extra = '' } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'builder-landing-'));
   const root = path.join(folder, 'repo'); fs.mkdirSync(root);
   git(root, 'init', '-b', 'work'); git(root, 'config', 'user.email', 'test@example.invalid'); git(root, 'config', 'user.name', 'Fixture');
   fs.mkdirSync(path.join(root, '.builder'));
-  fs.writeFileSync(path.join(root, '.builder/config.md'), `---\napps:\n  - name: app\n    path: app\n---\n\n## Walk readiness\n\n\`\`\`\nmigrations: db/migrations\napply:      ${apply}\napply_mode: ${mode}   # test\nregenerate: ${regenerate}\n\`\`\`\n`);
+  fs.writeFileSync(path.join(root, '.builder/config.md'), `---\napps:\n  - name: app\n    path: app\n---\n\n## Walk readiness\n\n\`\`\`\nmigrations: db/migrations\napply:      ${apply}\napply_mode: ${mode}   # test\nregenerate: ${regenerate}\n${extra}\`\`\`\n`);
   if (ignore) fs.writeFileSync(path.join(root, '.gitignore'), 'applied.txt\nregenerated.txt\n');
   git(root, 'add', '.'); git(root, 'commit', '-m', 'seed');
   t.after(() => fs.rmSync(folder, { recursive: true, force: true })); return root;
@@ -78,11 +116,30 @@ test('delivery applies an additive landed migration in the target checkout under
 
 test('ask mode and destructive migrations are noted with the exact command, never run', async t => {
   const ask = repo(t, 'ask'); const a = await land(ask);
-  assert.equal(a.landing.action, 'note'); assert.match(a.landing.note, /the dev DB is behind: run `node -e/);
-  assert.ok(!fs.existsSync(path.join(ask, 'applied.txt'))); assert.match(a.nextAction, /dev DB is behind/);
+  assert.equal(a.landing.action, 'note'); assert.match(a.landing.note, /the dev DB may be behind: if it lacks them, run `node -e/);
+  assert.ok(!fs.existsSync(path.join(ask, 'applied.txt'))); assert.match(a.nextAction, /dev DB may be behind/);
   const drop = repo(t, 'agent'); const d = await land(drop, 'DROP TABLE "a";');
   assert.equal(d.landing.action, 'note'); assert.match(d.landing.note, /drops or rewrites data, so it was not applied/);
   assert.ok(!fs.existsSync(path.join(drop, 'applied.txt')));
+});
+
+test('ask mode asks pending: in the target checkout — exit 0 settles it, non-zero says behind; neither applies anything', async t => {
+  const up = repo(t, 'ask', APPLY, { extra: 'pending:    node -e "process.exit(0)"\n' }); const u = await land(up);
+  assert.equal(u.landing.action, 'none'); assert.match(u.landing.why, /says the dev DB already has them/);
+  assert.equal(u.nextAction, 'Optional explicit cleanup');
+  const behind = repo(t, 'ask', APPLY, { extra: 'pending:    node -e "process.exit(1)"\n' }); const b = await land(behind);
+  assert.equal(b.landing.action, 'note'); assert.match(b.landing.note, /the dev DB is behind, or `node -e "process.exit\(1\)"` couldn't reach it: run/);
+  assert.ok(!fs.existsSync(path.join(behind, 'applied.txt')));
+});
+
+test('deliver lists the wrap-up steps the config names, for the coordinator to offer in one question; it runs none of them', async t => {
+  const root = repo(t, 'agent', APPLY, { extra: 'restart:    node -e "require(\'fs\').writeFileSync(\'restarted.txt\',\'y\')"\nfixtures:   npm run seed\nsmoke:      curl -sf localhost:1/health\n' });
+  const d = await land(root);
+  assert.deepEqual(d.wrapUp.map(s => s.id), ['restart', 'fixtures', 'smoke']);
+  assert.equal(d.wrapUp[1].command, 'npm run seed');
+  assert.ok(!fs.existsSync(path.join(root, 'restarted.txt')), 'offered, never run by deliver');
+  const away = repo(t, 'agent', APPLY, { extra: 'restart:    echo restart\n' }); const a = await land(away, undefined, { away: true });
+  assert.deepEqual(a.wrapUp, []);
 });
 
 test('a target checked out nowhere gets a note for when you switch; a failed apply is noted and the landing stands', async t => {

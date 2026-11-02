@@ -29,13 +29,14 @@ export function parseWalkReadiness(body) {
 }
 
 /** SQL that drops or rewrites data — never applied unattended, whatever apply_mode says. */
-export const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|MATERIALIZED\s+VIEW|CONSTRAINT|DATABASE|SEQUENCE|FUNCTION|PROCEDURE|TRIGGER|EXTENSION|DEFAULT|NOT\s+NULL)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bALTER\s+COLUMN\b[^;]*\bTYPE\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
+export const DESTRUCTIVE = /\bDROP\s+(TABLE|COLUMN|INDEX|TYPE|SCHEMA|VIEW|MATERIALIZED\s+VIEW|CONSTRAINT|DATABASE|SEQUENCE|FUNCTION|PROCEDURE|TRIGGER|EXTENSION|DEFAULT|NOT\s+NULL)\b|\bALTER\s+TABLE\b[^;]*\bDROP\b|\bALTER\s+COLUMN\b[^;]*\b(TYPE|SET\s+DATA\s+TYPE)\b|\bUPDATE\s+["'`\w.]+(\s+(AS\s+)?\w+)?\s+SET\b|\bDELETE\s+FROM\b|\bTRUNCATE\b|\bRENAME\b/i
 
 /**
- * Migration code that is not plain SQL (Alembic, Django, Knex, Rails, …): calls that drop, rename,
- * change or rewrite, or that execute arbitrary SQL/data changes. Any hit is treated as destructive.
+ * Migration code that is not plain SQL (Alembic, Django, Knex, Rails, Sequelize, TypeORM, Prisma
+ * and Mongo scripts, …): calls that drop, rename, change or rewrite, or that execute arbitrary
+ * SQL/data changes. Any hit is treated as destructive.
  */
-export const DESTRUCTIVE_CODE = /\bop\.drop_|\bdrop_(column|table|index|constraint)\b|\bremove_(column|columns|index|references|reference|table|timestamps)\b|\bdrop(Table|Column|Columns|Index|Foreign|Unique|Primary|Schema)\w*\b|\bRemoveField\b|\bDeleteModel\b|\bRenameField\b|\bRenameModel\b|\bAlterField\b|\bRunSQL\b|\bRunPython\b|\balter_column\b|\bchange_column\w*\b|\brename_(column|table|index)\b|\brename(Column|Table)\b|\bexecute\s*\(|\.raw\s*\(|\bbulk_update\b|\.update\s*\(|\.del\s*\(|\.delete\s*\(/
+export const DESTRUCTIVE_CODE = /\bop\.drop_|\bdrop_(column|table|index|constraint)\b|\bremove_(column|columns|index|references|reference|table|timestamps)\b|\bdrop(Table|Column|Columns|Index|Foreign|Unique|Primary|Schema|Collection)\w*\b|\bRemoveField\b|\bDeleteModel\b|\bRenameField\b|\bRenameModel\b|\bAlterField\b|\bRunSQL\b|\bRunPython\b|\balter_column\b|\bbatch_alter_table\b|\bchange_column\w*\b|\bchange_table\b|\brename_(column|table|index)\b|\brename(Column|Table)\b|\b(delete_all|update_all|destroy_all)\b|\b(removeColumn|changeColumn|removeConstraint|removeIndex|bulkDelete|bulkUpdate|deleteMany|deleteOne|updateMany)\b|\bexecute\s*\(|\.raw\s*\(|\bbulk_update\b|\.update\s*\(|\.del\s*\(|\.delete\s*\(/
 
 // Where the forward migration ends: its down/downgrade half only runs on rollback.
 const UP = /^[ \t]*(?:async\s+)?def\s+(?:upgrade|up|change)\b|\bexports\.up\b|^[ \t]*export\s+(?:async\s+)?function\s+up\b|^[ \t]*(?:async\s+)?up\s*\(/m
@@ -65,8 +66,14 @@ const count = (n) => `${n} new migration${n === 1 ? '' : 's'}`
  * ({ path, text }), `readiness` is parseWalkReadiness, `checkedOut` is false when the target
  * branch is checked out nowhere (the merge moved a ref only). Returns `{ action: 'none' }`,
  * `{ action: 'apply', commands }`, or `{ action: 'note', why }` naming what to run by hand.
+ *
+ * `pending` is the dev DB's own answer when Walk readiness has a `pending:` command (exit 0 =
+ * nothing pending — not `status:`, which many tools exit 0 from either way): false → nothing to
+ * say, the dev DB already has them; true → behind, or the command couldn't tell; null (no command,
+ * or not asked) → git only knows the files landed, so the note says the DB *may* be behind
+ * (`kind: 'maybe'` — the caller asks `pending:` then, when it has one).
  */
-export function landedMigrations({ files, readiness = {}, checkedOut = true, target = 'the target' }) {
+export function landedMigrations({ files, readiness = {}, checkedOut = true, target = 'the target', pending = null }) {
   if (!files?.length) return { action: 'none' }
   const n = count(files.length)
   const cmds = [readiness.apply, readiness.regenerate].filter(Boolean)
@@ -75,6 +82,28 @@ export function landedMigrations({ files, readiness = {}, checkedOut = true, tar
   if (!checkedOut) return { action: 'note', why: `${n} landed on ${target}, which is checked out nowhere — when you switch to it, apply them to the dev DB first: run ${run}` }
   const destructive = files.filter(isDestructive).map((f) => f.path)
   if (destructive.length) return { action: 'note', why: `${n} landed and ${destructive.join(', ')} drops or rewrites data, so it was not applied — check it, then run ${run}` }
-  if ((readiness.apply_mode ?? 'ask') !== 'agent') return { action: 'note', why: `${n} landed — the dev DB is behind: run ${run}` }
+  if ((readiness.apply_mode ?? 'ask') !== 'agent') {
+    if (pending === false) return { action: 'none', why: `${n} landed; \`${readiness.pending}\` says the dev DB already has them` }
+    if (pending === true) return { action: 'note', why: `${n} landed — the dev DB is behind, or \`${readiness.pending}\` couldn't reach it: run ${run}` }
+    return { action: 'note', kind: 'maybe', why: `${n} landed — the dev DB may be behind: if it lacks them, run ${run}` }
+  }
   return { action: 'apply', commands: cmds }
+}
+
+/**
+ * The wrap-up after a landing — what the target checkout's running dev env still needs, from Walk
+ * readiness, in the order they stand on each other: `restart:` (what doesn't reload by itself),
+ * `fixtures:` (the dev data a walk starts from), then `smoke:` last, and only after one of those or
+ * an applied migration changed something. Offered by the coordinator in one question; never run
+ * unasked — the dev env is the owner's. None when the target is checked out nowhere: no dev env
+ * here serves it. Claude's fleet runs the same steps through wrapup.mjs; its switch and tidy steps
+ * have no Codex counterpart (Codex lands into the checkout that holds the target, in session).
+ */
+export function wrapUp({ readiness = {}, checkedOut = true, migrated = false }) {
+  if (!checkedOut) return []
+  const steps = []
+  if (readiness.restart) steps.push({ id: 'restart', title: 'restart what doesn\'t reload by itself, so the dev env serves what landed', command: readiness.restart })
+  if (readiness.fixtures) steps.push({ id: 'fixtures', title: 'reset the dev data a walk starts from', command: readiness.fixtures })
+  if (readiness.smoke && (steps.length || migrated)) steps.push({ id: 'smoke', title: 'check the running dev app answers', command: readiness.smoke })
+  return steps
 }
