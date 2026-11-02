@@ -1,20 +1,12 @@
 {
-  "commit": "8dde46eb04de470aca75ba43042356e046482a1c",
-  "version": "5.2.0",
-  "packageHash": "d2eadac180d4bd4fdf222c19a4d8e83754ae3650aa6d0404d35cad7d2e52006a",
+  "commit": "deab95f84cc5d827b5cc92e771d914214515fbd2",
+  "version": "6.0.0",
+  "packageHash": "cc2a3d197d5b2b99f415230aab9542e871ce13a203d4242850267cd203dc392d",
   "decisions": [
-    {
-      "file": ".claude-plugin/marketplace.json",
-      "disposition": "adapted",
-      "reason": "Version alignment to 5.2.0 after the tested migration; finish aligns codex/plugin.json.",
-      "evidence": [
-        "codex/plugin.json"
-      ]
-    },
     {
       "file": ".claude-plugin/plugin.json",
       "disposition": "adapted",
-      "reason": "Codex adopts 5.2.0 after migrating 4.11.1-5.2.0; description changes are Claude skill-list budget work, the Codex description is unchanged.",
+      "reason": "Codex adopts 6.0.0 after migrating Claude 5.2.1-6.0.0 (finish aligns codex/plugin.json from this file). The Claude description and agents/commands entries are Claude Code plugin metadata; the Codex description is unchanged.",
       "evidence": [
         "codex/plugin.json",
         "codex/README.md"
@@ -23,53 +15,115 @@
     {
       "file": "CHANGELOG.md",
       "disposition": "adapted",
-      "reason": "Each 4.11.1-5.2.0 note is carried by Codex behavior or excluded with reason: discovery/quick path/design-system-first/rounds/pickers (conversation.md, SKILL.md); test plan (profile.mjs, lifecycle approve --tests, profiles/planning/execution.md); reviews (SKILL.md, discovery.md); build options (SKILL.md); sizing, program review (discovery.md); init always writes agent_walk, config is the owner's (SKILL.md, template); standing traps lesson and lean walks (delivery.md); merge_into current and agent_walk target refusal (config.mjs, lifecycle.mjs, profiles.md); @typecheck/@walk/durations (gates-core.mjs, gate.mjs). Benchmark, hooks, fleet, evals, CI, statusline excluded in README.",
+      "reason": "Each 5.2.1-6.0.0 note is carried or excluded with reason in the port inventory (docs/plans/2026-11-01-codex-6-port.md §1): 6.0 verifier vendored (codex/scripts/verify), verify: replaces Quality gates with init --update migration (SKILL.md, migrate.mjs), commit tier beside the build / phase tier the only wait (execution.md), merge queue landing and needs-you (lifecycle.mjs, landing.mjs, delivery.md, recommendation 3-or-fewer → set aside), walk · review test plan (profile.mjs), six-part plan tasks (planning.md), landmines in briefs (brief.mjs), 5.3 pending:/destructive ops and 5.5 wrap-up (landing.mjs), 5.4 audit code map and dropped program children (discovery.md), 5.4 /builder:archive (archive.mjs), finished gone from status (lifecycle.mjs list). Fleet, status line, hooks, benchmark, plan writers, meters, tidy excluded (README). The README leads with the consumer's one action: $builder init --update.",
       "evidence": [
         "codex/README.md",
-        "codex/skills/builder/references/conversation.md",
-        "codex/skills/builder/references/profiles.md",
+        "codex/scripts/archive.mjs",
+        "codex/scripts/landing.mjs",
         "codex/skills/builder/references/delivery.md",
-        "codex/scripts/profile.mjs",
+        "codex/skills/builder/references/execution.md",
         "codex/tests/skills.test.mjs"
+      ]
+    },
+    {
+      "file": "LICENSE-THIRD-PARTY.md",
+      "disposition": "adapted",
+      "reason": "The Superpowers attribution now says the phase close waits on the verifier, not gate.mjs; Codex's third-party notice is updated the same way (it lands only the merged result its verifier tested).",
+      "evidence": [
+        "codex/LICENSE-THIRD-PARTY.md"
       ]
     },
     {
       "file": "PROJECT.template.md",
       "disposition": "adapted",
-      "reason": "Codex template gains merge_into current, build_profile_default as the test plan default, an always-written agent_walk block with walk-env output folder and sign-in smoke guidance, @typecheck/@walk markers and §Standing traps.",
+      "reason": "Phase 2 of codex/PORT-6.0.md: verify: block in the frontmatter and a short Verification section replace Quality gates (fast/deep sets, gate markers, the depends_on gate-memo note); Walk readiness gains pending:, restart:, fixtures: and smoke:; Global constraints and Standing traps say tests, not gates. The plan_writers: and agent_types: comment lines are not added: both are Claude-only knobs (Claude plan-writer subagents, Claude subagent types).",
       "evidence": [
         "codex/assets/PROJECT.template.md",
-        "codex/tests/skills.test.mjs"
+        "codex/tests/skills.test.mjs",
+        "codex/tests/verify-migrate.test.mjs"
       ]
     },
     {
       "file": "scripts/advance.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
+      "reason": "Lean-orchestrator state advance — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
     },
     {
-      "file": "scripts/bench-core.mjs",
+      "file": "scripts/archive.mjs",
+      "disposition": "adapted",
+      "reason": "Adapted as codex/scripts/archive.mjs (not a subcommand of the shared registry.mjs, which copy-shared keeps byte-identical): plan is the review, apply one commit; shipped/landed → SHIPPED (a Codex landing is the merge-queue commit `Merge builder feature <name>` or the runtime mergedHead, which required verify READY), hand merges → CLOSED never shipped, abandoned → DROPPED, legacy moved whole, leftovers trimmed, orphan workspaces removed unless newer than the archiving, programs offered when every child is archived; a live Codex runtime record is never touched; refuses off target or with a dirty registry; a half-done folder is put back. No condense/ship, no fleet logs, no fleet rows (Codex has neither).",
+      "evidence": [
+        "codex/scripts/archive.mjs",
+        "codex/tests/archive.test.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/skills/builder/SKILL.md"
+      ]
+    },
+    {
+      "file": "scripts/bench-case.mjs",
       "disposition": "claude-only",
-      "reason": "Claude benchmark; excluded in README.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/bench-replay-core.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/bench-replay.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/bench-suite-core.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/bench-suite.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
       "file": "scripts/bench.mjs",
       "disposition": "claude-only",
-      "reason": "Claude benchmark; excluded in README.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
+    },
+    {
+      "file": "scripts/brainstorm-file.mjs",
+      "disposition": "adapted",
+      "reason": "The 5.4 rule that a brainstorm workspace newer than the archiving is a reused name, never a leftover, is carried into archive.mjs orphan-workspace removal (nothing newer than the archived record). draftRows itself is Claude /builder:status listing of drafts; Codex starts a worktree before any notes, so it has no draft rows.",
+      "evidence": [
+        "codex/scripts/archive.mjs",
+        "codex/tests/archive.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/check-obligations.mjs",
+      "disposition": "adapted",
+      "reason": "Same fix: blocking stdout so --json past 64 KB is whole before process.exit (nodejs/node#6456).",
+      "evidence": [
+        "codex/scripts/check-obligations.mjs",
+        "codex/tests/check-obligations.test.mjs"
+      ]
     },
     {
       "file": "scripts/condense.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
+      "reason": "Claude ship/condense (SPEC condensed at sign-off, --ship --merged). Codex keeps SPEC/PLAN/ledger until landing and has no ship step; archive.mjs writes the SHIPPED/CLOSED/DROPPED header itself (README).",
       "evidence": []
     },
     {
       "file": "scripts/config.mjs",
       "disposition": "adapted",
-      "reason": "merge_into: current (flag resolved at lifecycle start), agent_walk.batch parsed, hasAgentWalk for the target-config refusal; Codex config precedence retained.",
+      "reason": "Phase 2: the CRLF frontmatter fix; agent_types: parsed by the same agentTypesOf so a config shared with Claude Code reads the same (Codex dispatches its own workers and never reads it). plan_writers: is not ported: Claude plan-writer subagents, the Codex coordinator writes PLAN. Removing flaky: parsing waits for Phase 4, with gate.mjs.",
       "evidence": [
         "codex/scripts/config.mjs",
         "codex/tests/config.test.mjs"
@@ -77,83 +131,111 @@
     },
     {
       "file": "scripts/dispatch.mjs",
-      "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: Codex has no Claude Agent-tool prompt renderer (README: dispatch.mjs not ported; task-brief + the coordinator own the brief). The 6.0 behaviour that matters — §Environment landmines verbatim and the ledger's ## env notes in every brief — is codex/scripts/brief.mjs, run after task-brief (which stays copy-shared). The commit-tier request and verdict read that dispatch.mjs next performs are coordinator steps in execution.md. Fleet next/--close, agent types and --model rules stay Claude-only.",
+      "evidence": [
+        "codex/scripts/brief.mjs",
+        "codex/tests/brief.test.mjs",
+        "codex/skills/builder/references/execution.md"
+      ]
     },
     {
       "file": "scripts/docs.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
+      "reason": "Fleet doc bundles — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
     },
     {
       "file": "scripts/feature-core.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
+      "reason": "Shared helpers for the lean-orchestrator scripts — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
     },
     {
       "file": "scripts/fleet-core.mjs",
-      "disposition": "claude-only",
-      "reason": "Claude fleet machinery (detached claude -p runs, walk lane, batched walks, lanes); Codex uses session-owned native workers and has no fleet (README adaptation boundaries).",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Codex has no fleet. The landing needs-you part is adapted: PARK_REASONS.overlap and parkChoices become landing.mjs needsYou / NEEDS_YOU_CHOICES (the reason with count and first three files, three choices, leave it last, at least one forward); lifecycle.mjs records it as needsYou in the runtime record (not PARKED.md: the verified tree must not change). The rest (lanes, stalls, status rows, walk batching, park blocks) is fleet-only.",
+      "evidence": [
+        "codex/scripts/landing.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/landing.test.mjs"
+      ]
     },
     {
       "file": "scripts/fleet.mjs",
-      "disposition": "claude-only",
-      "reason": "Claude fleet machinery (detached claude -p runs, walk lane, batched walks, lanes); Codex uses session-owned native workers and has no fleet (README adaptation boundaries).",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Codex has no fleet process. The landing path is adapted into lifecycle.mjs: prepare requests verify.mjs request --tier merge --hold --target <captured target> (from built on, beside the walk), deliver runs release (or carry after registry-only commits), exit 7 / a moved feature asks again, a conflict verdict sends the target into the feature worktree, then history and landed migrations are recorded. --land --commit-mine | --set-aside become deliver --commit-mine \"<msg>\" | --set-aside with the same commitMine/setAside/putBack semantics (stash by sha, kept with the files listed on a clash, never dropped). Everything else is fleet-only.",
+      "evidence": [
+        "codex/scripts/lifecycle.mjs",
+        "codex/tests/lifecycle.test.mjs",
+        "codex/tests/land-helpers.mjs"
+      ]
     },
     {
       "file": "scripts/gate.mjs",
       "disposition": "adapted",
-      "reason": "--typecheck runs only @typecheck lines with its own memo; durations recorded after a green whole fast set. --walk-only, BUILDER_CONFIG_ROOT gate source and walk-env smoke exit 3 are fleet-only.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Removed upstream in 6.0 and here: codex/scripts/gate.mjs is deleted. Tests run through the vendored verifier (commit/phase tiers in execution.md, the merge tier at landing). An un-migrated config is env-broken naming $builder init --update, never untested-green; old .builder/gates/ memos are ignored (offer.mjs no longer counts them).",
       "evidence": [
-        "codex/scripts/gate.mjs",
-        "codex/tests/gates-core.test.mjs"
+        "codex/scripts/lifecycle.mjs",
+        "codex/scripts/offer.mjs",
+        "codex/tests/offer.test.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/README.md"
       ]
     },
     {
       "file": "scripts/gates-core.mjs",
       "disposition": "adapted",
-      "reason": "@typecheck and @walk parsed and stripped; per-line durations, partial flag, read/writeDurations. Claude gateEnv lane switching is fleet-only: Codex runs @walk lines as written. Codex baseline/flaky strictness retained.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Removed: codex/scripts/gates-core.mjs is deleted, and config.mjs no longer parses flaky: (the verifier learns flakes). @walk/@typecheck/@delta lines are carried over only by migrate.mjs at $builder init --update.",
       "evidence": [
-        "codex/scripts/gates-core.mjs",
-        "codex/tests/gates-core.test.mjs"
+        "codex/scripts/config.mjs",
+        "codex/tests/config.test.mjs",
+        "codex/scripts/verify/migrate.mjs"
       ]
     },
     {
       "file": "scripts/handoff.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries).",
+      "reason": "Claude handoff rendering — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
+    },
+    {
+      "file": "scripts/impact.mjs",
+      "disposition": "adapted",
+      "reason": "Shared helper copied byte-for-byte (Codex copy equalled the base, as copy-shared requires): impactOf since: for the verifier, realpath main check. Copied alone rather than via copy-shared so registry.mjs (archive, Phase 5) is not taken early.",
+      "evidence": [
+        "codex/scripts/impact.mjs",
+        "codex/tests/impact.test.mjs",
+        "codex/tests/verify-select.test.mjs"
+      ]
     },
     {
       "file": "scripts/job.mjs",
       "disposition": "claude-only",
-      "reason": "Claude fleet job runner (quoting fix); Codex workers are native and job.mjs is not part of this package.",
+      "reason": "Fleet job runner — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
     },
     {
       "file": "scripts/list-features.mjs",
-      "disposition": "equivalent",
-      "reason": "Claude status table gained a Tests column; Codex lifecycle list labels each feature with the test plan label.",
+      "disposition": "adapted",
+      "reason": "Codex status is lifecycle.mjs list over runtime records, not list-features. Its 5.4-6.0 changes are carried there: a finished feature drops out of status (lifecycle list), a needs-you landing is shown as the feature's next step (needsYou/nextAction), and finished folders still in the registry are named by the registry: line ($builder status runs archive.mjs plan --summary).",
       "evidence": [
         "codex/scripts/lifecycle.mjs",
+        "codex/scripts/archive.mjs",
+        "codex/skills/builder/SKILL.md",
         "codex/tests/lifecycle.test.mjs"
       ]
     },
     {
       "file": "scripts/plan-slices.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries). Slice grouping is shown at the go-ahead per planning.md.",
+      "reason": "Plan slicing for Claude dispatch briefs (--brief/--scan) — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
     },
     {
       "file": "scripts/profile.mjs",
       "disposition": "adapted",
-      "reason": "Test plan levers, parseTests/formatTests/planLabel, old profile mapping, recommend raising only end (breaking schema only), cost with durations, label-based estimates; Codex floors kept stricter; Phases read by header for the Codex plan shape.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: TEST_LEVERS is walk · review (+ models/persist/unruled/human); slice is dropped and end picks the walk when an old manifest is read; walk=you maps to human=yes; old profile: presets map as upstream; signals raise only walk; cost is { slices, apps, phases, reviews, walk } (no gate durations). Codex keeps its stricter FLOORS (finalReview, freshMerge, releasedParity, projectRequirements), its strict CLI parsing, runtimeTestPlan and Git-common history.",
       "evidence": [
         "codex/scripts/profile.mjs",
         "codex/tests/profile.test.mjs",
@@ -163,326 +245,721 @@
       ]
     },
     {
+      "file": "scripts/program.mjs",
+      "disposition": "adapted",
+      "reason": "A dropped child never satisfies a program dependency: registry.mjs archivedOutcome (shared, copied) reads the archived header, discovery.md xl section states the rule for Codex programs, and archive.mjs offers a program only when every child is archived. Codex has no program.mjs dependency walker.",
+      "evidence": [
+        "codex/scripts/registry.mjs",
+        "codex/skills/builder/references/discovery.md",
+        "codex/tests/registry.test.mjs",
+        "codex/tests/archive.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/registry.mjs",
+      "disposition": "adapted",
+      "reason": "Shared helper copied byte-for-byte by sync.mjs copy-shared (the Codex copy equalled the base): archivedOutcome, --sweep docs.",
+      "evidence": [
+        "codex/scripts/registry.mjs",
+        "codex/tests/registry.test.mjs"
+      ]
+    },
+    {
       "file": "scripts/statusline.mjs",
       "disposition": "claude-only",
-      "reason": "Claude Code status line; excluded in README.",
+      "reason": "Claude Code status line (needs-you form included); Codex has none — $builder status shows the needs-you as the next step (README).",
       "evidence": []
     },
     {
       "file": "scripts/test/advance.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests advance.mjs (Claude-only).",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/archive-scale.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Scale test of Claude list-features/status over a large archive; Codex status never reads the archive (lifecycle.mjs list reads runtime records) and archive.mjs is tested in codex/tests/archive.test.mjs.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/archive.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported as codex/tests/archive.test.mjs: tiers and actions, one commit, headers under the title, old tier and per-name --drop, refusals, put back on a half-way failure, programs; plus Codex cases (merge-queue landing is SHIPPED with its merge sha, a live runtime record is never touched). Fleet-log pruning and condense-based ship are not ported (no fleet, no condense).",
+      "evidence": [
+        "codex/tests/archive.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/bench-case.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
       "file": "scripts/test/bench-core.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/bench-replay.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/bench-suite-core.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/bench-suite.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
       "file": "scripts/test/bench.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
       "file": "scripts/test/brainstorm-file.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "The newer-than-archive rule is tested on archive.mjs workspaces in codex/tests/archive.test.mjs; the draft-row tests are Claude status listing.",
+      "evidence": [
+        "codex/tests/archive.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/condense.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests condense.mjs (Claude-only).",
       "evidence": []
     },
     {
       "file": "scripts/test/config.test.mjs",
       "disposition": "adapted",
-      "reason": "Config behavior ported with Codex tests.",
+      "reason": "Phase 2: the agent_types tests ported, plus CRLF and a verify: block leaving the rest of the config intact; the plan_writers test is not (Claude-only); the flaky: test stays until Phase 4 removes gates.",
       "evidence": [
         "codex/tests/config.test.mjs"
       ]
     },
     {
       "file": "scripts/test/dispatch.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/docs-drift.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: The landmines/env-notes behaviour is tested in brief.test.mjs (verbatim section, every env-notes heading, continuation lines, idempotent re-run); the rest tests Claude prompt rendering and the fleet, which Codex does not have.",
+      "evidence": [
+        "codex/tests/brief.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/docs.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests docs.mjs fleet bundles (Claude-only).",
       "evidence": []
     },
     {
-      "file": "scripts/test/fixtures/lean-repo.mjs",
+      "file": "scripts/test/fixtures/bench/stub-case.mjs",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
-      "file": "scripts/test/fixtures/lean/note-tags/MANIFEST.md",
+      "file": "scripts/test/fixtures/bench/stub-fleet-hang.mjs",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
-      "file": "scripts/test/fixtures/lean/note-tags/PLAN.md",
+      "file": "scripts/test/fixtures/bench/stub-fleet-land.mjs",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
-      "file": "scripts/test/fixtures/lean/note-tags/SPEC.md",
+      "file": "scripts/test/fixtures/configs/realistic-builder.md",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Fixture for docs.test.mjs (fleet bundles, docs.mjs), which Codex does not have (PORT-6.0.md inventory: fleet bundles n/a).",
       "evidence": []
     },
     {
       "file": "scripts/test/fixtures/lean/note-tags/builder.md",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/lean/share/MANIFEST.md",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/lean/share/SPEC.md",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Fixture config for the lean-orchestrator/docs.mjs tests (gate markers replaced by verify:); Codex config tests use their own fixtures (config.test.mjs, verify-migrate.test.mjs).",
       "evidence": []
     },
     {
       "file": "scripts/test/fixtures/lean/share/builder.md",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/plan-slices/cert-tags/MANIFEST.md",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/plan-slices/cert-tags/PLAN.md",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/plan-slices/cert-tags/SPEC.md",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Fixture config for the lean-orchestrator/docs.mjs tests; Codex config tests use their own fixtures.",
       "evidence": []
     },
     {
       "file": "scripts/test/fixtures/stub-claude.mjs",
       "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/fixtures/tidy-repo.mjs",
-      "disposition": "claude-only",
-      "reason": "Claude test fixture for Claude-only scripts or the benchmark.",
+      "reason": "Stub of the claude CLI for fleet tests; Codex never invokes claude (README).",
       "evidence": []
     },
     {
       "file": "scripts/test/fleet-core.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 4 of codex/PORT-6.0.md: The overlap reason and parkChoices tests are ported as needsYou tests in landing.test.mjs; the rest tests fleet-only code.",
+      "evidence": [
+        "codex/tests/landing.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/fleet.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 4 of codex/PORT-6.0.md: The landing integration tests are ported onto lifecycle.test.mjs with real git fixtures and the real verifier: held merge released at the tested sha, moved target asked again, non-overlapping dirt lands, overlap asks and touches nothing, commit-mine, set-aside clean, set-aside clash keeps the stash, conflict verdict, carry. Fleet-run tests are fleet-only.",
+      "evidence": [
+        "codex/tests/lifecycle.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/gates-core.test.mjs",
       "disposition": "adapted",
-      "reason": "Gate marker and duration behavior ported with Codex tests.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Removed with gates-core.mjs (codex/tests/gates-core.test.mjs deleted); config.test.mjs asserts an old flaky: list is no longer read.",
       "evidence": [
-        "codex/tests/gates-core.test.mjs"
+        "codex/tests/config.test.mjs"
       ]
     },
     {
       "file": "scripts/test/handoff.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests handoff.mjs (Claude-only).",
       "evidence": []
     },
     {
       "file": "scripts/test/hooks.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests Claude Code hooks (session brief, PR lock); Codex has no hooks (README).",
       "evidence": []
+    },
+    {
+      "file": "scripts/test/is-main.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported as codex/tests/is-main.test.mjs: scripts run through a symlinked plugin path print what they print directly, and every main-module guard in codex/scripts compares realpaths; the ten Codex guards that compared path.resolve/pathToFileURL now realpath both sides.",
+      "evidence": [
+        "codex/tests/is-main.test.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/scripts/version.mjs",
+        "codex/scripts/profile.mjs",
+        "codex/scripts/route.mjs"
+      ]
     },
     {
       "file": "scripts/test/job.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests job.mjs (fleet, Claude-only).",
       "evidence": []
     },
     {
       "file": "scripts/test/list-features.test.mjs",
+      "disposition": "adapted",
+      "reason": "Codex status is lifecycle.mjs list; finished-drops-out and needs-you-in-status are tested in lifecycle.test.mjs, the registry: line in archive.test.mjs.",
+      "evidence": [
+        "codex/tests/lifecycle.test.mjs",
+        "codex/tests/archive.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/meter.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests the per-dispatch meter read from Claude stream-json (5.4); Codex history keeps only measured values (README).",
       "evidence": []
     },
     {
       "file": "scripts/test/plan-index.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests the Claude SPEC §Plan index kept by plan-slices/condense; Codex PLAN carries no SPEC index.",
       "evidence": []
     },
     {
       "file": "scripts/test/plan-slices.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests plan-slices.mjs (Claude-only).",
       "evidence": []
     },
     {
       "file": "scripts/test/profile.test.mjs",
       "disposition": "adapted",
-      "reason": "Test plan behavior ported with Codex tests.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: lever, mapping (5.x slice/end and walk=you, old profiles), recommendation, cost and label tests ported onto the Codex profile tests; lifecycle approve/list, route and history tests cover the same mapping where Codex records the plan.",
       "evidence": [
-        "codex/tests/profile.test.mjs"
+        "codex/tests/profile.test.mjs",
+        "codex/tests/lifecycle.test.mjs",
+        "codex/tests/route.test.mjs",
+        "codex/tests/history.test.mjs"
       ]
     },
     {
-      "file": "scripts/test/skills-budget.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
-      "evidence": []
+      "file": "scripts/test/program.test.mjs",
+      "disposition": "adapted",
+      "reason": "Codex has no program.mjs; the dropped-child rule is carried by archivedOutcome (registry.test.mjs) and archive.mjs program handling (archive.test.mjs), and stated in discovery.md (skills).",
+      "evidence": [
+        "codex/tests/registry.test.mjs",
+        "codex/tests/archive.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/registry.test.mjs",
+      "disposition": "adapted",
+      "reason": "Copied with import paths rewritten; the archivedOutcome test added.",
+      "evidence": [
+        "codex/tests/registry.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/skills-consistency.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Checks consistency across Claude skill files (names, commands, cross-references); Codex skill rules are checked by codex/tests/skills.test.mjs.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/statusline.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Tests statusline.mjs (Claude Code status line; excluded).",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/tidy-core.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Tests repo-wide tidy (excluded in README).",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/tidy.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Tests repo-wide tidy (excluded in README).",
       "evidence": []
     },
     {
       "file": "scripts/test/vendor.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Asserts Claude vendor copies agents/ and commands/ (Claude Code plugin dirs); Codex vendoring copies its own runtime package (update-local.test.mjs) and has no agents/ or commands/.",
       "evidence": []
+    },
+    {
+      "file": "scripts/test/verify-adapters.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-adapters.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-checkouts.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-checkouts.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-classify.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-classify.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-client.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md; the scrubbed-env check no longer expects CLAUDE_PROJECT_DIR dropped.",
+      "evidence": [
+        "codex/tests/verify-client.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-config.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-config.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-e2e.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-e2e.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-envpool.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-envpool.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-fleet-hooks.test.mjs",
+      "disposition": "claude-only",
+      "reason": "Tests fleet-hooks.mjs, which is Claude-only.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/verify-git.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-git.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-ledger.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-ledger.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-migrate.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md; the template check runs against codex/assets/PROJECT.template.md (Phase 2), plus Codex tests for the review, the write and the CLI.",
+      "evidence": [
+        "codex/tests/verify-migrate.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-run.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-run.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-schedule.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-schedule.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-select.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-select.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/test/verify-serve.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported to codex/tests with import paths rewritten; messages name $builder init / .codex/builder.md.",
+      "evidence": [
+        "codex/tests/verify-serve.test.mjs"
+      ]
     },
     {
       "file": "scripts/test/walk-script.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests for Claude-only scripts, hooks, skills budget or docs consistency of the Claude package.",
+      "reason": "Tests walk-script.mjs (Claude-only).",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/wrapup.test.mjs",
+      "disposition": "adapted",
+      "reason": "Ported as wrapUp and deliver tests in landing.test.mjs (step order, smoke only after another step, none for a target checked out nowhere, offered never run).",
+      "evidence": [
+        "codex/tests/landing.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/tidy-core.mjs",
+      "disposition": "claude-only",
+      "reason": "Repo-wide tidy (ship-before-merge, registry line) is excluded in README; Codex status shows the registry line via archive.mjs.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/tidy.mjs",
+      "disposition": "claude-only",
+      "reason": "Repo-wide tidy is excluded in README.",
       "evidence": []
     },
     {
       "file": "scripts/vendor.mjs",
       "disposition": "claude-only",
-      "reason": "Claude /builder:vendor now copies hooks/; Codex vendoring is codex/scripts/vendor.mjs and Codex has no Claude hooks.",
+      "reason": "Claude vendor now copies commands/ and agents/ (Claude Code plugin dirs). Codex vendor.mjs copies the whole Codex runtime package and has neither directory.",
       "evidence": []
+    },
+    {
+      "file": "scripts/verify/adapters.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/adapters.mjs",
+        "codex/tests/verify-adapters.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/checkouts.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). checkedOutBranch now comes from Codex config.mjs (exported there).",
+      "evidence": [
+        "codex/scripts/verify/checkouts.mjs",
+        "codex/scripts/config.mjs",
+        "codex/tests/verify-checkouts.test.mjs",
+        "codex/tests/verify-codex.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/classify.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/classify.mjs",
+        "codex/tests/verify-classify.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/config.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). loadVerify reads the file Codex config.mjs configPath selects (.codex/builder.md → .builder/config.md → .claude/builder.md); a malformed first file is an error; messages name $builder init.",
+      "evidence": [
+        "codex/scripts/verify/config.mjs",
+        "codex/tests/verify-config.test.mjs",
+        "codex/tests/verify-codex.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/envpool.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/envpool.mjs",
+        "codex/tests/verify-envpool.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/fleet-hooks.mjs",
+      "disposition": "claude-only",
+      "reason": "Serves only the Claude fleet (walk-lane hooks around detached claude -p runs); Codex has no fleet (README adaptation boundaries).",
+      "evidence": []
+    },
+    {
+      "file": "scripts/verify/git.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/git.mjs",
+        "codex/tests/verify-git.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/ledger.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/ledger.mjs",
+        "codex/tests/verify-ledger.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/migrate.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). The CLI migrates the config Codex selects (configPath), exit 2 naming $builder init when none exists. Wiring into $builder init --update is Phase 2. Phase 2: migrationReview (the plain-language review $builder init --update shows), applyMigration and the --review / --write [--block FILE] CLI; --write writes verify: at the end of the frontmatter and removes Quality gates and flaky:, the same result as Claude init --update.",
+      "evidence": [
+        "codex/scripts/verify/migrate.mjs",
+        "codex/skills/builder/SKILL.md",
+        "codex/tests/verify-codex.test.mjs",
+        "codex/tests/verify-migrate.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/node-reporter.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/node-reporter.mjs",
+        "codex/tests/verify-adapters.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/reports.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/reports.mjs",
+        "codex/tests/verify-adapters.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/run.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/run.mjs",
+        "codex/tests/verify-run.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/schedule.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged.",
+      "evidence": [
+        "codex/scripts/verify/schedule.mjs",
+        "codex/tests/verify-schedule.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/select.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied unchanged; needs impact.mjs since:, taken with the shared impact.mjs.",
+      "evidence": [
+        "codex/scripts/verify/select.mjs",
+        "codex/scripts/impact.mjs",
+        "codex/tests/verify-select.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/serve.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). Copied; the {feature} walk-env refusal says feature branches, not fleet branches.",
+      "evidence": [
+        "codex/scripts/verify/serve.mjs",
+        "codex/tests/verify-serve.test.mjs",
+        "codex/tests/verify-codex.test.mjs"
+      ]
+    },
+    {
+      "file": "scripts/verify/verify.mjs",
+      "disposition": "adapted",
+      "reason": "Vendored in Phase 1 of codex/PORT-6.0.md (Decision 2). CLIENT_KEYS drops CLAUDE_PROJECT_DIR; a request with no --target under merge_into: current targets the main worktree's checked-out branch (Codex loadConfig leaves current unresolved). Service survival outside a sandbox is tested; under the Codex sandbox it is not claimed (README).",
+      "evidence": [
+        "codex/scripts/verify/verify.mjs",
+        "codex/tests/verify-client.test.mjs",
+        "codex/tests/verify-e2e.test.mjs",
+        "codex/tests/verify-codex.test.mjs",
+        "codex/README.md"
+      ]
+    },
+    {
+      "file": "scripts/version.mjs",
+      "disposition": "adapted",
+      "reason": "The realpath main-module guard (run through a symlinked path) is applied to codex/scripts/version.mjs and every other Codex script guard; the Claude version report itself is not Codex's.",
+      "evidence": [
+        "codex/scripts/version.mjs",
+        "codex/tests/is-main.test.mjs"
+      ]
     },
     {
       "file": "scripts/walk-script.mjs",
       "disposition": "claude-only",
-      "reason": "Claude lean-orchestrator script that renders Claude Agent-tool prompts or edits Claude manifests/ledgers; Codex coordinator, lifecycle.mjs and task-brief own these steps (README adaptation boundaries). Lean-walk rules carried as instructions in delivery.md.",
+      "reason": "Walk script renderer — Claude fleet/lean-orchestrator machinery (detached claude -p runs, dispatch prompts, fleet bundles); Codex workers are session-owned and lifecycle.mjs/task-brief own these steps (codex/README.md adaptation boundaries).",
       "evidence": []
+    },
+    {
+      "file": "scripts/wrapup.mjs",
+      "disposition": "adapted",
+      "reason": "Codex lands in session, so the wrap-up is the tail of deliver (PORT-6.0.md inventory, 5.5.0): landing.mjs wrapUp lists restart:, fixtures:, then smoke: for the target checkout; lifecycle.mjs deliver returns them and delivery.md offers them in one question; the dev-DB migrate step is deliver's existing landing, now asking pending:. The switch and tidy steps have no Codex counterpart (Codex lands into the checkout holding the target; tidy is excluded).",
+      "evidence": [
+        "codex/scripts/landing.mjs",
+        "codex/scripts/lifecycle.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/tests/landing.test.mjs"
+      ]
     },
     {
       "file": "skills/agent-walk/SKILL.md",
       "disposition": "adapted",
-      "reason": "Lean walks: one-app script is the walk, walk by screen, re-walk only what the fix changed, walker runs no gates.",
+      "reason": "The walk follows the walk lever (none: no walk, said plainly, never \"agent-tested\"; risk: [risk] items and cross-app; full), human=yes parks for the owner after the agent walk, and the walker runs no tests (the merge tier runs beside it): delivery.md §Walk and sign-off, profiles.md. BUILDER_DIR/docs.mjs fleet bundles are Claude-only.",
       "evidence": [
         "codex/skills/builder/references/delivery.md",
+        "codex/skills/builder/references/profiles.md",
         "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/agent/SKILL.md",
       "disposition": "adapted",
-      "reason": "Agent picks ask the test plan ahead; agent-ready refuses a landing target whose committed config has no agent_walk block.",
+      "reason": "Agent handoff in Codex: profiles.md (walk · review levers, refusals), offer.mjs plain-word labels (built, not walked · tested), and landing through the merge queue (lifecycle.mjs prepare/deliver). Fleet launch, --detach, fleet:status are Claude-only.",
       "evidence": [
         "codex/skills/builder/references/profiles.md",
+        "codex/scripts/offer.mjs",
         "codex/scripts/lifecycle.mjs",
         "codex/tests/offer.test.mjs"
       ]
     },
     {
-      "file": "skills/align/SKILL.md",
-      "disposition": "equivalent",
-      "reason": "Only description shortening and docs.mjs/advance.mjs call shapes; alignment rules unchanged in Codex discovery.md.",
+      "file": "skills/archive/SKILL.md",
+      "disposition": "adapted",
+      "reason": "$builder archive: delivery.md §Archive finished features (the plan printed as the review, one confirmation with the three options explained above it and why the recommended one, apply with per-name --drop in one commit, refusals relayed, the closing footer); routed from SKILL.md.",
       "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/references/delivery.md",
+        "codex/skills/builder/SKILL.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/audit/SKILL.md",
       "disposition": "adapted",
-      "reason": "Audit shows what it changed in the approved design as a before/after review delta, then the build options.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: discovery.md: the audit leaves .builder/<feature>/audit-digest.md (per app, path:lines — what is there), built from its read-only agents' reports; planning.md reads it first. Also the program rule that a dropped or closed child never satisfies a dependency.",
       "evidence": [
         "codex/skills/builder/references/discovery.md",
-        "codex/skills/builder/SKILL.md"
+        "codex/skills/builder/references/planning.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/benchmark/SKILL.md",
       "disposition": "claude-only",
-      "reason": "Claude benchmark; excluded in README.",
+      "reason": "Claude /builder:benchmark (bench suites, gate replay, history view): drives claude -p stream-json sessions; excluded in codex/README.md adaptation boundaries.",
       "evidence": []
     },
     {
       "file": "skills/brainstorm/CONVERSATION.md",
       "disposition": "adapted",
-      "reason": "Discovery phase, design-system-first research, quick path, Keep going? round, one menu per screen, confirm as a review.",
+      "reason": "The small path names the verifier instead of gates and its check is the phase tier: Codex conversation.md's quick path is built and tested by the verifier, and execution.md §Build here requests the commit and phase tiers (no gate text remains in codex/skills).",
       "evidence": [
         "codex/skills/builder/references/conversation.md",
+        "codex/skills/builder/references/execution.md",
         "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/brainstorm/SKILL.md",
       "disposition": "adapted",
-      "reason": "Quick path, discovery, lettered ways on, just build it from anywhere, sizing rule for one-app commands.",
+      "reason": "Same as CONVERSATION.md: the small path's check is the phase tier; Codex skills carry no gate text.",
       "evidence": [
-        "codex/skills/builder/references/conversation.md",
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/references/execution.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/build/EXECUTION.md",
       "disposition": "adapted",
-      "reason": "Test plan slice lever, type-check floor, review lever.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: Codex execution.md: commit tier requested after each task commit, verdict read before each dispatch, a regression a fix against the introducing task (ledgered once), commit-tier env-broken blocks nothing; workers run only their own tests plus the type-check; no gate.mjs anywhere on the build path. Claude dispatch.mjs/advance.mjs bindings and lean agent types are not ported (Codex workers via spawn_agent, models.md).",
       "evidence": [
-        "codex/skills/builder/references/execution.md"
+        "codex/skills/builder/references/execution.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/build/SKILL.md",
       "disposition": "adapted",
-      "reason": "Builds follow the recorded test plan; end-of-build suites per end lever; dispatch.mjs rendering is Claude-only.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: Phase close is the build's only wait: verify.mjs request --tier phase --since <phase BASE>, wait (exit 75 → again), red → fix per regression then request again, env-broken → fix the env per the ⚠ lines and request again, a second time stop with the reason and a way forward (park under a handoff); --tree for commit: manual; ledger line Phase N closed — verify phase GREEN; the last phase tier is the end's; build here uses the same tiers; briefs carry landmines and env notes. SKILL.md states it in plain words.",
       "evidence": [
         "codex/skills/builder/references/execution.md",
-        "codex/skills/builder/references/profiles.md"
+        "codex/skills/builder/SKILL.md",
+        "codex/skills/builder/references/delivery.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/build/prompts/final-reviewer.md",
-      "disposition": "equivalent",
-      "reason": "Reviewer no longer reruns gates and writes a findings file; Codex reviewers already do not rerun recorded tests and the coordinator carries findings.",
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: The final review no longer re-runs suites; after its fix wave the phase tier is requested again so the walk starts green on the last commit (execution.md §After the last phase). The short-reply/findings-file split is Claude context economy for Agent-tool replies; Codex workers already report through report files.",
       "evidence": [
         "codex/skills/builder/references/execution.md"
       ]
@@ -490,205 +967,172 @@
     {
       "file": "skills/build/prompts/implementer.md",
       "disposition": "adapted",
-      "reason": "Workers run only what the slice lever puts on them; slice=none writes tests but runs the type-check.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: Codex has no prompt templates; execution.md task loop step 3 tells the worker how to read the six-part block (assertions as given, pinned code as written, other bodies its own, a real design choice reported) and to run only its own tests plus the type-check — the verifier runs the rest.",
       "evidence": [
         "codex/skills/builder/references/execution.md"
       ]
     },
     {
       "file": "skills/build/prompts/re-review.md",
-      "disposition": "equivalent",
-      "reason": "Findings-file plumbing for Claude dispatch; Codex scoped re-review unchanged.",
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: Same as the task reviewer: the scoped re-review never runs suites (execution.md fix loop, step 5).",
       "evidence": [
         "codex/skills/builder/references/execution.md"
       ]
     },
     {
       "file": "skills/build/prompts/task-reviewer.md",
-      "disposition": "equivalent",
-      "reason": "Findings-file plumbing for Claude dispatch; Codex task review unchanged.",
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: The 6.0 change (reviewers never run suites; the verifier does) is execution.md step 5. The lean reviewer agent type is Claude-only.",
       "evidence": [
         "codex/skills/builder/references/execution.md"
       ]
     },
     {
-      "file": "skills/check/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Description shortened for the Claude skill-list budget; no behavior change.",
-      "evidence": []
-    },
-    {
       "file": "skills/fleet/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Claude fleet machinery (detached claude -p runs, walk lane, batched walks, lanes); Codex uses session-owned native workers and has no fleet (README adaptation boundaries).",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Fleet-only, except the needs-you question: delivery.md §A landing that needs you asks the three choices (recommended first, files shown as a review, never touching the owner's changes without an answer); persistence.md says every human-only park names a choice.",
+      "evidence": [
+        "codex/skills/builder/references/delivery.md",
+        "codex/skills/builder/references/persistence.md",
+        "codex/tests/skills.test.mjs"
+      ]
     },
     {
       "file": "skills/help/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Claude help card rewrite; Codex has no help skill and SKILL.md carries invocation help.",
-      "evidence": []
+      "disposition": "adapted",
+      "reason": "Help card changes (archive row, verify reads the merge tier, walk · review test plan, the final review the only floor): Codex has no help skill; SKILL.md invocation lists $builder archive and profiles.md/delivery.md carry the test plan and READY rules.",
+      "evidence": [
+        "codex/skills/builder/SKILL.md",
+        "codex/skills/builder/references/profiles.md",
+        "codex/skills/builder/references/delivery.md"
+      ]
     },
     {
       "file": "skills/init/SKILL.md",
       "disposition": "adapted",
-      "reason": "Init always writes agent_walk, walk-env output folder and sign-in smoke guidance, @typecheck/@walk tagging.",
+      "reason": "Phase 2: Codex SKILL.md Project binding — $builder init writes verify: (suites per runner, checks, verify.db, needs asked; known failures and flakes never asked; suites not run at init), asks for pending:; $builder init --update runs migrate.mjs --review in the feature worktree, shows it as the review and writes with --write only on approval; one migration serves a shared .claude/builder.md.",
       "evidence": [
         "codex/skills/builder/SKILL.md",
-        "codex/assets/PROJECT.template.md"
-      ]
-    },
-    {
-      "file": "skills/intake/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Intake confirm is the review plus its verification.",
-      "evidence": [
-        "codex/skills/builder/references/conversation.md"
+        "codex/scripts/verify/migrate.mjs",
+        "codex/tests/skills.test.mjs",
+        "codex/tests/verify-migrate.test.mjs"
       ]
     },
     {
       "file": "skills/plan/PLAN-FORMAT.md",
-      "disposition": "equivalent",
-      "reason": "Slice/App task metadata already in Codex PLAN.md structure.",
+      "disposition": "adapted",
+      "reason": "Phase 3 of codex/PORT-6.0.md: planning.md: the plan carries decisions, not bodies; the six-part task (Files, Interfaces, Behaviour, Tests with assertions as code, optional Pattern, Steps); code only where pinned (exact spec copy, migration, frozen contract, an undetermined algorithm, a security mechanism); no placeholders; one app per task because the phase tier waits on one app; Phases table without a Gates column.",
       "evidence": [
-        "codex/skills/builder/references/planning.md"
+        "codex/skills/builder/references/planning.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/plan/SKILL.md",
       "disposition": "adapted",
-      "reason": "The go-ahead shows slices, the recommended test plan and its cost, A/B/C with three lever questions.",
+      "reason": "Phase 3 of codex/PORT-6.0.md: The go-ahead shows the test plan as walk · review with its review/walk cost and says tests run either way; B asks two questions (Agent walk, Review) with the no-walk warning on a released consumer or breaking schema change; approve --tests \"walk=… review=…\"; writers read the audit code map first. Plan writers per app/phase and fleet launch are Claude-only.",
       "evidence": [
         "codex/skills/builder/references/planning.md",
-        "codex/scripts/profile.mjs"
+        "codex/skills/builder/references/profiles.md",
+        "codex/tests/skills.test.mjs"
       ]
-    },
-    {
-      "file": "skills/prototype/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Description shortened for the Claude skill-list budget; no behavior change.",
-      "evidence": []
     },
     {
       "file": "skills/resume/AGENT-MODE.md",
       "disposition": "adapted",
-      "reason": "Agents never edit the config (park with the diff); batched walk lane is fleet-only.",
+      "reason": "6.0 agent-mode rules carried: a verifier wait is the only wait (verify.mjs wait, again on 75), red/conflict worked never parked, env-broken worked once then stopped with the reason, the config never edited (execution.md, persistence.md, SKILL.md). Fleet stage contexts, BUILDER_DIR, walk lane and docs.mjs bundles are Claude-only.",
       "evidence": [
-        "codex/skills/builder/SKILL.md",
-        "codex/skills/builder/references/persistence.md"
+        "codex/skills/builder/references/execution.md",
+        "codex/skills/builder/references/persistence.md",
+        "codex/skills/builder/SKILL.md"
       ]
     },
     {
       "file": "skills/resume/REFERENCE.md",
       "disposition": "adapted",
-      "reason": "The review format, before-a-picker rule, the three build options, sizing, test plan, gates and walk env, standing traps.",
+      "reason": "Reference changes for the verifier, walk · review plan, needs-you parks with choices and reviews: carried in SKILL.md (pickers, reviews), persistence.md (every human-only park names a choice; needs-you raised first), profiles.md and delivery.md. Claude script resolution, fleet flags and status-line text are Claude-only.",
       "evidence": [
         "codex/skills/builder/SKILL.md",
-        "codex/skills/builder/references/discovery.md",
-        "codex/skills/builder/references/profiles.md"
-      ]
-    },
-    {
-      "file": "skills/resume/SCOPE-SELECTION.md",
-      "disposition": "equivalent",
-      "reason": "Small cross-reference update; Codex scope selection unchanged.",
-      "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/references/persistence.md",
+        "codex/skills/builder/references/delivery.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/resume/SKILL.md",
       "disposition": "adapted",
-      "reason": "Footer rewritten as Agent / Step by step / In this session with go = Agent.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: A needs-you landing is raised in resume (and status): SKILL.md first-action text and persistence.md §Park records.",
       "evidence": [
-        "codex/skills/builder/SKILL.md"
+        "codex/skills/builder/SKILL.md",
+        "codex/skills/builder/references/persistence.md",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/revise/SKILL.md",
       "disposition": "adapted",
-      "reason": "Revision shows its change as a review delta.",
+      "reason": "A revision's amended or added task is written in the plan's six-part task shape (discovery.md §Revision), and it invalidates the affected test verdicts; tests come from the verifier, not gates.",
       "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/references/discovery.md",
+        "codex/skills/builder/references/planning.md"
       ]
     },
     {
       "file": "skills/ship/SKILL.md",
       "disposition": "adapted",
-      "reason": "A lesson for next time proposed for Standing traps at delivery.",
+      "reason": "Codex has no ship step. \"Already merged, never shipped\" is archive.mjs: a merge-queue landing (verified to land) is SHIPPED — merged <sha>; a hand merge never verified is CLOSED, never shipped. The agent-form commit wording (\"ready to land\", never \"shipped\" before the merge exists) is delivery.md's rule.",
       "evidence": [
-        "codex/skills/builder/references/delivery.md"
+        "codex/scripts/archive.mjs",
+        "codex/skills/builder/references/delivery.md",
+        "codex/tests/archive.test.mjs"
       ]
     },
     {
       "file": "skills/signoff/SKILL.md",
       "disposition": "adapted",
-      "reason": "PASS handoff offers the build options; walk=you replaces thorough-you.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: Sign-off reads the verifier's latest verdict for HEAD, not gate freshness; human=yes replaces walk=you (Phase 3). Codex records the human walk with lifecycle human-pass, the merge tier held beside it (profiles.md).",
       "evidence": [
-        "codex/skills/builder/SKILL.md",
-        "codex/skills/builder/references/profiles.md"
-      ]
-    },
-    {
-      "file": "skills/spec/SKILL.md",
-      "disposition": "adapted",
-      "reason": "The spec closes with its review in parts as the design approval.",
-      "evidence": [
-        "codex/skills/builder/references/discovery.md"
+        "codex/skills/builder/references/profiles.md",
+        "codex/skills/builder/references/delivery.md"
       ]
     },
     {
       "file": "skills/status/SKILL.md",
-      "disposition": "equivalent",
-      "reason": "Tests column; Codex lifecycle list carries the plan label.",
+      "disposition": "adapted",
+      "reason": "Codex $builder status: lifecycle.mjs list (test plan as walk · review), then verify.mjs status and the archive.mjs plan --summary registry: line naming $builder archive (SKILL.md).",
       "evidence": [
-        "codex/scripts/lifecycle.mjs"
+        "codex/skills/builder/SKILL.md",
+        "codex/scripts/archive.mjs",
+        "codex/tests/skills.test.mjs"
       ]
     },
     {
       "file": "skills/statusline/SKILL.md",
       "disposition": "claude-only",
-      "reason": "Claude Code status line; excluded in README.",
+      "reason": "Claude Code status line (shows the verifier's running requests); excluded in README.",
       "evidence": []
     },
     {
       "file": "skills/systematic-debugging/SKILL.md",
       "disposition": "claude-only",
-      "reason": "Echo separators changed for zsh in a Claude skill; Codex has no copy of this skill.",
+      "reason": "Claude skill now reads the TDD/verification skills by path instead of by Claude Skill-tool name; Codex vendors no systematic-debugging skill, so there is nothing to re-point.",
       "evidence": []
     },
     {
       "file": "skills/tidy/SKILL.md",
       "disposition": "claude-only",
-      "reason": "Repo-wide tidy is excluded in README.",
-      "evidence": []
-    },
-    {
-      "file": "skills/update/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Claude plugin update; Codex update is documented in README.",
-      "evidence": []
-    },
-    {
-      "file": "skills/vendor/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Claude vendoring; Codex has update-local and its own vendor.mjs.",
+      "reason": "Repo-wide tidy (ship before merge, registry line) is excluded in README.",
       "evidence": []
     },
     {
       "file": "skills/verify/SKILL.md",
       "disposition": "adapted",
-      "reason": "Verify reads the test plan; deep set per end lever; @walk lines against the walk env.",
+      "reason": "Phase 4 of codex/PORT-6.0.md: READY = merge tier green + walk passed; the merge tier is requested when the walk starts and read, never re-run; a verdict holds for HEAD when only registry commits came after it (carry). delivery.md §Feature verification and §Land through the merge queue.",
       "evidence": [
         "codex/skills/builder/references/delivery.md",
-        "codex/skills/builder/references/profiles.md"
+        "codex/tests/skills.test.mjs"
       ]
-    },
-    {
-      "file": "skills/version/SKILL.md",
-      "disposition": "claude-only",
-      "reason": "Description shortened for the Claude skill-list budget; no behavior change.",
-      "evidence": []
     }
   ],
   "verification": "node --test codex/tests/*.test.mjs"

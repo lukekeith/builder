@@ -81,7 +81,7 @@ export function updateLocal({ repos = defaultRepos(), source = 'lukekeith/builde
   }
   return { expected, installed: installed?.version || null, source: installed?.source?.path || source, dryRun, check, rows, ok: rows.every(row => !row.error) };
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2), options = {};
     const config = path.join(os.homedir(), '.codex/builder-local.json');

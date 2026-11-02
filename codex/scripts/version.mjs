@@ -48,7 +48,7 @@ export function versionReport({ loadedRoot, configDir = path.join(homedir(), '.c
   else lines.push('No newer local copy found. Remote release status and the enabled installation were not checked.');
   return { loaded, loadedRoot: root, installed, known, installedCopies, knownCopies, text: lines.join('\n') + '\n' };
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2), options = { knownRoots: [] };
     if (args.includes('--help')) console.log('version.mjs --root LOADED_PLUGIN [--config-dir CODEX_HOME] [--known-root SOURCE_PLUGIN]');

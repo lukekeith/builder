@@ -47,7 +47,7 @@ export function recordLanding(m, { metrics = null } = {}) {
   const tasks = (text.match(/^### Task \d+/gm) || []).length;
   return appendLanding(archivePath(m.originRoot), m, { tasks, metrics });
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2);
     if (args.includes('--help')) console.log('history.mjs list|record [FEATURE] [--root REPO] [--metrics MEASURED_JSON]');

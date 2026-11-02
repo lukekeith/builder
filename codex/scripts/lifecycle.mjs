@@ -3,7 +3,7 @@ import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWalkReadiness, landedMigrations, wrapUp, needsYou, stashName } from './landing.mjs';
+import { parseWalkReadiness, landedMigrations, wrapUp, needsYou, needsYouNext, stashName } from './landing.mjs';
 import { agentOffer, buildingInSession } from './offer.mjs';
 
 const VERIFY = fileURLToPath(new URL('./verify/verify.mjs', import.meta.url));
@@ -70,7 +70,7 @@ function targetReady(m) {
 }
 function invalidate(m) { m.verifiedHead = null; }
 
-// ---- Landing through the verifier's merge queue (codex/PORT-6.0.md Decision 3) ----------------
+// ---- Landing through the verifier's merge queue (docs/plans/2026-11-01-codex-6-port.md Decision 3) 
 const lines = text => String(text ?? '').split('\n').filter(Boolean);
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 function verifyCli(cwd, ...args) {
@@ -499,7 +499,7 @@ export async function run(command, name, options = {}) {
     if (overlap.length) m.needsYou = needsYou({ feature: name, files: overlap, target: targetBranch(m), checkout: target.worktree });
     else delete m.needsYou;
     m.nextAction = m.needsYou
-      ? `${m.needsYou.reason} — ask the owner: commit theirs, then land · set theirs aside, land, put them back · leave it`
+      ? needsYouNext(m.needsYou)
       : `Ready to land on ${targetBranch(m)} once the merge tier is green and the walk passed — verify.mjs wait ${m.merge.request}, then deliver`;
     atomic(file, m);
     return { ...m, status: 'requested', request: m.merge.request, overlap };
@@ -540,8 +540,8 @@ export async function run(command, name, options = {}) {
     const overlap = !recovered && target.head === verdict.targetSha ? await overlapOf(target, v.root, verdict.targetSha, verdict.merged) : [];
     const park = files => {
       m.needsYou = needsYou({ feature: name, files, target: t, checkout: target.worktree });
-      m.nextAction = `${m.needsYou.reason} — ask the owner: commit theirs, then land · set theirs aside, land, put them back · leave it`;
-      return done({ status: 'needs-you', overlap: files, choices: m.needsYou.choices });
+      m.nextAction = needsYouNext(m.needsYou);
+      return done({ status: 'needs-you', overlap: files, recommended: m.needsYou.recommended, why: m.needsYou.why, choices: m.needsYou.choices });
     };
     if (overlap.length && !options.setAside && options.commitMine === undefined) return park(overlap);
     let committed = null; let aside = null; let back = null;
@@ -605,7 +605,7 @@ export async function run(command, name, options = {}) {
   throw new Error(`Unknown command: ${command}`);
 }
 const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2);
     if (args.includes('--help') || !args.length) console.log(help);

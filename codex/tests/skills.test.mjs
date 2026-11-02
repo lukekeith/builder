@@ -180,8 +180,10 @@ test('6.0 landing: the merge queue, READY = merge tier green + walk passed, no i
 
 test('a landing that needs you asks with three choices, recommended first, the files shown as a review, and never touches the owner\'s changes unasked', () => {
   const d = ref('delivery');
-  const order = ['**Commit my changes, then land** (recommended)', '**Set my changes aside, land, put them back**', '**Leave it for now**'].map(s => d.indexOf(s));
-  assert.ok(order.every(i => i > 0) && order[0] < order[1] && order[1] < order[2], 'the three choices, in order, leave it last');
+  const order = ['- **Set my changes aside, land, put them back**', '- **Commit my changes, then land**', '- **Leave it for now**'].map(s => d.indexOf(s));
+  assert.ok(order.every(i => i > 0) && order[0] < order[1] && order[1] < order[2], 'the three choices, leave it last');
+  assert.match(d, /\*\*The recommendation\*\*, said above the picker[\s\S]*\*\*3 files or fewer → Set my changes aside, land, put them back\*\*[\s\S]*\*\*More than 3 → Commit my changes, then land\*\*/, 'Claude\'s rule, with the reason above the picker');
+  assert.match(d, /the recommended one first \(`needsYou\.choices` is already in that order/);
   assert.match(d, /\*\*Never commit, set aside or discard the owner's changes without their answer\*\*, and never choose for them under `--auto` or an agent handoff/);
   assert.match(d, /Your uncommitted changes in `<checkout>` overlap the feature in 2 files:\n> - `app\/settings\.ts`/);
   assert.match(d, /Nothing of yours has been touched\./);
@@ -193,4 +195,16 @@ test('a landing that needs you asks with three choices, recommended first, the f
   assert.match(p, /`\$builder resume <feature>` raises it first/);
   assert.match(read('skills/builder/SKILL.md'), /`needsYou` in the result[\s\S]*raised first/);
   assert.doesNotMatch(d + p, /\bfleet\.mjs|\/builder:/, 'Codex names its own steps');
+});
+
+test('$builder archive: routed from SKILL.md, the plan is the review, one confirmation, one commit; status shows the verifier and registry lines', () => {
+  const s = read('skills/builder/SKILL.md');
+  assert.match(s, /`\$builder archive \[--into <branch>\]`/);
+  assert.match(s, /§Archive finished features/);
+  assert.match(s, /lifecycle\.mjs list` from the host repository, then `node <plugin>\/scripts\/verify\/verify\.mjs status`[\s\S]*`node <plugin>\/scripts\/archive\.mjs plan --summary`/);
+  const d = ref('delivery');
+  assert.match(d, /## Archive finished features[\s\S]*archive\.mjs plan[\s\S]*\*\*Archive the finished ones\*\* \(recommended\)[\s\S]*\*\*Those and the old ones\*\*[\s\S]*\*\*Not now\*\*[\s\S]*archive\.mjs apply <path…>[\s\S]*--drop "<name>=<their reason>"/);
+  assert.match(d, /never called shipped/);
+  assert.match(d, /never pushes, never deletes a folder's only docs/);
+  assert.ok(fs.existsSync(path.join(root, 'scripts/archive.mjs')));
 });
