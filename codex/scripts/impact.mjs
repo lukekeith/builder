@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * impact — what this branch can break, so the deep set runs the tests that can see it and no others.
+ * impact — what this branch can break, so the verifier runs the tests that can see it and no others.
  *
  *   node <plugin>/scripts/impact.mjs [<test glob>…] [--json]
  *
- * Measured on a fleet day: the deep set ran the whole UI suite and every phase gate — eleven minutes —
- * at the end of every build and again at every verify after a walk fix, for features that touched
- * one screen. The impact of a branch is:
+ * Measured on a fleet day, before the verifier: the whole UI suite and every phase's tests ran —
+ * eleven minutes — at the end of every build and again at every verify after a walk fix, for
+ * features that touched one screen. The impact of a branch is:
  *
  *  1. the files it changed (against where it left the base branch);
  *  2. the code that reads a SCHEMA field it changed — every spelling of the field (`issueDate`,
@@ -14,13 +14,13 @@
  *  3. everything that imports 1 or 2, at any depth (relative imports, workspace packages by name,
  *     tsconfig path aliases).
  *
- * A test in a gate's glob is selected when it changed, when it imports into the impact, or when an
+ * A test in a suite's glob is selected when it changed, when it imports into the impact, or when an
  * earlier feature changed it in the same commit as a file in the impact — which is how a UI spec,
  * which imports nothing of the app, is tied to the screen it covers. A change the graph cannot see
  * past (a shared harness beside the tests, a runner config, a dependency) selects the whole suite.
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { join, dirname, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -331,8 +331,9 @@ function importGraph(root, files) {
  * file in the impact's core (changed, or reading a changed schema field) to why; `reach(f)` says
  * how f imports into it, or null.
  */
-export function impactOf(root, { baseBranch }) {
-  const base = git(['merge-base', `refs/heads/${baseBranch}`, 'HEAD'], root).trim()
+export function impactOf(root, { baseBranch, since = null }) {
+  // `since`: a commit — what changed after it (a check last green there), not the branch.
+  const base = since ?? git(['merge-base', `refs/heads/${baseBranch}`, 'HEAD'], root).trim()
   const changed = git(['diff', '--name-only', base], root).split('\n').filter(Boolean)
   const files = new Set(git(['ls-files'], root).split('\n').filter(Boolean))
   const code = [...files].filter((f) => CODE.test(f))
@@ -483,7 +484,7 @@ export function renderImpact(impact, globs = []) {
   return lines.join('\n') + '\n'
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   const { requireConfig } = await import('./config.mjs')
   const CFG = requireConfig()
   const argv = process.argv.slice(2)
