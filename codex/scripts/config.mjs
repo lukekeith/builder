@@ -50,7 +50,8 @@ const coerce = (v) => {
  * exactly the ones PROJECT.template.md uses, and anything else is ignored rather than guessed at.
  */
 const parseFrontmatter = (text) => {
-  const m = /^---\n([\s\S]*?)\n---/.exec(text)
+  // A config saved on Windows has CRLF line ends; read it as the same config.
+  const m = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n?/g, '\n'))
   if (!m) return null
   const out = {}
   let listKey = null // the key whose list we are filling
@@ -182,6 +183,9 @@ export function loadConfig(root = process.cwd()) {
     buildProfileDefault: BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? fm.build_profile_default : null,
     // Callers decide when to report invalid authoring; loading config never prints warnings.
     buildProfileDefaultInvalid: fm.build_profile_default == null || BUILD_PROFILE_DEFAULTS.includes(fm.build_profile_default) ? null : String(fm.build_profile_default),
+    // agent_types: Claude Code's subagent types for its build dispatches. Codex dispatches its own
+    // workers (models.md) and never reads this; it is parsed so a shared config reads the same.
+    agentTypes: agentTypesOf(fm.agent_types),
     apps,
     appNames: apps.map((a) => a.name),
     producers: apps.filter((a) => a.role === 'producer' || a.role === 'app').map((a) => a.name),
@@ -198,6 +202,36 @@ export function loadConfig(root = process.cwd()) {
     flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
+}
+
+/**
+ * `agent_types:` → the subagent type each Claude Code build dispatch kind runs as (upstream
+ * config.mjs, kept identical). Default: builder's lean agents. `agent_types: general-purpose` for
+ * every kind, or `implementer=<type>, reviewer=<type>`; the implementer value covers both builder
+ * implementers. An unparseable value keeps the default rather than naming an agent that isn't there.
+ */
+export function agentTypesOf(v) {
+  const out = { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }
+  const set = (k, t) => {
+    t = String(t ?? '').trim()
+    if (!t) return
+    if (k === 'implementer') Object.assign(out, { implementer: t, 'implementer-skills': t })
+    else if (k === 'reviewer') out.reviewer = t
+  }
+  // The YAML map form (`agent_types:` then `  implementer: x` lines) arrives as an object.
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, t] of Object.entries(v)) set(k.trim(), t)
+    return out
+  }
+  if (v == null || typeof v !== 'string' || !v.trim()) return out
+  const s = v.trim()
+  // `implementer=x, reviewer=y` — or with `:` in place of `=`, which the map form invites.
+  if (!/^(implementer|reviewer)\s*[=:]/.test(s)) return /\s/.test(s) ? out : { implementer: s, 'implementer-skills': s, reviewer: s }
+  for (const pair of s.split(',')) {
+    const m = /^\s*(implementer|reviewer)\s*[=:]\s*(\S+)\s*$/.exec(pair)
+    if (m) set(m[1], m[2])
+  }
+  return out
 }
 
 /**

@@ -90,5 +90,23 @@ test('5.x ports: build options read as a decision, the test plan is chosen at th
   assert.match(d, /A re-walk covers only what the fix changed/);
   assert.match(d, /Walk by screen/);
   assert.match(d, /§Standing traps/);
-  assert.match(read('assets/PROJECT.template.md'), /@typecheck[\s\S]*@walk/);
+});
+
+test('6.0 config: the template carries verify:, not Quality gates; init writes it and init --update migrates through migrate.mjs with a review', () => {
+  const t = read('assets/PROJECT.template.md');
+  assert.doesNotMatch(t, /## Quality gates|Deep set|@known-red|@delta|@scoped|depends_on/);
+  assert.match(t, /^verify:\n {2}workers: 2/m);
+  assert.match(t, /^## Verification$/m);
+  for (const key of ['pending', 'restart', 'fixtures', 'smoke']) assert.match(t, new RegExp(`^${key}: +<command> +# optional`, 'm'), key);
+  const skill = read('skills/builder/SKILL.md');
+  assert.match(skill, /`\$builder init` writes `verify:` in the frontmatter/);
+  assert.match(skill, /`\$builder init --update` on a config that still has `## Quality gates` migrates it/);
+  assert.match(skill, /scripts\/verify\/migrate\.mjs <worktree> --review` and show its output as the review/);
+  assert.match(skill, /Write nothing until the owner approves: then `migrate\.mjs <worktree> --write`/);
+  assert.match(skill, /shared `\.claude\/builder\.md` the one migration serves Claude Code's builder too/);
+  assert.match(skill, /known failures and flaky tests are never asked/);
+  assert.doesNotMatch(skill, /`@typecheck`|`@walk`/);
+  const d = ref('delivery');
+  assert.match(d, /`pending:` command, deliver asked it in the target checkout/);
+  assert.match(d, /read `wrapUp`[\s\S]*Offer them in \*\*one\*\* question/);
 });

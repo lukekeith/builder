@@ -225,3 +225,32 @@ test('auto_unpark: a whole number of retries per park, 0 turns them off, anythin
   assert.equal(au(-1), 2)
   assert.equal(au('lots'), 2)
 })
+
+test('a config saved with CRLF line ends reads the same', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cfg-crlf-'))
+  mkdirSync(join(root, '.codex'))
+  writeFileSync(join(root, '.codex/builder.md'), `---\nproject: t\n${APPS}\nagent_walk:\n  driver: x\n---\nbody\n`.replace(/\n/g, '\r\n'))
+  const cfg = loadConfig(root)
+  assert.equal(cfg.ok, true, cfg.reason)
+  assert.deepEqual(cfg.appNames, ['app'])
+  assert.equal(cfg.agentWalk.driver, 'x')
+  assert.equal(hasAgentWalk(`---\r\nproject: t\r\n${APPS.replace(/\n/g, '\r\n')}\r\nagent_walk:\r\n  driver: x\r\n---\r\n`), true)
+})
+
+test('agent_types: parsed so a config shared with Claude Code reads the same — builder\'s lean agents by default, one type for all, or per kind', () => {
+  const lean = { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'builder:reviewer' }
+  assert.deepEqual(cfgWith('').agentTypes, lean)
+  assert.deepEqual(cfgWith('agent_types: general-purpose').agentTypes, { implementer: 'general-purpose', 'implementer-skills': 'general-purpose', reviewer: 'general-purpose' })
+  assert.deepEqual(cfgWith('agent_types: implementer=my-impl, reviewer = my-rev').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'my-rev' })
+  assert.deepEqual(cfgWith('agent_types: implementer: my-impl, reviewer: my-rev').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'my-rev' }, 'a colon reads as =')
+  assert.deepEqual(cfgWith('agent_types:\n  implementer: my-impl\n  reviewer: general-purpose').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'general-purpose' }, 'the YAML map form')
+  assert.equal(cfgWith('agent_types: not a type').agentTypes.implementer, 'builder:implementer', 'an unparseable value keeps the default')
+  assert.deepEqual(cfgWith('agent_types: reviewer=general-purpose').agentTypes, { ...lean, reviewer: 'general-purpose' })
+})
+
+test('a verify: block in the frontmatter leaves the rest of the config as it was', () => {
+  const cfg = cfgWith('verify:\n  workers: 2\n  suites:\n    unit: { runner: vitest, files: "src/**/*.test.ts" }\nagent_walk:\n  driver: x')
+  assert.equal(cfg.ok, true, cfg.reason)
+  assert.deepEqual(cfg.appNames, ['app'])
+  assert.equal(cfg.agentWalk.driver, 'x')
+})

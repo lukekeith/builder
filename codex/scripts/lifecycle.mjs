@@ -3,7 +3,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWalkReadiness, landedMigrations } from './landing.mjs';
+import { parseWalkReadiness, landedMigrations, wrapUp } from './landing.mjs';
 import { agentOffer, buildingInSession } from './offer.mjs';
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -193,9 +193,15 @@ async function migrateAfterLanding(m, worktree, before, after) {
     const config = loadConfig(worktree || m.integration.worktree);
     const readiness = config.ok ? parseWalkReadiness(config.body) : {};
     const files = newMigrations(m.originRoot, readiness.migrations, before, after);
-    const plan = landedMigrations({ files, readiness, checkedOut: Boolean(worktree), target: targetBranch(m) });
+    let plan = landedMigrations({ files, readiness, checkedOut: Boolean(worktree), target: targetBranch(m) });
+    // Git only knows the files landed; the dev DB's own `pending:` answer says whether it has them.
+    if (plan.kind === 'maybe' && readiness.pending && worktree) {
+      let pending = true;
+      try { execSync(readiness.pending, { cwd: worktree, stdio: 'ignore', timeout: 2 * 60 * 1000 }); pending = false; } catch {}
+      plan = landedMigrations({ files, readiness, checkedOut: true, target: targetBranch(m), pending });
+    }
     const migrations = files.map(f => f.path);
-    if (plan.action === 'none') return { migrations, action: 'none' };
+    if (plan.action === 'none') return { migrations, action: 'none', ...(plan.why ? { why: plan.why } : {}) };
     if (plan.action === 'note') return { migrations, action: 'note', note: plan.why };
     const log = path.join(m.commonDir, 'builder-codex', 'logs', `${m.name}-land.log`);
     fs.mkdirSync(path.dirname(log), { recursive: true });
@@ -221,6 +227,15 @@ async function migrateAfterLanding(m, worktree, before, after) {
   } catch (error) {
     return { migrations: [], action: 'note', note: `Could not check landed migrations (${error.message}) — check the dev DB by hand` };
   }
+}
+/** The wrap-up steps Walk readiness names for the target checkout's dev env — offered, never run here. */
+async function wrapUpAfterLanding(worktree, landing) {
+  if (!worktree) return [];
+  try {
+    const { loadConfig } = await import('./config.mjs');
+    const config = loadConfig(worktree);
+    return wrapUp({ readiness: config.ok ? parseWalkReadiness(config.body) : {}, checkedOut: true, migrated: /^applied/.test(landing?.action ?? '') });
+  } catch { return []; }
 }
 export async function run(command, name, options = {}) {
   const root = path.resolve(options.root || process.cwd());
@@ -412,6 +427,7 @@ export async function run(command, name, options = {}) {
     // The merge is final; what follows only brings the dev DB along and never undoes the landing.
     m.landing = await migrateAfterLanding(m, target.worktree, m.integration.targetHead, options.verifiedHead);
     if (m.landing.note) m.nextAction = `${m.landing.note}; then optional explicit cleanup`;
+    m.wrapUp = await wrapUpAfterLanding(target.worktree, m.landing);
     atomic(file, m); return m;
   }
   if (command === 'cleanup') {
