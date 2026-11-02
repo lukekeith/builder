@@ -8,7 +8,7 @@ After a brief progress update, search every system term in the user's input with
 
 ## The quick path for a small change
 
-When the first grounding shows a directed request or brief is a small change in existing code — one app, the flow already there, no new model, endpoint, permission, contract, route, screen or shared component, at most one open product choice — skip the conversation. The first turn proposes the change (xs: a sentence; sm: app, approach, files, tests, what the user will see, as a compact review) and asks once: `A. Build it (recommended)` · `B. Brainstorm it first`. Build it is the small path's approval: the change is built, gated and handed back with no rounds, no confirm and no sizing turn — still in its own worktree with its short spec. Any doubt and the conversation runs as below. `--auto` never takes the quick path.
+When the first grounding shows a directed request or brief is a small change in existing code — one app, the flow already there, no new model, endpoint, permission, contract, route, screen or shared component, at most one open product choice — skip the conversation. The first turn proposes the change (xs: a sentence; sm: app, approach, files, tests, what the user will see, as a compact review) and asks once: `A. Build it (recommended)` · `B. Brainstorm it first`. Build it is the small path's approval: the change is built, tested by the verifier and handed back with no rounds, no confirm and no sizing turn — still in its own worktree with its short spec. Any doubt and the conversation runs as below. `--auto` never takes the quick path.
 
 ## Discovery for a vague idea
 

@@ -77,7 +77,7 @@ function invalidate(m) { m.verifiedHead = null; if (m.integration) m.integration
 function active(m) { assert(!m.paused, 'Feature is paused; explicit unpause is required'); }
 async function humanReady(m) {
   const { runtimeTestPlan } = await import('./profile.mjs');
-  const required = m.humanWalkRequired || runtimeTestPlan(m).levers.walk === 'you';
+  const required = m.humanWalkRequired || runtimeTestPlan(m).levers.human === 'yes';
   assert(!m.awaitingHuman && (!required || m.humanHead === head(m.worktree)), 'Feature requires a real human walk report at exact current HEAD');
 }
 async function configFor(root) {
@@ -244,11 +244,14 @@ export async function run(command, name, options = {}) {
     if (!fs.existsSync(folder)) return [];
     const { runtimeTestPlan } = await import('./profile.mjs');
     const now = Date.now();
-    return fs.readdirSync(folder).filter(x => x.endsWith('.json')).sort().map(x => {
+    return fs.readdirSync(folder).filter(x => x.endsWith('.json')).sort().flatMap(x => {
       const file = path.join(folder, x); const m = JSON.parse(fs.readFileSync(file, 'utf8')); m.profile ||= 'thorough';
+      // Finished means gone from status: a merged feature whose worktrees were cleaned up has no
+      // next step. Merged but not cleaned up stays, its next step the optional cleanup.
+      if (m.phase === 'merged' && m.cleaned) return [];
       // `build: here` shows from the moment it is chosen; otherwise the test plan's label
-      // (`own · touched · end`), an old profile mapped onto it.
-      return { ...m, build: m.build || 'none', profileLabel: runtimeTestPlan(m).label, touchedAt: fs.statSync(file).mtimeMs, inSession: buildingInSession(m, now), agent: agentOffer(m, now) };
+      // (`none · end` — walk · review), an old profile or 5.x plan mapped onto it.
+      return [{ ...m, build: m.build || 'none', profileLabel: runtimeTestPlan(m).label, touchedAt: fs.statSync(file).mtimeMs, inSession: buildingInSession(m, now), agent: agentOffer(m, now) }];
     });
   }
   const file = location(root, name);
@@ -343,7 +346,7 @@ export async function run(command, name, options = {}) {
     if (options.tests) {
       const plan = parseTests(options.tests);
       assert(!plan.warning, `Invalid test plan: ${plan.warning}`);
-      m.tests = formatTests(plan.levers); walkYou = plan.levers.walk === 'you';
+      m.tests = formatTests(plan.levers); walkYou = plan.levers.human === 'yes';
     } else {
       const profile = parseProfile(options.profile);
       assert(!profile.warning, `Invalid profile: ${profile.warning}`);
@@ -446,7 +449,7 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH]\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "slice=… end=… review=…" (or a legacy --profile VALUE) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\ndeliver: --verified-head CANDIDATE_SHA\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);

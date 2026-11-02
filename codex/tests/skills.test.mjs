@@ -78,13 +78,12 @@ test('5.x ports: build options read as a decision, the test plan is chosen at th
   assert.match(ref('discovery'), /one app, on data it already stores, with no new screen and nothing outside the app calling it, is sm/);
   assert.match(ref('discovery'), /A\. Approve the program/);
   const p = ref('profiles');
-  assert.match(p, /\*\*Testing per slice\*\* \(`slice`\)[\s\S]*\*\*Testing at the end\*\* \(`end`\)[\s\S]*\*\*Review\*\* \(`review`\)/);
+  assert.match(p, /\*\*Agent walk\*\* \(`walk`\)[\s\S]*\*\*Review\*\* \(`review`\)/);
   assert.match(p, /approve <feature> --tests/);
   assert.match(p, /`merge_into: current` means the branch checked out where the feature starts/);
   assert.match(p, /A landing target with no `agent_walk:` block/);
-  assert.match(p, /fresh, on the exact merge candidate/);
+  assert.match(p, /the merged result is tested fresh before it lands/);
   assert.match(ref('planning'), /A\. Build it with this plan[\s\S]*B\. Change the test plan[\s\S]*C\. Keep planning/);
-  assert.match(ref('execution'), /gate\.mjs <app> --typecheck/);
   const d = ref('delivery');
   assert.match(d, /One app in scope → the verification script is the walk/);
   assert.match(d, /A re-walk covers only what the fix changed/);
@@ -109,4 +108,58 @@ test('6.0 config: the template carries verify:, not Quality gates; init writes i
   const d = ref('delivery');
   assert.match(d, /`pending:` command, deliver asked it in the target checkout/);
   assert.match(d, /read `wrapUp`[\s\S]*Offer them in \*\*one\*\* question/);
+});
+
+test('6.0 builds: the commit tier beside the build, the phase tier the only wait, and no gate runner on any build path', () => {
+  const exec = ref('execution');
+  for (const name of ['execution', 'planning', 'profiles', 'discovery']) {
+    assert.doesNotMatch(ref(name), /gate\.mjs|gates-core|@typecheck|@delta|--baseline|Quality gates/, name);
+  }
+  assert.match(exec, /verify\.mjs request <worktree> HEAD --tier commit/);
+  assert.match(exec, /verify\.mjs verdict <branch>/);
+  assert.match(exec, /verify\.mjs request <worktree> HEAD --tier phase --since <phase BASE>/);
+  assert.match(exec, /verify\.mjs wait <id>/);
+  assert.match(exec, /Exit 75 means still running: call `wait` again/);
+  assert.match(exec, /## Phase close — the build's only wait/);
+  assert.match(exec, /Red \(exit 1\) — the phase does not close[\s\S]*fix dispatch against the task that introduced it/);
+  assert.match(exec, /Env-broken \(exit 3\) — the phase does not close either[\s\S]*`⚠` lines[\s\S]*request the phase tier again/);
+  assert.match(exec, /\*\*Env-broken a second time → stop\.\*\*[\s\S]*tell the user in plain words[\s\S]*the way forward/);
+  assert.match(exec, /An env-broken verdict at the commit tier blocks nothing/);
+  assert.match(exec, /Never run a suite by hand beside the verifier/);
+  assert.match(exec, /run \*\*only the tests of the code they change plus the type-check\*\*/);
+  assert.match(exec, /`--tree`/, 'a commit: manual app is tested on its uncommitted work');
+  assert.match(read('skills/builder/SKILL.md'), /\*\*Builds test through the verifier\.\*\*/);
+  assert.match(ref('delivery'), /phase tier must be green \*\*at that sha\*\*/);
+  assert.doesNotMatch(ref('delivery'), /plan's `end`/);
+});
+
+test('6.0 briefs carry the environment landmines and the ledger\'s env notes through brief.mjs', () => {
+  const exec = ref('execution');
+  assert.match(exec, /node <plugin>\/scripts\/brief\.mjs <absolute-outfile> --ledger <featurePath>\/ledger\.md --root <worktree>/);
+  assert.match(exec, /add it to the ledger's `## env notes` with its remedy written as a step/);
+  assert.match(exec, /never repeat them in your own context for the worker/);
+});
+
+test('6.0 test plan is walk · review; tests are not a lever; old plans map on read', () => {
+  const p = ref('profiles');
+  assert.match(p, /\*\*Tests are not a lever\*\*/);
+  assert.match(p, /`walk=you` becomes `human=yes`/);
+  assert.match(p, /approve <feature> --tests "walk=… review=…"/);
+  assert.match(p, /Finished means gone/);
+  assert.doesNotMatch(p, /Testing per slice|Testing at the end|own\+app|`touched`: /);
+  const plan = ref('planning');
+  assert.match(plan, /B asks the two levers as two questions — \*\*Agent walk\*\*[\s\S]*\*\*Review\*\*/);
+  assert.match(plan, /--tests "walk=<v> review=<v>"/);
+  assert.doesNotMatch(plan, /\| Gates \|/);
+});
+
+test('6.0 plan task: six parts, decisions not bodies, code only where pinned; the audit leaves a code map', () => {
+  const plan = ref('planning');
+  assert.match(plan, /\*\*The plan carries decisions, not bodies\.\*\*/);
+  assert.match(plan, /A task has six parts:\n\n1\. \*\*Files\*\*[\s\S]*2\. \*\*Interfaces\*\*[\s\S]*3\. \*\*Behaviour\*\*[\s\S]*4\. \*\*Tests\*\*[\s\S]*5\. \*\*Pattern\*\*[\s\S]*6\. \*\*Steps\*\*/);
+  for (const pinned of ['exact copy the spec fixes', 'a migration', 'the frozen contract', "an algorithm the signature and tests don't determine", 'a security-sensitive mechanism']) assert.ok(plan.includes(`**${pinned}**`), pinned);
+  assert.match(plan, /a task touches exactly one app/);
+  assert.match(plan, /\.builder\/<feature>\/audit-digest\.md/);
+  assert.match(ref('discovery'), /\*\*Leave a code map for the plan\.\*\* Write `\.builder\/<feature>\/audit-digest\.md`/);
+  assert.match(ref('discovery'), /A child dropped or closed without landing never satisfies another child's dependency/);
 });

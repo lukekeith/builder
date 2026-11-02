@@ -58,7 +58,9 @@ test('prepare uses current starting branch and delivery fastforwards exact verif
   await assert.rejects(run('deliver', 'test', { root, verifiedHead: m.originHead }), /exact verified candidate/);
   const result = await run('deliver', 'test', { root, verifiedHead: p.candidateHead }); assert.equal(result.phase, 'merged'); assert.equal(git(root, 'symbolic-ref', '--short', 'HEAD'), 'work');
   assert.equal(git(root, 'rev-parse', 'HEAD'), p.candidateHead); assert.equal(fs.readFileSync(path.join(root, 'feature.txt'), 'utf8'), 'feature\n');
+  assert.equal((await run('list', undefined, { root })).find(r => r.name === 'test')?.phase, 'merged', 'merged with its worktree still there: cleanup is still its next step');
   await run('cleanup', 'test', { root }); assert.ok(!fs.existsSync(m.worktree));
+  assert.equal((await run('list', undefined, { root })).find(r => r.name === 'test'), undefined, 'finished means gone from status');
   const saved = await run('resume', 'test', { root }); assert.equal(saved.cleaned, true); assert.equal(saved.verifiedHead, p.integration.featureHead); assert.equal(saved.mergedHead, p.candidateHead);
 });
 test('delivery refuses stale target or feature commits', async t => {
@@ -290,16 +292,19 @@ test('merge_into: current lands on the branch the feature starts from; a builder
   git(root, 'checkout', '-b', 'builder/elsewhere'); assert.equal((await run('start', 'on-builder', { root })).targetBranch, 'main');
   git(root, 'checkout', '--detach'); assert.equal((await run('start', 'detached-current', { root })).targetBranch, 'main');
 });
-test('approval records a test plan, mirrors it as tests:, labels the list and walk=you waits for a human', async t => {
+test('approval records a walk · review test plan, mirrors it as tests:, labels the list and human=yes waits for a human', async t => {
   const root = repo(t); const m = await verified(root);
-  await assert.rejects(run('approve', m.name, { root, tests: 'slice=bogus' }), /Invalid test plan/);
-  await assert.rejects(run('approve', m.name, { root, tests: 'slice=own', profile: 'rush' }), /not both/);
-  const approved = await run('approve', m.name, { root, tests: 'end=risk' });
-  assert.equal(approved.tests, 'slice=own end=risk review=end'); assert.equal(approved.profileApproved, true); assert.equal(approved.awaitingHuman, undefined);
+  await assert.rejects(run('approve', m.name, { root, tests: 'walk=bogus' }), /Invalid test plan/);
+  await assert.rejects(run('approve', m.name, { root, tests: 'walk=none', profile: 'rush' }), /not both/);
+  const approved = await run('approve', m.name, { root, tests: 'walk=risk' });
+  assert.equal(approved.tests, 'walk=risk review=end'); assert.equal(approved.profileApproved, true); assert.equal(approved.awaitingHuman, undefined);
   const manifest = fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8');
-  assert.match(manifest, /^tests: slice=own end=risk review=end$/m); assert.doesNotMatch(manifest, /^profile:/m);
-  assert.equal((await run('list', undefined, { root })).find(r => r.name === m.name).profileLabel, 'own · risk · end');
-  const you = await run('approve', m.name, { root, tests: 'slice=own end=everything review=slice walk=you' }); assert.equal(you.awaitingHuman, true);
+  assert.match(manifest, /^tests: walk=risk review=end$/m); assert.doesNotMatch(manifest, /^profile:/m);
+  assert.equal((await run('list', undefined, { root })).find(r => r.name === m.name).profileLabel, 'risk · end');
+  const old = await run('approve', m.name, { root, tests: 'slice=own end=everything review=app' });
+  assert.equal(old.tests, 'walk=full review=app', 'a 5.x value is mapped, never stored as written');
+  const you = await run('approve', m.name, { root, tests: 'walk=full review=slice human=yes' }); assert.equal(you.awaitingHuman, true);
+  const youOld = await run('approve', m.name, { root, tests: 'slice=own end=everything review=slice walk=you' }); assert.equal(youOld.tests, 'walk=full review=slice human=yes'); assert.equal(youOld.awaitingHuman, true);
   const legacy = await run('approve', m.name, { root, profile: 'rush' }); assert.equal(legacy.tests, undefined); assert.equal(legacy.profile, 'rush');
   assert.match(fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8'), /^profile: rush$/m);
 });
@@ -308,7 +313,7 @@ test('start\'s profile placeholder is not mirrored as a plan; a stale tests line
   await run('checkpoint', 'plain', { root, phase: 'planned', next: 'Go-ahead' });
   const manifest = () => fs.readFileSync(path.join(m.featurePath, 'MANIFEST.md'), 'utf8');
   assert.doesNotMatch(manifest(), /^(profile|tests):/m, 'no plan before the go-ahead');
-  await run('approve', 'plain', { root, tests: 'end=risk' }); assert.match(manifest(), /^tests: /m);
+  await run('approve', 'plain', { root, tests: 'walk=risk' }); assert.match(manifest(), /^tests: walk=risk review=end$/m);
   await run('approve', 'plain', { root, profile: 'standard' }); assert.doesNotMatch(manifest(), /^tests:/m); assert.match(manifest(), /^profile: standard$/m);
 });
 test('merge_into: current with no base_branch refuses a detached checkout instead of inventing main', async t => {

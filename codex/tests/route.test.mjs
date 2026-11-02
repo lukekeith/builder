@@ -45,7 +45,8 @@ test('custom strong model profile elevates implementation and keeps inventories 
 });
 
 test('the test plan\'s models lever routes like the old custom profile', () => {
-  assert.equal(route('implementation', { tests: 'slice=own end=touched review=end models=strong' }).tier, 'judgment')
+  assert.equal(route('implementation', { tests: 'walk=none review=end models=strong' }).tier, 'judgment')
   assert.equal(route('inventory', { tests: 'models=strong' }).tier, 'fast')
-  assert.equal(route('implementation', { tests: 'slice=own' }).tier, 'standard')
+  assert.equal(route('implementation', { tests: 'walk=risk' }).tier, 'standard')
+  assert.equal(route('implementation', { tests: 'slice=own end=touched review=end models=strong' }).tier, 'judgment', 'a 5.x plan maps on read')
 })

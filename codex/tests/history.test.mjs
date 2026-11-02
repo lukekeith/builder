@@ -38,6 +38,8 @@ test('record reads plan size from landed commit after cleanup on another checkou
 });
 test('a landing approved under the test plan records its tests value, comparable by plan label', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'builder-history-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const row = appendLanding(path.join(dir, 'archive.jsonl'), { ...m, tests: 'end=risk' }, { tasks: 2 });
-  assert.equal(row.tests, 'slice=own end=risk review=end'); assert.equal(row.profile, undefined);
+  const row = appendLanding(path.join(dir, 'archive.jsonl'), { ...m, tests: 'walk=risk' }, { tasks: 2 });
+  assert.equal(row.tests, 'walk=risk review=end'); assert.equal(row.profile, undefined);
+  const old = appendLanding(path.join(dir, 'archive.jsonl'), { ...m, mergedHead: 'f'.repeat(40), tests: 'slice=own end=risk review=app' }, { tasks: 2 });
+  assert.equal(old.tests, 'walk=risk review=app', 'a 5.x plan is recorded in 6.0 levers');
 });
