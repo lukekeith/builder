@@ -7,7 +7,7 @@ reviews and evidence-before-completion principles in a Codex-specific form.
 
 This port replaces the Claude command/tool bindings, supports configurable Codex
 model routing, creates worktrees before any edits, retains durable plan/checkpoint
-evidence, and verifies the actual local merge candidate. It does not inherit the
+evidence, and lands only the merged result its verifier tested. It does not inherit the
 Claude plugin’s old prohibition on worktree creation. Other scripts retain
 Builder’s MIT license. The repository-root attribution describes the original
 Claude plugin and is preserved there.

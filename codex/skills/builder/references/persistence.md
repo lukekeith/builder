@@ -2,11 +2,11 @@
 
 ## Two layers of state
 
-The runtime identity lives under Git's common directory at `builder-codex/features/<feature>.json`. It records originating checkout/branch/SHA, immutable landing target/start SHA, the test plan (`tests`, or an old `profile`), pause/human-wait state, feature worktree and branch, current phase/task/next action, tested feature SHA, and integration candidate. Because every worktree shares this location, a fresh session in the starting checkout can find the build after context clearing. This metadata is machine-local and survives removing ignored scratch files.
+The runtime identity lives under Git's common directory at `builder-codex/features/<feature>.json`. It records originating checkout/branch/SHA, immutable landing target/start SHA, the test plan (`tests`, or an old `profile`), pause/human-wait state, feature worktree and branch, current phase/task/next action, tested feature SHA, the held merge request (`merge`: the verifier request, the feature and target tips it tested) and, while a landing waits on the owner, its needs-you (`needsYou`). Because every worktree shares this location, a fresh session in the starting checkout can find the build after context clearing. This metadata is machine-local and survives removing ignored scratch files.
 
 The tracked feature folder contains SPEC.md, PLAN.md, MANIFEST.md, ledger.md, and continue.md. It records requirements, task completion ranges, durable decisions, verification summaries, and the next action. Raw logs/diffs can be disposable scratch; **no completed-task identity or unresolved fix exists only in scratch**. Keep the compact current checkpoint separate from append-only progress history. Do not delete PLAN at sign-off.
 
-Runtime metadata is the locator and integration transaction record; SPEC is scope authority; ledger plus Git commits proves task completion. MANIFEST and continue.md are the portable recovery summary. If the locator conflicts with actual Git or tracked evidence, stop dependent actions, reconcile and record the discrepancy; do not choose whichever version permits faster completion.
+Runtime metadata is the locator and landing transaction record; SPEC is scope authority; ledger plus Git commits proves task completion. MANIFEST and continue.md are the portable recovery summary. If the locator conflicts with actual Git or tracked evidence, stop dependent actions, reconcile and record the discrepancy; do not choose whichever version permits faster completion.
 
 ## Checkpoint moments
 
@@ -20,7 +20,7 @@ Run from a known repository with explicit `--root` where needed. The helper upda
 
 After committing final tracked evidence and running required feature checks on that clean HEAD, use:
 
-`node <plugin>/scripts/lifecycle.mjs checkpoint <feature> --phase verified --next "Prepare and verify the merge candidate" --verified-head <full-tested-SHA>`
+`node <plugin>/scripts/lifecycle.mjs checkpoint <feature> --phase verified --next "Deliver once the merge tier is green" --verified-head <full-tested-SHA>`
 
 This verified checkpoint is runtime-only so it cannot dirty the tested tree. MANIFEST's last tracked phase may be signed-off/built; runtime verifiedHead supplies exact verification identity. Report that distinction, rather than writing a new tracked verified claim after testing an earlier commit.
 
@@ -61,5 +61,9 @@ Finally cold-read the handoff as someone with no chat history: it must say what 
 ## Park records and retry
 
 When a build cannot proceed, write PARKED.md in its tracked feature folder before ending the turn. Include the stuck behavior, owner, what was tried, decisive evidence quoted without secrets, where to dig, the recommended next action, and dated retry history. Raw evidence folders may not travel with the branch, so a link alone is insufficient. Distinguish a product decision, an external dependency, and a human step such as protected uncommitted changes, manual commits or a needed config change (with the exact diff: agents never edit the config). Report `<why> — next: <step>` in plain words.
+
+**Every human-only park names a choice.** A park only a person can clear — protected uncommitted changes, a manual commit, a config change, a held walk, a target checked out in another worktree — names at least one option that moves the work forward, and *leave it for now* as the last. Raise it as a question (SKILL.md §Pickers and lists), never as a bare stop.
+
+**A landing that needs you** is the one park not written to PARKED.md: the feature is verified and its tested tree must not change, so it lives in the runtime record (`needsYou`: the overlapping files, the target checkout, the three choices). `$builder status` shows it as the feature's next step, and `$builder resume <feature>` raises it first — the files as a review, then the choices (delivery.md §A landing that needs you). It clears itself once deliver finds no overlap.
 
 On explicit resume of a parked feature, read PARKED.md first and investigate from its next action. Naming the feature authorizes rechecking the cause, not bypassing a hold, manual commit rule, or missing product decision. Record the retry and preserve the history. Clear the blocker only when evidence shows it is resolved, then checkpoint the actual resumed phase. Do not repeatedly retry a human step or implement an automatic fleet retry policy: this port has no Claude fleet.

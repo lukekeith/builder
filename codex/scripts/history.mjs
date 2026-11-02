@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { run } from './lifecycle.mjs';
 import { parseProfile, parseTests, formatTests } from './profile.mjs';
 
 export function archivePath(root) {
@@ -36,6 +35,18 @@ export function appendLanding(file, metadata, { tasks, metrics = null, now = new
   fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
   return row;
 }
+/**
+ * Record a landed feature: its plan size read from PLAN.md at the merged commit, plus measured
+ * metrics when the runtime gave them. Idempotent per merged commit. lifecycle deliver calls it
+ * right after the landing; `history.mjs record` is the same for a landing recorded by hand.
+ */
+export function recordLanding(m, { metrics = null } = {}) {
+  let text = '';
+  try { text = execFileSync('git', ['-C', m.originRoot, 'show', `${m.mergedHead}:${m.registry}/${m.name}/PLAN.md`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+  catch { throw new Error('Landed commit has no readable PLAN.md; cannot record its plan size'); }
+  const tasks = (text.match(/^### Task \d+/gm) || []).length;
+  return appendLanding(archivePath(m.originRoot), m, { tasks, metrics });
+}
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
@@ -51,14 +62,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       const file = archivePath(options.root);
       if (command === 'list' && !name) console.log(JSON.stringify(readHistory(file), null, 2));
       else if (command === 'record' && name) {
+        // Imported here, not at the top: lifecycle deliver imports this module to record a landing.
+        const { run } = await import('./lifecycle.mjs');
         const m = await run('status', name, options);
-        const planPath = `${m.registry}/${name}/PLAN.md`;
-        let text = '';
-        try { text = execFileSync('git', ['-C', m.originRoot, 'show', `${m.mergedHead}:${planPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
-        catch { throw new Error('Landed commit has no readable PLAN.md; cannot record its plan size'); }
-        const tasks = (text.match(/^### Task \d+/gm) || []).length;
         const metrics = options.metrics ? JSON.parse(fs.readFileSync(options.metrics, 'utf8')) : null;
-        console.log(JSON.stringify(appendLanding(file, m, { tasks, metrics }), null, 2));
+        console.log(JSON.stringify(recordLanding(m, { metrics }), null, 2));
       } else throw new Error('Expected list or record FEATURE');
     }
   } catch (error) { console.error(error.message); process.exitCode = 1; }
