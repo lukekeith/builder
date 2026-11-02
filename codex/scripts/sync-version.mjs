@@ -21,7 +21,7 @@ export function syncVersion({ root, ref, check = false }) {
   }
   return upstream.version;
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2), options = { root: path.resolve(fileURLToPath(new URL('../..', import.meta.url))) };
     if (args.includes('--help')) console.log('sync-version.mjs [--ref UPSTREAM_REF] [--check]');

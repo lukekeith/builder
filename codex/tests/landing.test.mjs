@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { run } from '../scripts/lifecycle.mjs';
-import { parseWalkReadiness, landedMigrations, isDestructive, wrapUp, needsYou, NEEDS_YOU_CHOICES, stashName } from '../scripts/landing.mjs';
+import { parseWalkReadiness, landedMigrations, isDestructive, wrapUp, needsYou, needsYouNext, recommendLanding, NEEDS_YOU_CHOICES, stashName } from '../scripts/landing.mjs';
 import { waitFor, settle } from './land-helpers.mjs';
 
 const BODY = [
@@ -226,4 +226,17 @@ test('a needs-you names the files and the target checkout, and always carries a 
   assert.equal(NEEDS_YOU_CHOICES[0].run, 'deliver <feature> --commit-mine "<message>"', 'the template is not changed by a record');
   assert.equal(needsYou({ feature: 'f', files: ['x'], target: 'main', checkout: '/r' }).reason, 'needs you: your uncommitted changes in /r overlap this feature — 1 file: x');
   assert.equal(stashName('f'), 'builder: before landing f');
+});
+
+test('the recommendation is Claude\'s: 3 files or fewer → set them aside, more → commit them first; recommended first, with its reason, leaving it last', () => {
+  assert.equal(recommendLanding(['a', 'b', 'c']).id, 'set-aside');
+  assert.equal(recommendLanding(['a', 'b', 'c', 'd']).id, 'commit-mine');
+  const few = needsYou({ feature: 'f', files: ['a', 'b', 'c'], target: 'main', checkout: '/r' });
+  assert.equal(few.recommended, 'set-aside'); assert.match(few.why, /^only a few files: if one clashes when it comes back, it is quick to settle/);
+  assert.deepEqual(few.choices.map(c => [c.id, c.recommended === true]), [['set-aside', true], ['commit-mine', false], ['leave', false]]);
+  assert.equal(needsYouNext(few), 'needs you: your uncommitted changes in /r overlap this feature — 3 files: a, b, c — ask the owner: set theirs aside, land, put them back (recommended) · commit theirs, then land · leave it');
+  const many = needsYou({ feature: 'f', files: ['a', 'b', 'c', 'd'], target: 'main', checkout: '/r' });
+  assert.equal(many.recommended, 'commit-mine'); assert.match(many.why, /^with this many files a clash on putting them back is likelier/);
+  assert.deepEqual(many.choices.map(c => [c.id, c.recommended === true]), [['commit-mine', true], ['set-aside', false], ['leave', false]]);
+  assert.match(needsYouNext(many), /ask the owner: commit theirs, then land \(recommended\) · set theirs aside, land, put them back · leave it$/);
 });

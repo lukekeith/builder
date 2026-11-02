@@ -10,10 +10,10 @@
  *   node scripts/profile.mjs --estimate <folder> [--tests "<value>" | --profile <p>]
  *   node scripts/profile.mjs --cost <folder> [--tests "<value>" | --profile <p>]
  */
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, statSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { parseManifest, isSet } from './manifest.mjs'
 import { loadConfig } from './config.mjs'
 
@@ -394,7 +394,7 @@ export function main(argv) {
   console.log(JSON.stringify(out))
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   try { main(process.argv.slice(2)) }
   catch (error) { console.error(`builder: ${error.message}`); process.exitCode = 2 }
 }

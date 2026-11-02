@@ -173,7 +173,7 @@ export function vendor({ host, source = ownRoot, dryRun = false, check = false, 
     return { host, mode: 'vendor', version: manifest.version, status: 'updated, uncommitted', destination: dest };
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2), host = args.shift();
     if (!host || args.some(a => !['--dry-run', '--check', '--force'].includes(a))) throw new Error('Usage: vendor.mjs HOST [--dry-run|--check] [--force]');

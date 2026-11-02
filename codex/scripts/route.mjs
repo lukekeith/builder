@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { loadConfig } from './config.mjs'
-import { pathToFileURL } from 'node:url'
-import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { existsSync, realpathSync } from 'node:fs'
 import { parseTestPlan } from './profile.mjs'
 
 export const DEFAULTS = {
@@ -39,7 +39,7 @@ export function route(role, { models = {}, available, escalate = false, complex 
   return { role, tier, requested: requested.model, unavailable: true,
     reason: 'No configured model at the required tier or above is available; select an available equivalent explicitly.' }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) {
   try {
     const args = process.argv.slice(2)
     if (args.includes('--help')) {

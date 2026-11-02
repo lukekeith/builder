@@ -101,7 +101,7 @@ export function finishSync(root = repository, ref = 'main', reportPath) {
     write(path.join(root, 'codex/upstream.json'), state); return state;
   } catch (error) { fs.writeFileSync(manifestPath, original); throw error; }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2), command = args.shift(); let root = repository, ref = 'main', report;
     while (args.length) {

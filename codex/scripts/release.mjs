@@ -49,7 +49,7 @@ export function release(root = repository, mode = 'dry-run') {
     return { ...plan, url: `https://github.com/lukekeith/builder/releases/tag/${plan.tag}` };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2);
     if (args.length !== 1 || !['--dry-run', '--pack', '--publish'].includes(args[0])) throw new Error('Usage: release.mjs --dry-run|--pack|--publish');

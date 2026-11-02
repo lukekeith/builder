@@ -127,18 +127,39 @@ export const NEEDS_YOU_CHOICES = [
 
 const listed = (files) => [...files.slice(0, 3), ...(files.length > 3 ? ['…'] : [])].join(', ')
 
-/** The needs-you record a feature keeps while its landing waits on the owner's changes. */
+/**
+ * Which choice to recommend, and why — Claude 6.0's rule (skills/fleet/SKILL.md): 3 files or fewer →
+ * set them aside (a clash on the way back is quick to settle, and nothing is committed under a
+ * message the owner did not write); more → commit them first (a clash is likelier, and committed
+ * work is safe in git while the landing settles it on the feature's side).
+ */
+export function recommendLanding(files) {
+  return files.length <= 3
+    ? { id: 'set-aside', why: 'only a few files: if one clashes when it comes back, it is quick to settle, and nothing of yours is committed under a message you did not write' }
+    : { id: 'commit-mine', why: 'with this many files a clash on putting them back is likelier, and it would be left in your checkout; committed first, your work is safe in git and any clash is settled on the feature\'s side before it lands' }
+}
+
+const SHORT = { 'commit-mine': 'commit theirs, then land', 'set-aside': 'set theirs aside, land, put them back', leave: 'leave it' }
+
+/** The needs-you record a feature keeps while its landing waits on the owner's changes: the recommended choice first, leaving it last. */
 export function needsYou({ feature, files, target, checkout }) {
   const n = `${files.length} file${files.length === 1 ? '' : 's'}`
+  const rec = recommendLanding(files)
+  const order = [rec.id, ...NEEDS_YOU_CHOICES.map((c) => c.id).filter((id) => id !== rec.id && id !== 'leave'), 'leave']
   return {
     kind: 'overlap',
     reason: `needs you: your uncommitted changes in ${checkout} overlap this feature — ${n}: ${listed(files)}`,
     files: [...files],
     target,
     checkout,
-    choices: NEEDS_YOU_CHOICES.map((c) => ({ ...c, run: c.run && c.run.replace('<feature>', feature) })),
+    recommended: rec.id,
+    why: rec.why,
+    choices: order.map((id) => NEEDS_YOU_CHOICES.find((c) => c.id === id)).map((c) => ({ ...c, run: c.run && c.run.replace('<feature>', feature), ...(c.id === rec.id ? { recommended: true } : {}) })),
   }
 }
+
+/** A needs-you's next action: its reason, then the choices in order, the recommended one marked. */
+export const needsYouNext = (n) => `${n.reason} — ask the owner: ${n.choices.map((c) => `${SHORT[c.id]}${c.recommended ? ' (recommended)' : ''}`).join(' · ')}`
 
 /** The stash a set-aside landing keeps the owner's changes in; found again by its sha, never by its place. */
 export const stashName = (feature) => `builder: before landing ${feature}`

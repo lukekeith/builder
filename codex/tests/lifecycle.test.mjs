@@ -123,12 +123,13 @@ test('overlapping uncommitted changes park as needs you with the three choices, 
   const cli = spawnSync(process.execPath, [new URL('../scripts/lifecycle.mjs', import.meta.url).pathname, 'deliver', 'test', '--root', root], { encoding: 'utf8' });
   assert.equal(cli.status, 3, cli.stderr); const d = JSON.parse(cli.stdout);
   assert.equal(d.status, 'needs-you'); assert.deepEqual(d.overlap, ['added.txt', 'shared.txt']);
-  assert.deepEqual(d.choices.map(c => c.label), ['Commit my changes, then land', 'Set my changes aside, land, put them back', 'Leave it for now']);
-  assert.deepEqual(d.choices.map(c => c.run), ['deliver test --commit-mine "<message>"', 'deliver test --set-aside', null]);
+  assert.equal(d.recommended, 'set-aside', '2 files: 3 or fewer recommend setting them aside'); assert.match(d.why, /^only a few files/);
+  assert.deepEqual(d.choices.map(c => c.label), ['Set my changes aside, land, put them back', 'Commit my changes, then land', 'Leave it for now']);
+  assert.deepEqual(d.choices.map(c => c.run), ['deliver test --set-aside', 'deliver test --commit-mine "<message>"', null]);
   assert.equal(git(root, 'rev-parse', 'HEAD'), head); assert.equal(git(root, 'status', '--porcelain'), status); assert.equal(stashList(root), stashes);
   assert.equal(fs.readFileSync(path.join(root, 'added.txt'), 'utf8'), 'my own copy\n');
   const listed = (await run('list', undefined, { root })).find(r => r.name === 'test');
-  assert.equal(listed.phase, 'verified'); assert.deepEqual(listed.needsYou.files, ['added.txt', 'shared.txt']); assert.match(listed.nextAction, /^needs you: .* ask the owner: commit theirs, then land · set theirs aside, land, put them back · leave it$/);
+  assert.equal(listed.phase, 'verified'); assert.deepEqual(listed.needsYou.files, ['added.txt', 'shared.txt']); assert.match(listed.nextAction, /^needs you: .* ask the owner: set theirs aside, land, put them back \(recommended\) · commit theirs, then land · leave it$/);
 });
 
 test('commit mine: the owner\'s changes are committed on the target, the merge is tested again on top, then it lands', async t => {

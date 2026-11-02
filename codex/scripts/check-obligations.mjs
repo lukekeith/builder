@@ -36,6 +36,10 @@ import { join, dirname, isAbsolute } from 'node:path'
 import { requireConfig } from './config.mjs'
 import { features } from './registry.mjs'
 
+// stdout to a pipe is asynchronous on macOS and this script exits with process.exit(): blocking writes keep
+// --json output past 64 KB whole (the verify CLI's fix; nodejs/node#6456).
+process.stdout._handle?.setBlocking?.(true)
+
 const CFG = requireConfig()
 const ROOT = CFG.root
 const REGISTRY_ROOT = CFG.registry
