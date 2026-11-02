@@ -1,0 +1,901 @@
+// codex/tests/verify-run.test.mjs
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, existsSync } from 'node:fs'
+import { getEventListeners } from 'node:events'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFileSync, spawn } from 'node:child_process'
+import { openLedger } from '../scripts/verify/ledger.mjs'
+import { runRequest, runShell, bisect, reapStrays } from '../scripts/verify/run.mjs'
+import { selectSuites } from '../scripts/verify/select.mjs'
+
+const T = (body) => `import { test } from 'node:test'\nimport assert from 'node:assert'\n${body}\n`
+function project(files) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-')))
+  mkdirSync(join(dir, 'test'))
+  for (const [f, body] of Object.entries(files)) writeFileSync(join(dir, f), body)
+  return dir
+}
+const suite = { name: 'unit', runner: 'node-test', files: 'test/*.test.mjs', cwd: '.', args: '', needs: [], tiers: ['commit', 'phase', 'merge'] }
+function ctxFor(checkout, target, o = {}) {
+  const ledger = openLedger(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-l-'))))
+  return {
+    verify: { suites: [suite], checks: [], timeoutMs: 60000, db: null },
+    pool: {},
+    ledger,
+    checkout,
+    targetSha: 'tgt',
+    signal: null,
+    baseEnv: {},
+    lease: async () => ({ env: {}, release() {} }),
+    select: (co, base, suites) => Object.fromEntries(suites.map((s) => [s.name, { files: 'all', why: 'test' }])),
+    targetCheckout: async () => target,
+    atCommit: async () => {},
+    ...o,
+  }
+}
+const req = (o = {}) => ({ id: 'r1', branch: 'f', sha: 'abc', tier: 'commit', target: 'main', base: 'b0', commits: ['abc'], changed: [], ...o })
+
+test('green: every test passes', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const v = await runRequest(req(), ctxFor(co, co))
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.regressions, [])
+  assert.equal(v.selection.unit.files, 'all')
+})
+
+test('a failure here but not on the target is a regression, introduced by the request commit', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  const v = await runRequest(req(), ctxFor(co, target))
+  assert.equal(v.status, 'red')
+  assert.equal(v.regressions.length, 1)
+  assert.equal(v.regressions[0].id, 'unit::test/a.test.mjs::adds')
+  assert.equal(v.regressions[0].introducedBy, 'abc')
+  assert.match(v.regressions[0].msg, /2/)
+})
+
+test('failing on the target too: debt — added to known failures, verdict green', async () => {
+  const body = T(`test('old', () => assert.equal(1, 2))`)
+  const co = project({ 'test/a.test.mjs': body })
+  const ctx = ctxFor(co, project({ 'test/a.test.mjs': body }))
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.debt, ['unit::test/a.test.mjs::old'])
+  assert.ok(ctx.ledger.known('main').ids.has('unit::test/a.test.mjs::old'))
+  const again = await runRequest(req({ id: 'r2' }), ctx)
+  assert.deepEqual(again.known, ['unit::test/a.test.mjs::old'])
+})
+
+test('a test that fails then passes on the same commit is listed as a flake, unless the branch owns it', async () => {
+  const counter = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-c-'))), 'n')
+  const flaky = T(`import { readFileSync, writeFileSync, existsSync } from 'node:fs'\ntest('wobbles', () => { const n = existsSync('${counter}') ? Number(readFileSync('${counter}', 'utf8')) : 0; writeFileSync('${counter}', String(n + 1)); assert.ok(n % 2 === 1) })`)
+  const co = project({ 'test/f.test.mjs': flaky })
+  const ctx = ctxFor(co, co)
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.flakes, ['unit::test/f.test.mjs::wobbles'])
+  assert.equal(ctx.ledger.isFlaky('unit::test/f.test.mjs::wobbles'), true)
+  writeFileSync(counter, '0')
+  const owned = await runRequest(req({ id: 'r3', changed: ['test/f.test.mjs'] }), ctxFor(co, co))
+  assert.equal(owned.status, 'red')
+  assert.equal(owned.regressions[0].note, 'flaky test this branch owns')
+})
+
+test('no report → broken, retried once; still broken → env-broken, never red', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  let calls = 0
+  const ctx = ctxFor(co, co, { verify: { suites: [{ ...suite, args: '--no-such-flag-xyz' }], checks: [], timeoutMs: 60000, db: null }, lease: async () => (calls++, { env: {}, release() {} }) })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.equal(calls, 2)
+  assert.match(v.broken[0].reason, /no report|empty report/)
+})
+
+test('an env-broken run never changes known failures: a failure on both sides is listed, not filed; a real red still files its debt', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const brokenSuite = { ...suite, args: '--no-such-flag-xyz' }
+  const both = { name: 'types', run: 'exit 1', cwd: '.', compare: 'exit', match: null, tiers: ['commit', 'phase', 'merge'], needs: [] }
+  const ctx = ctxFor(co, co, { verify: { suites: [brokenSuite], checks: [both], timeoutMs: 60000, db: null } })
+  const before = existsSync(join(ctx.ledger.dir, 'known-failures.json')) ? readFileSync(join(ctx.ledger.dir, 'known-failures.json'), 'utf8') : null
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.debt, ['check::types'])
+  assert.equal(ctx.ledger.known('main').ids.size, 0)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'known-failures.json')) ? readFileSync(join(ctx.ledger.dir, 'known-failures.json'), 'utf8') : null, before)
+  // An env-broken merge run removes nothing either: a pass there proves nothing about the target.
+  ctx.ledger.addKnown('main', ['check::ok'])
+  const pass = { ...both, name: 'ok', run: 'exit 0' }
+  const m = await runRequest(req({ id: 'r2', tier: 'merge' }), { ...ctx, verify: { suites: [brokenSuite], checks: [pass], timeoutMs: 60000, db: null } })
+  assert.equal(m.status, 'env-broken')
+  assert.deepEqual([...ctx.ledger.known('main').ids], ['check::ok'])
+  // The same debt in a run that is not env-broken is filed as before.
+  const red = { ...both, name: 'fresh', run: 'test -f only-here || exit 1' }
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  writeFileSync(join(target, 'only-here'), '')
+  const r = await runRequest(req({ id: 'r3' }), { ...ctx, targetCheckout: async () => target, verify: { suites: [suite], checks: [both, red], timeoutMs: 60000, db: null } })
+  assert.equal(r.status, 'red')
+  assert.ok(ctx.ledger.known('main').ids.has('check::types'))
+})
+
+test('runShell in a cwd that does not exist resolves a failed run — never an unhandled spawn error', async () => {
+  const r = await runShell('echo hi', { cwd: join(tmpdir(), 'vrun-no-such-dir-xyz') })
+  assert.notEqual(r.code, 0)
+  assert.match(r.out, /ENOENT|does not exist/)
+  const l = await runShell('echo hi', { cwd: join(tmpdir(), 'vrun-no-such-dir-xyz'), lines: '' })
+  assert.equal(l.lines.size, 0)
+})
+
+test('a check whose cwd the target lacks: missing there, so a failure here is a regression, not a crash; a lines check reads the target as empty', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  mkdirSync(join(co, 'apps', 'new'), { recursive: true })
+  writeFileSync(join(co, 'apps', 'new', 'lint.txt'), '✗ finding\n')
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'new-app', run: 'exit 1', cwd: 'apps/new', compare: 'exit', match: null, tiers: ['phase'], needs: [] },
+    { name: 'new-lint', run: 'cat lint.txt', cwd: 'apps/new', compare: 'lines', match: '✗', tiers: ['phase'], needs: [] },
+  ] } })
+  const v = await runRequest(req({ tier: 'phase' }), ctx)
+  assert.equal(v.status, 'red')
+  assert.deepEqual(v.regressions.map((r) => r.id).sort(), ['check::new-app', 'check::new-lint'])
+  // An exit check's message is its raw output (summarize filters it); a lines check's is already its new lines.
+  assert.deepEqual(v.regressions.map((r) => [r.id, !!r.raw]).sort(), [['check::new-app', true], ['check::new-lint', false]])
+  assert.deepEqual(v.broken, [])
+  assert.equal(ctx.ledger.known('main').ids.size, 0)
+})
+
+test('a check whose cwd this commit lacks cannot run: broken, saying so — never a crash or a regression', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'later-app', run: 'true', cwd: 'apps/later', compare: 'exit', match: null, tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.match(v.broken[0].reason, /check::later-app: its cwd apps\/later does not exist/)
+})
+
+test('checks: exit compare, and lines compare uses match and the target output', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  writeFileSync(join(co, 'lint.txt'), '✗ old finding\n✗ new finding\nDone in 3.1s\n')
+  writeFileSync(join(target, 'lint.txt'), '✗ old finding\nDone in 2.0s\n')
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'lint', run: 'cat lint.txt', cwd: '.', compare: 'lines', match: '✗', tiers: ['commit'], needs: [] },
+    { name: 'types', run: 'exit 0', cwd: '.', compare: 'exit', match: null, tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'red')
+  assert.deepEqual(v.regressions.map((r) => r.id), ['check::lint'])
+  assert.match(v.regressions[0].msg, /new finding/)
+  assert.doesNotMatch(v.regressions[0].msg, /Done in/)
+})
+
+test('phase tier reuses tests already green at this sha', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`), 'test/b.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, co, { select: () => ({ unit: { files: ['test/a.test.mjs', 'test/b.test.mjs'], why: {} } }) })
+  ctx.ledger.appendResults([{ run: 'x', sha: 'abc', tier: 'commit', id: 'unit::test/a.test.mjs::ok', status: 'pass' }])
+  const v = await runRequest(req({ tier: 'phase' }), ctx)
+  assert.equal(v.status, 'green')
+  assert.equal(v.reused, 1)
+  assert.equal(v.selection.unit.files, 1)
+})
+
+test('bisect finds the first commit where each regression fails', async () => {
+  const regs = [{ id: 'a' }, { id: 'b' }]
+  let at = null
+  const failsFrom = { a: 2, b: 3 }
+  await bisect(regs, ['c1', 'c2', 'c3'], { atCommit: async (s) => { at = Number(s.slice(1)) }, statusAt: async (g) => (at >= failsFrom[g.id] ? 'fail' : 'pass') })
+  assert.deepEqual(regs.map((g) => g.introducedBy), ['c2', 'c3'])
+  assert.equal(at, 3)
+})
+
+test('bisect leaves the checkout at the last commit, and stops once cancelled', async () => {
+  const calls = []
+  const regs = [{ id: 'a' }]
+  await bisect(regs, ['c1', 'c2', 'c3'], { atCommit: async (s) => calls.push(s), statusAt: async () => 'fail' })
+  assert.deepEqual(calls, ['c1', 'c3'])
+  assert.equal(regs[0].introducedBy, 'c1')
+  const ac = new AbortController()
+  ac.abort()
+  calls.length = 0
+  const stopped = [{ id: 'a' }]
+  await bisect(stopped, ['c1', 'c2', 'c3'], { signal: ac.signal, atCommit: async (s) => calls.push(s), statusAt: async () => 'fail' })
+  assert.deepEqual(calls, ['c3'])
+  assert.equal(stopped[0].introducedBy, 'c3')
+})
+
+test('runShell kills on timeout', async () => {
+  const r = await runShell('sleep 5', { cwd: tmpdir(), timeoutMs: 200 })
+  assert.equal(r.timedOut, true)
+})
+
+test('runShell removes its abort listener when the run ends', async () => {
+  const ac = new AbortController()
+  await runShell('true', { cwd: tmpdir(), signal: ac.signal })
+  await runShell('true', { cwd: tmpdir(), signal: ac.signal })
+  assert.equal(getEventListeners(ac.signal, 'abort').length, 0)
+})
+
+test('a failing test in a file the branch adds is a regression, not broken', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`), 'test/new.test.mjs': T(`test('fresh', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const v = await runRequest(req({ changed: ['test/new.test.mjs'] }), ctxFor(co, target))
+  assert.equal(v.status, 'red')
+  assert.deepEqual(v.regressions.map((r) => r.id), ['unit::test/new.test.mjs::fresh'])
+  assert.deepEqual(v.broken, [])
+})
+
+test('a lines check whose target run times out is broken, and the target output is not cached', async () => {
+  const co = project({})
+  const target = project({})
+  writeFileSync(join(co, 'lint.txt'), '✗ finding\n')
+  writeFileSync(join(target, 'lint.txt'), '✗ finding\n')
+  writeFileSync(join(target, 'slow'), '')
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 1000, db: null, checks: [
+    { name: 'lint', run: 'if [ -f slow ]; then sleep 5; fi; cat lint.txt', cwd: '.', compare: 'lines', match: '✗', tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.match(v.broken[0].reason, /check::lint: the run on the target timed out/)
+  assert.equal(ctx.ledger.readLines('tgt', 'lint'), null)
+})
+
+test('cancelled while judging the first suite\'s failures: nothing more is judged or leased', async () => {
+  const fails = (n) => T(`test('f${n}', () => assert.equal(1, 2))`)
+  const co = project({ 'test/a.test.mjs': fails(1), 'test/b.test.mjs': fails(2), 'test/c.test.mjs': fails(3) })
+  const ac = new AbortController()
+  let calls = 0
+  const ctx = ctxFor(co, co, {
+    signal: ac.signal,
+    verify: { suites: [suite, { ...suite, name: 'second' }], checks: [], timeoutMs: 60000, db: null },
+    // The suite run is lease 1; the first single-test re-run (judging begins) is lease 2 — cancel there.
+    lease: async () => (++calls === 2 && ac.abort(), { env: {}, release() {} }),
+  })
+  const t0 = Date.now()
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'cancelled')
+  assert.equal(calls, 2)
+  assert.deepEqual([v.regressions, v.flakes, v.debt, v.broken], [[], [], [], []])
+  assert.ok(Date.now() - t0 < 10000)
+})
+
+test('the request\'s report dir is removed even when the run throws', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('ok', () => {})`) })
+  const ctx = ctxFor(co, co, { select: () => { throw new Error('boom') } })
+  await assert.rejects(runRequest(req({ id: 'thrown' }), ctx), /boom/)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'reports', 'thrown')), false)
+})
+
+const XML = `printf '<testsuites><testsuite name="x.spec.ts"><testcase classname="x.spec.ts" name="renders" time="0.1"><failure message="boom"/></testcase></testsuite></testsuites>' > r.xml`
+/** A repo holding `files`, and a junit suite whose report always names the bare `x.spec.ts`. */
+async function junitRun(files, over) {
+  const mk = () => {
+    const dir = project({})
+    for (const f of files) {
+      mkdirSync(join(dir, f, '..'), { recursive: true })
+      writeFileSync(join(dir, f), '')
+    }
+    execFileSync('git', ['init', '-q'], { cwd: dir })
+    execFileSync('git', ['add', '.'], { cwd: dir })
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], { cwd: dir })
+    return dir
+  }
+  const pw = { name: 'e2e', runner: 'junit', cwd: '.', command: XML, report: 'r.xml', needs: [], tiers: ['commit', 'phase', 'merge'], ...over }
+  return runRequest(req(), ctxFor(mk(), mk(), { verify: { suites: [pw], checks: [], timeoutMs: 60000, db: null } }))
+}
+
+test('a report naming files relative to the runner\'s testDir resolves to the repo path, so a failure on both sides is debt', async () => {
+  const v = await junitRun(['tests/visual/x.spec.ts'], { files: 'tests/**/*.spec.ts' })
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.regressions, [])
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+test('testDir-relative names resolve under a subdirectory cwd', async () => {
+  const v = await junitRun(['apps/web/test/e2e/x.spec.ts'], { cwd: 'apps/web', files: 'test/e2e/*.spec.ts' })
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.debt, ['e2e::apps/web/test/e2e/x.spec.ts::renders'])
+})
+
+test('a suite with no files glob resolves by the one tracked file with that name', async () => {
+  const v = await junitRun(['tests/visual/x.spec.ts'], { files: null })
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+test('a same-named file outside the suite\'s glob does not win over the one inside it', async () => {
+  const v = await junitRun(['x.spec.ts', 'tests/visual/x.spec.ts'], { files: 'tests/**/*.spec.ts' })
+  assert.deepEqual(v.debt, ['e2e::tests/visual/x.spec.ts::renders'])
+})
+
+/** A committed repo holding empty `files`. */
+function gitRepo(files) {
+  const dir = project({})
+  for (const f of files) {
+    mkdirSync(join(dir, f, '..'), { recursive: true })
+    writeFileSync(join(dir, f), '')
+  }
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  execFileSync('git', ['add', '.'], { cwd: dir })
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x'], { cwd: dir })
+  return dir
+}
+
+test('a junit suite at the merge tier gets its matching tracked files in {files}, not the glob', async () => {
+  const dir = gitRepo(['apps/web/test/e2e/a.spec.ts', 'apps/web/test/e2e/sub/b.spec.ts', 'apps/web/test/other.ts'])
+  const e2e = { name: 'e2e', runner: 'junit', cwd: 'apps/web', files: 'test/e2e/**/*.spec.ts', command: `echo {files} > seen.txt; printf '<testsuites/>' > r.xml`, report: 'r.xml', needs: [], tiers: ['merge'] }
+  await runRequest(req({ tier: 'merge' }), ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } }))
+  assert.equal(readFileSync(join(dir, 'apps/web/seen.txt'), 'utf8').trim(), 'test/e2e/a.spec.ts test/e2e/sub/b.spec.ts')
+})
+
+/** A repo with unit tests a (alone) and b (imports lib.mjs); c1 touches a, c2 touches lib.mjs. Returns the shas. */
+function history() {
+  const dir = project({ 'lib.mjs': 'export const x = 1\n', 'test/a.test.mjs': T(`test('ok', () => {})`), 'test/b.test.mjs': T(`import '../lib.mjs'\ntest('ok', () => {})`) })
+  const g = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, encoding: 'utf8' }).trim()
+  const commit = (f, body) => (writeFileSync(join(dir, f), body), g('add', '.'), g('commit', '-qm', f), g('rev-parse', 'HEAD'))
+  g('init', '-q')
+  g('add', '.')
+  g('commit', '-qm', 'c0')
+  const c0 = g('rev-parse', 'HEAD')
+  const c1 = commit('test/a.test.mjs', T(`test('ok', () => {})\n// edited`))
+  const c2 = commit('lib.mjs', 'export const x = 2\n')
+  return { dir, g, c0, c1, c2 }
+}
+const idsRun = (ctx) => readFileSync(join(ctx.ledger.dir, 'results.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.run === 'p').map((r) => r.id)
+const phaseCtx = (dir) => ctxFor(dir, dir, { select: selectSuites })
+const green = (sha, files) => files.map((f) => ({ run: 'x', sha, tier: 'commit', id: `unit::${f}::ok`, status: 'pass' }))
+
+test('phase tier reuses a file that passed at an earlier branch commit and nothing since reaches', async () => {
+  const { dir, c0, c1, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c1, c2] }), ctx)
+  assert.equal(v.status, 'green')
+  assert.equal(v.reused, 1) // a: lib.mjs changed after c1 and a does not import it
+  assert.deepEqual(idsRun(ctx), ['unit::test/b.test.mjs::ok']) // b: reached by the change since c1
+})
+
+test('phase tier re-runs a file whose pass predates a change that reaches it', async () => {
+  const { dir, c0, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c0, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c2] }), ctx)
+  assert.equal(v.reused, 0) // a was edited and b imports the edited lib, both after c0
+})
+
+test('the newest record of a file decides: a fail at a later commit is not walked past to an older pass', async () => {
+  const { dir, c0, c1, c2 } = history()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs']))
+  ctx.ledger.appendResults([{ run: 'x', sha: c2, tier: 'commit', id: 'unit::test/a.test.mjs::ok', status: 'fail' }])
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c1, c2] }), ctx)
+  assert.equal(v.reused, 0)
+})
+
+test('a file with only some tests recorded is reused only from a complete record, so a timed-out run records nothing', async () => {
+  const dir = gitRepo(['t/a.spec.ts'])
+  const xml = `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="one" time="0.1"/></testsuite></testsuites>' > r.xml; sleep 5`
+  const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
+  let runs = 0
+  const ctx = ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 500, db: null }, lease: async () => (runs++, { env: {}, release() {} }) })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.match(v.broken[0].reason, /timed out after/)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+  assert.equal(runs, 1, 'a timeout is not retried')
+})
+
+test('a cancelled request records no results', async () => {
+  const dir = gitRepo(['t/a.spec.ts'])
+  const xml = `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="one" time="0.1"><failure message="x"/></testcase><testcase classname="t/a.spec.ts" name="two" time="0.1"/></testsuite></testsuites>' > r.xml`
+  const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
+  const ac = new AbortController()
+  let leases = 0
+  const lease = async () => (++leases > 1 && ac.abort(), { env: {}, release() {} })
+  const ctx = ctxFor(dir, dir, { signal: ac.signal, lease, verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'cancelled')
+  assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+})
+
+test('earlier commits are consulted for at most the three newest; a file only older than that is re-run', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/f${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `u${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  const all = [0, 1, 2, 3, 4].map((i) => `test/f${i}.test.mjs`)
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : all, why: {} } }) })
+  all.forEach((f, i) => ctx.ledger.appendResults(green(shas[i], [f])))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: shas[4], base: c0, commits: shas }), ctx)
+  assert.equal(calls - 1, 3) // graph builds for earlier commits
+  assert.equal(v.reused, 4) // f4 exact, f1-f3 within the cap; f0 re-run
+})
+
+test('later commits that recorded only other files do not crowd out a file\'s newest pass', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/f${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `u${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  const all = [0, 1, 2, 3, 4].map((i) => `test/f${i}.test.mjs`)
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : all, why: {} } }) })
+  // f0–f2 last passed together at the first commit; the three commits after it each recorded only f3 or f4.
+  ctx.ledger.appendResults(green(shas[0], all.slice(0, 3)))
+  ctx.ledger.appendResults(green(shas[1], [all[3]]))
+  ctx.ledger.appendResults(green(shas[2], [all[4]]))
+  ctx.ledger.appendResults(green(shas[3], [all[3], all[4]]))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: shas[4], base: c0, commits: shas }), ctx)
+  assert.equal(v.reused, 5) // f0–f2 judged at shas[0], f3–f4 at shas[3]: two graph builds, under the cap
+  assert.equal(calls - 1, 2)
+})
+
+test('the graph slots go to the commits holding the most passes, whatever order the files are asked in', async () => {
+  const { dir, g, c0 } = history()
+  const shas = []
+  for (let i = 0; i < 5; i++) {
+    writeFileSync(join(dir, `test/s${i}.test.mjs`), T(`test('ok', () => {})`))
+    g('add', '.')
+    g('commit', '-qm', `s${i}`)
+    shas.push(g('rev-parse', 'HEAD'))
+  }
+  for (let i = 0; i < 6; i++) writeFileSync(join(dir, `test/m${i}.test.mjs`), T(`test('ok', () => {})`))
+  g('add', '.')
+  g('commit', '-qm', 'many')
+  const tip = g('rev-parse', 'HEAD')
+  const singles = [0, 1, 2].map((i) => `test/s${i}.test.mjs`)
+  const many = [0, 1, 2, 3, 4, 5].map((i) => `test/m${i}.test.mjs`)
+  // The three singles are asked first; the six files that passed together at one older commit after them.
+  let calls = 0
+  const ctx = ctxFor(dir, dir, { select: () => ({ unit: { files: calls++ ? [] : [...singles, ...many], why: {} } }) })
+  ctx.ledger.appendResults(green(shas[0], many))
+  singles.forEach((f, i) => ctx.ledger.appendResults(green(shas[i + 1], [f])))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: tip, base: c0, commits: [...shas, tip] }), ctx)
+  assert.equal(calls - 1, 3)
+  assert.equal(v.reused, 8) // the six at shas[0] and the two newest singles; s0's commit gets no slot
+  assert.deepEqual(idsRun(ctx), ['unit::test/s0.test.mjs::ok'])
+})
+
+/** history() with package-lock.json changed first: the selection over the branch is whole from then on. */
+function lockedHistory(lockLast = false) {
+  const { dir, g, c0 } = history()
+  g('checkout', '-q', c0)
+  const commit = (f, body) => (writeFileSync(join(dir, f), body), g('add', '.'), g('commit', '-qm', f), g('rev-parse', 'HEAD'))
+  const c1 = lockLast ? commit('x1.mjs', '1\n') : commit('package-lock.json', '{}\n')
+  const c2 = commit('x2.mjs', '2\n')
+  const c3 = lockLast ? commit('package-lock.json', '{}\n') : commit('x3.mjs', '3\n')
+  return { dir, c0, c1, c2, c3 }
+}
+const both = ['test/a.test.mjs', 'test/b.test.mjs']
+
+test('a whole selection reuses the files that passed after the change that made it whole', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c2, ['test/a.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 1)
+  assert.deepEqual(idsRun(ctx), ['unit::test/b.test.mjs::ok'])
+  assert.equal(v.selection.unit.files, 1)
+  assert.match(v.selection.unit.why, /whole selection, 1 reused/)
+})
+
+test('a whole selection re-runs a file whose newest record is a fail', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c1, ['test/a.test.mjs']))
+  ctx.ledger.appendResults([{ run: 'x', sha: c2, tier: 'commit', id: 'unit::test/a.test.mjs::ok', status: 'fail' }, ...green(c2, ['test/b.test.mjs'])])
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 1)
+  assert.ok(idsRun(ctx).includes('unit::test/a.test.mjs::ok'))
+  assert.ok(!idsRun(ctx).includes('unit::test/b.test.mjs::ok'))
+})
+
+test('a config-driven runner keeps a whole selection whole, whatever passed before', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory()
+  const ctx = phaseCtx(dir)
+  ctx.verify = { suites: [{ ...suite, runner: 'vitest' }], checks: [], timeoutMs: 60000, db: null }
+  ctx.ledger.appendResults(green(c2, both))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 0)
+  assert.equal(v.selection.unit.files, 'all')
+})
+
+test('a whole selection since the pass reuses nothing and the suite runs whole', async () => {
+  const { dir, c0, c1, c2, c3 } = lockedHistory(true)
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(c2, both))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c3, base: c0, commits: [c1, c2, c3] }), ctx)
+  assert.equal(v.reused, 0)
+  assert.equal(v.selection.unit.files, 'all')
+  assert.deepEqual(idsRun(ctx).sort(), both.map((f) => `unit::${f}::ok`))
+})
+
+test('a pass recorded at a commit that is not an ancestor of the request is never used', async () => {
+  const { dir, g, c0, c2 } = history()
+  g('checkout', '-q', '-b', 'other', c0)
+  writeFileSync(join(dir, 'unrelated.txt'), 'x')
+  g('add', '.')
+  g('commit', '-qm', 'side')
+  const side = g('rev-parse', 'HEAD')
+  g('checkout', '-q', c2)
+  const ctx = phaseCtx(dir)
+  ctx.ledger.appendResults(green(side, ['test/a.test.mjs', 'test/b.test.mjs']))
+  const v = await runRequest(req({ id: 'p', tier: 'phase', sha: c2, base: c0, commits: [c2] }), ctx)
+  assert.equal(v.reused, 0)
+})
+
+const fails = (n) => T(`test('${n}', () => assert.equal(1, 2))`)
+const passes = (n) => T(`test('${n}', () => {})`)
+const counting = () => {
+  const o = { leases: 0 }
+  o.lease = async () => (o.leases++, { env: {}, release() {} })
+  return o
+}
+
+test('N failing tests in one suite: judged in one re-run here and one on the target, not 2N', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2'), 'test/c.test.mjs': fails('old3'), 'test/d.test.mjs': passes('ok') }
+  const n = counting()
+  const v = await runRequest(req(), ctxFor(project(files), project(files), { lease: n.lease }))
+  assert.equal(n.leases, 3) // the suite, the failures together here, the failures together on the target
+  assert.equal(v.status, 'green')
+  assert.deepEqual(v.debt.sort(), ['unit::test/a.test.mjs::old1', 'unit::test/b.test.mjs::old2', 'unit::test/c.test.mjs::old3'])
+})
+
+test('known failures trigger no run; only the others are batched', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2') }
+  const n = counting()
+  const ctx = ctxFor(project(files), project(files), { lease: n.lease })
+  ctx.ledger.addKnown('main', ['unit::test/a.test.mjs::old1', 'unit::test/b.test.mjs::old2'])
+  const v = await runRequest(req(), ctx)
+  assert.equal(n.leases, 1)
+  assert.equal(v.known.length, 2)
+  ctx.ledger.removeKnown('main', ['unit::test/b.test.mjs::old2'])
+  n.leases = 0
+  await runRequest(req({ id: 'r2' }), ctx)
+  assert.equal(n.leases, 3)
+})
+
+test('one batch, mixed outcomes: a flake, debt and a regression are each classified right', async () => {
+  const counter = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-c-'))), 'n')
+  const flaky = T(`import { readFileSync, writeFileSync, existsSync } from 'node:fs'\ntest('wobbles', () => { const n = existsSync('${counter}') ? Number(readFileSync('${counter}', 'utf8')) : 0; writeFileSync('${counter}', String(n + 1)); assert.ok(n % 2 === 1) })`)
+  const co = project({ 'test/f.test.mjs': flaky, 'test/d.test.mjs': fails('debt'), 'test/r.test.mjs': fails('reg') })
+  const target = project({ 'test/f.test.mjs': flaky, 'test/d.test.mjs': fails('debt'), 'test/r.test.mjs': passes('reg') })
+  const n = counting()
+  const v = await runRequest(req(), ctxFor(co, target, { lease: n.lease }))
+  assert.equal(n.leases, 3)
+  assert.deepEqual(v.flakes, ['unit::test/f.test.mjs::wobbles'])
+  assert.deepEqual(v.debt, ['unit::test/d.test.mjs::debt'])
+  assert.deepEqual(v.regressions.map((r) => r.id), ['unit::test/r.test.mjs::reg'])
+})
+
+test('a batch that produces no report: every failure in it is broken, not a regression', async () => {
+  const files = { 'test/a.test.mjs': fails('old1'), 'test/b.test.mjs': fails('old2') }
+  const co = project(files)
+  // Neither file exists on the target: missing there, so both are regressions, from one run here.
+  const v = await runRequest(req(), ctxFor(co, project({})))
+  assert.equal(v.regressions.length, 2)
+  // From the 2nd lease on (the re-run here, then the target's) a bad flag: no report for the whole batch.
+  let runs = 0
+  const lease = async () => ({ env: ++runs >= 2 ? { NODE_OPTIONS: '--no-such-flag-xyz' } : {}, release() {} })
+  const w = await runRequest(req({ id: 'r9' }), ctxFor(co, project(files), { lease }))
+  assert.equal(w.regressions.length, 0)
+  assert.equal(w.broken.length, 2)
+})
+
+test('runShell with lines: every matching line of the WHOLE output, not just the tail', async () => {
+  const r = await runShell(`for i in $(seq 1 3000); do echo "  ✗ finding number $i in a long line of lint output"; done; echo tail-line`, { cwd: tmpdir(), lines: '✗' })
+  assert.ok(r.out.length <= 20000)
+  assert.equal(r.lines.size, 3000)
+  assert.ok(r.lines.has('✗ finding number 1 in a long line of lint output'))
+  assert.ok(!r.lines.has('tail-line'))
+})
+
+test('a lines check with more output than the tail keeps is judged on all of it: the same findings on both sides are not a regression', async () => {
+  const co = project({})
+  const target = project({})
+  const many = Array.from({ length: 3000 }, (_, i) => `  inherited finding ${i} with enough text to pass twenty thousand characters ✗`).join('\n') + '\n'
+  writeFileSync(join(co, 'lint.txt'), many + '  shorter branch tail ✗\n')
+  writeFileSync(join(target, 'lint.txt'), many + '  shorter branch tail ✗\n  and one more line only the target prints, which shifts its tail ✗\n')
+  const ctx = ctxFor(co, target, { verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'lint', run: 'cat lint.txt', cwd: '.', compare: 'lines', match: '✗', tiers: ['commit'], needs: [] },
+  ] } })
+  const v = await runRequest(req(), ctx)
+  assert.deepEqual(v.regressions, [])
+  assert.equal(v.status, 'green')
+})
+
+test('runShell with lines: a multi-byte character split across output chunks is matched whole', async () => {
+  // 65,535 bytes, then ✗ (3 bytes): a 64 KB pipe chunk ends inside it.
+  const r = await runShell(`node -e 'process.stdout.write("x".repeat(65535) + "✗ done\\n")'`, { cwd: tmpdir(), lines: '✗ done' })
+  assert.equal(r.lines.size, 1)
+})
+
+// ---- strays: a run reaps what it left running in its checkout ----
+// A zombie is dead: a sleep this test spawned stays one until the event loop reaps it.
+const alive = (pid) => {
+  try {
+    return !execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim().startsWith('Z')
+  } catch {
+    return false
+  }
+}
+// A detached sleep in the cwd, its pid written to the file named: a webServer the runner never stopped.
+// process.getBuiltinModule: the same line runs in a `node -e` and in an ESM test file.
+const leaveSleep = (pidFile, cwd = null) => `const c = process.getBuiltinModule('child_process').spawn('sleep', ['60'], { cwd: ${cwd ? JSON.stringify(cwd) : 'process.cwd()'}, detached: true, stdio: 'ignore' }); c.unref(); process.getBuiltinModule('fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid))`
+const spawnSleep = (cwd) => {
+  const p = spawn('sleep', ['60'], { cwd, detached: true, stdio: 'ignore' })
+  p.unref()
+  return p
+}
+const kill = (pid) => {
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {}
+}
+const pidIn = (f) => Number(readFileSync(f, 'utf8'))
+
+test('a suite that leaves a detached server in the checkout: the run reaps it', async () => {
+  const pidFile = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-'))), 'pid')
+  const co = project({ 'test/a.test.mjs': T(`test('serves', () => { ${leaveSleep(pidFile)} })`) })
+  const v = await runRequest(req(), ctxFor(co, co))
+  assert.equal(v.status, 'green')
+  const pid = pidIn(pidFile)
+  try {
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('a check that times out or fails with a server left behind: reaped either way', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 1500, db: null, checks: [
+    { name: 'red', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'red')))}; exit 1`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    { name: 'slow', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'slow')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+  ] } })
+  await runRequest(req(), ctx)
+  const pids = [pidIn(join(dir, 'red')), pidIn(join(dir, 'slow'))]
+  try {
+    assert.deepEqual(pids.map(alive), [false, false])
+  } finally {
+    pids.forEach(kill)
+  }
+})
+
+test('a cancelled run reaps what it left behind', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const ac = new AbortController()
+  const ctx = ctxFor(co, co, { signal: ac.signal, verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+    { name: 'srv', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'pid')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+  ] } })
+  const run = runRequest(req(), ctx)
+  for (const t0 = Date.now(); !existsSync(join(dir, 'pid')) && Date.now() - t0 < 10000; ) await new Promise((r) => setTimeout(r, 50))
+  await new Promise((r) => setTimeout(r, 100))
+  ac.abort()
+  const v = await run
+  const pid = pidIn(join(dir, 'pid'))
+  try {
+    assert.equal(v.status, 'cancelled')
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('reapStrays never touches a process outside the checkout, nor a sibling whose name only shares a prefix', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
+  mkdirSync(join(root, '1', 'apps'), { recursive: true })
+  mkdirSync(join(root, '10'))
+  const outside = spawnSleep(tmpdir())
+  const sibling = spawnSleep(join(root, '10'))
+  const inside = spawnSleep(join(root, '1', 'apps'))
+  try {
+    const got = reapStrays(join(root, '1'))
+    assert.deepEqual(got, [inside.pid])
+    assert.equal(alive(inside.pid), false)
+    assert.equal(alive(outside.pid), true)
+    assert.equal(alive(sibling.pid), true)
+  } finally {
+    for (const p of [outside, sibling, inside]) kill(p.pid)
+  }
+})
+
+test('reapStrays skips a process with a controlling terminal — a person\'s shell or editor in the checkout — and logs it', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-tty-')))
+  const shell = spawnSleep(root)
+  const stray = spawnSleep(root)
+  const logged = []
+  try {
+    const got = reapStrays(root, { ttyOf: (pid) => (pid === shell.pid ? 'ttys003' : '??'), log: (m) => logged.push(m) })
+    assert.deepEqual(got, [stray.pid])
+    assert.equal(alive(stray.pid), false)
+    assert.equal(alive(shell.pid), true, 'a process on a terminal is never signalled')
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], new RegExp(`\\b${shell.pid}\\b.*ttys003`))
+  } finally {
+    for (const p of [shell, stray]) kill(p.pid)
+  }
+})
+
+test('reapStrays fails closed: a pid whose terminal cannot be read (ps errors or prints nothing) is never signalled', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-nops-')))
+  const unread = spawnSleep(root)
+  const blank = spawnSleep(root)
+  const stray = spawnSleep(root)
+  const logged = []
+  try {
+    const ttyOf = (pid) => (pid === unread.pid ? null : pid === blank.pid ? '' : '??')
+    const got = reapStrays(root, { ttyOf, log: (m) => logged.push(m) })
+    assert.deepEqual(got, [stray.pid])
+    assert.equal(alive(unread.pid), true, 'a pid ps could not inspect is never signalled')
+    assert.equal(alive(blank.pid), true, 'a pid ps said nothing about is never signalled')
+    assert.equal(logged.filter((m) => /could not be read/.test(m)).length, 2)
+  } finally {
+    for (const p of [unread, blank, stray]) kill(p.pid)
+  }
+})
+
+test('reapStrays matches by real path: a checkout named through a symlink still reaps', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-co-')))
+  mkdirSync(join(root, 'real'))
+  execFileSync('ln', ['-s', join(root, 'real'), join(root, 'link')])
+  const inside = spawnSleep(join(root, 'real'))
+  try {
+    assert.deepEqual(reapStrays(join(root, 'link')), [inside.pid])
+    assert.equal(alive(inside.pid), false)
+  } finally {
+    kill(inside.pid)
+  }
+})
+
+test('reapStrays never signals this process, and finds nothing without lsof', () => {
+  // Only this process runs in a fresh directory: never the repo, whose other processes are real.
+  const here = process.cwd()
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-self-')))
+  process.chdir(dir)
+  try {
+    assert.deepEqual(reapStrays(dir), [])
+  } finally {
+    process.chdir(here)
+  }
+  const path = process.env.PATH
+  process.env.PATH = '/nonexistent'
+  try {
+    assert.deepEqual(reapStrays(tmpdir()), [])
+  } finally {
+    process.env.PATH = path
+  }
+})
+
+test('a suite in apps/e2e that leaves a server in the sibling apps/web: the whole slot is reaped', async () => {
+  const pidFile = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-'))), 'pid')
+  const co = project({})
+  mkdirSync(join(co, 'apps', 'e2e', 'test'), { recursive: true })
+  mkdirSync(join(co, 'apps', 'web'))
+  writeFileSync(join(co, 'apps', 'e2e', 'test', 'a.test.mjs'), T(`test('serves', () => { ${leaveSleep(pidFile, join(co, 'apps', 'web'))} })`))
+  const e2e = { ...suite, name: 'e2e', cwd: 'apps/e2e' }
+  const v = await runRequest(req(), ctxFor(co, co, { verify: { suites: [e2e], checks: [], timeoutMs: 60000, db: null } }))
+  const pid = pidIn(pidFile)
+  try {
+    assert.equal(v.status, 'green')
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('the lease is released before the reap, so a release hook can stop its own daemon first', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const atRelease = []
+  const ctx = ctxFor(co, co, {
+    lease: async () => ({ env: {}, release: () => atRelease.push(alive(pidIn(join(dir, 'pid')))) }),
+    verify: { suites: [], timeoutMs: 60000, db: null, checks: [
+      { name: 'srv', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'pid')))}`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    ] },
+  })
+  await runRequest(req(), ctx)
+  const pid = pidIn(join(dir, 'pid'))
+  try {
+    assert.deepEqual(atRelease, [true])
+    assert.equal(alive(pid), false)
+  } finally {
+    kill(pid)
+  }
+})
+
+test('one reap per request run, at its end; a timed-out run is reaped at once, before the next', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
+  const co = project({})
+  const seen = (name, f) => ({ name, run: `if kill -0 $(cat ${f}) 2>/dev/null; then echo alive > ${f}.${name}; else echo gone > ${f}.${name}; fi`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] })
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 1500, db: null, checks: [
+    { name: 'ok', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'ok')))}`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    seen('after-ok', join(dir, 'ok')),
+    { name: 'slow', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'slow')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
+    seen('after-slow', join(dir, 'slow')),
+  ] } })
+  await runRequest(req(), ctx)
+  const pids = [pidIn(join(dir, 'ok')), pidIn(join(dir, 'slow'))]
+  try {
+    assert.equal(readFileSync(join(dir, 'ok.after-ok'), 'utf8').trim(), 'alive')
+    assert.equal(readFileSync(join(dir, 'slow.after-slow'), 'utf8').trim(), 'gone')
+    assert.deepEqual(pids.map(alive), [false, false])
+  } finally {
+    pids.forEach(kill)
+  }
+})
+
+const DB = { url: 'postgres://u@localhost/app' }
+
+test('failures while the test database is unhealthy are not judged: env-broken, never red, nothing re-runs on the target', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  let targetAsked = 0
+  const ctx = ctxFor(co, co, {
+    verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB },
+    pool: { probe: () => 'the test database did not answer SELECT 1: timeout' },
+    targetCheckout: async () => (targetAsked++, co),
+  })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.equal(targetAsked, 0)
+  assert.ok(v.broken.some((b) => b.suite === 'unit' && /1 failing test not judged/.test(b.reason) && /did not answer SELECT 1/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('a healthy test database: failures are judged as before', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  let probes = 0
+  const ctx = ctxFor(co, target, { verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB }, pool: { probe: () => (probes++, null) } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'red')
+  assert.equal(v.regressions.length, 1)
+  assert.ok(probes >= 1)
+})
+
+test('the database going down after a regression was judged turns the verdict env-broken', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  let probes = 0
+  const ctx = ctxFor(co, target, { verify: { suites: [suite], checks: [], timeoutMs: 60000, db: DB }, pool: { probe: () => (++probes === 1 ? null : 'connection refused') } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.deepEqual(v.regressions, [])
+  assert.ok(v.broken.some((b) => /unit::test\/a\.test\.mjs::adds/.test(b.reason) && /connection refused/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('no db configured: no probe', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('adds', () => assert.equal(1, 2))`) })
+  const target = project({ 'test/a.test.mjs': T(`test('adds', () => {})`) })
+  const ctx = ctxFor(co, target, { pool: { probe: () => assert.fail('probed with no db') } })
+  assert.equal((await runRequest(req(), ctx)).status, 'red')
+})
+
+test('a run past verify.run_timeout stops: env-broken naming the limit, not cancelled and not red', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('slow', async () => { await new Promise((r) => setTimeout(r, 20000)) })`) })
+  const ctx = ctxFor(co, co, { verify: { suites: [suite], checks: [], timeoutMs: 60000, runTimeoutMs: 800, db: null } })
+  const t0 = Date.now()
+  const v = await runRequest(req(), ctx)
+  assert.ok(Date.now() - t0 < 15000, 'stopped at the limit, not after the test')
+  assert.equal(v.status, 'env-broken')
+  assert.ok(v.broken.some((b) => /run_timeout/.test(b.reason)), JSON.stringify(v.broken))
+})
+
+test('a cancel is still a cancel when a run limit is set', async () => {
+  const co = project({ 'test/a.test.mjs': T(`test('slow', async () => { await new Promise((r) => setTimeout(r, 20000)) })`) })
+  const ac = new AbortController()
+  setTimeout(() => ac.abort(), 300)
+  const v = await runRequest(req(), ctxFor(co, co, { signal: ac.signal, verify: { suites: [suite], checks: [], timeoutMs: 60000, runTimeoutMs: 60000, db: null } }))
+  assert.equal(v.status, 'cancelled')
+})

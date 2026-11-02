@@ -11,9 +11,20 @@
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 export const CONFIG_PATH = '.codex/builder.md'
 export const CONFIG_PATHS = [CONFIG_PATH, '.builder/config.md', '.claude/builder.md']
+
+/**
+ * The config file this repo uses: the first of CONFIG_PATHS that exists, else null. One resolver for
+ * every reader — loadConfig, the verifier's `verify:` block, the gate migration — so all of them read
+ * the same file: a present but malformed `.codex/builder.md` is an error, never a fall-through to the
+ * next path.
+ */
+export function configPath(root) {
+  return CONFIG_PATHS.find((entry) => existsSync(join(root, entry))) ?? null
+}
 const BUILD_PROFILE_DEFAULTS = ['rush', 'standard', 'thorough']
 
 const unquote = (v) => v.replace(/^["'](.*)["']$/, '$1')
@@ -112,7 +123,7 @@ const LIST_KEYS = ['apps']
  * the one line that fixes it — a missing config is the normal state of a fresh install, not a crash.
  */
 export function loadConfig(root = process.cwd()) {
-  const selectedPath = CONFIG_PATHS.find((entry) => existsSync(join(root, entry))) ?? CONFIG_PATH
+  const selectedPath = configPath(root) ?? CONFIG_PATH
   const path = join(root, selectedPath)
   if (!existsSync(path))
     return {
@@ -187,6 +198,20 @@ export function loadConfig(root = process.cwd()) {
     flaky: flakyOf(fm.flaky),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
+}
+
+/**
+ * The branch the human has checked out in the MAIN worktree — the first entry `git worktree list`
+ * prints. Not `git branch --show-current`: scripts also run inside a feature worktree, where that
+ * answer is the feature's own `builder/<feature>` branch. Null on a detached HEAD or outside git.
+ * The verifier reads it to land into a target that is checked out (verify/checkouts.mjs).
+ */
+export function checkedOutBranch(root) {
+  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' })
+  if (r.status !== 0) return null
+  const main = r.stdout.split('\n\n')[0] ?? ''
+  const ref = main.split('\n').find((l) => l.startsWith('branch '))
+  return ref ? ref.slice('branch '.length).replace(/^refs\/heads\//, '') : null
 }
 
 /**
