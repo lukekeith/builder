@@ -19,9 +19,19 @@ function repo(t) {
 }
 const stashList = root => git(root, 'stash', 'list', '--format=%H %gs');
 function commit(root, file = 'feature.txt', text = 'feature\n') { fs.writeFileSync(path.join(root, file), text); git(root, 'add', '.'); git(root, 'commit', '-m', file); return git(root, 'rev-parse', 'HEAD'); }
+/** The agent walk's sign-off at HEAD, its manifest committed (a registry-only commit). */
+async function signOff(root, name, m) {
+  await run('checkpoint', name, { root, phase: 'signed-off', next: 'Choose a check, then deliver' }); git(m.worktree, 'add', '.');
+  if (git(m.worktree, 'status', '--porcelain')) git(m.worktree, 'commit', '-qm', `${name} signed off`);
+}
+/** Signed off, then a full verify at HEAD. */
+async function verifiedAtHead(root, name, m) {
+  await signOff(root, name, m);
+  await run('checkpoint', name, { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+}
 async function verified(root, name = 'test') {
   const m = await run('start', name, { root }); commit(m.worktree);
-  await run('checkpoint', name, { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') }); return m;
+  await verifiedAtHead(root, name, m); return m;
 }
 function configure(root, extra = '') {
   fs.mkdirSync(path.join(root, '.builder'), { recursive: true });
@@ -60,7 +70,7 @@ test('checkpoint preserves arbitrary manifest fields and verification requires c
 test('prepare asks the merge tier for a held merge; deliver lands exactly the tested merge and records history; cleanup retains evidence', async t => {
   const root = repo(t); const m = await run('start', 'test', { root });
   fs.mkdirSync(m.featurePath, { recursive: true }); fs.writeFileSync(path.join(m.featurePath, 'PLAN.md'), '### Task 1\n### Task 2\n'); commit(m.worktree);
-  await run('checkpoint', 'test', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+  await verifiedAtHead(root, 'test', m);
   const advanced = commit(root, 'other.txt', 'independent\n');
   const p = await run('prepare', 'test', { root }); assert.equal(p.status, 'requested'); assert.match(p.request, /^\S+$/); assert.equal(p.merge.targetHead, advanced); assert.deepEqual(p.overlap, []);
   assert.match(p.nextAction, /^Ready to land on work once the merge tier is green and the walk passed/);
@@ -87,7 +97,9 @@ test('a target that moved after the merge was tested is not landed: the merge is
   const landed = await run('deliver', 'test', { root }); assert.equal(landed.status, 'landed'); assert.equal(git(root, 'rev-parse', `${landed.mergedHead}^1`), moved);
   const root2 = repo(t); const m2 = await verified(root2); const p2 = await run('prepare', 'test', { root: root2 }); assert.equal(waitFor(root2, p2.request), 0);
   const before = git(root2, 'rev-parse', 'work');
-  commit(m2.worktree, 'late.txt'); const late = await run('deliver', 'test', { root: root2 });
+  commit(m2.worktree, 'late.txt');
+  await assert.rejects(run('deliver', 'test', { root: root2 }), /test changed since it was signed off — walk it again and sign off, then deliver/, 'a late code commit is walked again');
+  await signOff(root2, 'test', m2); const late = await run('deliver', 'test', { root: root2 });
   assert.equal(late.status, 'testing', 'a late code commit is tested again before it lands'); assert.match(late.why, /changed since the merge was tested/);
   assert.equal(git(root2, 'rev-parse', 'work'), before, 'nothing landed');
 });
@@ -112,7 +124,7 @@ test('uncommitted changes that do not overlap the feature are no block: it lands
 async function sharedFeature(t, line1 = 'A feature\n') {
   const root = repo(t); commit(root, 'shared.txt', 'a\nb\nc\nd\ne\n');
   const m = await run('start', 'test', { root }); commit(m.worktree, 'shared.txt', `${line1}b\nc\nd\ne\n`); commit(m.worktree, 'added.txt', 'feature adds this\n');
-  await run('checkpoint', 'test', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+  await verifiedAtHead(root, 'test', m);
   return { root, m };
 }
 
@@ -189,15 +201,16 @@ test('prepare refuses a feature not built yet and a dirty one; in-flight origin 
 
 test('a conflict verdict names the files; the target merged into the feature and resolved, the merge is asked again and lands', async t => {
   const root = repo(t); const m = await run('start', 'conflict', { root });
-  commit(m.worktree, 'seed.txt', 'feature version\n'); await run('checkpoint', 'conflict', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+  commit(m.worktree, 'seed.txt', 'feature version\n'); await verifiedAtHead(root, 'conflict', m);
   const target = commit(root, 'seed.txt', 'origin version\n');
   const p = await run('prepare', 'conflict', { root }); assert.equal(waitFor(root, p.request), 4);
   const d = await run('deliver', 'conflict', { root }); assert.equal(d.status, 'conflict'); assert.deepEqual(d.files, ['seed.txt']);
-  assert.match(d.nextAction, /merge work into the feature worktree, resolve those files, commit, verify again, then prepare/);
+  assert.match(d.nextAction, /merge work into the feature worktree, resolve those files, commit, sign off again \(re-walk\), then prepare; the check after is optional/);
   assert.equal(git(root, 'rev-parse', 'HEAD'), target);
   try { git(m.worktree, 'merge', 'work'); } catch { /* the conflict, resolved below */ }
   fs.writeFileSync(path.join(m.worktree, 'seed.txt'), 'combined version\n'); git(m.worktree, 'add', 'seed.txt'); git(m.worktree, 'commit', '--no-edit');
-  await run('checkpoint', 'conflict', { root, phase: 'verified', next: 'Prepare again', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+  await assert.rejects(landFeature(root, 'conflict'), /conflict changed since it was signed off — walk it again and sign off, then deliver/, 'the resolved merge is new code: it is walked again');
+  await signOff(root, 'conflict', m);
   const landed = await landFeature(root, 'conflict'); assert.equal(landed.status, 'landed');
   assert.equal(fs.readFileSync(path.join(root, 'seed.txt'), 'utf8'), 'combined version\n');
   fs.writeFileSync(path.join(m.worktree, 'local.txt'), 'local'); await assert.rejects(run('cleanup', 'conflict', { root }), /Feature worktree must be clean/); assert.ok(fs.existsSync(m.worktree));
@@ -223,10 +236,10 @@ test('registry-only commits after the merge was tested carry it, with no second 
   const d = await run('deliver', 'test', { root }); assert.equal(d.status, 'landed'); assert.equal(d.merge.request, p.request, 'carried, not asked again');
   assert.equal(git(root, 'rev-parse', `${d.mergedHead}^2`), walked); assert.ok(fs.existsSync(path.join(root, 'docs/features/test/walk.md')));
   const root2 = repo(t); const m2 = await verified(root2); const p2 = await run('prepare', 'test', { root: root2 }); waitFor(root2, p2.request);
-  const code = commit(m2.worktree, 'more-code.txt'); await run('checkpoint', 'test', { root: root2, phase: 'verified', next: 'Deliver', verifiedHead: code });
+  const code = commit(m2.worktree, 'more-code.txt'); await verifiedAtHead(root2, 'test', m2);
   const again = await run('deliver', 'test', { root: root2 }); assert.equal(again.status, 'testing'); assert.match(again.why, /changed since the merge was tested/);
   assert.equal(waitFor(root2, again.request), 0); assert.equal((await run('deliver', 'test', { root: root2 })).status, 'landed');
-  assert.equal(git(root2, 'rev-parse', 'work^2'), code);
+  assert.equal(git(root2, 'merge-base', '--is-ancestor', code, 'work'), '');
 });
 test('explicit target captures origin separately and starts from target, with CLI and immutable retries', async t => {
   const root = repo(t); const targetHead = git(root, 'rev-parse', 'HEAD'); git(root, 'branch', 'main');
@@ -250,7 +263,7 @@ test('configured target precedence uses merge_into then explicit base_branch, wi
 test('detached origin can use explicit or configured targets without requiring origin ancestry', async t => {
   const root = repo(t); git(root, 'branch', 'main'); const detachedHead = commit(root, 'detached-only.txt'); git(root, 'checkout', '--detach');
   const m = await run('start', 'detached-explicit', { root, into: 'main' }); assert.equal(m.originBranch, null); assert.equal(m.originHead, detachedHead);
-  commit(m.worktree); await run('checkpoint', m.name, { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
+  commit(m.worktree); await verifiedAtHead(root, m.name, m);
   const d = await landFeature(root, m.name); assert.equal(d.status, 'landed');
   assert.equal(git(root, 'rev-parse', 'HEAD'), detachedHead); assert.equal(git(root, 'rev-parse', 'main'), d.mergedHead);
   configure(root, 'base_branch: main\n'); assert.equal((await run('start', 'detached-config', { root })).targetBranch, 'main');
@@ -446,14 +459,47 @@ test('ship it: record-check skipped is recorded, and deliver lands it as skipped
   const r = await run('record-check', 'test', { root, check: 'skipped' }); assert.equal(r.check.kind, 'skipped');
   const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed'); assert.equal(d.landedCheck, 'skipped'); assert.equal(d.history.row.check, 'skipped');
 });
-test('quick check: recorded at HEAD, carried over registry-only commits, and named on the landing; code after it is not quick-checked', async t => {
+test('quick check: recorded at HEAD, carried over registry-only commits, and named on the landing; code after the sign-off is refused until it is signed off again', async t => {
   const root = repo(t); const m = await signedOff(root);
   const r = await run('record-check', 'test', { root, check: 'quick' }); assert.equal(r.check.kind, 'quick'); assert.equal(r.check.head, git(m.worktree, 'rev-parse', 'HEAD'));
   commit(m.worktree, 'docs/features/test/walk.md', 'walk notes\n');
   const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed'); assert.equal(d.landedCheck, 'quick');
   const root2 = repo(t); const m2 = await signedOff(root2); await run('record-check', 'test', { root: root2, check: 'quick' });
   commit(m2.worktree, 'code-after-check.txt');
-  const d2 = await landFeature(root2, 'test'); assert.equal(d2.status, 'landed'); assert.equal(d2.landedCheck, 'none');
+  await assert.rejects(landFeature(root2, 'test'), /^Error: test changed since it was signed off — walk it again and sign off, then deliver$/);
+  await signOff(root2, 'test', m2);
+  const d2 = await landFeature(root2, 'test'); assert.equal(d2.status, 'landed'); assert.equal(d2.landedCheck, 'none', 'the quick check was on the old code');
+});
+test('what lands is what was signed off: code after the agent walk or a no-walk sign-off is refused, with or without a check; signing off again lands it', async t => {
+  for (const tests of ['walk=risk', 'walk=none']) {
+    const root = repo(t); const m = await signedOff(root); await run('approve', 'test', { root, tests });
+    git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'approved');
+    const s = await run('status', 'test', { root }); assert.equal(s.phase, 'signed-off'); assert.ok(s.signedHead, 'the signed-off commit is recorded');
+    commit(m.worktree, 'docs/features/test/walk.md', 'walk notes\n');
+    const fix = commit(m.worktree, 'fix-after-red-merge.txt');
+    await assert.rejects(run('deliver', 'test', { root }), /test changed since it was signed off — walk it again and sign off, then deliver/);
+    await run('prepare', 'test', { root }); await assert.rejects(run('deliver', 'test', { root }), /changed since it was signed off/, 'a green merge tier does not stand in for the walk');
+    await assert.rejects(run('record-check', 'test', { root, check: 'skipped' }), /changed since it was signed off/);
+    await signOff(root, 'test', m);
+    const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed', d.nextAction); assert.equal(git(root, 'merge-base', '--is-ancestor', fix, 'work'), '');
+  }
+  const root = repo(t); const m = await signedOff(root, 'human');
+  assert.equal((await run('status', 'test', { root })).signedHead, git(m.worktree, 'rev-parse', 'HEAD'), 'a human walk signs off at its own commit');
+  commit(m.worktree, 'after-the-walk.txt');
+  await assert.rejects(run('deliver', 'test', { root }), /human walk report at exact current HEAD/, 'a reserved human walk already pins it, first');
+});
+test('a recorded check is cleared by every checkpoint, and a skip holds only at its own commit', async t => {
+  const root = repo(t); const m = await signedOff(root);
+  await run('record-check', 'test', { root, check: 'skipped' });
+  assert.equal((await run('checkpoint', 'test', { root, phase: 'signed-off', next: 'Signed off again' })).check, null);
+  git(m.worktree, 'add', '.'); if (git(m.worktree, 'status', '--porcelain')) git(m.worktree, 'commit', '-qm', 'signed off again');
+  await run('record-check', 'test', { root, check: 'quick' });
+  assert.equal((await run('checkpoint', 'test', { root, phase: 'built', next: 'Fix' })).check, null, 'a checkpoint to any phase clears it');
+  await signOff(root, 'test', m);
+  const old = git(m.worktree, 'rev-parse', 'HEAD');
+  commit(m.worktree, 'code-after-skip.txt'); await signOff(root, 'test', m);
+  const meta = JSON.parse(fs.readFileSync(metadata(m), 'utf8')); meta.check = { kind: 'skipped', head: old, date: '2026-11-03' }; fs.writeFileSync(metadata(m), JSON.stringify(meta));
+  const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed'); assert.equal(d.landedCheck, 'none', 'a skip at an older commit does not cover new code');
 });
 test('a full verify (the verified checkpoint) lands named full; a human walk still has to cover the code that lands', async t => {
   const root = repo(t); await verified(root); assert.equal((await landFeature(root, 'test')).landedCheck, 'full');

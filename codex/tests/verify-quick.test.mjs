@@ -80,6 +80,17 @@ test('a feature never signed off: the walk is a gap and --skip is refused; a sig
   assert.equal((await run('status', 'test', { root: root2 })).check.kind, 'skipped');
 });
 
+test('a skip holds only at its own commit: after a registry commit it is recorded again; code after the sign-off is a walk gap', async t => {
+  const root = repo(t); const m = await feature(root);
+  assert.equal(quick(root, 'test', '--skip').status, 0);
+  fs.writeFileSync(path.join(m.featurePath, 'walk.md'), 'walk notes\n'); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'walk notes');
+  const again = quick(root, 'test', '--skip'); assert.equal(again.status, 0, again.stderr); assert.match(again.stdout, /^recorded: check skipped — deliver next$/m);
+  assert.equal((await run('status', 'test', { root })).check.head, git(m.worktree, 'rev-parse', 'HEAD'));
+  fs.writeFileSync(path.join(m.worktree, 'fix.txt'), 'fix\n'); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'a fix after sign-off');
+  const r = quick(root, 'test', '--max-wait', '120'); assert.equal(r.status, 1);
+  assert.match(r.stdout, /^✗ walk: test changed since it was signed off at [0-9a-f]{7} — walk it again and sign off$/m);
+});
+
 test('usage: no feature, a bad --max-wait or an unknown feature exit 2', async t => {
   const root = repo(t);
   assert.equal(quick(root).status, 2);
