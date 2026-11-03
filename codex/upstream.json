@@ -1,12 +1,12 @@
 {
-  "commit": "2bdc4cd5ebd94e233d6acf9023206d4a08ffe7b6",
-  "version": "6.1.0",
-  "packageHash": "803377798b68049a30b6c80fd591e337b3404126ac9407e857e180bbda1137bb",
+  "commit": "8fe8672b5e45cb51cc74c4277c06c6ed1f953304",
+  "version": "6.1.1",
+  "packageHash": "ac5d56aad2bb0f98db20ba8622986c505b089b108222b23245c882f787ad1b48",
   "decisions": [
     {
       "file": ".claude-plugin/plugin.json",
       "disposition": "adapted",
-      "reason": "Version 6.1.0; sync finish sets codex/plugin.json to the same version after the Codex tests pass.",
+      "reason": "Version 6.1.1 is aligned by sync finish into codex/plugin.json.",
       "evidence": [
         "codex/plugin.json"
       ]
@@ -14,263 +14,123 @@
     {
       "file": "CHANGELOG.md",
       "disposition": "adapted",
-      "reason": "The 6.1.0 entry (verify is optional after sign-off) is carried as the Codex README's short What's new in 6.1.0 section, in Codex terms (lifecycle deliver, record-check, the merge queue).",
+      "reason": "The 6.1.1 fix is described for Codex users in codex/README.md (What changed).",
       "evidence": [
         "codex/README.md"
       ]
     },
     {
-      "file": "scripts/advance.mjs",
+      "file": "scripts/condense.mjs",
       "disposition": "claude-only",
-      "reason": "Adds the verify-quick / verify-skipped commit presets for Claude's tracked `verify:` manifest line. Codex records a check runtime-only (lifecycle.mjs record-check, like the verified checkpoint) so nothing dirties the tested tree, and Codex excludes advance.mjs (README §Codex adaptation boundaries).",
-      "evidence": []
-    },
-    {
-      "file": "scripts/archive.mjs",
-      "disposition": "adapted",
-      "reason": "Merged + signed off is SHIPPED naming the check that ran (verified / quick-checked / not verified); CLOSED only when never signed off. Codex reads the check from the runtime record (landedCheck for a merge-queue landing, check/verifiedHead for a hand merge); a landing recorded before 6.1.0 was verified.",
+      "reason": "condense --ship is the Claude ship/condense step; Codex delivers through lifecycle deliver, which carries the same refusal.",
       "evidence": [
-        "codex/scripts/archive.mjs",
-        "codex/tests/archive.test.mjs"
+        "codex/scripts/lifecycle.mjs"
       ]
     },
     {
-      "file": "scripts/condense.mjs",
+      "file": "scripts/feature-core.mjs",
       "disposition": "adapted",
-      "reason": "condense --ship now refuses only a never-signed-off feature and its SHIPPED header names the check. Codex has no ship/condense step: the same rule is lifecycle deliver's sign-off assertion (any check or none), the check is recorded as landedCheck and history's check, and archive.mjs writes the header.",
+      "reason": "The sign-off-holds-at-HEAD rule is implemented in Codex lifecycle (signedHead, ancestor + registry-only commits).",
       "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/scripts/history.mjs",
-        "codex/scripts/archive.mjs"
+        "codex/scripts/lifecycle.mjs"
       ]
     },
     {
       "file": "scripts/fleet-core.mjs",
-      "disposition": "adapted",
-      "reason": "Claude's fleet routes a signed-off feature straight to the ship lane with a quick check before it. Codex has no fleet; under --auto or an agent handoff the coordinator runs verify-quick then deliver, gaps noted in the report, never blocking (delivery.md §After sign-off).",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md",
-        "codex/skills/builder/SKILL.md"
-      ]
+      "disposition": "claude-only",
+      "reason": "Fleet lane/park logic, Claude-only.",
+      "evidence": []
     },
     {
       "file": "scripts/fleet.mjs",
-      "disposition": "adapted",
-      "reason": "The fleet's quick check before the ship session and the landing notice naming which check ran. Codex: the handoff runs verify-quick before deliver, and the delivery report names landedCheck (delivery.md step 6).",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "scripts/list-features.mjs",
-      "disposition": "adapted",
-      "reason": "Status's next step after sign-off is the optional check, never a mandatory verify. Codex status reads lifecycle list's nextAction: human-pass now says to choose a check (quick check, ship it or full verify), and resume asks the §After sign-off question for a signed-off feature with no check.",
-      "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/skills/builder/SKILL.md"
-      ]
-    },
-    {
-      "file": "scripts/manifest.mjs",
-      "disposition": "equivalent",
-      "reason": "Shared file copied byte for byte by sync.mjs copy-shared (adds verifyCheck).",
-      "evidence": [
-        "codex/scripts/manifest.mjs"
-      ]
-    },
-    {
-      "file": "scripts/test/archive.test.mjs",
-      "disposition": "adapted",
-      "reason": "Archive tests for SHIPPED naming the check and CLOSED only when never signed off, against Codex runtime records.",
-      "evidence": [
-        "codex/tests/archive.test.mjs"
-      ]
+      "disposition": "claude-only",
+      "reason": "The fleet (re-walk lane, --rewalk-by-agents, loop bound) is Claude-only; Codex has no fleet.",
+      "evidence": []
     },
     {
       "file": "scripts/test/condense.test.mjs",
-      "disposition": "adapted",
-      "reason": "The ship accepting a signed-off feature without READY is Codex's deliver accepting signed-off with quick / skipped / none and refusing a never-signed-off one.",
-      "evidence": [
-        "codex/tests/lifecycle.test.mjs"
-      ]
+      "disposition": "claude-only",
+      "reason": "Tests the Claude-only condense ship.",
+      "evidence": []
+    },
+    {
+      "file": "scripts/test/fixtures/stub-claude.mjs",
+      "disposition": "claude-only",
+      "reason": "Fleet test fixture.",
+      "evidence": []
     },
     {
       "file": "scripts/test/fleet-core.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests Claude's fleet lane routing; Codex has no fleet (its handoff behaviour is skill text, covered by codex/tests/skills.test.mjs).",
+      "reason": "Tests the Claude-only fleet core.",
       "evidence": []
     },
     {
       "file": "scripts/test/fleet.test.mjs",
       "disposition": "claude-only",
-      "reason": "Tests Claude's fleet process; Codex has no fleet.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/list-features.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests Claude's list-features status table; Codex status is lifecycle list, whose new next action is covered in codex/tests/lifecycle.test.mjs.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/skills-consistency.test.mjs",
-      "disposition": "adapted",
-      "reason": "Claude's skill-consistency assertion for the new resume/signoff wording; Codex's skill text is checked in codex/tests/skills.test.mjs (the 6.1.0 test).",
-      "evidence": [
-        "codex/tests/skills.test.mjs"
-      ]
-    },
-    {
-      "file": "scripts/test/tidy-core.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests Claude tidy; repo-wide tidy is excluded from Codex.",
-      "evidence": []
-    },
-    {
-      "file": "scripts/test/tidy.test.mjs",
-      "disposition": "claude-only",
-      "reason": "Tests Claude tidy; repo-wide tidy is excluded from Codex.",
+      "reason": "Tests the Claude-only fleet.",
       "evidence": []
     },
     {
       "file": "scripts/test/verify-quick.test.mjs",
       "disposition": "adapted",
-      "reason": "Quick-check tests against the real verifier: PASS recorded runtime-only and landed as quick, gaps as advice with nothing recorded, the walk gap and --skip refusal for a never-signed-off feature, usage.",
+      "reason": "Covered by codex/tests/verify-quick.test.mjs (code changed since sign-off, stale skip).",
       "evidence": [
         "codex/tests/verify-quick.test.mjs"
       ]
     },
     {
-      "file": "scripts/tidy-core.mjs",
-      "disposition": "claude-only",
-      "reason": "Tidy merges a signed-off feature whatever verify says; repo-wide tidy is excluded from Codex (README §Codex adaptation boundaries).",
-      "evidence": []
-    },
-    {
-      "file": "scripts/tidy.mjs",
-      "disposition": "claude-only",
-      "reason": "Tidy wording for the same change; repo-wide tidy is excluded from Codex.",
-      "evidence": []
+      "file": "scripts/test/verify-run.test.mjs",
+      "disposition": "adapted",
+      "reason": "The same load-tolerant reap tests in the vendored Codex copy.",
+      "evidence": [
+        "codex/tests/verify-run.test.mjs"
+      ]
     },
     {
       "file": "scripts/verify-quick.mjs",
       "disposition": "adapted",
-      "reason": "Ported as codex/scripts/verify-quick.mjs: the same checks (walk, fixes, schema, decisions, obligations, merge tier) each ✓/✗; the feature is named and located through the runtime record, the walk read from the runtime phase and humanHead, the merge tier is the held merge lifecycle prepare asks for (waited on, bounded by --max-wait), and a pass or --skip is recorded runtime-only with lifecycle record-check.",
+      "reason": "Codex verify-quick flags code changed since sign-off in its walk check and records a skip only at its own commit.",
       "evidence": [
-        "codex/scripts/verify-quick.mjs",
-        "codex/scripts/lifecycle.mjs"
-      ]
-    },
-    {
-      "file": "skills/agent-walk/SKILL.md",
-      "disposition": "adapted",
-      "reason": "An agent sign-off is followed by the optional check, not a mandatory verify. Codex: a passed agent walk (or walk=none) is recorded with checkpoint --phase signed-off, which is all deliver needs (delivery.md Record the sign-off).",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/agent/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Agents quick-check instead of verifying: the agent offer lines (offer.mjs), the Codex SKILL.md Agent option and the delivery.md --auto/handoff rule.",
-      "evidence": [
-        "codex/scripts/offer.mjs",
-        "codex/tests/offer.test.mjs",
-        "codex/skills/builder/SKILL.md",
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/archive/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Archive's confirmation text: SHIPPED names the check; CLOSED only for never signed off.",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/build/SKILL.md",
-      "disposition": "adapted",
-      "reason": "walk → sign-off → an optional check → ship wording; Codex route list, lifecycle line and build-here next action.",
-      "evidence": [
-        "codex/skills/builder/SKILL.md",
-        "codex/skills/builder/references/execution.md"
+        "codex/scripts/verify-quick.mjs"
       ]
     },
     {
       "file": "skills/fleet/SKILL.md",
-      "disposition": "adapted",
-      "reason": "The fleet quick-checks a signed-off feature and lands it, gaps noted. Codex has no fleet; the same rule for --auto/handoff is in delivery.md §After sign-off.",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/help/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Help card wording (quick check · optional verify). Codex has no help skill; README What's new and SKILL.md lifecycle line carry it.",
-      "evidence": [
-        "codex/README.md",
-        "codex/skills/builder/SKILL.md"
-      ]
+      "disposition": "claude-only",
+      "reason": "Fleet skill text, Claude-only.",
+      "evidence": []
     },
     {
       "file": "skills/resume/AGENT-MODE.md",
       "disposition": "adapted",
-      "reason": "Agent mode quick-checks before the ship, gaps never blocking: delivery.md --auto/handoff line.",
+      "reason": "Codex delivery guide: after an agent or no-walk sign-off the agent walk runs again without asking (at most twice); after a human walk it asks.",
       "evidence": [
         "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/resume/REFERENCE.md",
-      "disposition": "adapted",
-      "reason": "Manifest verify values QUICK/SKIPPED and the check named on SHIPPED: Codex records check/landedCheck in the runtime record (persistence.md).",
-      "evidence": [
-        "codex/skills/builder/references/persistence.md"
       ]
     },
     {
       "file": "skills/resume/SKILL.md",
       "disposition": "adapted",
-      "reason": "§After sign-off's one picker (Quick check (Recommended) · Ship it · Full verify) with the choices explained above it, the GAPS follow-up picker, and the resume route to it.",
+      "reason": "Same rule in the Codex delivery guide and lifecycle next actions: sign off again (re-walk), then prepare.",
       "evidence": [
         "codex/skills/builder/references/delivery.md",
-        "codex/skills/builder/SKILL.md"
+        "codex/scripts/lifecycle.mjs"
       ]
     },
     {
       "file": "skills/ship/SKILL.md",
       "disposition": "adapted",
-      "reason": "The ship refuses only a never-signed-off feature and names the check. Codex has no ship step: deliver's rule and landedCheck.",
+      "reason": "Codex deliver refuses a feature changed since it was signed off (signedHead), registry commits allowed.",
       "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/skills/builder/references/delivery.md"
-      ]
-    },
-    {
-      "file": "skills/signoff/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Sign-off's next step is the choice, never a mandatory verify: human-pass's next action and profiles.md's human-walk paragraph.",
-      "evidence": [
-        "codex/scripts/lifecycle.mjs",
-        "codex/skills/builder/references/profiles.md"
+        "codex/scripts/lifecycle.mjs"
       ]
     },
     {
       "file": "skills/tidy/SKILL.md",
       "disposition": "claude-only",
-      "reason": "Tidy wording; repo-wide tidy is excluded from Codex.",
+      "reason": "/builder:tidy is Claude-only.",
       "evidence": []
-    },
-    {
-      "file": "skills/verify/SKILL.md",
-      "disposition": "adapted",
-      "reason": "Verify is the optional full check after sign-off: delivery.md §Full verify (optional), persistence.md.",
-      "evidence": [
-        "codex/skills/builder/references/delivery.md",
-        "codex/skills/builder/references/persistence.md"
-      ]
     }
   ],
   "verification": "node --test codex/tests/*.test.mjs"
