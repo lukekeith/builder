@@ -51,12 +51,13 @@ facts, and the config is the project.**
 ## The order (md and lg)
 
 ```
-design → (align) → audit → [decisions] → plan → [go-ahead] → build → 🔒 walk + sign-off → verify → ship
-              ↑ prototype mode only     one app per phase, the producer before its consumers ↑
+design → (align) → audit → [decisions] → plan → [go-ahead] → build → 🔒 walk + sign-off → (check) → ship
+              ↑ prototype mode only     one app per phase, the producer before its consumers ↑   ↑ optional: quick check · skip · full verify
 ```
 
 **Why the walk precedes the verdict:** a human spots in seconds what a suite takes minutes to
-discover; the merge tier runs beside the walk, and verify reads both.
+discover; the merge tier runs beside the walk, and the check after sign-off reads both. That check is
+optional (§After sign-off) — nothing refuses a PR, ship or merge for want of `verify: READY`.
 
 **Why one app per phase:** the phase tier waits on one app, so a two-app phase's wait covers
 neither cleanly; and consumers built against an unverified contract are how one of them ships broken
@@ -125,12 +126,12 @@ only one of them converts. `<builder>/scripts/list-features.mjs` marks a convert
 | `state: planned` with a go-ahead, or `state: building` | `/builder:build --path <folder>` — it resumes from the ledger, not from memory |
 | `state: built` **and** SPEC `## Fixes` has an open `- [ ]` | the walk found problems — §Working `## Fixes`, then re-walk what changed. A PROBLEMS or PARTIAL verdict moves neither `state:` nor `walk:`, so the open task IS the signal |
 | `state: built`, `walk: none`, no open `## Fixes` row | 🔒 stop — §The walk. **Under `--agent-walk`:** `/builder:agent-walk --path <folder>` instead |
-| `state: built`, `walk: agent-pass …` (walked before agents signed off) | `/builder:agent-walk --path <folder>` — it writes the agent sign-off from the passing round it already has, then verify |
-| `state: signed-off` **and** `verify: none` | `/builder:verify --path <folder>` |
-| `verify: INCOMPLETE` | §Working `## Fixes`, then `/builder:verify --path <folder>` again — scoped |
-| `verify: READY` **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
-| `verify: READY`, `hold: none`, `pr: none` | §Ship — under `--agent-walk`, §Ship in agent mode |
-| `verify: READY` **and** `walk: agent-pass …` **under `--agent-walk`**, whatever `pr:` says | §Ship in agent mode |
+| `state: built`, `walk: agent-pass …` (walked before agents signed off) | `/builder:agent-walk --path <folder>` — it writes the agent sign-off from the passing round it already has, then the quick check and ship |
+| `state: signed-off` **and** `walk: agent-pass …` **under `--agent-walk`**, whatever `verify:` or `pr:` says | §Ship in agent mode — the quick check, then ship; **never** the full `/builder:verify` |
+| `state: signed-off` **and** `verify: none` | §After sign-off — the three choices, none required |
+| `verify: INCOMPLETE` | §Working `## Fixes`, then `/builder:verify --path <folder>` again — scoped. The human may ship as is instead (§After sign-off's **Ship it**) |
+| signed off (any `verify:`) **and** the manifest's `head` is already an ancestor of the remote base branch | it shipped inside someone else's PR — **no second PR**. §Ship's first check |
+| `verify: READY`, `QUICK …` or `SKIPPED …`, `hold: none`, `pr: none` | §Ship |
 | `hold:` set | 🛑 **parked** — the verifier still runs; nothing lands. Nothing pushes; the hold is the human's to lift |
 | `pr: #N` is a **draft** (`gh pr view <N> --json isDraft`) **and** `walk:` now carries a human name **and** the manifest has an `agent-walk:` line (`on` or `off` — it was agent-walked) | the human signed off an agent-verified feature. Ask once — **Mark PR ready** / **Not yet** — then `gh pr ready <N>`. **Not yet** → fall through to the next row that fits. Never under `--agent-walk` |
 | `walk: agent-pass …`, not under `--agent-walk` | agent-signed-off, not human-tested. Say so, and offer the two ways on: the fleet finishes it (`/builder:fleet <feature>` — ship, and the merge into its target branch), or the human tests it and types `/builder:signoff --path <folder> <their words>`, which hands it back to them |
@@ -220,7 +221,7 @@ touches neither the SPEC header nor the PR lock.
    human needs, taken from the config's §Environment landmines.
 3. **Wait.** Say plainly what has and has not been human-tested, and on which app.
 4. The verdict is recorded by **`/builder:signoff --path <folder> <your words>`** — the human types
-   it, and a sign-off written by an agent is void. PASS condenses the folder and unlocks verify;
+   it, and a sign-off written by an agent is void. PASS condenses the folder and offers §After sign-off;
    PASS with `--hold "<reason>"` records the sign-off and parks the PR; problems become `## Fixes`
    tasks and the lock stays closed.
 
@@ -248,6 +249,7 @@ there.
 `/builder:signoff` — tick each `- [ ]` as it lands, so the row that routed you here stops firing.
 Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --path <folder>` again —
 **scoped**, per its §A re-verify is SCOPED — plus a re-walk of any signed-off surface the fix changed.
+Tasks from a quick check's gaps end with the quick check again (§After sign-off).
 
 Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>)`) end with REFERENCE
 §Walk readiness again, then `/builder:agent-walk --path <folder>` — never a human re-walk request.
@@ -260,7 +262,7 @@ Under `--agent-walk`, the re-walk after a verify INCOMPLETE is the scoped re-ver
 leg for the surface the fix changed — no human is asked, and no new agent-walk round is started.
 
 Rows from the **merge tier** (tagged `(merge tier, <sha>)` — it merges the target itself) are worked
-the same way, then verify again (§Ship in agent mode).
+the same way, then the check that found them again — the quick check under `--agent-walk`.
 
 ## Programs (`tier: program`)
 
@@ -350,6 +352,35 @@ handed to `/builder:brainstorm` verbatim.
 On selection, continue at Step 1 with that row's `path`. A row on another branch → switch to it
 first (`git switch <branch>`) if the tree is clean; otherwise stop and name the command.
 
+## After sign-off
+
+Verify is optional once signed off — the build's reviews and the walk already checked it, and the
+full `/builder:verify` spends many tokens on that again. **Nothing refuses a PR, commit, ship, merge
+or archive for want of `verify: READY`.** Explain the three ways above **one** AskUserQuestion,
+recommended first (REFERENCE §Before a picker), and run the pick in that turn:
+
+```
+cert-tags is signed off. Checking it again is optional — your walk and the build's reviews already covered it.
+- Quick check (recommended) — one script, no agents: your sign-off, open fixes, schema rows, open decisions,
+  the spec's obligations and the full test run on this commit, each ✓ or ✗. Costs almost nothing; a ✗ is advice.
+- Ship it — no check; straight on to the PR.
+- Full verify — agents also read contract parity, house rules and the spec against the code. Thorough,
+  but it spends many tokens on what the build and your walk already checked.
+```
+Picker *How do you want to check <feature> before the PR?* — **Quick check (Recommended)** · **Ship it** · **Full verify**.
+
+- **Quick check** — `node <builder>/scripts/verify-quick.mjs <folder> --max-wait 540` (Bash timeout
+  600000); print its `✓`/`✗` lines as they came. **PASS** recorded `verify: QUICK <date> <sha>` and
+  committed → §Ship. **GAPS** recorded nothing: say each `✗` in plain words, then one picker — **Fix
+  them** · **Ship it anyway** · **Full verify**, recommended first: **Fix them** when a `✗` is the
+  merge tier or an open `## Fixes` row (something is broken), **Ship it anyway** otherwise. Fix them →
+  each gap a `- [ ]` row under `## Fixes` naming its app (an OPEN decision: `/builder:revise`),
+  §Working `## Fixes`, then the quick check again. Merge tier `still running` → the same call again.
+- **Ship it** (or Ship it anyway) — `verify-quick.mjs <folder> --skip` records `verify: SKIPPED <date>` and commits → §Ship.
+- **Full verify** — `/builder:verify --path <folder>`: READY → §Ship; INCOMPLETE → its fixes.
+
+On a hold it runs locally; §Ship waits for the hold. Under `--agent-walk` nobody is asked (AGENT-MODE §Ship in agent mode).
+
 ## Ship
 
 0. **Did this code already ship inside another PR?**
@@ -363,7 +394,7 @@ first (`git switch <branch>`) if the tree is clean; otherwise stop and name the 
    PR body>"`. The body is REFERENCE §The review, written from the condensed `SPEC.md`: the SPEC
    header's sign-off line; what changes for users; added · changed · removed; the data, migrations
    named; what changes in each app (a released app's transition); how it was tested — the walk, by
-   whom, and the verify verdict; then `Spec: <registry>/<feature>/SPEC.md` as a reference line.
+   whom, and which check ran after it (verify READY, the quick check, or none); then `Spec: <registry>/<feature>/SPEC.md` as a reference line.
    🔴 **Print the body in full in the chat first** — the human approves what the PR will say, never a
    title and a path.
    🔴 Only on a sign-off with no hold, and only on a branch that is not the base. **Ask once first**
@@ -422,7 +453,7 @@ released artifact nobody can hot-fix.
    Under `--no-dev-env` the fleet's build lane also ends the run at the audit's and the go-ahead's
    commits — a fresh context per stage (AGENT-MODE §`--agent-walk`).
 4. **One-line resume footer** naming the command that does the NEXT work — not always
-   `/builder:resume`: after the build it is `/builder:signoff`, then `/builder:verify`, then the PR.
+   `/builder:resume`: after the build it is `/builder:signoff`, then §After sign-off's choice, then the PR.
    On a hold there is no command, because the pipeline is parked on the human's call.
 
    ```

@@ -68,17 +68,18 @@ ever goes up.
 
 ```
 spec → audit (once) → open questions → plan → go-ahead → build (one app at a time)
-     → tested → verify (reads the merge tier) → merged, or a PR after your sign-off
+     → tested → an optional check (quick, or a full verify) → merged, or a PR after your sign-off
 ```
 
 **Who tests it.** After you approve the spec the hand-off offers:
-1. **Agent** — "go" picks it. Agents plan, build, try it in the running app, verify, and merge it
+1. **Agent** — "go" picks it. Agents plan, build, try it in the running app, quick-check, and merge it
    into your main branch on your machine (`merge_into` picks another), recorded as
    `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed; no PR.
 2. **Step by step** — the same, pausing for you at the open questions and the plan's go-ahead.
 3. **In this session** — built here, then 🔒 it stops for **your walk**: you try it in the running
-   app and type `/builder:signoff`. Only then come verify and **one PR for the whole feature**. A
-   plugin hook blocks `gh pr create` until you have signed off.
+   app and type `/builder:signoff`. Then you choose a quick check, no check, or a full verify — none
+   is required — and **one PR for the whole feature**. A plugin hook blocks `gh pr create` until you
+   have signed off.
 
 **Several apps in one repo.** Each app gets its own phase, the one that provides an API before the
 ones that use it, and each phase runs that app's own tests. The shared contract between apps freezes
@@ -116,8 +117,8 @@ once. "go, but …" is a change, not a go.
 
 **spec** `SPEC.md`, what and why, kept after it ships · **manifest** `MANIFEST.md`, where it stands ·
 **plan** `PLAN.md`, the build step by step · **walk** trying it yourself in the running app ·
-**sign-off** your verdict after the walk · **verify** the final full check · **park** stopped for
-a decision only you can make, with what and why.
+**sign-off** your verdict after the walk · **quick check** the one-call check after it · **verify**
+the optional full check · **park** stopped for a decision only you can make, with what and why.
 
 ## FAQ
 

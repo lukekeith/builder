@@ -11,7 +11,8 @@ index is cut out of the SPEC, and git history **is** the full process.
 
 Invocation: **`/builder:ship --path <folder>`**. Without `--path`,
 `node <builder>/scripts/list-features.mjs --json` offers the eligible rows: manifests at
-`state: signed-off` (sign-off moment) and rows whose `pr:` is open and `verify: READY` (ship moment).
+`state: signed-off` (sign-off moment) and signed-off rows whose `pr:` is open (ship moment) —
+whatever `verify:` says: verify is optional after sign-off.
 Several finished folders at once — shipped, merged, abandoned — are `/builder:archive`'s.
 
 **Two moments, one file** — REFERENCE §Condense says what each writes; the procedures below say how.
@@ -73,29 +74,32 @@ gets written), standalone with the fields read as step 1 says:
 (the default subject is the standalone one).
 
 ```
-📍 <feature>: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path <folder> · or say go
+📍 <feature>: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: quick check, ship it, or full verify — your choice · or say go
 ```
 
-**Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — never
-ask the human to paste it. REFERENCE §Continuing on "go" has the exceptions.
+**Continuing:** a bare "go", "yes" or "proceed" in reply runs `/builder:resume --path <folder>`
+yourself, which opens with that choice (resume §After sign-off) — never ask the human to paste it.
+REFERENCE §Continuing on "go" has the exceptions.
 
 The middle clause names what actually went. A converted folder names `§Plan index stripped` alone, and
 says its existing phase docs stay.
 
 ## At ship
 
-**Precondition: verify is READY and the branch's PR is open.** `gh pr view --json number,state` says
+**Precondition: signed off and the branch's PR is open.** Verify is optional after sign-off — a
+READY, a quick check (`QUICK`), a skip (`SKIPPED`) or none all ship; the header names which ran.
+`gh pr view --json number,state` says
 `OPEN`; `<pr>` is that number — the manifest's `pr:` line, or the header note's PR when the feature
 rode another PR. When none names one, **ask** rather than searching for a plausible PR. **The ship is
 written ON the open PR, so the merge carries it** — after the merge there is no branch to commit on,
 and a header flip would need a second PR of its own. ⛔ **Never write `SHIPPED` on a branch with no
-PR, or on a PR whose verify is not READY** — that line is what every skill and `list-features.mjs`
+PR, or on a feature never signed off** — that line is what every skill and `list-features.mjs`
 treat as DONE, and a feature marked DONE runs no step again. If the PR is later closed unmerged,
 revert the ship commit.
 
 **Agent form** (`walk: agent-pass …`, header `> 🤖 AGENT SIGNED OFF …`, run by resume §Ship in
-agent mode with `--into <branch>`): there is **no PR** — the precondition is `verify: READY` and the
-target branch already merged into this one; the fleet merges the result into `<branch>` once this
+agent mode with `--into <branch>`): there is **no PR** — the precondition is the agent sign-off (the quick check
+ran before this, its gaps noted, not blocking) and the target branch already merged into this one; the fleet merges the result into `<branch>` once this
 commit lands. Without `--agent-walk` and `--into`, refuse in one line: nobody has tested it, and the
 human either hands it back to agents (`/builder:fleet <feature>`) or tests it and runs
 `/builder:signoff --path <folder>`.
@@ -104,9 +108,10 @@ human either hands it back to agents (`/builder:fleet <feature>`) or tests it an
 target, a PR merged before this ran — `gh pr view` says `MERGED`): the code is in the target and
 there is no open PR to write on, so the ship is written **on the target itself**, naming the commit
 that brought it in — the PR's merge commit (`gh pr view --json mergeCommit`), else the merge. The
-precondition is `verify: READY` and that commit in the target; the header is
-`> ✅ SHIPPED <date> — merged <sha> · <ticket> · <who signed off>`. A feature that never reached
-READY is not shipped this way — `/builder:archive` closes it as `CLOSED — not walked`.
+precondition is the sign-off and that commit in the target; the header is
+`> ✅ SHIPPED <date> — merged <sha> · <ticket> · <who signed off> · <check>` (`verified`,
+`quick-checked` or `not verified`). A feature never signed off is not shipped this way —
+`/builder:archive` closes it as `CLOSED — not walked`.
 
 ⛔ **Archive collision check, before step 1.** If `<registry>/_archive/<feature>` already exists — or,
 when this ship will flip the program header (this is the program's last child),
@@ -117,13 +122,14 @@ header flip would leave a half-shipped tree.
 1. **Flip the header's first line** to, exactly:
 
    ```markdown
-   > ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"
+   > ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>" · <check>
    ```
 
-   The sign-off's name and words carry over verbatim; the ticket comes from the manifest, read
-   **before** step 2 removes it. A `🛑 PR HELD` line is dropped — the hold was lifted by the ship.
-   **Agent form**, the line is instead:
-   `> ✅ SHIPPED <date> — merged into <branch> · <ticket> · 🤖 agent signed off (walk round <n>), not human-tested`.
+   The sign-off's name and words carry over verbatim; the ticket and `<check>` come from the
+   manifest, read **before** step 2 removes it — `<check>` is which ran after sign-off: `verified`
+   (`verify: READY`), `quick-checked` (`QUICK`) or `not verified` (skipped, or none). A `🛑 PR HELD`
+   line is dropped — the hold was lifted by the ship. **Agent form**, the line is instead:
+   `> ✅ SHIPPED <date> — merged into <branch> · <ticket> · 🤖 agent signed off (walk round <n>), not human-tested · <check>`.
 
 2. **`git rm MANIFEST.md`** — its `state:` has arrived, and the SPEC header now carries the state.
 
@@ -171,9 +177,9 @@ At most one, as one line a newcomer could act on. None qualifies → nothing, an
 The collision check, steps 1–5 and the commit are one call, after you have confirmed the precondition:
 `node <builder>/scripts/condense.mjs <folder> --ship --pr <N>` — agent form
 `node <builder>/scripts/condense.mjs <folder> --ship --into <branch>` — already merged
-`node <builder>/scripts/condense.mjs <folder> --ship --merged <sha>`. It refuses unless `verify:
-READY` (with `--into`, until `<branch>` is merged into this branch; with `--merged`, unless `<sha>` is
-in the target and this branch), removes the workspace itself
+`node <builder>/scripts/condense.mjs <folder> --ship --merged <sha>`. It refuses a feature with no
+sign-off header (with `--into`, until `<branch>` is merged into this branch; with `--merged`, unless `<sha>` is
+in the target and this branch) — never for want of `verify: READY`, removes the workspace itself
 (no `rm -rf`), and an interrupted ship — header flipped, manifest gone, folder already moved — is
 finished by running it again.
 

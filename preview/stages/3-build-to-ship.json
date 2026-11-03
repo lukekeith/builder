@@ -306,7 +306,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), quick-check it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
@@ -314,9 +314,9 @@
         }
       ],
       "stamp": {
-        "hash": "3776c4ec42ac",
-        "version": "5.5.0",
-        "date": "2026-10-31"
+        "hash": "3a9e52813946",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -354,7 +354,7 @@
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: built here, not walked — test it yourself. When you want the full finish:\n   /builder:resume --path docs/features/cert-tags (walk → sign-off → verify → ship)\n```"
+          "text": "```\n📍 cert-tags: built here, not walked — test it yourself. When you want the full finish:\n   /builder:resume --path docs/features/cert-tags (walk → sign-off → an optional check → ship)\n```"
         },
         {
           "role": "note",
@@ -362,9 +362,9 @@
         }
       ],
       "stamp": {
-        "hash": "19227264fe98",
-        "version": "5.5.0",
-        "date": "2026-10-31"
+        "hash": "b2a312739580",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -393,12 +393,12 @@
         },
         {
           "role": "claude",
-          "text": "cert-tags is built and waiting for your walk.\n\n```\nverify phase 9c41e7a feat/ACME-412-cert-tags: GREEN · 1 flake · 2 known · 5 reused · 61s\n```\n\nThe phase tier is green on HEAD. (Not the merge tier — that runs beside your walk, or verify requests it.)\n\nReadiness: `ready: yes 2026-10-22 9c41e7a` at HEAD — no migration or restart-class change since, so the dev environment is running this build.\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\n**What has been human-tested:** nothing yet. Agents built it, the verifier ran every test the commits could reach and the agents smoked api, web and the mobile simulator — none of that is your walk. It lives in two places: walk web **and** mobile.\n\nWhen you've walked it, record the verdict yourself — `/builder:signoff --path docs/features/cert-tags <your verdict in your own words>`. PASS condenses the folder and unlocks verify; `--hold \"<reason>\"` signs off but parks the PR; problems become `## Fixes` tasks and the lock stays closed.",
+          "text": "cert-tags is built and waiting for your walk.\n\n```\nverify phase 9c41e7a feat/ACME-412-cert-tags: GREEN · 1 flake · 2 known · 5 reused · 61s\n```\n\nThe phase tier is green on HEAD. (Not the merge tier — that runs beside your walk, or verify requests it.)\n\nReadiness: `ready: yes 2026-10-22 9c41e7a` at HEAD — no migration or restart-class change since, so the dev environment is running this build.\n\n```markdown\n# cert-tags — walk\n\n## Before you start\n- Dev stack: `pnpm dev` (api :3000, web :5173). Mobile: `pnpm -F mobile ios` — start Metro first, and use the simulator: it reaches http://localhost:3000, a physical phone does not.\n- Sign in as an owner (owner@acme.test). A second account (viewer@acme.test) owns nothing — use it for the refusal checks.\n- The api dev server does not reload on a Prisma client change — restart it after any `prisma generate`.\n\n## web — http://localhost:5173/certificates\n1. [risk] Owner view → Tags → add \"Urgent\", then \"urgent\": the second is refused as a duplicate. Remove a tag, reload: it stays removed.\n2. [risk] Delete the tag \"Urgent\" from the tag editor: its chips disappear from every certificate.\n3. [risk] Toolbar → `ListFilters` → Tag → pick \"Urgent\" and \"Expiring\": certificates with either tag; the URL carries `?tag=…&tag=…`; no match shows the empty state.\n4. Chips on each list row, coloured by tag (no colour = neutral grey), wrapping at narrow widths.\n\n## mobile — iOS simulator, Certificates tab\n1. [risk] Filter sheet → pick a tag: the list narrows; after deleting that tag on web and pulling to refresh, the filter clears — no stale list.\n2. [risk] Tag on web, pull to refresh: the new chip shows on the row and on the owner view.\n3. Chips fit the row on the smallest simulator (iPhone SE); VoiceOver reads \"Tag: Urgent\".\n\n## api — exercised through web and mobile\n1. [risk] As viewer@acme.test, `PATCH /certificates/:id` and `PUT /certificates/:id/tags` on an owner's certificate are refused (403).\n```\n\n**What has been human-tested:** nothing yet. Agents built it, the verifier ran every test the commits could reach and the agents smoked api, web and the mobile simulator — none of that is your walk. It lives in two places: walk web **and** mobile.\n\nWhen you've walked it, record the verdict yourself — `/builder:signoff --path docs/features/cert-tags <your verdict in your own words>`. PASS condenses the folder and offers the check after it — a quick check, ship it, or a full verify, none required; `--hold \"<reason>\"` signs off but parks the PR; problems become `## Fixes` tasks and the lock stays closed.",
           "inferred": true
         },
         {
           "role": "claude",
-          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (3 phases across api, web, mobile, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), quick-check it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "user",
@@ -411,7 +411,7 @@
         },
         {
           "role": "note",
-          "text": "On the walk, 2 or 'step by step' answers with the command to type — it never runs /builder:signoff. 'go', 1 or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), verifies and merges locally — Agent is option 1 wherever it is offered. Without an agent_walk: block only Step by step is left, and the footer is the single line '📍 cert-tags: built … — next: 🔒 your walk → /builder:signoff --path …'."
+          "text": "On the walk, 2 or 'step by step' answers with the command to type — it never runs /builder:signoff. 'go', 1 or 'agent' runs /builder:agent --path …, which walks, signs off (as 🤖, not human), quick-checks and merges locally — Agent is option 1 wherever it is offered. Without an agent_walk: block only Step by step is left, and the footer is the single line '📍 cert-tags: built … — next: 🔒 your walk → /builder:signoff --path …'."
         },
         {
           "role": "note",
@@ -419,9 +419,9 @@
         }
       ],
       "stamp": {
-        "hash": "da281fd8f16f",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "2e3a883accca",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -480,16 +480,16 @@
         }
       ],
       "stamp": {
-        "hash": "c4816eeb760e",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "053a154af40c",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
       "id": "signoff-pass",
       "skill": "signoff",
       "title": "/builder:signoff — PASS, condensed",
-      "when": "You walked it and it works: you type /builder:signoff with your verdict; it records the sign-off, condenses the folder and unlocks verify.",
+      "when": "You walked it and it works: you type /builder:signoff with your verdict; it records the sign-off, condenses the folder and offers the check after it — none required.",
       "source": "skills/signoff/SKILL.md §What gets written",
       "sources": [
         "skills/signoff/SKILL.md §Procedure",
@@ -513,22 +513,22 @@
         },
         {
           "role": "claude",
-          "text": "**The conditions this sign-off is made under**\n- Readiness: `ready: yes 2026-10-22 9c41e7a` — no migration since.\n- HEAD `9c41e7a` = the manifest's `head`: the verifier's latest verdict is for what you tested.\n- Working tree clean — mobile's two commits were approved in the build, so you walked committed code.\n- Least exercised: api's viewer refusal (walk api 1) — your verdict doesn't mention it.\n\n**Apps exercised:** web ✓ · mobile ✓ · api through both — your words name web and mobile.\n\n**Recorded — PASS**\n- MANIFEST: `walk: Luke Keith 2026-10-23` · `state: signed-off` · `head: 9c41e7a` · `hold: none` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- One commit — `docs(ACME-412): cert-tags signed off`. Its body carries what you exercised on which app and the caveats above.",
+          "text": "**The conditions this sign-off is made under**\n- Readiness: `ready: yes 2026-10-22 9c41e7a` — no migration since.\n- HEAD `9c41e7a` = the manifest's `head`: the verifier's latest verdict is for what you tested.\n- Working tree clean — mobile's two commits were approved in the build, so you walked committed code.\n- Least exercised: api's viewer refusal (walk api 1) — your verdict doesn't mention it.\n\n**Apps exercised:** web ✓ · mobile ✓ · api through both — your words name web and mobile.\n\n**Recorded — PASS**\n- MANIFEST: `walk: Luke Keith 2026-10-23` · `state: signed-off` · `head: 9c41e7a` · `hold: none` · `verify: none` · `next: /builder:resume --path docs/features/cert-tags`\n- SPEC header:\n\n  > ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- One commit — `docs(ACME-412): cert-tags signed off`. Its body carries what you exercised on which app and the caveats above.",
           "inferred": true
         },
         {
           "role": "claude",
-          "text": "Full spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n```\n📍 cert-tags: signed off + condensed — what next?\n   1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here (next: verify — the merge tier on HEAD, then the PR), pausing for you before the PR opens\n   Reply 1 or 2 — \"go\" is 1.\n```"
+          "text": "Full spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n```\n📍 cert-tags: signed off + condensed — what next?\n   1. Agent — sent to agents who quick-check it and merge it on their own; you get the review of what landed\n   2. Step by step — carry on here (next: you choose — a quick check, ship it as is, or a full verify — then the PR), pausing for you before the PR opens\n   Reply 1 or 2 — \"go\" is 1.\n```"
         },
         {
           "role": "note",
-          "text": "disable-model-invocation: only the human can run /builder:signoff — a sign-off whose commit didn't come from this command is void. A verdict that covers one app of a multi-app feature is PARTIAL, not PASS. --hold \"<reason>\" adds '> 🛑 PR HELD (<date>): \"<reason>\"' and the footer '— 🛑 held; local steps only —'."
+          "text": "disable-model-invocation: only the human can run /builder:signoff — a sign-off whose commit didn't come from this command is void. A verdict that covers one app of a multi-app feature is PARTIAL, not PASS. --hold \"<reason>\" adds '> 🛑 PR HELD (<date>): \"<reason>\"' and the footer '— 🛑 held; local steps only —'. Without an agent_walk: block there is no footer to pick from: after the Full spec and Pick up lines, the three choices after sign-off are explained and asked right away (resume §After sign-off)."
         }
       ],
       "stamp": {
-        "hash": "ee0eec1802a2",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "bdeeecdee542",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -555,7 +555,7 @@
           "options": [
             {
               "label": "PASS",
-              "description": "It works on every app you walked — records the sign-off, condenses the folder, unlocks verify."
+              "description": "It works on every app you walked — records the sign-off, condenses the folder; then you choose how to check it, if at all."
             },
             {
               "label": "PASS + HOLD the PR",
@@ -600,9 +600,9 @@
         }
       ],
       "stamp": {
-        "hash": "4671e964716a",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "a3f81102ccb0",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -630,11 +630,11 @@
         },
         {
           "role": "tool",
-          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs) — cert-tags · signed-off · next: /builder:verify"
+          "text": "⏺ Bash(node <builder>/scripts/list-features.mjs) — cert-tags · signed-off · next: /builder:resume"
         },
         {
           "role": "claude",
-          "text": "Signed off by Luke Keith 2026-10-23 — a PASS, so the plan has done its job. §Plan cut by its heading (§Testing, §Findings and `## Fixes` untouched), the header line written under the title, `PLAN.md` removed; `list-features` shows cert-tags `signed-off`, not done. Committed `docs(ACME-412): condense cert-tags at sign-off`.\n\n```\n📍 cert-tags: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: /builder:verify --path docs/features/cert-tags · or say go\n```",
+          "text": "Signed off by Luke Keith 2026-10-23 — a PASS, so the plan has done its job. §Plan cut by its heading (§Testing, §Findings and `## Fixes` untouched), the header line written under the title, `PLAN.md` removed; `list-features` shows cert-tags `signed-off`, not done. Committed `docs(ACME-412): condense cert-tags at sign-off`.\n\n```\n📍 cert-tags: condensed at sign-off — §Plan index stripped · PLAN.md removed — next: quick check, ship it, or full verify — your choice · or say go\n```",
           "inferred": true
         },
         {
@@ -643,16 +643,138 @@
         }
       ],
       "stamp": {
-        "hash": "89a6706e6c4f",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "70c3ba169fa1",
+        "version": "6.0.0",
+        "date": "2026-11-03"
+      }
+    },
+    {
+      "id": "after-signoff",
+      "skill": "resume",
+      "title": "After sign-off — quick check, ship it, or full verify",
+      "when": "You signed off and picked Step by step: one choice, none required. The quick check is one script call — a ✓ or ✗ per item, no agents — and on PASS it goes straight on to the PR.",
+      "source": "skills/resume/SKILL.md §After sign-off",
+      "sources": [
+        "skills/resume/SKILL.md §Step 1 — Detect state"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "2"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags) · Read(docs/features/cert-tags/MANIFEST.md) — state: signed-off · verify: none · hold: none"
+        },
+        {
+          "role": "claude",
+          "text": "cert-tags is signed off. Checking it again is optional — your walk and the build's reviews already covered it.\n\n- **Quick check** (recommended) — one script, no agents: your sign-off, open fixes, schema rows, open decisions, the spec's obligations and the full test run on this commit, each ✓ or ✗. Costs almost nothing; a ✗ is advice.\n- **Ship it** — no check; straight on to the PR.\n- **Full verify** — agents also read contract parity, house rules and the spec against the code. Thorough, but it spends many tokens on what the build and your walk already checked.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "How do you want to check cert-tags before the PR?",
+          "header": "Check",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Quick check (Recommended)",
+              "description": "One script, no agents — a ✓ or ✗ per item, near-zero tokens. A ✗ is advice; you choose what to do with it."
+            },
+            {
+              "label": "Ship it",
+              "description": "No check — records verify: SKIPPED and goes on to the PR (asked once before it opens)."
+            },
+            {
+              "label": "Full verify",
+              "description": "/builder:verify — the deep check by agents. Many tokens; READY or INCOMPLETE with evidence."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "user",
+          "text": "Quick check"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/verify-quick.mjs docs/features/cert-tags --max-wait 540)"
+        },
+        {
+          "role": "claude",
+          "text": "```\nquick check — cert-tags at e3b5a10\n✓ walk: signed off by Luke Keith 2026-10-23 at 9c41e7a\n✓ fixes: none open\n✓ schema: 3 rows, each with a Status\n✓ decisions: none OPEN (7 ruled)\n✓ obligations: check-obligations: every obligation discharged\n✓ merge tier: verify merge 9c41e7a feat/ACME-412-cert-tags: GREEN · 1 flake · 2 known · 6 reused · 412s\nQUICK CHECK: PASS\nmanifest: verify=QUICK 2026-10-23 e3b5a10 · next=/builder:resume --path docs/features/cert-tags · head=e3b5a10\ncommit: 4d81b9c docs(ACME-412): cert-tags — quick check passed\n```\n\nQuick check passed — every item ✓, recorded as `verify: QUICK` and committed. The merge tier ran on 9c41e7a and still stands: the sign-off since touched only the registry. On to the PR.",
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Ship it runs `verify-quick.mjs <folder> --skip` instead — `verify: SKIPPED`, then the PR. Full verify runs /builder:verify (the next stages in this path). Without an agent_walk: block signoff shows this explanation and picker itself, right after the sign-off. On a hold it runs locally and the PR waits for the hold to lift. Under --agent-walk nobody is asked: the quick check runs and the feature ships, gaps noted, not blocking."
+        }
+      ],
+      "stamp": {
+        "hash": "76e91f096df3",
+        "version": "6.0.0",
+        "date": "2026-11-03"
+      }
+    },
+    {
+      "id": "quick-check-gaps",
+      "skill": "resume",
+      "title": "Quick check — gaps are advice",
+      "when": "A quick check with a ✗: nothing is recorded, each gap is said in plain words, and you choose — fix them, ship it anyway, or a full verify. None blocks.",
+      "source": "skills/resume/SKILL.md §After sign-off",
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "user",
+          "text": "Quick check"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node <builder>/scripts/verify-quick.mjs docs/features/cert-tags --max-wait 540)"
+        },
+        {
+          "role": "claude",
+          "text": "```\nquick check — cert-tags at e3b5a10\n✓ walk: signed off by Luke Keith 2026-10-23 at 9c41e7a\n✗ fixes: 1 open under ## Fixes — first: mobile: chip text truncates on iPhone SE (from your walk notes)\n✓ schema: 3 rows, each with a Status\n✓ decisions: none OPEN (7 ruled)\n✓ obligations: check-obligations: every obligation discharged\n✓ merge tier: verify merge 9c41e7a feat/ACME-412-cert-tags: GREEN · 1 flake · 2 known · 6 reused · 412s\nQUICK CHECK: GAPS (1)\n```\n\nOne gap, nothing recorded: a fix is still open under `## Fixes` — the mobile chip text truncating on the iPhone SE. Everything else holds, the full test run included.\n\n- **Fix them** (recommended — an open fix means something is still broken) — fixed here with its test, then the quick check again.\n- **Ship it anyway** — a gap is advice; it records `verify: SKIPPED` and goes on to the PR, the fix left for later.\n- **Full verify** — the deep check by agents, if you want more than the script before deciding.",
+          "inferred": true
+        },
+        {
+          "role": "picker",
+          "question": "The quick check found 1 gap on cert-tags — what now?",
+          "header": "Gaps",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Fix them (Recommended)",
+              "description": "Work the open ## Fixes row here, test first, then run the quick check again."
+            },
+            {
+              "label": "Ship it anyway",
+              "description": "Records verify: SKIPPED and goes on to the PR; the fix stays under ## Fixes."
+            },
+            {
+              "label": "Full verify",
+              "description": "/builder:verify — the deep check by agents; many tokens."
+            }
+          ],
+          "inferred": true
+        },
+        {
+          "role": "note",
+          "text": "Fix them is recommended first when a ✗ is the merge tier or an open ## Fixes row — something is broken; for a gap that is only a record (a schema row's Status, say), Ship it anyway comes first. A merge tier still running after --max-wait is a gap too: the same call again picks it up."
+        }
+      ],
+      "stamp": {
+        "hash": "2738c30f5d75",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
       "id": "verify-ready",
       "skill": "verify",
-      "title": "/builder:verify — READY",
-      "when": "After the sign-off: the merge tier's verdict on HEAD plus the checks only a reading can make — consumer parity, house rules, spec parity — ending in a READY or INCOMPLETE verdict with evidence.",
+      "title": "/builder:verify — READY (Full verify)",
+      "when": "Optional — the Full verify choice after sign-off, for when a deep check is worth its tokens: the merge tier's verdict on HEAD plus the checks only a reading can make — consumer parity, house rules, spec parity — ending in a READY or INCOMPLETE verdict with evidence.",
       "source": "skills/verify/SKILL.md §The checklist (all must hold for READY)",
       "sources": [
         "skills/verify/SKILL.md §The verdict"
@@ -661,7 +783,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "go"
+          "text": "Full verify"
         },
         {
           "role": "tool",
@@ -698,9 +820,9 @@
         }
       ],
       "stamp": {
-        "hash": "bdd373baa078",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "c6810013c7a2",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -722,20 +844,20 @@
         },
         {
           "role": "note",
-          "text": "The merge tier's regression becomes a Fixes row naming its test and the commit that introduced it; flakes and known failures never fail it. The re-verify after the fixes is scoped: by app first, and the cross-app walk re-runs only if the diff can change what a consumer does (a contract row here — so mobile's leg runs again)."
+          "text": "The merge tier's regression becomes a Fixes row naming its test and the commit that introduced it; flakes and known failures never fail it. The re-verify after the fixes is scoped: by app first, and the cross-app walk re-runs only if the diff can change what a consumer does (a contract row here — so mobile's leg runs again). An INCOMPLETE never blocks — verify is optional: \"ship it as is\" records verify: SKIPPED (verify-quick.mjs --skip) and goes on to the PR, the ## Fixes rows left for later."
         }
       ],
       "stamp": {
-        "hash": "8ea2b43d87e9",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "dc4dcb77b02d",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
       "id": "ship-open-pr",
       "skill": "resume",
       "title": "Opening the PR — asked once",
-      "when": "Verify is READY with no hold: resume's §Ship asks once before anything outward-facing, even when Step by step brought you here.",
+      "when": "Signed off with no hold — quick-checked here (verify is optional: READY, QUICK or SKIPPED all come here): resume's §Ship asks once before anything outward-facing, even when Step by step brought you here.",
       "source": "skills/resume/SKILL.md §Ship",
       "sources": [
         "skills/resume/REFERENCE.md §Continuing on \"go\"",
@@ -744,12 +866,8 @@
       "feature": "cert-tags",
       "turns": [
         {
-          "role": "user",
-          "text": "2"
-        },
-        {
-          "role": "tool",
-          "text": "⏺ Skill(builder:resume --path docs/features/cert-tags)"
+          "role": "note",
+          "text": "Straight on from the quick check's PASS, in the same turn. After a Full verify READY, Step by step (2) brings you here the same way; after Ship it, --skip recorded verify: SKIPPED and it comes here too."
         },
         {
           "role": "tool",
@@ -757,7 +875,7 @@
         },
         {
           "role": "claude",
-          "text": "cert-tags is verified READY, no hold, no PR yet. A local review first is on offer — the config's §Companion skills names `/code-review`; say so and it runs before the PR. Skipping it is fine: you walked it and verify swept the house rules.\n\nThis is what the PR will say:\n\n> **feat(ACME-412): cert-tags**\n>\n> ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n>\n> **What changes for users** — owners tag their certificates and filter the certificate list by tag on web and mobile; picking several tags shows the certificates carrying all of them. Tags are added, renamed and deleted on the web; deleting one takes it off every certificate after a confirm naming the count.\n>\n> **Added** — tags on certificates · the tag filter (web, mobile) · the tag editor on the owner view (web) · tag endpoints in api\n> **Changed** — the certificate list takes a repeatable tag filter · renaming a certificate now checks the caller owns it (it didn't)\n> **Removed** — nothing\n>\n> **Data** — one additive migration, `20261022093000_add_tags`: a tag table and a tag–certificate link. Existing certificates are untouched; it rolls back by dropping the two tables.\n>\n> **Apps**\n> - **api** — `GET`/`POST /tags`, `DELETE /tags/:id`, `PUT /certificates/:id/tags`, repeatable `?tag=` on `GET /certificates`, `tags` on the list response; owner guard on `PATCH /certificates/:id`\n> - **web** — tag chips, the `ListFilters` tag filter, the tag editor on the owner view\n> - **mobile** — tag chips on the list and owner view, the tag filter sheet; the released 3.2 app is unaffected (the new field is additive)\n>\n> **Tested** — walked by Luke Keith on web and the iOS simulator; verify READY: the merge tier green on every app, consumer parity with mobile, the cross-app e2e suite.\n>\n> Spec: docs/features/cert-tags/SPEC.md",
+          "text": "cert-tags is signed off and quick-checked (`verify: QUICK 2026-10-23 e3b5a10`), no hold, no PR yet. A local review first is on offer — the config's §Companion skills names `/code-review`; say so and it runs before the PR. Skipping it is fine: you walked it and the quick check read the merge tier green.\n\nThis is what the PR will say:\n\n> **feat(ACME-412): cert-tags**\n>\n> ✅ SIGNED OFF 2026-10-23 — 9c41e7a · by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n>\n> **What changes for users** — owners tag their certificates and filter the certificate list by tag on web and mobile; picking several tags shows the certificates carrying all of them. Tags are added, renamed and deleted on the web; deleting one takes it off every certificate after a confirm naming the count.\n>\n> **Added** — tags on certificates · the tag filter (web, mobile) · the tag editor on the owner view (web) · tag endpoints in api\n> **Changed** — the certificate list takes a repeatable tag filter · renaming a certificate now checks the caller owns it (it didn't)\n> **Removed** — nothing\n>\n> **Data** — one additive migration, `20261022093000_add_tags`: a tag table and a tag–certificate link. Existing certificates are untouched; it rolls back by dropping the two tables.\n>\n> **Apps**\n> - **api** — `GET`/`POST /tags`, `DELETE /tags/:id`, `PUT /certificates/:id/tags`, repeatable `?tag=` on `GET /certificates`, `tags` on the list response; owner guard on `PATCH /certificates/:id`\n> - **web** — tag chips, the `ListFilters` tag filter, the tag editor on the owner view\n> - **mobile** — tag chips on the list and owner view, the tag filter sheet; the released 3.2 app is unaffected (the new field is additive)\n>\n> **Tested** — walked by Luke Keith on web and the iOS simulator; quick check passed: the merge tier green on every app (the cross-app e2e suite included), no open fixes, every schema row landed, no open decision. No full verify — it is optional.\n>\n> Spec: docs/features/cert-tags/SPEC.md",
           "inferred": true
         },
         {
@@ -772,7 +890,7 @@
             },
             {
               "label": "Not yet",
-              "description": "Nothing is pushed; the manifest stays at verified and /builder:resume offers this again."
+              "description": "Nothing is pushed; the manifest stays as it is and /builder:resume offers this again."
             }
           ],
           "inferred": true
@@ -809,16 +927,16 @@
         }
       ],
       "stamp": {
-        "hash": "e364f051b599",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "1e700bec6292",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
       "id": "ship-shipped",
       "skill": "ship",
       "title": "SHIPPED — written on the open PR",
-      "when": "The PR is open and verify is READY: ship flips the header, removes the manifest and workspace, and archives the folder — on the PR branch, so the merge carries it.",
+      "when": "The PR is open on a signed-off feature (verify is optional — the header names which check ran): ship flips the header, removes the manifest and workspace, and archives the folder — on the PR branch, so the merge carries it.",
       "source": "skills/ship/SKILL.md §At ship",
       "sources": [
         "skills/resume/REFERENCE.md §Condense"
@@ -843,7 +961,7 @@
         },
         {
           "role": "claude",
-          "text": "Shipped on PR #57 — the header now reads:\n\n> ✅ SHIPPED 2026-10-23 — PR #57 · ACME-412 · signed off by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\"\n\n`MANIFEST.md` removed, the workspace `.builder/cert-tags` removed, the folder archived — one commit on the PR branch, `docs(ACME-412): cert-tags shipped in PR #57`, so it reaches `main` exactly when the merge does. If the PR closes unmerged, revert that commit.\n\nJira isn't touched: reporting back to ACME-412 is yours, with the command the config's §Companion skills names. Merging #57 is your call.",
+          "text": "Shipped on PR #57 — the header now reads:\n\n> ✅ SHIPPED 2026-10-23 — PR #57 · ACME-412 · signed off by Luke Keith: \"works on web and mobile — tagging, the duplicate check and the filter all behave; chips look right on the phone\" · quick-checked\n\n`MANIFEST.md` removed, the workspace `.builder/cert-tags` removed, the folder archived — one commit on the PR branch, `docs(ACME-412): cert-tags shipped in PR #57`, so it reaches `main` exactly when the merge does. If the PR closes unmerged, revert that commit.\n\nJira isn't touched: reporting back to ACME-412 is yours, with the command the config's §Companion skills names. Merging #57 is your call.",
           "inferred": true
         },
         {
@@ -852,13 +970,13 @@
         },
         {
           "role": "note",
-          "text": "Never SHIPPED on a branch with no PR or a verify that isn't READY — that line is what every step reads as DONE. Agent form: '> ✅ SHIPPED <date> — merged into main · ACME-412 · 🤖 agent signed off (walk round <n>), not human-tested', no PR."
+          "text": "Never SHIPPED on a branch with no PR or a feature never signed off — never refused for want of verify READY — that line is what every step reads as DONE. Agent form: '> ✅ SHIPPED <date> — merged into main · ACME-412 · 🤖 agent signed off (walk round <n>), not human-tested · quick-checked', no PR. The last part is which check ran: verified, quick-checked or not verified."
         }
       ],
       "stamp": {
-        "hash": "22886ec6396e",
-        "version": "5.5.0",
-        "date": "2026-11-01"
+        "hash": "42e5b3781d0a",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -896,22 +1014,22 @@
         },
         {
           "role": "claude",
-          "text": "**AGENT-PASS** — cert-tags, agent walk round 1 · 11 pass · 0 fail · 0 unverifiable. Evidence: `.builder/cert-tags/agent-walk/round-1/`.\n\n```\nsha: 9c41e7a\n```\n\nUnder `walk=risk`: every `[risk]` item and the cross-app section — items 4 (web chips) and 7 (mobile chips on iPhone SE) carry no `[risk]` and were not walked.\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | web | [risk] add/duplicate/remove tags on the owner view | PASS | 01-web-tag-editor.png · 02-web-dup-refused.png |\n| 2 | web | [risk] delete a tag — chips gone everywhere | PASS | 03-web-delete-tag.png · server.log L412–418 |\n| 3 | web | [risk] ListFilters: two tags, URL carries ?tag=…&tag=…, empty state | PASS | 04-web-filter.png · 05-web-empty.png |\n| 5 | mobile | [risk] filter sheet narrows; clears after the tag is deleted | PASS | 07-mobile-filter.png · 08-mobile-after-delete.png |\n| 6 | mobile | [risk] new tag shows after pull to refresh | PASS | 09-mobile-refresh.png |\n| 8 | api | [risk] viewer refused on PATCH and PUT tags (403) | PASS | server.log L501–506 |\n| E1 | cross-app | owner tags a certificate \"Urgent\" on web | PASS | 11-e1.png |\n| E2 | cross-app | web filter by Urgent lists it | PASS | 12-e2.png |\n| E3 | cross-app | mobile row shows the Urgent chip after refresh | PASS | 13-e3.png |\n| E4 | cross-app | mobile filter by Urgent lists the same certificates | PASS | 14-e4.png |\n| E5 | cross-app | deleting Urgent on web removes it on mobile | PASS | 15-e5.png · server.log L620–624 |\n\n`verdict: PASS`\n\n**Recorded — the agent's sign-off, not a human's:**\n- MANIFEST: `walk: agent-pass 2026-10-23 9c41e7a` · `state: signed-off` · `verify: none` · `next: /builder:verify --path docs/features/cert-tags`\n- SPEC header:\n\n  > 🤖 AGENT SIGNED OFF 2026-10-23 — 9c41e7a · agent walk round 1 · not human-tested · evidence: .builder/cert-tags/agent-walk/round-1/\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- Committed `docs(ACME-412): cert-tags agent signed off (not human-tested)`",
+          "text": "**AGENT-PASS** — cert-tags, agent walk round 1 · 11 pass · 0 fail · 0 unverifiable. Evidence: `.builder/cert-tags/agent-walk/round-1/`.\n\n```\nsha: 9c41e7a\n```\n\nUnder `walk=risk`: every `[risk]` item and the cross-app section — items 4 (web chips) and 7 (mobile chips on iPhone SE) carry no `[risk]` and were not walked.\n\n| # | App | Item | Result | Evidence |\n|---|---|---|---|---|\n| 1 | web | [risk] add/duplicate/remove tags on the owner view | PASS | 01-web-tag-editor.png · 02-web-dup-refused.png |\n| 2 | web | [risk] delete a tag — chips gone everywhere | PASS | 03-web-delete-tag.png · server.log L412–418 |\n| 3 | web | [risk] ListFilters: two tags, URL carries ?tag=…&tag=…, empty state | PASS | 04-web-filter.png · 05-web-empty.png |\n| 5 | mobile | [risk] filter sheet narrows; clears after the tag is deleted | PASS | 07-mobile-filter.png · 08-mobile-after-delete.png |\n| 6 | mobile | [risk] new tag shows after pull to refresh | PASS | 09-mobile-refresh.png |\n| 8 | api | [risk] viewer refused on PATCH and PUT tags (403) | PASS | server.log L501–506 |\n| E1 | cross-app | owner tags a certificate \"Urgent\" on web | PASS | 11-e1.png |\n| E2 | cross-app | web filter by Urgent lists it | PASS | 12-e2.png |\n| E3 | cross-app | mobile row shows the Urgent chip after refresh | PASS | 13-e3.png |\n| E4 | cross-app | mobile filter by Urgent lists the same certificates | PASS | 14-e4.png |\n| E5 | cross-app | deleting Urgent on web removes it on mobile | PASS | 15-e5.png · server.log L620–624 |\n\n`verdict: PASS`\n\n**Recorded — the agent's sign-off, not a human's:**\n- MANIFEST: `walk: agent-pass 2026-10-23 9c41e7a` · `state: signed-off` · `verify: none` · `next: /builder:resume --path docs/features/cert-tags`\n- SPEC header:\n\n  > 🤖 AGENT SIGNED OFF 2026-10-23 — 9c41e7a · agent walk round 1 · not human-tested · evidence: .builder/cert-tags/agent-walk/round-1/\n\n- Condensed: §Plan index stripped · PLAN.md removed\n- Committed `docs(ACME-412): cert-tags agent signed off (not human-tested)`",
           "inferred": true
         },
         {
           "role": "claude",
-          "text": "```\n📍 cert-tags: agent signed off (round 1, not human-tested) + condensed — next: /builder:verify --path docs/features/cert-tags · or say go\n```"
+          "text": "```\n📍 cert-tags: agent signed off (round 1, not human-tested) + condensed — next: the quick check, then ship — /builder:resume --path docs/features/cert-tags · or say go\n```"
         },
         {
           "role": "note",
-          "text": "Not numbered: no human reads a footer under --agent-walk, and the run goes straight on — verify, then ship and a local merge into main (no PR, no push). A failing round writes '- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)' fixes instead; five failed rounds in a row park it for a human walk. No review is printed here: the run is headless and nobody reads it — the fleet's report shows the review of what landed, and under human=yes your walk does."
+          "text": "Not numbered: no human reads a footer under --agent-walk, and the run goes straight on — the one-call quick check (never the full verify; a gap is noted, not blocking), then ship and a local merge into main (no PR, no push). A failing round writes '- [ ] <app>: <item> — expected <x>, saw <y> (agent walk round <n>)' fixes instead; five failed rounds in a row park it for a human walk. No review is printed here: the run is headless and nobody reads it — the fleet's report shows the review of what landed, and under human=yes your walk does."
         }
       ],
       "stamp": {
-        "hash": "04d4fb13c881",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "d69eea6056ee",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     }
   ]

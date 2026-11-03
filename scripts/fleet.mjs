@@ -31,7 +31,7 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, rea
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
-import { parseManifest, isSet } from './manifest.mjs'
+import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
@@ -623,7 +623,7 @@ if (flag('--dry-run')) {
   console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
-  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}${SPLIT ? ' · verify and walk fixes in the build lane, away from the walk env' : ''}`)
+  console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}${SPLIT ? ' · the quick check and walk fixes in the build lane, away from the walk env' : ''}`)
   if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
   for (const f of fresh) {
     const mf = parseManifest(readManifest(ROOT, f))
@@ -963,7 +963,7 @@ function noteFacts(f, feature) {
   const mf = readManifest(f.worktree, feature)
   if (mf == null) return
   const plan = readDoc(f.worktree, feature, 'PLAN.md')
-  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null, review: readReviewFacts(f.worktree, feature) ?? f.facts?.review ?? null }
+  f.facts = { size: plan == null ? (f.facts?.size ?? null) : planSize(plan), ...planFacts(parseManifest(mf)), verify: verifyCheck(parseManifest(mf).verify), walk: readWalkFacts(f.worktree, feature) ?? f.facts?.walk ?? null, review: readReviewFacts(f.worktree, feature) ?? f.facts?.review ?? null }
 }
 
 /** The final review's findings and the fix rounds, from the workspace (reviewFacts) — null before the build reviewed anything. */
@@ -1000,7 +1000,7 @@ function landingFacts(f, feature) {
   const base = f.worktree && existsSync(f.worktree) ? f.worktree : ROOT
   const plan = readDoc(base, feature, 'PLAN.md')
   const mf = readManifest(base, feature)
-  return { size: plan == null ? null : planSize(plan), ...planFacts(mf == null ? {} : parseManifest(mf)) }
+  return { size: plan == null ? null : planSize(plan), ...planFacts(mf == null ? {} : parseManifest(mf)), verify: mf == null ? null : verifyCheck(parseManifest(mf).verify) }
 }
 
 /**
@@ -1020,7 +1020,7 @@ function noteStages(f, feature) {
 function archiveRow(feature, facts, thisRun = true) {
   clearPause(feature)
   const f = fleet.features[feature]
-  const { size, tests, profile, walk } = facts ?? landingFacts(f, feature)
+  const { size, tests, profile, walk, verify } = facts ?? landingFacts(f, feature)
   const sum = (k) => (f.timing ?? []).reduce((a, t) => a + (t.tokens?.[k] ?? 0), 0)
   appendArchive(ROOT, {
     feature,
@@ -1042,6 +1042,8 @@ function archiveRow(feature, facts, thisRun = true) {
     quality: f.facts?.review ?? null,
     ...wallFacts(f.stages, f.timing),
     walk: walk ?? f.facts?.walk ?? null,
+    // which check it had after sign-off (verifyCheck): verified · quick-checked · not verified
+    verify: verify ?? f.facts?.verify ?? null,
     landedAt: new Date().toISOString(),
   })
   delete fleet.features[feature]
@@ -1074,6 +1076,8 @@ async function landNow(feature) {
   if (parkIfPaused(f, feature)) return 'parked'
   noteFacts(f, feature)
   const facts = landingFacts(f, feature)
+  // No manifest reading carried the check (an older fleet.json): the SHIPPED header names it.
+  if (facts.verify == null) facts.verify = /^> ✅ SHIPPED .* · (verified|quick-checked|not verified)\s*$/m.exec(readSpec(f.worktree, feature) ?? '')?.[1] ?? null
   noteStages(f, feature)
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null

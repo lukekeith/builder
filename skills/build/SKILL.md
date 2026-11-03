@@ -426,12 +426,12 @@ rules, §Environment landmines, §Companion skills) and `PLAN.md`, then:
 
 ~~~
 📍 <feature>: built here, not walked — test it yourself. When you want the full finish:
-   /builder:resume --path <folder> (walk → sign-off → verify → ship)
+   /builder:resume --path <folder> (walk → sign-off → an optional check → ship)
 ~~~
 
 ## 🔒 This skill never opens a PR
 
-Not per phase, not at the end. The PR comes after the human's walk + sign-off + verify. Don't call the
+Not per phase, not at the end. The PR comes after the human's walk + sign-off (verify after it is optional). Don't call the
 branch "verified" or "ready to merge" while only agents have exercised it. It also never writes to
 the ticket system, never deploys, and never edits the design source.
 
@@ -464,7 +464,7 @@ Pick up where you left off any time: /builder:resume --path <folder>
   (if this session ends, or to spec several features before building any of them)
 
 📍 <feature>: built (<M> phases across <apps>, <T> tasks) — what next?
-   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed
+   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), quick-check it and merge it; you get the review of what landed
    2. Step by step — you walk it yourself in the running app, then sign it off here
    Reply 1 or 2 — "go" is 1.
 ```

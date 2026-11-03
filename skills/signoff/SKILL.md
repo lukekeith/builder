@@ -90,7 +90,7 @@ After the commit, stop the walk env `/builder:resume` started — end its `agent
 then `agent_walk.stop` in `<worktree>` with the same env — since the fleet's walk lane starts its own.
 Then, whatever the verdict, hand it back to the fleet from the main checkout:
 `node <builder>/scripts/fleet.mjs <feature> --detach --into <target>` (the manifest's `target:`) —
-on PASS it verifies and lands it; on PROBLEMS or PARTIAL the agents work the `## Fixes`, re-walk, and
+on PASS it quick-checks and lands it; on PROBLEMS or PARTIAL the agents work the `## Fixes`, re-walk, and
 park it for your walk again. The footer is
 `📍 <feature>: <verdict> — handed back to the fleet — next: /builder:status`.
 
@@ -98,8 +98,8 @@ park it for your walk again. The footer is
 
 | Outcome | MANIFEST.md | SPEC.md | Commit subject |
 |---|---|---|---|
-| **PASS** | `walk: <name YYYY-MM-DD>` · `state: signed-off` · `head: <sha>` · `hold: none` · `verify: none` — a pre-walk verdict is stale · `next: /builder:verify --path <folder>` | the header line; the §Plan index stripped and `PLAN.md` removed — §The condense | `docs(<key>): <feature> signed off` |
-| **PASS + HOLD** | the same, with `hold: "<reason>"` and `next: 🛑 held — local steps only: /builder:verify --path <folder>` | the header line **plus** the `🛑 PR HELD` line | `docs(<key>): <feature> signed off` |
+| **PASS** | `walk: <name YYYY-MM-DD>` · `state: signed-off` · `head: <sha>` · `hold: none` · `verify: none` — a pre-walk verdict is stale · `next: /builder:resume --path <folder>` (the choice after sign-off) | the header line; the §Plan index stripped and `PLAN.md` removed — §The condense | `docs(<key>): <feature> signed off` |
+| **PASS + HOLD** | the same, with `hold: "<reason>"` and `next: 🛑 held — local steps only: /builder:resume --path <folder>` | the header line **plus** the `🛑 PR HELD` line | `docs(<key>): <feature> signed off` |
 | **PROBLEMS** | `state` and `walk:` unchanged · `next: /builder:resume --path <folder>` | each finding a `- [ ]` under `## Fixes`, in their words, **each naming the app it is in** | `docs(<key>): <feature> — walk found <n> problems` |
 | **PARTIAL** | the same as PROBLEMS | each unexercised item a `- [ ]` under `## Fixes`, **grouped by app**; **no header line** | `docs(<key>): <feature> — walk partial, <n> items owed` |
 
@@ -118,7 +118,7 @@ together; after a crash, re-run the same command — it finishes what's missing 
 # PASS / PASS + HOLD — the condense (§The condense) does the SPEC; the manifest keys ride along
 node <builder>/scripts/condense.mjs <folder> --signoff human --name "<name>" --words "<their words, verbatim>" \
   [--hold "<reason>"] --set "walk=<name YYYY-MM-DD>" --set state=signed-off --set hold=none \
-  --set verify=none --set "next=/builder:verify --path <folder>" --head \
+  --set verify=none --set "next=/builder:resume --path <folder>" --head \
   --ledger "<what was exercised on which app>" --commit "docs({key}): {feature} signed off" --body "<step 2's caveats>"
 # PROBLEMS / PARTIAL — the ## Fixes rows written to SPEC.md first
 node <builder>/scripts/advance.mjs <folder> --set "next=/builder:resume --path <folder>" \
@@ -131,9 +131,9 @@ Under HOLD, `--set 'hold="<reason>"'` and the held `next:` replace `hold=none` a
 beside it), `agent-walk:` becomes `off` — the rest of the way is the human's, asked, not unattended —
 and the SPEC's `> 🤖 AGENT SIGNED OFF …` (or older `> 🤖 AGENT-VERIFIED …`) header line is replaced
 by the sign-off line — the folder is already condensed, so there is nothing more to strip. If
-`verify: READY` was recorded at the current HEAD, keep it and write `next: /builder:resume --path
-<folder>` — it marks a draft PR ready, after asking, or takes an open one to ship. Otherwise set `verify: none`: the code moved
-since the agent's verify, so it runs again.
+`verify: READY` or `QUICK …` was recorded at the current HEAD, keep it — it marks a draft PR ready,
+after asking, or takes an open one to ship. Otherwise set `verify: none`: the code moved since the
+agent's check, so the choice after sign-off is offered again. `next: /builder:resume --path <folder>` either way.
 
 ## The condense
 
@@ -142,7 +142,7 @@ since the agent's verify, so it runs again.
 writes the header line(s). Fold it into the one commit above — `condense.mjs --signoff human`, as
 §What gets written shows, does all three and that commit in one call. What stays yours is the
 judgment: that this IS a PASS, the human's name and their words verbatim, and — over an agent pass —
-whether `verify: READY` still stands at HEAD (pass `--set verify=…` / `--set next=…` accordingly,
+whether a `verify: READY` or `QUICK` still stands at HEAD (pass `--set verify=…` accordingly,
 and `--set agent-walk=off`). The walk is the moment the plan stops
 earning its keep: the feature is built, a human has accepted it, and everything the remaining steps
 need is in the SPEC, the manifest, the ledger and `git log`.
@@ -201,8 +201,8 @@ description, and the SPEC header carries it from then on.
 
 | Outcome | Footer |
 |---|---|
-| PASS | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: signed off + condensed — what next?`, then REFERENCE §The two-way footer's signed-off row: `1. Agent — sent to agents who verify it and merge it on their own; you get the review of what landed` · `2. Step by step — carry on here (next: verify — the merge tier on HEAD, then the PR), pausing for you before the PR opens` (Step by step runs `/builder:verify --path <folder>`) · `Reply 1 or 2 — "go" is 1.` Without an `agent_walk:` block only Step by step is left, so the single line: `📍 <feature>: signed off + condensed — next: /builder:verify --path <folder> · or say go` |
-| PASS + HOLD | `📍 <feature>: signed off + condensed — 🛑 held; local steps only — next: /builder:verify --path <folder> · or say go` |
+| PASS | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: signed off + condensed — what next?`, then REFERENCE §The two-way footer's signed-off row: `1. Agent — sent to agents who quick-check it and merge it on their own; you get the review of what landed` · `2. Step by step — carry on here (next: you choose — a quick check, ship it as is, or a full verify — then the PR), pausing for you before the PR opens` (Step by step runs `/builder:resume --path <folder>`, which opens with that choice) · `Reply 1 or 2 — "go" is 1.` Without an `agent_walk:` block there is no footer to pick from: the `Full spec:` and `Pick up` lines, then resume §After sign-off right away — its three choices explained, then its one picker (**Quick check (Recommended)** · **Ship it** · **Full verify**); none is required |
+| PASS + HOLD | the same as PASS, with `— 🛑 held; local steps only —` in the `📍` line: whichever is picked runs locally, and the PR waits for the hold to lift |
 | PROBLEMS / PARTIAL | the `Full spec:` and `Pick up where you left off` lines, `📍 <feature>: <n> fixes owed — what next?`, then REFERENCE §The two-way footer's fixes-owed row: `1. Agent — sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed` · `2. Step by step — fix them here one at a time, then re-walk what they touched` (Step by step runs `/builder:resume --path <folder>`) · `Reply 1 or 2 — "go" is 1.` |
 
 **Continuing:** a bare "go", "yes" or "proceed" in reply runs the footer's command yourself — on a

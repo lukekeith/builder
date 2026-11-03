@@ -85,7 +85,8 @@ Below, `<builder>/scripts/x` means that resolved path.
 | `task-brief PLAN N OUT` | extracts one task's text for its implementer |
 | `review-package BASE HEAD OUT` | the commit list, stat summary and diff a reviewer reads in one call |
 | `docs.mjs <step>` | every doc section one step reads — the REFERENCE sections it names, its own companion files, the config — printed whole in one call (`--list` shows the map; `--prompts` adds build's four prompt templates). Read-only |
-| `advance.mjs <folder> --set k=v… [--head] [--ledger "<line>"] [--add <path>] --commit <subject\|preset>` | ONE state change: manifest keys in §MANIFEST.md's order, `head:`/`branch:`, a ledger line, and a commit of only the manifest plus the `--add` paths. Presets: `audited` · `aligned` · `plan` · `built` · `walk-lane` · `verify-ready` · `verify-incomplete` |
+| `advance.mjs <folder> --set k=v… [--head] [--ledger "<line>"] [--add <path>] --commit <subject\|preset>` | ONE state change: manifest keys in §MANIFEST.md's order, `head:`/`branch:`, a ledger line, and a commit of only the manifest plus the `--add` paths. Presets: `audited` · `aligned` · `plan` · `built` · `walk-lane` · `verify-ready` · `verify-incomplete` · `verify-quick` · `verify-skipped` |
+| `verify-quick.mjs <folder> [--max-wait <s>] \| --skip` | the **quick check** after sign-off (resume §After sign-off): verify's mechanical items — the sign-off, open `## Fixes`, §Schema rows, OPEN decisions, obligations, the merge tier on HEAD (waited on, up to `--max-wait`) — one `✓`/`✗` line each, no model. PASS records `verify: QUICK <date> <sha>` and commits; gaps are advice and record nothing. `--skip` records `verify: SKIPPED <date>`. A READY already recorded stands |
 | `condense.mjs <folder> --signoff agent\|human … \| --ship (--pr N \| --into <branch> \| --merged <sha>)` | the SPEC surgery of §Condense — header line, §Plan cut, `git rm` PLAN.md, the archive move at ship — plus its manifest write and commit |
 | `archive.mjs plan \| apply <feature>…` | `/builder:archive` — the finished folders still in the registry, and moving them into `<registry>/_archive/` with only their SPEC and its `SHIPPED` / `CLOSED` / `DROPPED` header |
 | `plan-slices.mjs <folder> --index --write` | SPEC §Plan's index from PLAN.md's headings, put into SPEC.md |
@@ -276,10 +277,10 @@ the ones done:
 | `audited` | sent to agents who plan, build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on here one step at a time (next: the plan and your go-ahead to build), pausing for you at each decision and for your walk | plan it, then build it right here in this session, without the agents or the extra review rounds |
 | `planned` | sent to agents who build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on here one step at a time (next: the build, after your go-ahead if it isn't given yet), pausing for you at each decision and for your walk | build it right here in this session, without the agents or the extra review rounds |
 | `building` (stopped) | sent to agents who finish the build, walk, sign off and verify it, and merge it on their own; you get the review of what landed | carry on with the build here (next: phase N/M), pausing for you at each decision and for your walk | — |
-| `built` (the walk) | sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed | you walk it yourself in the running app, then sign it off here | — |
+| `built` (the walk) | sent to agents who walk it in the running app, sign it off as the agent (not human-tested), quick-check it and merge it; you get the review of what landed | you walk it yourself in the running app, then sign it off here | — |
 | fixes owed (signoff PROBLEMS / PARTIAL, verify INCOMPLETE) | sent to agents who fix what was found, re-check it and merge it on their own; you get the review of what landed | fix them here one at a time, then re-walk or re-verify what they touched | — |
-| `signed-off` | sent to agents who verify it and merge it on their own; you get the review of what landed | carry on here (next: verify — the merge tier on HEAD, then the PR), pausing for you before the PR opens | — |
-| `verified` (READY) | sent to agents who merge it on their own, without a PR; you get the review of what landed | carry on here (next: open the PR — asked once before it opens) | — |
+| `signed-off` | sent to agents who quick-check it and merge it on their own; you get the review of what landed | carry on here (next: you choose — a quick check, ship it as is, or a full verify — then the PR), pausing for you before the PR opens | — |
+| `verified` (READY), or quick-checked or skipped | sent to agents who merge it on their own, without a PR; you get the review of what landed | carry on here (next: open the PR — asked once before it opens) | — |
 | `verified`, PR open | sent to agents who finish it and merge it on their own; you get the review of what landed | carry on here (next: condense it to its shipped spec once the PR merges) | — |
 
 **Replies.** `go`, `yes` or any bare affirmative is **option 1**, by §Continuing on "go" — **so where
@@ -501,8 +502,8 @@ YYYY-MM-DD |`. The reason is never dropped, only kept to one clause; a ruling a 
 goes through `/builder:revise`.
 
 **Adjacent steps run as one under `--agent-walk`.** Audit continues straight into `/builder:plan`
-when it leaves no OPEN §Decisions row and no `blocked:` row, and a verify READY continues straight
-into resume's AGENT-MODE.md §Ship in agent mode — in the same turn, with no return to the route table (each step
+when it leaves no OPEN §Decisions row and no `blocked:` row, and an agent sign-off continues straight
+into resume's AGENT-MODE.md §Ship in agent mode (the quick check, then ship) — in the same turn, with no return to the route table (each step
 still makes its own commit, so the history shows every step). Never across the go-ahead or the walk
 in a human run.
 
@@ -571,7 +572,7 @@ hold: none | "<reason>"                               # 🛑 PR HELD, in the hum
 go-ahead: <name YYYY-MM-DD> | auto (recommended) YYYY-MM-DD | none
 tests: walk=<v> review=<v> [models=… persist=… unruled=… human=yes]  # the test plan (plan §The go-ahead); an old profile: or slice=/end= line is still read
 walk: <name YYYY-MM-DD> | agent-pass YYYY-MM-DD <sha> | none   # agent-pass: the agent sign-off, written by /builder:agent-walk — never a human's
-verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | none
+verify: READY YYYY-MM-DD | INCOMPLETE YYYY-MM-DD | QUICK YYYY-MM-DD <sha> | SKIPPED YYYY-MM-DD | none   # optional after sign-off: READY = /builder:verify, QUICK = verify-quick.mjs, SKIPPED = shipped unchecked
 ready: yes YYYY-MM-DD <sha> | pending "<what is left>" | none   # §Walk readiness — the dev env runs this build
 <design.flag>: <the resolved ref and its set> | none   # prototype mode; key named by the config
 auto: on YYYY-MM-DD | off
@@ -1067,7 +1068,7 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 |---|---|
 | **sign-off** (PASS, written by `/builder:signoff`) | strip the §Plan index from `SPEC.md` **and** `git rm <folder>/PLAN.md` (and `PARKED.md` when there is one); write under the title `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"`; commit |
 | **agent sign-off** (AGENT-PASS in agent mode, written by `/builder:agent-walk`) | the same condense; the line is `> 🤖 AGENT SIGNED OFF <date> — <sha> · agent walk round <n> · not human-tested · evidence: …` |
-| **ship** (verify READY, the PR open — written ON the PR so the merge carries it) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>"`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch. Already in the target with no ship (a manual merge, a PR merged first): the same on the target, `— merged <sha>` |
+| **ship** (signed off, the PR open — written ON the PR so the merge carries it; verify is optional) | flip that line to `> ✅ SHIPPED <date> — PR #N · <ticket> · signed off by <name>: "<words>" · <check>` — `<check>` is which ran: `verified` (READY), `quick-checked` (QUICK) or `not verified`; `git rm MANIFEST.md`; remove the workspace; `git mv` the folder into `<registry>/_archive/`; commit on the PR branch. Already in the target with no ship (a manual merge, a PR merged first): the same on the target, `— merged <sha>` |
 | **archive** (`/builder:archive`, a finished folder still in the registry) | shipped → as ship; merged but never walked → `> ✅ CLOSED <date> — merged <sha>, not walked`; abandoned → `> ✖ DROPPED <date> — <reason>`; only the SPEC (PROGRAM.md) stays, and the docs it names; a folder with no SPEC moves as it is |
 
 **State detection, binding on every skill in the family:**
@@ -1077,8 +1078,8 @@ not condense: the §Plan index and `PLAN.md` may both still be needed for the fi
 | manifest `state:` spec · aligned · audited · planned · building · built | in flight | route on the manifest's `next:` line |
 | SPEC header carries `SHIPPED` (or manifest `state: shipped`) | **DONE** | run no step; print the header; offer a new feature folder |
 | archived, header `CLOSED` or `DROPPED` | **closed** | no step runs on it; a `DROPPED` one never satisfies a program dependency, a `CLOSED` one does (its code is in the target) |
-| header carries `SIGNED OFF`, manifest `verify: none` | signed off | verify next |
-| manifest `verify: READY`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship; the merge queue lands it |
+| header carries `SIGNED OFF`, manifest `verify: none` | signed off | the choice after sign-off — quick check, ship it, or full verify (resume §After sign-off); in agent mode, the quick check and ship |
+| manifest `verify: READY`, `QUICK …` or `SKIPPED …`, `hold: none` | ready to ship | open the PR, then `/builder:ship` on it — in agent mode, ship; the merge queue lands it |
 | manifest `hold:` set | parked | local-only steps until the human lifts the hold |
 
 **Legacy layouts.** 🔴 **The manifest is the discriminator.** A folder holding `MANIFEST.md` is this

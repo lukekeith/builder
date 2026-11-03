@@ -128,11 +128,11 @@ What `--agent-walk` adds past the build loop: a run after an unpark, the walk, t
 | The walk | `/builder:agent-walk --path <folder>` — on PASS it writes the **agent sign-off** and condenses |
 | The sign-off | the agent sign-off above — labelled 🤖, never a human's; `/builder:signoff` stays human-only |
 | The ship commit and the merge into the target | §Ship in agent mode, no question — handing the feature to agents was the permission for all of it |
-| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness and the agent walk; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, verify and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
+| **Walk env of the fleet's own** (`agent_walk.start` set — batched, `agent_walk.batch` > 1, or one at a time) | the walk lane holds only what needs the running env — readiness and the agent walk; batched, several features per walk (agent-walk §Batched walks). A walk's `## Fixes`, the quick check and ship run in the parallel lanes under `--no-dev-env`. A verify INCOMPLETE whose fix changes something a walk covered sends the feature back for a re-walk: `advance.mjs <folder> --set state=built --set walk=none --set verify=none --set "next=/builder:agent-walk --path <folder>" --head --commit "chore({key}): {feature} — re-walk after verify fixes"` — the next batch walks only what changed and signs it off again |
 
 **Under `--walk-lane`** (the fleet's walk lane when it owns the walk env) the run does only what needs
 the running env — walk readiness and the agent walk — and **ends the run** at `state: signed-off`,
-or as soon as the walk writes `## Fixes`: verify, the fixes and ship are the parallel lanes', away
+or as soon as the walk writes `## Fixes`: the quick check, the fixes and ship are the parallel lanes', away
 from the folder the env serves from. Never run a test suite or a build in this run.
 
 ## Ship in agent mode (`--agent-walk`)
@@ -141,9 +141,14 @@ Agent mode lands every feature on **one branch** — `--into`, else the config's
 The fleet requested the **merge tier** (held) when the walk began: every suite and check on the
 target merged with this branch.
 
-1. **Verify** reads that verdict for HEAD (verify §The checklist item 3). Regressions are
-   `- [ ] … (merge tier, <sha>)` rows under `## Fixes`: work them (§Working `## Fixes`), commit,
-   and verify again — a new merge-tier request on the new HEAD.
+1. **The quick check, never the full verify.** Verify is optional after sign-off, and agent mode
+   uses the one-call check: `node <builder>/scripts/verify-quick.mjs <folder> --max-wait 540`
+   (Bash timeout 600000; `still running` → the same call again) reads that held verdict for HEAD and
+   the spec's mechanical items. PASS records `verify: QUICK …`. **Gaps are noted, not blocking** —
+   name each in the hand-off and ship anyway: a signed-off feature with gaps still ships, and the
+   merge queue at landing tests the merged result. Nothing to run when `verify:` already reads
+   READY, QUICK or SKIPPED (the fleet runs the check before this session; it is the same call). A
+   `verify: INCOMPLETE` from an earlier full verify is worked as before (§Working `## Fixes`).
 2. **Ship** — `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) condenses the
    folder as it does after any sign-off.
 3. **End the run.** The fleet releases the held merge: the target fast-forwards to the merge
