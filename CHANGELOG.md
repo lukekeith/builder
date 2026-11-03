@@ -4,6 +4,27 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.1.1
+
+**Only the commit that was signed off ships.** With verify optional, nothing tied what ships to the
+commit that was walked: code committed after sign-off — a fix after a red merge test, a landing
+conflict resolved by an agent — could ship or land without being walked again. Now it can't. Nothing
+to change in `.claude/builder.md`.
+
+**Fixed:**
+- The ship (`condense.mjs --ship --into`), `/builder:tidy`'s merge and the fleet's landing refuse a
+  feature whose code changed since its sign-off — "changed since it was signed off … walk it again and
+  sign off". Registry commits and a clean merge of the target after sign-off still pass. A PR is
+  unchanged: the reviewed PR is its own gate.
+- **Agents re-walk their own sign-offs.** In the fleet, a feature an agent signed off whose code then
+  changed goes back to the walk lane on its own — walked, signed off, quick-checked and landed again,
+  with no park — at most twice per feature; a third time it parks with the reason.
+- **A human sign-off asks.** If code changed after *your* sign-off, the fleet parks it as needing your
+  walk again, with two choices: walk it yourself, or hand the re-walk to agents
+  (`fleet.mjs <feature> --rewalk-by-agents`, marked not human-tested). Agents never replace your
+  sign-off silently.
+- The quick check's walk line flags code changed since the sign-off.
+
 ## 6.1.0
 
 **Verify is optional after sign-off.** A full `/builder:verify` spends many tokens re-reading what the
