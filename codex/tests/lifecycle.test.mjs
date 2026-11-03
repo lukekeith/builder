@@ -78,15 +78,18 @@ test('prepare asks the merge tier for a held merge; deliver lands exactly the te
   const saved = await run('resume', 'test', { root }); assert.equal(saved.cleaned, true); assert.equal(saved.mergedHead, result.mergedHead);
 });
 
-test('a target that moved after the merge was tested is not landed: the merge is asked again, then lands on the new tip; a late feature commit is not verified', async t => {
+test('a target that moved after the merge was tested is not landed: the merge is asked again, then lands on the new tip; a late feature commit is tested again', async t => {
   const root = repo(t); await verified(root); const p = await run('prepare', 'test', { root }); assert.equal(waitFor(root, p.request), 0);
   const moved = commit(root, 'advance.txt');
   const d = await run('deliver', 'test', { root }); assert.equal(d.status, 'testing'); assert.notEqual(d.request, p.request); assert.match(d.why, /target moved/); assert.equal(d.merge.targetHead, moved);
   assert.equal(git(root, 'rev-parse', 'HEAD'), moved, 'nothing landed');
   assert.equal(waitFor(root, d.request), 0);
   const landed = await run('deliver', 'test', { root }); assert.equal(landed.status, 'landed'); assert.equal(git(root, 'rev-parse', `${landed.mergedHead}^1`), moved);
-  const root2 = repo(t); const m2 = await verified(root2); await run('prepare', 'test', { root: root2 });
-  commit(m2.worktree, 'late.txt'); await assert.rejects(run('deliver', 'test', { root: root2 }), /must remain verified/);
+  const root2 = repo(t); const m2 = await verified(root2); const p2 = await run('prepare', 'test', { root: root2 }); assert.equal(waitFor(root2, p2.request), 0);
+  const before = git(root2, 'rev-parse', 'work');
+  commit(m2.worktree, 'late.txt'); const late = await run('deliver', 'test', { root: root2 });
+  assert.equal(late.status, 'testing', 'a late code commit is tested again before it lands'); assert.match(late.why, /changed since the merge was tested/);
+  assert.equal(git(root2, 'rev-parse', 'work'), before, 'nothing landed');
 });
 
 test('uncommitted changes that do not overlap the feature are no block: it lands around them, and a switched origin does not retarget it', async t => {
@@ -271,9 +274,7 @@ test('pause survives cold resume and checkpoint attempts; unpause restores phase
   const cold = JSON.parse(execFileSync(process.execPath, [new URL('../scripts/lifecycle.mjs', import.meta.url).pathname, 'resume', m.name, '--root', root], { encoding: 'utf8' })); assert.equal(cold.paused, true);
   for (const command of ['prepare', 'deliver', 'approve', 'checkpoint']) await assert.rejects(run(command, m.name, { root, phase: 'verified', next: 'Skip pause', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD'), profile: 'rush' }), /paused/);
   await run('pause', m.name, { root }); const resumed = await run('unpause', m.name, { root }); assert.equal(resumed.phase, 'verified'); assert.equal(resumed.verifiedHead, null); assert.equal(resumed.merge, null);
-  await assert.rejects(run('deliver', m.name, { root }), /must remain verified/);
-  await run('checkpoint', m.name, { root, phase: 'verified', next: 'Prepare again', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
-  await assert.rejects(run('deliver', m.name, { root }), /No merge requested yet/);
+  await assert.rejects(run('deliver', m.name, { root }), /No merge requested yet/, 'still signed off; the old merge request is gone');
   assert.equal((await landFeature(root, m.name)).status, 'landed');
 });
 
@@ -415,4 +416,59 @@ test('merge_into: current with no base_branch refuses a detached checkout instea
   const root = repo(t); git(root, 'branch', 'main'); configure(root, 'merge_into: current\n');
   assert.equal((await run('start', 'cur-work', { root })).targetBranch, 'work');
   git(root, 'checkout', '--detach'); await assert.rejects(run('start', 'cur-detached', { root }), /merge_into: current needs a named branch/);
+});
+
+// 6.1.0 — verify is optional after sign-off: quick check, ship it or full verify; deliver takes any of them.
+/** Built and signed off: by a human walk report (`human`), or by the agent walk's checkpoint (committed). */
+async function signedOff(root, how = 'agent', name = 'test') {
+  const m = await run('start', name, { root });
+  fs.mkdirSync(m.featurePath, { recursive: true }); fs.writeFileSync(path.join(m.featurePath, 'PLAN.md'), '### Task 1\n'); commit(m.worktree);
+  let s;
+  if (how === 'human') {
+    await run('await-human', name, { root });
+    s = await run('human-pass', name, { root, report: 'The owner walked the save flow and it passed' });
+  } else {
+    s = await run('checkpoint', name, { root, phase: 'signed-off', next: 'Choose a check, then deliver' });
+    git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'agent signed off');
+  }
+  assert.equal(s.phase, 'signed-off'); assert.equal(s.verifiedHead, null);
+  return m;
+}
+test('deliver lands a signed-off feature with no check at all, and records that none ran', async t => {
+  const root = repo(t); const m = await signedOff(root, 'human');
+  assert.match((await run('status', 'test', { root })).nextAction, /quick check, ship it or full verify/);
+  const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed', d.nextAction);
+  assert.equal(d.landedCheck, 'none'); assert.equal(d.history.row.check, 'none');
+  void m;
+});
+test('ship it: record-check skipped is recorded, and deliver lands it as skipped', async t => {
+  const root = repo(t); await signedOff(root);
+  const r = await run('record-check', 'test', { root, check: 'skipped' }); assert.equal(r.check.kind, 'skipped');
+  const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed'); assert.equal(d.landedCheck, 'skipped'); assert.equal(d.history.row.check, 'skipped');
+});
+test('quick check: recorded at HEAD, carried over registry-only commits, and named on the landing; code after it is not quick-checked', async t => {
+  const root = repo(t); const m = await signedOff(root);
+  const r = await run('record-check', 'test', { root, check: 'quick' }); assert.equal(r.check.kind, 'quick'); assert.equal(r.check.head, git(m.worktree, 'rev-parse', 'HEAD'));
+  commit(m.worktree, 'docs/features/test/walk.md', 'walk notes\n');
+  const d = await landFeature(root, 'test'); assert.equal(d.status, 'landed'); assert.equal(d.landedCheck, 'quick');
+  const root2 = repo(t); const m2 = await signedOff(root2); await run('record-check', 'test', { root: root2, check: 'quick' });
+  commit(m2.worktree, 'code-after-check.txt');
+  const d2 = await landFeature(root2, 'test'); assert.equal(d2.status, 'landed'); assert.equal(d2.landedCheck, 'none');
+});
+test('a full verify (the verified checkpoint) lands named full; a human walk still has to cover the code that lands', async t => {
+  const root = repo(t); await verified(root); assert.equal((await landFeature(root, 'test')).landedCheck, 'full');
+  const root2 = repo(t); const m2 = await signedOff(root2, 'human'); await run('record-check', 'test', { root: root2, check: 'quick' });
+  commit(m2.worktree, 'code-after-walk.txt');
+  await assert.rejects(landFeature(root2, 'test'), /human walk report at exact current HEAD/);
+});
+test('a feature never signed off is refused by deliver and record-check; approve and a new walk clear a recorded check', async t => {
+  const root = repo(t); const m = await run('start', 'test', { root }); commit(m.worktree);
+  await run('checkpoint', 'test', { root, phase: 'built', next: 'Walk it' }); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'built');
+  await run('prepare', 'test', { root });
+  await assert.rejects(run('deliver', 'test', { root }), /not signed off/);
+  for (const check of ['quick', 'skipped']) await assert.rejects(run('record-check', 'test', { root, check }), /not signed off/);
+  await run('checkpoint', 'test', { root, phase: 'signed-off', next: 'Choose a check, then deliver' }); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-qm', 'signed off');
+  await assert.rejects(run('record-check', 'test', { root, check: 'bogus' }), /quick or skipped/);
+  await run('record-check', 'test', { root, check: 'skipped' });
+  assert.equal((await run('approve', 'test', { root, tests: 'walk=risk' })).check, null, 'a new approval clears it');
 });

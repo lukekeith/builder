@@ -13,11 +13,14 @@
  * Finished (the recommended batch):
  *   shipped   — says it shipped (registry.mjs isShippedFolder), never moved → archived as it reads
  *   landed    — landed through the merge queue (a `Merge builder feature <name>` commit on the
- *               target, or the Codex runtime record's mergedHead), which needs verify READY
- *               → `✅ SHIPPED <date> — merged <sha>`
- *   merged    — in the target at built · signed-off · verified with no landing of record (a manual
- *               merge), untouched for --days (14) → `✅ CLOSED <date> — merged <sha>, not walked`
- *               (`walked, not verified` once signed off) — never called shipped
+ *               target, or the Codex runtime record's mergedHead), which needs sign-off — verify is
+ *               optional after it (6.1.0) → `✅ SHIPPED <date> — merged <sha> · <the check that ran:
+ *               verified | quick-checked | not verified>` (the record's landedCheck; a landing
+ *               recorded before 6.1.0 was verified; no record → no check named)
+ *   signed    — signed-off or verified in the target with no landing of record (a manual merge)
+ *               → `✅ SHIPPED <date> — merged <sha> · <check>`, the same way
+ *   merged    — built (never signed off) in the target with no landing of record, untouched for
+ *               --days (14) → `✅ CLOSED <date> — merged <sha>, not walked` — never called shipped
  *   program   — every child named on its manifest's `child:` lines is archived
  *   leftovers — an archived folder still holding PLAN, MANIFEST, ledger… beside its SPEC → trimmed;
  *               an ignored `.builder/<name>` workspace of an archived feature, nothing in it newer
@@ -47,6 +50,14 @@ const DAY = 86400000;
 const ALWAYS_GO = /^(PLAN|MANIFEST|PARKED)\.md$|^continue\.md$|^progress\.md$|^ledger\.md$|^TASK[\w-]*RESULT[\w-]*(\.md)?$/i;
 const KEEP_DOCS = ['SPEC.md', 'PROGRAM.md'];
 const BUILT = ['built', 'signed-off', 'verified'];
+const SIGNED = ['signed-off', 'verified'];
+/** lifecycle deliver's landedCheck in the words a SHIPPED header uses (Claude's verifyCheck). */
+const CHECK_WORDS = { full: 'verified', quick: 'quick-checked', skipped: 'not verified', none: 'not verified' };
+/** The check a merge-queue landing had: its record's landedCheck; a landing recorded before 6.1.0 needed verify; no record → unknown. */
+const landedCheckOf = rec => (rec?.landedCheck ? CHECK_WORDS[rec.landedCheck] ?? null : rec?.phase === 'merged' && rec.mergedHead ? 'verified' : null);
+/** The check a signed-off feature merged by hand had: a full verify, a quick check, else none. */
+const handCheckOf = (rec, state) => (rec?.verifiedHead || state === 'verified' ? 'verified' : rec?.check?.kind === 'quick' ? 'quick-checked' : 'not verified');
+const shippedLine = (date, it) => `> ✅ SHIPPED ${date} — merged ${it.sha}${it.check ? ` · ${it.check}` : ''}`;
 const IN_FLIGHT = ['exploring', 'spec', 'aligned', 'audited', 'planned', 'building'];
 
 const gitStrict = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -164,11 +175,20 @@ export function plan(root, cfg, { target = targetOf(root, cfg), days = 14, now =
     const state = mf.state ?? mf.phase ?? null;
     // A name reused for new work (back in flight) is not the feature that landed under it.
     const landed = onTarget && !IN_FLIGHT.includes(state) ? landingCommit(root, name, rec) : null;
-    if (landed) { add('landed', 'finished', 'ship', `landed on ${target} through the merge queue (${landed}) — verified before it landed`, { sha: landed }); continue; }
+    if (landed) {
+      // Every landing was signed off (deliver insists); the check after it is optional since 6.1.0.
+      const check = landedCheckOf(rec);
+      add('landed', 'finished', 'ship', `landed on ${target} through the merge queue (${landed}) — signed off${check ? `, ${check}` : ''}`, { sha: landed, check });
+      continue;
+    }
+    // Merged by hand and signed off: shipped, naming its check — verify is optional after sign-off.
+    if (onTarget && SIGNED.includes(state)) {
+      add('signed', 'finished', 'ship', `signed off and in ${target} with no landing of record`, { sha: git(root, ['log', '-1', '--format=%h', '--', rel]), check: handCheckOf(rec, state) });
+      continue;
+    }
     if (onTarget && BUILT.includes(state)) {
       if (now - moved <= days * DAY) { left.push({ name, why: `${state}, last moved ${moved ? isoDay(moved) : 'never'} — still in hand; archive closes one after ${days} days` }); continue; }
-      const walked = state !== 'built';
-      add('merged', 'finished', 'close', `${state} and in ${target} with no landing of record; never verified`, { sha: git(root, ['log', '-1', '--format=%h', '--', rel]), walked });
+      add('merged', 'finished', 'close', `${state} and in ${target} with no landing of record; never signed off`, { sha: git(root, ['log', '-1', '--format=%h', '--', rel]) });
       continue;
     }
     if (IN_FLIGHT.includes(state)) {
@@ -231,8 +251,8 @@ function applyOne(root, reg, it, dropReason) {
   const k = it.kids;
   const header = {
     archive: /^> ✅ SHIPPED/m.test((read(path.join(dir, 'SPEC.md')) ?? '').slice(0, 1200)) || !fs.existsSync(path.join(dir, 'SPEC.md')) ? null : `> ✅ SHIPPED ${date} — merged ${it.sha}`,
-    ship: `> ✅ SHIPPED ${date} — merged ${it.sha}`,
-    close: `> ✅ CLOSED ${date} — merged ${it.sha}, ${it.walked ? 'walked, not verified' : 'not walked'}`,
+    ship: shippedLine(date, it),
+    close: `> ✅ CLOSED ${date} — merged ${it.sha}, not walked`,
     drop: `> ✖ DROPPED ${date} — ${dropReason ?? it.reason}`,
     program: k && (k.shipped || k.closed ? `> ✅ ${k.shipped && !k.closed ? 'SHIPPED' : 'CLOSED'} ${date} — every child ended: ${['shipped', 'closed', 'dropped'].filter(x => k[x]).map(x => `${k[x]} ${x}`).join(', ')}` : `> ✖ DROPPED ${date} — every child dropped`),
     move: null,
@@ -309,7 +329,7 @@ export function summaryLine(p) {
   return `registry: ${[finished && `${finished} finished`, old && `${old} old`].filter(Boolean).join(' · ')} to archive → $builder archive`;
 }
 
-const KIND = { program: 'Program, every child ended', shipped: 'Shipped, not archived', landed: 'Landed — ship it', merged: 'Merged, never verified — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' };
+const KIND = { program: 'Program, every child ended', shipped: 'Shipped, not archived', landed: 'Landed — ship it', signed: 'Signed off, merged by hand — ship it', merged: 'Merged, never signed off — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' };
 
 export function render(cfg, p) {
   const out = [`**${cfg.project}** — the registry against ${p.target}\n`];
@@ -321,7 +341,7 @@ export function render(cfg, p) {
     out.push(tier === 'finished' ? '**Finished** — archived on your go-ahead:\n' : '**Old** — archived only if you say so:\n');
     out.push('| Folder | What it is | Becomes | Last moved |', '|---|---|---|---|');
     for (const i of rows) {
-      const becomes = { archive: 'SHIPPED (as it reads)', ship: `SHIPPED — merged ${i.sha}`, close: `CLOSED — merged ${i.sha}, ${i.walked ? 'walked, not verified' : 'not walked'}`, drop: `DROPPED — ${i.reason}`, move: 'moved as it is', trim: 'trimmed to its SPEC', workspace: 'removed', program: 'archived with its PROGRAM.md' }[i.action];
+      const becomes = { archive: 'SHIPPED (as it reads)', ship: `SHIPPED — merged ${i.sha}${i.check ? ` · ${i.check}` : ''}`, close: `CLOSED — merged ${i.sha}, not walked`, drop: `DROPPED — ${i.reason}`, move: 'moved as it is', trim: 'trimmed to its SPEC', workspace: 'removed', program: 'archived with its PROGRAM.md' }[i.action];
       out.push(`| ${cell(i.path)} | ${cell(`${KIND[i.kind]}: ${i.why}`)} | ${cell(becomes)} | ${cell(i.moved)} |`);
     }
     out.push('');

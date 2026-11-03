@@ -63,9 +63,9 @@ test('agent offers say what workers would do; merged, paused, awaiting-human, ex
   const base = { name: 'f', worktree: '/nonexistent', featurePath: '/nonexistent/f', targetBranch: 'main' };
   assert.match(agentOffer({ ...base, phase: 'audited' }).does, /^not built yet · agents audit, plan, build, test and merge it$/);
   assert.match(agentOffer({ ...base, phase: 'building', currentTask: 'Task 3' }).does, /^part-built \(at Task 3\) · agents build the rest, test and merge it$/);
-  assert.equal(agentOffer({ ...base, phase: 'built' }).does, 'built in a session, not tested yet · agents only walk it, verify and merge it');
-  assert.equal(agentOffer({ ...base, phase: 'built', build: 'here' }).does, 'built here by you, not tested yet · agents review, walk, verify and merge it');
-  assert.equal(agentOffer({ ...base, phase: 'verified' }).does, 'tested · agents only verify and merge it');
+  assert.equal(agentOffer({ ...base, phase: 'built' }).does, 'built in a session, not tested yet · agents only walk it, quick-check and merge it');
+  assert.equal(agentOffer({ ...base, phase: 'built', build: 'here' }).does, 'built here by you, not tested yet · agents review, walk, quick-check and merge it');
+  assert.equal(agentOffer({ ...base, phase: 'verified' }).does, 'tested · agents only quick-check and merge it');
   assert.match(agentOffer({ ...base, phase: 'merged' }).reason, /already merged into main/);
   assert.match(agentOffer({ ...base, phase: 'building', paused: true }).reason, /paused/);
   assert.match(agentOffer({ ...base, phase: 'built', awaitingHuman: true }).reason, /waiting for your walk/);
@@ -125,7 +125,7 @@ test('build here is chosen before the build starts, recorded on the manifest and
   const [row] = await run('list', undefined, { root }); assert.equal(row.profileLabel, 'here'); assert.equal(row.build, 'here');
   await assert.rejects(run('approve', 'local', { root, profile: 'here' }), /Invalid profile/, 'here is not a build profile');
   await run('checkpoint', 'local', { root, phase: 'built', next: 'Test it yourself, or resume for walk, verify and delivery' });
-  assert.equal(agentOffer({ ...(await run('status', 'local', { root })), worktree: '/none' }).does, 'built here by you, not tested yet · agents review, walk, verify and merge it');
+  assert.equal(agentOffer({ ...(await run('status', 'local', { root })), worktree: '/none' }).does, 'built here by you, not tested yet · agents review, walk, quick-check and merge it');
   const other = await run('start', 'fleetless', { root });
   assert.equal((await run('list', undefined, { root })).find(r => r.name === other.name).profileLabel, '—', 'no plan until the go-ahead');
 });
