@@ -179,7 +179,11 @@ The collision check, steps 1–5 and the commit are one call, after you have con
 `node <builder>/scripts/condense.mjs <folder> --ship --into <branch>` — already merged
 `node <builder>/scripts/condense.mjs <folder> --ship --merged <sha>`. It refuses a feature with no
 sign-off header (with `--into`, until `<branch>` is merged into this branch; with `--merged`, unless `<sha>` is
-in the target and this branch) — never for want of `verify: READY`, removes the workspace itself
+in the target and this branch) — never for want of `verify: READY`. With `--into` it also refuses
+code committed after the sign-off — what ships is what was signed off: registry commits and clean
+merges of `<branch>` carry, a fix or a hand-resolved conflict is walked again and signed off again
+first (`<feature> changed since it was signed off at <sha> (<files>) — walk it again and sign off`;
+the PR form's gate is the reviewed PR). It removes the workspace itself
 (no `rm -rf`), and an interrupted ship — header flipped, manifest gone, folder already moved — is
 finished by running it again.
 

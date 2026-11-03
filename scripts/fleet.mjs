@@ -40,6 +40,7 @@ import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as release
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
 import { fileURLToPath } from 'node:url'
+import { signedOffShas, signoffHolds } from './feature-core.mjs'
 
 // Runs per feature per fleet run. The build lane ends a run at the audit's and the go-ahead's commits
 // (a fresh context per stage, AGENT-MODE.md), so two of these are stage boundaries, not retries.
@@ -1144,6 +1145,9 @@ async function mergeThroughVerifier(feature, f) {
   }
   let gone = 0
   for (let attempt = 0; attempt < 5; attempt++) {
+    // What lands is what was signed off: a fix after a red merge tier, or a conflict an agent resolved, is walked again first.
+    const moved = signoffMoved(feature, f)
+    if (moved) return moved
     const head = tryGit(['rev-parse', 'HEAD'], f.worktree)
     const done = mergeVerdict(ROOT, f.branch, head)
     const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch)
@@ -1190,6 +1194,20 @@ async function mergeThroughVerifier(feature, f) {
     if (!r.moved) return `the merge tier passed but landing failed: ${r.reason} — next: /builder:fleet to retry`
   }
   return `${TARGET} kept moving while ${feature} was being landed — next: /builder:fleet to retry`
+}
+
+/**
+ * Verify is optional after sign-off, so the sign-off is what pins what lands: a park reason when the
+ * branch carries code nobody walked since (the SPEC header's sign-off sha, read from before the ship
+ * once it shipped), else null. Registry commits and clean merges of the target carry; a header with
+ * no sha that is a commit here pins nothing.
+ */
+function signoffMoved(feature, f) {
+  if (!f.worktree || !existsSync(f.worktree)) return null
+  const s = signoffHolds(f.worktree, signedOffShas(f.worktree, specOf(feature)), CFG.registry, `refs/heads/${TARGET}`)
+  if (s.holds) return null
+  const files = [...s.changed.slice(0, 3), ...(s.changed.length > 3 ? ['…'] : [])].join(', ')
+  return `${feature} changed since it was signed off at ${s.sha.slice(0, 7)} (${files}) — walk it again and sign off — next: /builder:resume --path ${specOf(feature)} to walk the changes and sign off again, then /builder:agent ${feature}`
 }
 
 /** The migration files `from..to` added under the config's §Walk readiness `migrations:` dir, with their text. */
@@ -2195,7 +2213,8 @@ async function poolWorker() {
       else if (parkIfPaused(fleet.features[feature], feature)) outcome = 'parked'
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
-        if (why) outcome = park(fleet.features[feature], why)
+        const moved = why || lane !== 'ship' ? null : signoffMoved(feature, fleet.features[feature])
+        if (why || moved) outcome = park(fleet.features[feature], why || moved)
         else {
           if (lane === 'ship') await quickCheck(feature)
           outcome = await drive(feature, lane)

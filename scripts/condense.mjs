@@ -49,7 +49,7 @@
 import { existsSync, readdirSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
 import { join, resolve, dirname, basename, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openFeature, headings, read, writeAtomic, git, shortHead, today, parseArgs, cli, posix, repoRoot, workspaceDir, setManifestKeys } from './feature-core.mjs'
+import { openFeature, headings, read, writeAtomic, git, shortHead, today, parseArgs, cli, posix, repoRoot, workspaceDir, setManifestKeys, signedOffShas, signoffHolds } from './feature-core.mjs'
 import { advance } from './advance.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { parseTestPlan } from './profile.mjs'
@@ -237,6 +237,14 @@ export function ship(a) {
       if (git(f.root, ['merge-base', '--is-ancestor', merged, 'HEAD'], { allowFail: true }) === null) throw new Error(`${merged} is not in this branch — run it on ${target}. Nothing was touched.`)
     } else if (!resumed && a.into && git(f.root, ['merge-base', '--is-ancestor', a.into, 'HEAD'], { allowFail: true }) === null)
       throw new Error(`${a.into} is not merged into this branch — merge ${a.into} into this branch first (resume AGENT-MODE.md §Ship in agent mode)`)
+    // The agent form ships what lands next with no human gate after it: what ships is what was signed
+    // off. Registry commits and clean merges of the target since carry; code (a fix, a resolved
+    // conflict) is walked again first. The PR form's gate is the human-reviewed PR; --merged records a
+    // merge that already happened.
+    if (!resumed && a.into && !merged) {
+      const s = signoffHolds(f.root, signedOffShas(f.root, f.rel), registry, a.into)
+      if (!s.holds) throw new Error(`${f.feature} changed since it was signed off at ${s.sha} (${s.changed.slice(0, 5).join(', ')}${s.changed.length > 5 ? ', …' : ''}) — walk it again and sign off, then ship. Nothing was touched.`)
+    }
 
     // 1. the header
     const spec = read(f.specPath)

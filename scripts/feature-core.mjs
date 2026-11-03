@@ -260,6 +260,90 @@ export function codeChangedSince(root, sha, registry) {
   return out.split('\n').filter(Boolean)
 }
 
+/** The SPEC header's sign-off lines (a human's `> ✅ SIGNED OFF`, the agent's `> 🤖 AGENT SIGNED OFF`). */
+const SIGNED_LINE = /^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF)\b/
+
+/** The shas the `>` header under a SPEC's title was signed off at — `… — <sha> · …` on each sign-off line, a re-sign's too. */
+export function signoffShas(spec) {
+  const all = String(spec ?? '').split('\n')
+  const t = all.findIndex((l) => /^# /.test(l))
+  const out = []
+  for (let j = t + 1; t >= 0 && j < all.length && all[j].startsWith('>'); j++) {
+    if (!SIGNED_LINE.test(all[j])) continue
+    const m = /— ([0-9a-f]{7,40})(?=\s*(·|$))/.exec(all[j])
+    if (m) out.push(m[1])
+  }
+  return out
+}
+
+/**
+ * The commits a feature was signed off at, read from its SPEC at `<folderRel>/SPEC.md` — or, once the
+ * ship replaced that header with SHIPPED and moved the folder to the archive, from the SPEC as it was
+ * before. Only shas that are commits here: a hand-written or fixture sha pins nothing.
+ */
+export function signedOffShas(root, folderRel) {
+  const rel = `${folderRel.replace(/\/+$/, '')}/SPEC.md`
+  const real = (shas) => shas.filter((s) => git(root, ['rev-parse', '--verify', '--quiet', `${s}^{commit}`], { allowFail: true }))
+  const now = real(signoffShas(read(join(root, rel))))
+  if (now.length) return now
+  const log = git(root, ['log', '--format=%H', '-n', '20', '--', rel], { allowFail: true }) ?? ''
+  for (const c of log.split('\n').filter(Boolean)) {
+    for (const rev of [c, `${c}^`]) {
+      const shas = real(signoffShas(git(root, ['show', `${rev}:${rel}`], { allowFail: true })))
+      if (shas.length) return shas
+    }
+  }
+  return []
+}
+
+/**
+ * What changed outside the registry since the feature was signed off at `sha` — the code a ship or a
+ * landing would carry that nobody walked. Registry commits (walk results, the manifest, the ship) don't
+ * count, and neither does a merge of `target` into the branch that git resolved on its own (the fleet
+ * picks up other features' merges that way); a conflict resolved by hand does. → [] when the sign-off
+ * still covers HEAD, else the paths (['<sha>'] when HEAD no longer descends from it).
+ */
+export function changedSinceSignoff(root, sha, registry, target) {
+  if (git(root, ['merge-base', '--is-ancestor', sha, 'HEAD'], { allowFail: true }) === null) return [sha]
+  const quick = codeChangedSince(root, sha, registry)
+  if (quick && !quick.length) return []
+  const code = (from, to) => (git(root, ['diff', '--name-only', '--no-renames', from, to, '--', '.', `:(exclude)${registry}`], { allowFail: true }) ?? '?').split('\n').filter(Boolean)
+  const changed = new Set()
+  const commits = (git(root, ['rev-list', '--first-parent', '--parents', `${sha}..HEAD`], { allowFail: true }) ?? '').split('\n').filter(Boolean)
+  for (const line of commits) {
+    const [c, p1, p2] = line.split(' ')
+    let base = p1
+    if (p2 && target && git(root, ['merge-base', '--is-ancestor', p2, target], { allowFail: true }) !== null) {
+      // A merge of the target: only what differs from git's own merge of the two parents is the branch's.
+      let auto = null
+      try {
+        auto = execFileSync('git', ['merge-tree', '--write-tree', p1, p2], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).split('\n')[0].trim()
+      } catch (err) {
+        auto = String(err.stdout ?? '').split('\n')[0].trim() || null // exit 1: conflicts, the tree (with markers) still first
+      }
+      if (auto) base = auto
+    }
+    for (const p of code(base, c)) changed.add(p)
+  }
+  return [...changed]
+}
+
+/**
+ * Whether a sign-off covers HEAD: any of `shas` (the header's lines, a re-sign's too) with nothing
+ * but registry commits and clean merges of `target` since. → { holds, sha, changed }. No sha → holds
+ * (nothing to pin to — a header written by hand, or a fixture).
+ */
+export function signoffHolds(root, shas, registry, target) {
+  if (!shas.length) return { holds: true, sha: null, changed: [] }
+  let best = null
+  for (const sha of shas) {
+    const changed = changedSinceSignoff(root, sha, registry, target)
+    if (!changed.length) return { holds: true, sha, changed }
+    best = { holds: false, sha, changed } // the newest line (a re-sign is appended) names what changed
+  }
+  return best
+}
+
 /** Parse `--flag value` / `--flag=value` / repeatable flags out of argv. */
 export function parseArgs(argv, { repeat = [], bool = [] } = {}) {
   const out = { _: [] }

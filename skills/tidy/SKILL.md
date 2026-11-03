@@ -30,7 +30,8 @@ The safe actions, from `tidy.mjs plan --json` (same flags):
 - `parked` with a worktree → `remove-worktree` (the branch stays — it holds the work)
 - `ready` → `merge` — a signed-off feature (verified, quick-checked or not — verify is optional) is shipped on its own branch first (its SPEC flipped to
   `SHIPPED` and archived, as the fleet lands one), so the target never holds a finished feature's
-  live folder; a ship that refuses leaves the branch unmerged and says why
+  live folder; a ship that refuses leaves the branch unmerged and says why (code committed after
+  the sign-off is one: walk it again and sign off)
 
 None of them → skip to §3. Otherwise one AskUserQuestion listing each by name, grouped:
 **Do all of it** (recommended) / **Not now**. On **Do all of it**, run them grouped by action:

@@ -249,7 +249,7 @@ there.
 `/builder:signoff` — tick each `- [ ]` as it lands, so the row that routed you here stops firing.
 Tasks from a verify INCOMPLETE (already signed off) end at `/builder:verify --path <folder>` again —
 **scoped**, per its §A re-verify is SCOPED — plus a re-walk of any signed-off surface the fix changed.
-Tasks from a quick check's gaps end with the quick check again (§After sign-off).
+Tasks from a quick check's gaps end with a re-walk and re-sign (ship refuses code after the sign-off), then the quick check again.
 
 Tasks from an **agent walk** (`--agent-walk`, rows tagged `(agent walk round <n>)`) end with REFERENCE
 §Walk readiness again, then `/builder:agent-walk --path <folder>` — never a human re-walk request.

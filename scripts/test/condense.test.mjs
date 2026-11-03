@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { leanRepo, run, git, readText } from './fixtures/lean-repo.mjs'
 import { stripPlan, setHeader } from '../condense.mjs'
 
@@ -252,6 +253,60 @@ test('condense --ship: verify is optional after sign-off — a QUICK, SKIPPED or
     const line = readText(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md')).split('\n')[1]
     assert.equal(line, `> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · 🤖 agent signed off (walk round 1), not human-tested · ${says}`)
   }
+})
+
+test('condense --ship --into: code committed after the sign-off is refused until it is signed off again; registry commits and a clean merge of the target carry', () => {
+  const r = built()
+  const signed = git(r.root, 'rev-parse', 'HEAD') // the human signs off the HEAD they walked
+  assert.equal(run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'works', '--set', 'state=signed-off'], { cwd: r.root }).status, 0)
+  // The target moved (another feature's merge) and is merged in cleanly; walk notes land in the registry.
+  git(r.root, 'checkout', '-q', 'main')
+  writeFileSync(join(r.root, 'other.txt'), 'another feature\n')
+  git(r.root, 'add', 'other.txt')
+  git(r.root, 'commit', '-qm', 'other feature')
+  git(r.root, 'checkout', '-q', `builder/${r.feature}`)
+  git(r.root, 'merge', '-q', '--no-edit', 'main')
+  writeFileSync(join(r.folder, 'walk.md'), 'walk notes\n')
+  git(r.root, 'add', '-A', r.rel)
+  git(r.root, 'commit', '-qm', 'walk notes')
+  // A fix after the sign-off: code nobody walked.
+  mkdirSync(join(r.root, 'app'), { recursive: true })
+  writeFileSync(join(r.root, 'app', 'fix.js'), 'fix\n')
+  git(r.root, 'add', 'app/fix.js')
+  git(r.root, 'commit', '-qm', 'a fix after sign-off')
+  const out = run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root })
+  assert.equal(out.status, 1)
+  assert.match(out.stderr, new RegExp(`note-tags changed since it was signed off at ${signed.slice(0, 7)}\\w* \\(app/fix\\.js\\) — walk it again and sign off, then ship\\. Nothing was touched\\.`))
+  assert.ok(existsSync(join(r.folder, 'MANIFEST.md')))
+  assert.equal(git(r.root, 'status', '--short'), '')
+  // Re-signed: a second line under the first (signoff §Re-signing), at the new HEAD — it ships.
+  const spec = readText(join(r.folder, 'SPEC.md')).split('\n')
+  const at = spec.findIndex((l) => l.startsWith('> ✅ SIGNED OFF'))
+  spec.splice(at + 1, 0, `> ✅ SIGNED OFF 2026-10-24 — ${git(r.root, 'rev-parse', '--short', 'HEAD')} · by Luke: "fix works"`)
+  writeFileSync(join(r.folder, 'SPEC.md'), spec.join('\n'))
+  git(r.root, 'commit', '-qam', 're-signed')
+  const ok = run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root })
+  assert.equal(ok.status, 0, ok.stderr)
+})
+
+test('condense --ship --into: a conflict with the target resolved by hand after the sign-off is new code — refused', () => {
+  const r = built()
+  writeFileSync(join(r.root, 'shared.txt'), 'feature\n')
+  git(r.root, 'add', 'shared.txt')
+  git(r.root, 'commit', '-qm', 'feature edits shared')
+  assert.equal(run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'works', '--set', 'state=signed-off'], { cwd: r.root }).status, 0)
+  git(r.root, 'checkout', '-q', 'main')
+  writeFileSync(join(r.root, 'shared.txt'), 'main\n')
+  git(r.root, 'add', 'shared.txt')
+  git(r.root, 'commit', '-qm', 'main edits shared')
+  git(r.root, 'checkout', '-q', `builder/${r.feature}`)
+  spawnSync('git', ['merge', '-q', '--no-edit', 'main'], { cwd: r.root })
+  writeFileSync(join(r.root, 'shared.txt'), 'both\n')
+  git(r.root, 'add', 'shared.txt')
+  git(r.root, 'commit', '-qm', 'resolved', '--no-edit')
+  const out = run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root })
+  assert.equal(out.status, 1)
+  assert.match(out.stderr, /changed since it was signed off at \w+ \(shared\.txt\) — walk it again and sign off/)
 })
 
 test('condense --ship: a feature never walked or signed off is still refused, nothing touched', () => {
