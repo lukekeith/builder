@@ -23,7 +23,10 @@ a fast-forward to exactly that tested merge commit (`merge(<feature>): agent-ver
 human-tested`). That merge-tier run is requested, held, when the walk starts and runs beside it.
 Verify is optional after sign-off, so the fleet never runs the full `/builder:verify`: before the
 ship run it makes the one-call quick check (`verify-quick.mjs`, no model), which reads that held
-run and the spec's mechanical items — its gaps are noted in the report, never a block. A run
+run and the spec's mechanical items — its gaps are noted in the report, never a block. What ships
+and lands is what was signed off: code committed after the sign-off (a fix, a conflict an agent
+resolved) parks the feature — walk it again and sign off; registry commits and clean merges of
+the target carry. A run
 that goes red at landing (the target moved after the quick check read it green) parks the feature naming the
 failing tests, and the fleet retries it. Then the fleet removes its worktree and `builder/` branch. **Migrations
 that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge

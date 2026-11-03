@@ -145,7 +145,9 @@ target merged with this branch.
    uses the one-call check: `node <builder>/scripts/verify-quick.mjs <folder> --max-wait 540`
    (Bash timeout 600000; `still running` → the same call again) reads that held verdict for HEAD and
    the spec's mechanical items. PASS records `verify: QUICK …`. **Gaps are noted, not blocking** —
-   name each in the hand-off and ship anyway: a signed-off feature with gaps still ships, and the
+   name each in the hand-off and ship anyway: a signed-off feature with gaps still ships — unless
+   code was committed after the sign-off (fixing a gap is one): then walk it again and sign off
+   before the ship, which refuses it otherwise — and the
    merge queue at landing tests the merged result. Nothing to run when `verify:` already reads
    READY, QUICK or SKIPPED (the fleet runs the check before this session; it is the same call). A
    `verify: INCOMPLETE` from an earlier full verify is worked as before (§Working `## Fixes`).

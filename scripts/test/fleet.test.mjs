@@ -202,6 +202,36 @@ test('a merge tier that goes red at landing parks, naming the failing check', ()
   assert.doesNotMatch(git(root, 'log', '-1', '--format=%s', 'main'), /merge\(a\)/)
 })
 
+test('code committed after the sign-off parks the ship lane: what ships is what was signed off — walk it again and sign off', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const steps = HAPPY.map((s) => (s === 'signed-off' ? 'SIGNOFF' : s === 'verified' ? 'COMMIT:app/fix.js:verified' : s))
+  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 1)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /^a changed since it was signed off at [0-9a-f]{7} \(app\/fix\.js\) — walk it again and sign off — next: \/builder:resume --path docs\/features\/a to walk the changes and sign off again/)
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)|stub: a SHIP/)
+})
+
+test('code that rode in with the ship is not landed: the sign-off is read from the SPEC as it was before the ship', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const steps = HAPPY.map((s) => (s === 'signed-off' ? 'SIGNOFF' : s === 'SHIP' ? 'COMMIT:app/fix.js:SHIP' : s))
+  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 1)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /^a changed since it was signed off at [0-9a-f]{7} \(app\/fix\.js\) — walk it again and sign off/)
+  assert.doesNotMatch(git(root, 'log', '-1', '--format=%s', 'main'), /merge\(a\)/)
+})
+
+test('a signed-off feature with only registry commits since its sign-off ships and lands', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const r = runFleet(root, ['a'], { a: HAPPY.map((s) => (s === 'signed-off' ? 'SIGNOFF' : s)) }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+})
+
 test('a blocked spec parks with its reason and the fleet exits 1', () => {
   const root = makeRepo(['b'])
   const r = runFleet(root, ['b'], { b: ['audited', 'BLOCK:plan wants to split'] })

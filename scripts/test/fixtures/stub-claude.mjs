@@ -5,6 +5,7 @@
 //   BLOCK:<reason>  set blocked:      PR:<#n>        set pr:
 //   PARK-HUMAN:<reason> / PARK-RECORD:<reason>  set blocked: and write PARKED.md (kind human-step / stuck)
 //   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
+//   SIGNOFF         what the agent sign-off leaves: state: signed-off and a `> 🤖 AGENT SIGNED OFF … — <HEAD> · …` header line
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait STUB_SLOW_MS (default 150) ms, then <step>
@@ -190,6 +191,16 @@ else if (step === 'SHIP') {
   mkdirSync(join(process.cwd(), dirname(spec), '_archive'), { recursive: true })
   execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })
   execFileSync('git', ['mv', spec, join(dirname(spec), '_archive', feature)], { stdio: 'ignore' })
+}
+else if (step === 'SIGNOFF') {
+  const sp = join(process.cwd(), spec, 'SPEC.md')
+  const lines = (existsSync(sp) ? readFileSync(sp, 'utf8') : '').split('\n')
+  let t = lines.findIndex((l) => /^# /.test(l))
+  if (t < 0) lines.splice((t = 0), 0, `# ${feature} — spec`)
+  const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+  lines.splice(t + 1, 0, `> 🤖 AGENT SIGNED OFF 2026-09-26 — ${head} · agent walk round 1 · not human-tested`)
+  writeFileSync(sp, lines.join('\n'))
+  set('state', 'signed-off')
 }
 else if (step === 'READY-PENDING') {
   set('state', 'building')
