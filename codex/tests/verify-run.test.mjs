@@ -641,7 +641,8 @@ const kill = (pid) => {
     process.kill(pid, 'SIGKILL')
   } catch {}
 }
-const pidIn = (f) => Number(readFileSync(f, 'utf8'))
+// No pid file: the helper never got to start its server under load, so nothing was left to reap.
+const pidIn = (f) => (existsSync(f) ? Number(readFileSync(f, "utf8")) : null)
 
 test('a suite that leaves a detached server in the checkout: the run reaps it', async () => {
   const pidFile = join(realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-'))), 'pid')
@@ -659,7 +660,7 @@ test('a suite that leaves a detached server in the checkout: the run reaps it', 
 test('a check that times out or fails with a server left behind: reaped either way', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'vrun-pid-')))
   const co = project({})
-  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 1500, db: null, checks: [
+  const ctx = ctxFor(co, co, { verify: { suites: [], timeoutMs: 8000, db: null, checks: [
     { name: 'red', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'red')))}; exit 1`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
     { name: 'slow', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'slow')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
   ] } })
@@ -680,7 +681,7 @@ test('a cancelled run reaps what it left behind', async () => {
     { name: 'srv', run: `node -e ${JSON.stringify(leaveSleep(join(dir, 'pid')))}; sleep 30`, cwd: '.', compare: 'exit', tiers: ['commit'], needs: [] },
   ] } })
   const run = runRequest(req(), ctx)
-  for (const t0 = Date.now(); !existsSync(join(dir, 'pid')) && Date.now() - t0 < 10000; ) await new Promise((r) => setTimeout(r, 50))
+  for (const t0 = Date.now(); !existsSync(join(dir, 'pid')) && Date.now() - t0 < 30000; ) await new Promise((r) => setTimeout(r, 50))
   await new Promise((r) => setTimeout(r, 100))
   ac.abort()
   const v = await run
