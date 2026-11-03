@@ -4,6 +4,34 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.1.0
+
+**Verify is optional after sign-off.** A full `/builder:verify` spends many tokens re-reading what the
+build's reviews and your walk already covered. Now, once a feature is signed off, you choose — and
+nothing refuses a PR, ship, merge, tidy or archive for lack of a READY verdict. Nothing to change in
+`.claude/builder.md`.
+
+**Added:**
+- **One choice after sign-off**, explained above one picker:
+  - **Quick check (Recommended)** — `scripts/verify-quick.mjs`, one script call and no agents: your
+    sign-off, open `## Fixes`, schema rows, open decisions, the spec's obligations and the merge tier on
+    this commit (requested and waited on if it hasn't run), each ✓ or ✗. A pass records
+    `verify: QUICK <date> <sha>`; a ✗ is advice — fix it, ship anyway, or run the full verify.
+  - **Ship it** — no check; `verify: SKIPPED <date>` is recorded and the PR comes next.
+  - **Full verify** — today's `/builder:verify`, for when the deep check is worth the tokens; an
+    INCOMPLETE result can still be shipped as is.
+- The SHIPPED header, the archive and the fleet's landing notice say which check ran: verified,
+  quick-checked or not verified.
+
+**Changed:**
+- **Agent mode and the fleet quick-check instead of verifying.** A signed-off feature moves straight to
+  the ship lane; the quick check runs before the ship session and its gaps are noted, never blocking.
+  Landing still goes through the merge queue, which tests the merged result whole.
+- The ship (`condense.mjs --ship`) refuses only a feature that was never signed off; `/builder:tidy`
+  merges a signed-off feature; `/builder:archive` marks a merged, signed-off feature SHIPPED, and CLOSED
+  only one that never was.
+- Sign-off's `next:` is `/builder:resume`, which offers the choice — never a mandatory verify.
+
 ## 6.0.0
 
 **Run `/builder:init --update` in each repo before its next build.** 6.0 replaces the
