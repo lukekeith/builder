@@ -2,6 +2,10 @@
 
 Claude Builder is developed first in this repository's root. The self-contained `codex/` package adapts those features to Codex and uses the same release version after migration is verified. It requires Node and Git, with no npm dependencies, GSD or Superpowers.
 
+## What's new in 6.1.1 — only the commit that was signed off lands
+
+`lifecycle.mjs deliver` now lands only the commit that was signed off: code committed after the sign-off — a fix after a red merge test, a resolved conflict — is refused with "changed since it was signed off — walk it again and sign off, then deliver" (registry commits still pass). After an agent or no-walk sign-off the agent walk runs again on its own (at most twice); after your own walk, `$builder` asks whether you walk it again or hand it to the agent walk. A recorded quick check or skip holds only at its own commit. Nothing to change in your config.
+
 ## What's new in 6.1.0 — verify is optional after sign-off
 
 Once a feature is signed off, `$builder` asks one question: **Quick check** (recommended — `scripts/verify-quick.mjs`, one script and no agents: the sign-off, open fixes, schema rows, open decisions, the spec's obligations and the merge tier on this commit, each ✓ or ✗), **Ship it** (no check) or **Full verify** (the verified checkpoint, as before). None is required: `lifecycle.mjs deliver` lands any signed-off feature through the merge queue and records which check ran; a ✗ is advice. Under `--auto` or an agent handoff the quick check runs and its gaps go in the report. The archive's SHIPPED header names the check. Nothing to change in your config.
