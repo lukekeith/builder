@@ -1,11 +1,16 @@
 ---
 name: verify
-description: The final check on a built feature after it was tested — the verifier's merge tier (every suite and check on the feature merged onto the target), contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
+description: The optional deep check on a feature after sign-off — the verifier's merge tier (every suite and check on the feature merged onto the target), contract parity and a spec spot-check — ending in READY or INCOMPLETE with evidence. Use when asked to verify a feature or whether it's done.
 ---
 
 # `/builder:verify` — is it actually done?
 
 Invocation: **`/builder:verify --path <folder>`**. Flags: [REFERENCE](../resume/REFERENCE.md) §Flags.
+
+**Optional.** After sign-off the human picks a quick check, ship it, or this — the **Full verify**
+choice (resume §After sign-off), for when a deep check is worth its tokens: the build's reviews and
+the walk already checked the feature. Nothing refuses a PR, ship or merge for want of its READY, and
+agent mode runs the one-call quick check (`verify-quick.mjs`) instead, never this.
 
 It reads four things, and **trusts nothing remembered from the build** — every check runs fresh:
 
@@ -66,12 +71,13 @@ whose state is `signed-off` — an INCOMPLETE verdict leaves the state there, so
 | `walk: agent-pass …` **and** the SPEC header carries `🤖 AGENT SIGNED OFF` | run, as an **agent-signed-off** feature: checklist item 1 holds on the agent walk report, the verdict says "agent-walked, not human-tested", and READY's `next:` is `/builder:resume --path <folder>` — which, in agent mode, opens the PR and takes it to merged |
 | `walk: agent-pass …` at `state: built` (walked before agents signed off) | not signed off yet: hand to `/builder:agent-walk --path <folder>`, which writes the agent sign-off |
 | `state: built` with `walk: none` | 🔴 **stop and offer the walk instead** — print `walk.md` and name `/builder:signoff --path <folder>` as what records the verdict. **Under `--agent-walk`:** hand to `/builder:agent-walk --path <folder>` instead. Never call a build READY that nobody has looked at |
-| `verify:` already carries a verdict | a **re-verify** — scoped, per §A re-verify is SCOPED |
+| `verify:` already carries READY or INCOMPLETE | a **re-verify** — scoped, per §A re-verify is SCOPED. `QUICK …` or `SKIPPED …` → run in full: the human chose the deep check after all |
 | `hold:` set | run anyway: verify is local and changes nothing outward. The hold binds the PR, and the verdict carries it instead of a PR command |
 | `state:` anything before `built` | not built yet. One line naming the state and the step that owns it, hand back, stop |
 
 **When two rows fit, the more specific wins** — a `verify:` already carrying a verdict makes it the
-scoped re-verify row, whatever `state:` says.
+scoped re-verify row, whatever `state:` says. Under `--agent-walk` this skill is not the route at
+all — AGENT-MODE §Ship in agent mode quick-checks and ships — so it runs only when asked by name.
 
 **Why the walk comes first:** a human (or the agent walk) spots in seconds what a suite takes minutes
 to discover; the merge tier runs beside the walk, so neither waits on the other.
@@ -246,6 +252,10 @@ Pick up where you left off any time: /builder:resume --path <folder>
 
 Without a config `agent_walk:` block only Step by step is left: the single line
 `📍 <feature>: verify <…> — next: /builder:resume --path <folder> · or say go`.
+
+**An INCOMPLETE never blocks** — verify is optional. When the human says to ship it as is,
+`node <builder>/scripts/verify-quick.mjs <folder> --skip` records `verify: SKIPPED`, then resume §Ship;
+the `## Fixes` rows stay for later.
 
 **Under `--agent-walk`, a READY goes straight on** into resume's AGENT-MODE.md §Ship in agent mode in this turn — no
 footer, no return to the route table (REFERENCE §Under `--auto` and `--agent-walk`: adjacent steps

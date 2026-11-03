@@ -141,9 +141,9 @@
         }
       ],
       "stamp": {
-        "hash": "18dd2e3ad982",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "180929ce5793",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -185,9 +185,9 @@
         }
       ],
       "stamp": {
-        "hash": "d3e489900948",
-        "version": "5.5.0",
-        "date": "2026-11-01"
+        "hash": "060c54698dd0",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -792,9 +792,9 @@
         }
       ],
       "stamp": {
-        "hash": "6e7544034199",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "5ab21d123f3b",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     },
     {
@@ -1001,7 +1001,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (4 phases, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), verify it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```",
+          "text": "```\nFull spec: docs/features/cert-tags/SPEC.md\nPick up where you left off any time: /builder:resume --path docs/features/cert-tags\n  (if this session ends, or to spec several features before building any of them)\n\n📍 cert-tags: built (4 phases, 12 tasks) — what next?\n   1. Agent — sent to agents who walk it in the running app, sign it off as the agent (not human-tested), quick-check it and merge it; you get the review of what landed\n   2. Step by step — you walk it yourself in the running app, then sign it off here\n   Reply 1 or 2 — \"go\" is 1.\n```",
           "inferred": true
         },
         {
@@ -1031,9 +1031,9 @@
         }
       ],
       "stamp": {
-        "hash": "b09342f52773",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "42f2af1679c4",
+        "version": "6.0.0",
+        "date": "2026-11-03"
       }
     }
   ]

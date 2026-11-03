@@ -37,9 +37,10 @@ Above the picker, in plain words (REFERENCE §Before a picker):
 
 - **What is being decided** — which of the listed folders leave the registry, in one commit.
 - **Your options:**
-  - **Archive the finished ones** — every **Finished** row: shipped ones move as they read; a verified
-    one gets its `SHIPPED — merged <sha>` header; one merged but never verified is closed
-    `CLOSED — not walked` (or `walked, not verified`), never called shipped; leftovers are trimmed.
+  - **Archive the finished ones** — every **Finished** row: shipped ones move as they read; a
+    signed-off one gets its `SHIPPED — merged <sha>` header, naming which check ran (verified,
+    quick-checked or not verified — verify is optional); one merged but never signed off is closed
+    `CLOSED — not walked`, never called shipped; leftovers are trimmed.
   - **Those and the old ones** — also every **Old** row: an abandoned feature is closed
     `DROPPED — <reason>` and no longer satisfies a program dependency; a folder with no SPEC (an earlier
     pipeline's docs, notes) moves whole — nothing in it is deleted.
@@ -73,4 +74,4 @@ Run `archive.mjs plan --summary` again and end with one footer:
 
 🔴 It never pushes, never deletes a folder's only docs (no SPEC → moved whole), never touches a
 folder with uncommitted changes, one building in a session, or one a fleet is running, and never
-writes `SHIPPED` on a feature that was not verified.
+writes `SHIPPED` on a feature that was never signed off.

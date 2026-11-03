@@ -14,7 +14,8 @@ say why in one line and stop; never fall back to the picker.
 
 The engine is `/builder:fleet`'s — `scripts/fleet.mjs` — so everything it promises holds here: a
 worktree per feature, builds in parallel, walks one at a time, an agent walk and an **agent
-sign-off** in place of yours, then verify and the ship commit, and the verifier's **merge queue lands
+sign-off** in place of yours, then the one-call quick check (never the full verify — it is optional
+after sign-off) and the ship commit, and the verifier's **merge queue lands
 it on the `merge_into` branch** (default `base_branch`; `current` for the branch you have checked
 out; `--into` for one run) — one merge commit per feature, tested exactly as it lands, so the whole
 batch lands in one place for you to test — then its worktree and branch are removed — and
@@ -88,9 +89,9 @@ One AskUserQuestion with `multiSelect: true`. Each option: the `feature` as the 
 description that says **what the agents would actually do**, in plain words:
 - **spec … planned** — `not built yet · agents audit, plan, build, test and merge it`.
 - **building** — `part-built (<what's done>) · agents build the rest, test and merge it`.
-- **built, not walked** — `built in a session, not tested yet · agents walk it, verify and
+- **built, not walked** — `built in a session, not tested yet · agents walk it, quick-check and
   land it` (`build: here` → `built here by you, not tested yet · …`).
-- **signed-off / verified** — `tested · agents verify and land it`.
+- **signed-off / verified** — `tested · agents quick-check and land it`.
 - **parked** — `parked — <why, cut to fit> · picking it unparks and retries`.
 **Order:** features not built yet first, then part-built, then built — so new work leads. **More
 than four offerable** → the first four in that order (most recently touched within each), and say in

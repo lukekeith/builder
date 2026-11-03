@@ -572,7 +572,7 @@ test('4.10.2: /builder:agent never offers in-session or shared-branch work, and 
   assert.match(agent, /\*\*`inSession: true`\*\*/)
   assert.match(agent, /being built in a session; finish it there/)
   assert.match(agent, /non-empty `sharedWith`/)
-  assert.match(agent, /built in a session, not tested yet · agents walk it, verify and\s+land it/)
+  assert.match(agent, /built in a session, not tested yet · agents walk it, quick-check and\s+land it/)
   assert.match(agent, /features not built yet first, then part-built, then built/)
 })
 

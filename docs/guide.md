@@ -151,11 +151,13 @@ contract change it reads is breaking until §Apps states the transition.
 **With an `agent_walk:` block — and `/builder:init` always writes one — agents build, test and
 merge a feature by default.** Saying "go" at the build go-ahead, or picking **Agent** on a hand-off,
 hands the feature to agents: they build it in its own worktree, an agent tests it in the running app
-(the *agent walk*), it is verified, and it is merged into the `merge_into` branch on your machine,
+(the *agent walk*), a one-call quick check reads the tests and the spec, and it is merged into the `merge_into` branch on your machine,
 recorded as `🤖 AGENT SIGNED OFF — not human-tested`. Nothing is pushed and no PR is opened.
 
 **To test it yourself instead**, either pick **In this session** on a hand-off before the build (it
-builds in your session and stops for your walk and `/builder:signoff`), or at the go-ahead choose
+builds in your session and stops for your walk and `/builder:signoff`; after your sign-off you
+choose a quick check, no check, or the full `/builder:verify` — none is required, and the full verify
+spends many tokens on what the build and your walk already checked), or at the go-ahead choose
 *Change the test plan*, set the agent walk to the risky parts or all of it, and answer **Yes** to *Walk it
 yourself before it lands?*.
 
@@ -167,7 +169,7 @@ Agents never change `.claude/builder.md`: a fix that needs it parks for you with
 
 **Walks are batched.** With `agent_walk.start` set, the walk lane takes every feature waiting to
 walk — up to `agent_walk.batch` (default 8) — into one walk branch, brings the env up once, and has
-one agent walk them all, screen by screen. Verify and ship run in the parallel lanes. A one-app
+one agent walk them all, screen by screen. The quick check and ship run in the parallel lanes. A one-app
 feature's walk is its verification script, once; a re-walk after a fix covers only what the fix
 changed.
 
@@ -186,7 +188,7 @@ phase close, and stops at `built`. No fleet, no reviewer agents, no walk lock, a
 Each spec gets its own worktree and `builder/<feature>` branch. Builds run in parallel; walks run one
 at a time through your dev environment, done by an agent (`/builder:agent-walk`) that records evidence
 per `walk.md` item and signs it off as the agent (`🤖 AGENT SIGNED OFF — not human-tested`). Then it
-verifies, ships, and the verifier's **merge queue lands it on the `merge_into` branch** (default
+runs the quick check (never the full verify; its gaps are noted, not blocking), ships, and the verifier's **merge queue lands it on the `merge_into` branch** (default
 `base_branch`, or `--into` for one run) — one merge commit per feature, tested exactly as it lands,
 its worktree and branch removed — so a batch of five specs lands as five merges on one branch for you to
 test. Nothing is pushed and no PR is opened. Every feature ends **merged**. Merge conflicts, red
@@ -258,9 +260,9 @@ A merged feature's worktree and branch are removed; a parked one keeps only its 
 the next step. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
 what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
 worktree, one OK for everything safe (delete what's merged, remove dead worktrees, merge what's
-verified — shipped on its branch first, so the target gets the archived SPEC), one question each for
+signed off — shipped on its branch first, so the target gets the archived SPEC), one question each for
 the rest. It never pushes and never loses uncommitted work. **`/builder:archive`** does the same for
-the registry: one table of the folders it judges finished — shipped but never moved, verified and
+the registry: one table of the folders it judges finished — shipped but never moved, signed off and
 merged with no ship, merged but never walked, and (only if you say so) abandoned ones and old docs —
 and one OK moves them into `<registry>/_archive/`, each kept as its SPEC under a `SHIPPED`,
 `CLOSED — not walked` or `DROPPED — <reason>` header, in one commit. A dropped feature never satisfies

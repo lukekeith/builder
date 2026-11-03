@@ -20,8 +20,11 @@ is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the verifier's **merge
 queue** lands it on the branch checked out here — the whole suite on the feature merged onto it, then
 a fast-forward to exactly that tested merge commit (`merge(<feature>): agent-verified, not
-human-tested`). That merge-tier run is requested, held, when the walk starts and runs beside it; one
-that goes red at landing (the target moved after verify read it green) parks the feature naming the
+human-tested`). That merge-tier run is requested, held, when the walk starts and runs beside it.
+Verify is optional after sign-off, so the fleet never runs the full `/builder:verify`: before the
+ship run it makes the one-call quick check (`verify-quick.mjs`, no model), which reads that held
+run and the spec's mechanical items — its gaps are noted in the report, never a block. A run
+that goes red at landing (the target moved after the quick check read it green) parks the feature naming the
 failing tests, and the fleet retries it. Then the fleet removes its worktree and `builder/` branch. **Migrations
 that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge
 into the branch checked out here the fleet runs the config's §Walk readiness `apply:` then
@@ -45,9 +48,10 @@ its park record (REFERENCE §The park record — `<folder>/PARKED.md`, which the
 parking run didn't) to a fresh run that digs from *Where to dig*. A `kind: human-step` park — your
 uncommitted changes in the way, a `commit: manual` app — waits for you.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
-the **walk** lane (walk readiness, agent walk, sign-off, verify) runs one feature at a time. **Every
+the **walk** lane (walk readiness, agent walk, sign-off) runs one feature at a time; a signed-off
+feature goes to the ship lane, which quick-checks it first. **Every
 worktree is brought up to the target first**: before each build- or ship-lane run, and before the
-walk env starts (at walk readiness and at verify — never between readiness and the walk), the fleet
+walk env starts (at walk readiness — never between readiness and the walk), the fleet
 merges the target branch into the worktree, so a feature builds on what the others have landed and
 the ship step's own merge finds nothing new. **A conflict there goes to an agent**: the merge is left
 in progress and a run of its own resolves it — both sides kept, the phase tier green, the
@@ -78,7 +82,7 @@ here, follow that file. `--status` on this skill still works and means the same.
 ### A park that needs you — its choices
 
 A `## Parked` entry whose why starts `needs you:` (or, from a 5.x row, `uncommitted changes are in
-the way`) is a landing your uncommitted changes refused: the feature is built, verified and
+the way`) is a landing your uncommitted changes refused: the feature is built, signed off and
 merge-tested on its branch, but landing it would change files you are editing in the target's
 checkout, so the fleet stopped before touching any of them. Its `files:` line lists every one (a 5.x
 row has none: `git status --porcelain` then names your changes); the record is
@@ -87,7 +91,7 @@ screen each, never as a path to go and read:
 
 1. **The review**, in plain words — what it is, every file, and what each choice does:
 
-   > **`<feature>` is ready to land on `<target>`, but it needs you.** It's built, verified and
+   > **`<feature>` is ready to land on `<target>`, but it needs you.** It's built, signed off and
    > merge-tested on `builder/<feature>`. Landing it would change <n> file(s) you have uncommitted
    > edits in, so builder stopped before touching any of them:
    >
@@ -240,7 +244,7 @@ never merged, removed when the fleet ends), brings the env up **once** (`reset` 
 session there: readiness for the batch, one walker going screen by screen across every feature
 (agent-walk §Batched walks), each verdict written in that feature's own worktree. A feature that
 conflicts with the others waits for the next batch. The walk lane does nothing else: a walk's fixes,
-verify and ship run in the parallel lanes with no env, and a fixed feature rejoins a later batch,
+the quick check and ship run in the parallel lanes with no env, and a fixed feature rejoins a later batch,
 which re-walks only what its fix changed. A batch whose env won't come up falls back to one walk
 per feature, with the env-repair run.
 

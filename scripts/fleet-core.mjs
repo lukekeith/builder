@@ -260,22 +260,29 @@ export function markSeen(root, now = new Date()) {
 
 /**
  * The landings since /builder:fleet:status was last opened, oldest first: { feature, merged, target,
- * landedAt, walked }. Never opened → the last day's, so a repo upgrading into this does not wake up
+ * landedAt, walked, verify } — verify the check it had (verifyCheck's words), null on a row from
+ * before verify was optional. Never opened → the last day's, so a repo upgrading into this does not wake up
  * to its whole history. Reads the archive's tail only — the status line calls it on every render.
  */
 export function newLandings(root, now = Date.now(), n = 20) {
   const since = seenAt(root) ?? now - DAY_MS
   return tailArchive(root, n)
     .filter((r) => r?.feature && Date.parse(r.landedAt ?? '') > since)
-    .map((r) => ({ feature: r.feature, merged: r.merged ?? null, target: r.target ?? null, landedAt: r.landedAt, walked: Boolean(r.walk?.rounds?.length) }))
+    .map((r) => ({ feature: r.feature, merged: r.merged ?? null, target: r.target ?? null, landedAt: r.landedAt, walked: Boolean(r.walk?.rounds?.length), verify: r.verify ?? null }))
 }
 
-/** One brief line: `- ✔ x merged into main at 4eea9a2 (06:29) — agent-verified, not human-tested: test it yourself`. */
+/**
+ * One brief line: `- ✔ x merged into main at 4eea9a2 (06:29) — agent-walked and quick-checked, not
+ * human-tested: test it yourself`. It says which check ran — verified, quick-checked or not verified
+ * (verify is optional after sign-off); a row from before that was always verified.
+ */
 export function landingLine(l) {
   const at = new Date(l.landedAt)
   const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
   const where = `${l.target ? ` into ${l.target}` : ''}${l.merged ? ` at ${String(l.merged).slice(0, 8)}` : ''}`
-  return `- ✔ ${l.feature} merged${where} (${hhmm}) — ${l.walked ? 'agent-walked and verified' : 'agent-verified, no walk'}, not human-tested: test it yourself`
+  const check = l.verify ?? 'verified'
+  const how = l.walked ? (check === 'not verified' ? 'agent-walked, not verified' : `agent-walked and ${check}`) : l.verify ? `no walk, ${check}` : 'agent-verified, no walk'
+  return `- ✔ ${l.feature} merged${where} (${hhmm}) — ${how}, not human-tested: test it yourself`
 }
 
 /** An archive row whose runs carry the meter (5.4+): its raw .jsonl streams have been read into it. */
@@ -899,7 +906,7 @@ export function overlapRecord({ feature, reason, files, branch, sha, target, dat
     `blocked: "${reason}"`,
     '',
     '## What is stuck',
-    `The work is done and waiting on ${branch} at ${sha} — built, verified and merge-tested; only landing it on ${target} is left. ` +
+    `The work is done and waiting on ${branch} at ${sha} — built, signed off and merge-tested; only landing it on ${target} is left. ` +
       `Your uncommitted changes in ${target}'s checkout touch ${files.length === 1 ? 'a file' : `${files.length} files`} the feature also changes, so builder stopped before touching any of them:`,
     ...files.map((f) => `- ${f}`),
     '',

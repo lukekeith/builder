@@ -28,7 +28,7 @@ The safe actions, from `tidy.mjs plan --json` (same flags):
 - `merged` → `delete-branch` (with its worktree)
 - `dead` → `remove-worktree`
 - `parked` with a worktree → `remove-worktree` (the branch stays — it holds the work)
-- `ready` → `merge` — a verified feature is shipped on its own branch first (its SPEC flipped to
+- `ready` → `merge` — a signed-off feature (verified, quick-checked or not — verify is optional) is shipped on its own branch first (its SPEC flipped to
   `SHIPPED` and archived, as the fleet lands one), so the target never holds a finished feature's
   live folder; a ship that refuses leaves the branch unmerged and says why
 

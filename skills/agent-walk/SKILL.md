@@ -137,7 +137,8 @@ Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 ends `verdict: PASS`; `--round <n>` names one). Whether the walk passed is §3's judgment, made before
 it runs. What it writes:
 - Manifest: `walk: agent-pass YYYY-MM-DD <sha>` — `<sha>` from the passing round's `sha:` line —, `state: signed-off`, `verify: none`, `head`,
-  `next: /builder:verify --path <folder>`.
+  `next: /builder:resume --path <folder>` — verify is optional after sign-off: agent mode runs the
+  quick check and ships (resume AGENT-MODE.md §Ship in agent mode), never the full verify.
 - **Condense** exactly as [`builder:ship`](../ship/SKILL.md) §At sign-off does — the §Plan index cut
   by its heading, `git rm <folder>/PLAN.md` — except the header line written directly under the title
   is:
@@ -194,7 +195,7 @@ batch is in the running app. Do, in order:
    worktree from it) or its `## Fixes` rows. A failure the walker attributes to another feature in
    the batch is still fixed in the feature it failed in, and the fix's rule says what was seen.
 6. **End the run** with one line per feature — its verdict and its next step. Nothing else here: the
-   fleet routes each by its manifest — signed off to verify and ship, fixes to the parallel lanes,
+   fleet routes each by its manifest — signed off to the quick check and ship, fixes to the parallel lanes,
    then back into a later batch.
 
 The walk worktree and its branch are the fleet's scratch: never commit there, never merge it.
@@ -207,7 +208,7 @@ the fleet's report (fleet §5) and, under `human=yes`, your walk (resume §🔒 
 review of what was built. Then:
 
 ~~~
-📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: /builder:verify --path <folder> · or say go
+📍 <feature>: agent signed off (round <n>, not human-tested) + condensed — next: the quick check, then ship — /builder:resume --path <folder> · or say go
 📍 <feature>: agent walk round <n> — <k> fixes owed — next: /builder:resume --path <folder> · or say go
 📍 <feature>: ⛔ parked — the agent walk failed five rounds running on <what still fails> — next: a human walk, then /builder:signoff --path <folder> · or /builder:agent for five more rounds
 ~~~

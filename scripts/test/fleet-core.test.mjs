@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
+import { landingLine } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -1103,4 +1104,15 @@ test('the overlap park record lists every file, the branch and its sha, and the 
   for (const f of files) assert.match(rec, new RegExp(`^- ${f}$`, 'm'))
   assert.match(rec, /^## Your choices\n1\. Commit my changes, then land — `node <builder>\/scripts\/fleet\.mjs --land a --commit-mine "<message>"`\n2\. Set my changes aside, land, put them back — `node <builder>\/scripts\/fleet\.mjs --land a --set-aside`\n3\. Leave it for now/m)
   assert.match(rec, /^## History\n- 2026-10-31 parked — before\n- 2026-11-01 parked — needs you: your uncommitted changes overlap this feature — 4 files: app\/a\.ts, app\/b\.ts, app\/c\.ts, …$/m)
+})
+
+test('landingLine: says which check ran after sign-off — verified, quick-checked or not verified; an older row was verified', () => {
+  const base = { feature: 'x', merged: '4eea9a2b1', target: 'main', landedAt: new Date().toISOString() }
+  const how = (l) => / — (.*), not human-tested: test it yourself$/.exec(landingLine({ ...base, ...l }))[1]
+  assert.equal(how({ walked: true, verify: 'verified' }), 'agent-walked and verified')
+  assert.equal(how({ walked: true, verify: 'quick-checked' }), 'agent-walked and quick-checked')
+  assert.equal(how({ walked: true, verify: 'not verified' }), 'agent-walked, not verified')
+  assert.equal(how({ walked: true, verify: null }), 'agent-walked and verified')
+  assert.equal(how({ walked: false, verify: 'quick-checked' }), 'no walk, quick-checked')
+  assert.equal(how({ walked: false, verify: null }), 'agent-verified, no walk')
 })

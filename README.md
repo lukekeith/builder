@@ -59,7 +59,7 @@ recommendation, or pick another.
 | **plan** | `PLAN.md` — the build, task by task: files, interfaces, behaviour, the tests' assertions |
 | **walk** | trying the finished feature yourself in the running app |
 | **sign-off** | `/builder:signoff` — your verdict after the walk |
-| **verify** | the final full check before a PR |
+| **verify** | the optional full check after sign-off — or a one-call quick check, or none |
 | **park** | a feature stops because it needs a decision only you can make; it says what and why |
 
 ## All commands
