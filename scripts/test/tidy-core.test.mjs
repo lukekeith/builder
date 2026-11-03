@@ -171,6 +171,17 @@ test('a tag with a branch\'s name does not confuse the inventory', () => {
   assert.equal(items['heads/spike'], undefined)
 })
 
+test('signed off is ready to merge whatever verify says — verify is optional after sign-off', () => {
+  const root = fixture()
+  branch(root, 'builder/q', { manifest: { q: 'size: md\nstate: signed-off\nverify: QUICK 2026-11-03 abc1234\nnext: x\n' } })
+  branch(root, 'builder/k', { manifest: { k: 'size: md\nstate: signed-off\nverify: SKIPPED 2026-11-03\nnext: x\n' } })
+  branch(root, 'builder/n', { manifest: { n: 'size: md\nstate: signed-off\nverify: none\nnext: x\n' } })
+  branch(root, 'builder/b', { manifest: { b: 'size: md\nstate: built\nverify: none\nnext: x\n' } })
+  const items = byName(inventory(root, CFG, 'main', { fleet: { features: {} }, lockAlive: false }))
+  for (const n of ['builder/q', 'builder/k', 'builder/n']) assert.deepEqual([items[n].group, items[n].action], ['ready', 'merge'], n)
+  assert.deepEqual([items['builder/b'].group, items['builder/b'].action], ['in-progress', 'ask'], 'built — never walked — is not ready')
+})
+
 test('a worktree kept for your walk is kept, never in the safe batch', () => {
   const root = fixture()
   branch(root, 'builder/w', { manifest: { w: 'size: md\nstate: built\nblocked: "waiting for your walk — next: /builder:resume --path docs/features/w"\nnext: x\n' } })

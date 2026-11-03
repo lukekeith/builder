@@ -9,7 +9,7 @@
  * Actions: delete-branch (a branch fully in the target, and its worktree) · force-delete-branch
  * (unmerged — only after the owner chose delete) · remove-worktree (keeps the branch) · merge (a
  * branch that carries the target merges --no-ff; a feature branch behind it is handed to the fleet,
- * listed on a final `handed:` line). A `ready` feature (verified) is SHIPPED on its own branch first
+ * listed on a final `handed:` line). A `ready` feature (signed off or verified) is SHIPPED on its own branch first
  * — `condense.mjs --ship --into <target>`, in its worktree or a throwaway one — exactly as the fleet
  * lands one, so the merge brings in the archived SPEC and /builder:status never shows it again; a
  * ship that refuses refuses the merge. `merge --as-is` (the owner's "Merge as is") skips the ship.
@@ -120,7 +120,7 @@ function removeWorktree(name) {
 }
 
 /**
- * Ship a verified feature on its own branch before it merges — the fleet's landing order, so the
+ * Ship a signed-off (or verified) feature on its own branch before it merges — the fleet's landing order, so the
  * target receives the SHIPPED SPEC in `_archive/` and no live folder. Run in the branch's worktree,
  * or in a throwaway one when it has none (the branch is checked out nowhere: hands() refused the
  * main checkout). `{ shipped }`, `{ why }` when condense refused, or `{}` when there is nothing to

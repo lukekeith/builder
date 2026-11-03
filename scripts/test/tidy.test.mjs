@@ -90,7 +90,7 @@ test('merge: a branch carrying the target merges --no-ff and goes; one that does
   assert.match(r.stdout, /✓ builder\/r — shipped and merged into main/)
   assert.match(git(root, 'log', '--oneline', '-1', 'main'), /merge\(r\): merged by \/builder:tidy/)
   // The ship rode the merge: main holds the archived SPEC, no live folder, and no workspace is left.
-  assert.match(git(root, 'show', 'main:docs/features/_archive/r/SPEC.md'), /^> ✅ SHIPPED \S+ — merged into main · no ticket · signed off by Luke: "works"$/m)
+  assert.match(git(root, 'show', 'main:docs/features/_archive/r/SPEC.md'), /^> ✅ SHIPPED \S+ — merged into main · no ticket · signed off by Luke: "works" · verified$/m)
   assert.throws(() => git(root, 'cat-file', '-e', 'main:docs/features/r/MANIFEST.md'))
   assert.equal(existsSync(join(root, '.builder/r')), false)
   assert.doesNotMatch(git(root, 'worktree', 'list'), /builder-tidy-ship/, 'the throwaway worktree is gone')

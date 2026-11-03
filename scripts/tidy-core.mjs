@@ -180,7 +180,8 @@ export function inventory(root, cfg, target, { fleet = null, lockAlive = false, 
     else if ((lockAlive && row && !['done', 'parked', 'failed'].includes(row.status)) || (feature && freshLedger([root, item.worktree].filter(Boolean), feature, now))) set('running', 'none')
     else if (item.ahead === null) set('unknown', 'ask', { why: 'git could not compare it with the target' })
     else if (item.ahead === 0) set('merged', 'delete')
-    else if (feature && (mf.state === 'verified' || (mf.state === 'signed-off' && /^READY/.test(mf.verify ?? '')))) set('ready', 'merge')
+    // Verify is optional after sign-off: signed off is ready, whatever `verify:` says (ship first, then merge).
+    else if (feature && (mf.state === 'verified' || mf.state === 'signed-off')) set('ready', 'merge')
     else if (feature && ((mf.blocked && mf.blocked !== 'none') || ['parked', 'failed'].includes(row?.status))) {
       const reason = mf.blocked && mf.blocked !== 'none' ? unquote(mf.blocked) : row.reason ?? ''
       const cut = reason.lastIndexOf(' — next: ')

@@ -66,10 +66,28 @@ test('an agent-signed-off feature is not reported as human-walked; agent mode ta
     h: 'state: verified\nverify: READY 2026-09-26\nwalk: agent-pass 2026-09-26 abc123\npr: #6\nagent-walk: off',
   })
   assert.equal(rows.a.lastDone, 'Agent-walked — not human-tested')
-  assert.equal(rows.a.nextStep, 'Agent sign-off, then deep verify')
+  assert.equal(rows.a.nextStep, 'Agent sign-off, then ship')
   assert.equal(rows.s.lastDone, 'Agent signed off — not human-tested')
+  assert.equal(rows.s.nextStep, 'Quick check, then ship and merge into the fleet branch (agent)')
   assert.equal(rows.v.nextStep, 'Ship and merge into the fleet branch (agent)')
   assert.equal(rows.h.nextStep, 'Review the PR, then /builder:signoff')
+})
+
+test('signed off: verify is optional — the next step is the ship, the quick check offered; no "deep verify" required', () => {
+  const rows = repo({
+    n: 'state: signed-off\nwalk: Luke 2026-11-01\nverify: none',
+    q: 'state: signed-off\nwalk: Luke 2026-11-01\nverify: QUICK 2026-11-02 abc1234',
+    k: 'state: signed-off\nwalk: Luke 2026-11-01\nverify: SKIPPED 2026-11-02',
+    i: 'state: signed-off\nwalk: Luke 2026-11-01\nverify: INCOMPLETE 2026-11-02',
+  }, { 'c/SPEC.md': '# c — spec\n> ✅ SIGNED OFF 2026-11-01 — abc1234 · by Luke: "ok"\n' })
+  assert.equal(rows.n.lastDone, 'Signed off')
+  assert.equal(rows.n.nextStep, 'Ship (quick check offered)')
+  assert.equal(rows.q.lastDone, 'Signed off — quick-checked')
+  assert.equal(rows.q.nextStep, 'Open the PR, then ship')
+  assert.equal(rows.k.lastDone, 'Signed off — verify skipped')
+  assert.equal(rows.k.nextStep, 'Open the PR, then ship')
+  assert.equal(rows.i.nextStep, 'Work the ## Fixes list, or ship as is')
+  for (const r of Object.values(rows)) assert.doesNotMatch(`${r.nextStep} ${r.command ?? ''}`, /deep verify|builder:verify/i)
 })
 
 test('an agent-walk run at built says the agent walks next', () => {

@@ -140,7 +140,7 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   // The stage timeline, read from the branch's commits before the merge deleted it.
   assert.ok(a.wallMs >= 0 && a.stages && typeof a.stages === 'object', 'wall-clock and stages recorded')
   assert.ok('walkRounds' in a && 'parks' in a)
-  assert.deepEqual(a.lanes, { build: 5000, walk: 3000 })
+  assert.deepEqual(a.lanes, { build: 6000, walk: 2000 }, 'signed off hands to the ship lane: verify is optional, the pool runs the quick check')
   assert.equal(a.target, 'main')
   assert.equal(a.profile, null, 'the fixture manifest has no profile:')
   assert.equal(a.tests, 'walk=full review=slice', 'a go-ahead\'d feature with neither line: the thorough mapping')
@@ -150,7 +150,10 @@ test('a spec goes from spec to merged through the build, walk and ship lanes', (
   assert.equal(r.fleet.archived, 1)
   // The stub reports a --no-dev-env run as 'build': the ship lane runs without the dev env too.
   const lanes = r.calls.filter((l) => l.startsWith('start')).map((l) => l.split(' ')[2])
-  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'walk', 'build'])
+  assert.deepEqual(lanes, ['build', 'build', 'build', 'build', 'walk', 'walk', 'build', 'build'])
+  // The ship lane ran the quick check (a script, no session) before shipping; its gaps (the stub writes
+  // no sign-off header) are a note, never a park.
+  assert.ok((r.fleet.notes ?? []).some((n) => /^a: QUICK CHECK: GAPS \(\d+\) — shipped anyway/.test(n)), JSON.stringify(r.fleet.notes))
   assert.ok(r.calls.filter((l) => l.startsWith('end')).every((l) => l.endsWith('into=main')), 'every run is told the target')
   // Landed on the branch the fleet ran from, as one merge commit; the worktree and branch are gone.
   assert.equal(git(root, 'branch', '--show-current'), 'main')

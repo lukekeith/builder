@@ -10,9 +10,12 @@
  *
  * What it judges finished (tier `finished`, the recommended batch):
  *   shipped   — says it shipped (registry.mjs isShippedFolder) but was never moved → archived as it reads
- *   verified  — verify READY, its code in the target, no ship ran (a manual merge, a `build: here`
- *               feature, a PR merged first) → `condense.mjs --ship --merged <sha>`: `✅ SHIPPED — merged <sha>`
- *   merged    — built (or signed off) and in the target, never verified, untouched for --days (14)
+ *   verified  — signed off (verify is optional after sign-off: READY, QUICK, SKIPPED or none), its
+ *               code in the target, no ship ran (a manual merge, a `build: here` feature, a PR merged
+ *               first) → `condense.mjs --ship --merged <sha>`: `✅ SHIPPED — merged <sha> · … · <which
+ *               check ran: verified | quick-checked | not verified>`
+ *   merged    — built and in the target, never signed off (or a signed-off state with no sign-off
+ *               header to carry), untouched for --days (14)
  *               → `✅ CLOSED <date> — merged <sha>, not walked` (`walked, not verified` once signed off)
  *   leftovers — an archived folder still holding a PLAN, manifest or ledger beside its SPEC (moved by
  *               hand), or a `.builder/<name>` workspace of an archived feature → trimmed / removed
@@ -41,7 +44,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { requireConfig } from './config.mjs'
 import { features, ARCHIVE, isShippedFolder, isArchived } from './registry.mjs'
-import { parseManifest, isSet } from './manifest.mjs'
+import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { read, writeAtomic, git as gitStrict, today, cli, parseArgs, workspaceDir } from './feature-core.mjs'
 import { stripPlan, setHeader, ship } from './condense.mjs'
 import { newerThanArchive } from './brainstorm-file.mjs'
@@ -127,8 +130,12 @@ export function plan(root, cfg, { target = cfg.mergeInto, days = 14, now = Date.
       } else left.push({ name, why: 'a program — it archives itself when its last child ships' })
       continue
     }
-    if (onTarget && mfText && ready && ['verified', 'signed-off'].includes(state)) {
-      add('verified', 'finished', 'ship', `verify READY and in ${target}; no ship ran`, { sha: mergedSha(root, rel, mf) })
+    // Verify is optional after sign-off: merged and signed off is shipped — the header says which
+    // check ran (verified, quick-checked, not verified). Its ship needs the sign-off header to carry over.
+    const signedHeader = /^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF)/m.test((read(join(dir, 'SPEC.md')) ?? '').slice(0, 1200))
+    if (onTarget && ['verified', 'signed-off'].includes(state) && (signedHeader || (mfText && ready))) {
+      const check = verifyCheck(mf.verify)
+      add('verified', 'finished', 'ship', `signed off${check === 'not verified' ? '' : `, ${check}`} and in ${target}; no ship ran`, { sha: mergedSha(root, rel, mf), check })
       continue
     }
     if (onTarget && ['built', 'signed-off', 'verified'].includes(state)) {
@@ -361,7 +368,7 @@ export function summaryLine(p) {
   return `registry: ${[finished && `${finished} finished`, old && `${old} old`].filter(Boolean).join(' · ')} to archive → /builder:archive`
 }
 
-const KIND = { program: 'Program, every child ended', shipped: 'Shipped, not archived', verified: 'Verified, merged — ship it', merged: 'Merged, never verified — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' }
+const KIND = { program: 'Program, every child ended', shipped: 'Shipped, not archived', verified: 'Signed off, merged — ship it', merged: 'Merged, never signed off — close as is', leftovers: 'Leftovers', abandoned: 'Looks abandoned — drop', legacy: 'Old docs — move as is' }
 
 function render(cfg, p) {
   const out = [`**${cfg.project}** — the registry against ${p.target}\n`]

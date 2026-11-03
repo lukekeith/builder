@@ -84,7 +84,7 @@ test('plan: finished folders in the recommended tier, abandoned and legacy only 
   assert.match(left.f, /building — in flight/)
   const md = archive(root, 'plan')
   assert.match(md.stdout, /\*\*Finished\*\* — archived on your go-ahead/)
-  assert.match(md.stdout, /\| docs\/features\/m \| Merged, never verified — close as is: built and in main; never walked \| CLOSED — merged [0-9a-f]+, not walked \|/)
+  assert.match(md.stdout, /\| docs\/features\/m \| Merged, never signed off — close as is: built and in main; never walked \| CLOSED — merged [0-9a-f]+, not walked \|/)
   assert.match(md.stdout, /^registry: 6 finished · 2 old to archive → \/builder:archive$/m)
   assert.equal(archive(root, 'plan', '--summary').stdout.trim(), 'registry: 6 finished · 2 old to archive → /builder:archive')
 })
@@ -107,7 +107,7 @@ test('apply: one commit — each keeps only its SPEC under its header, moved int
     `${REG}/_archive/v/SPEC.md`,
   ])
   const v = text(root, `${REG}/_archive/v/SPEC.md`).split('\n')[1]
-  assert.match(v, /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · no ticket · signed off by Luke: "works"$/)
+  assert.match(v, /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · no ticket · signed off by Luke: "works" · verified$/)
   const m = text(root, `${REG}/_archive/m/SPEC.md`)
   assert.match(m.split('\n')[1], /^> ✅ CLOSED 2026-10-27 — merged [0-9a-f]+, not walked$/)
   assert.doesNotMatch(m, /^## Plan$/m, 'the §Plan index goes with PLAN.md')
@@ -227,4 +227,24 @@ test('a program child dropped here says so on its program, and a program whose c
   assert.equal(a.status, 0, a.stdout + a.stderr)
   assert.match(text(root, `${REG}/_archive/p/PROGRAM.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — every child ended: 1 shipped, 1 dropped$/)
   assert.equal(existsSync(join(root, REG, '_archive/p/MANIFEST.md')), false)
+})
+
+test('a merged signed-off feature is SHIPPED, not CLOSED — verify is optional after sign-off; the header says which check ran', () => {
+  const root = fixture()
+  const signed = (n, by) => `# ${n} — spec\n${by}\n> md · no ticket\n\n## Idea\nx\n`
+  commit(root, {
+    'q/MANIFEST.md': 'size: md\nstate: signed-off\nwalk: Luke 2026-10-01\nverify: QUICK 2026-10-02 abc1234\nticket: none\nnext: x\n',
+    'q/SPEC.md': signed('q', '> ✅ SIGNED OFF 2026-10-01 — abc1234 · by Luke: "works"'),
+    'n/MANIFEST.md': 'size: md\nstate: signed-off\nwalk: agent-pass 2026-10-01 abc1234\nverify: none\nticket: none\nnext: x\n',
+    'n/SPEC.md': signed('n', '> 🤖 AGENT SIGNED OFF 2026-10-01 — abc1234 · agent walk round 1 · not human-tested · evidence: .builder/n/agent-walk/round-1/'),
+    'c/SPEC.md': signed('c', '> ✅ SIGNED OFF 2026-10-01 — abc1234 · by Luke: "fine"'),
+  }, 1, 'signed off, merged')
+  const p = JSON.parse(archive(root, 'plan', '--json').stdout)
+  const by = Object.fromEntries(p.items.map((i) => [i.path, `${i.tier}/${i.action}`]))
+  for (const n of ['q', 'n', 'c']) assert.equal(by[`${REG}/${n}`], 'finished/ship', `${n} — merged and signed off, recent or not`)
+  const r = archive(root, 'apply', 'q', 'n', 'c')
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(text(root, `${REG}/_archive/q/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · no ticket · signed off by Luke: "works" · quick-checked$/)
+  assert.match(text(root, `${REG}/_archive/n/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · no ticket · 🤖 agent signed off \(walk round 1\), not human-tested · not verified$/)
+  assert.match(text(root, `${REG}/_archive/c/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · no ticket · signed off by Luke: "fine" · not verified$/)
 })
