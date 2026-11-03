@@ -97,7 +97,7 @@ test('plan: landed and shipped are finished, a hand merge is closed, abandoned a
   assert.match(left.f, /building — in flight/);
   const md = archive(root, 'plan');
   assert.match(md.stdout, /\*\*Finished\*\* — archived on your go-ahead/);
-  assert.match(md.stdout, /\| docs\/features\/m \| Merged, never verified — close as is: built and in main with no landing of record; never verified \| CLOSED — merged [0-9a-f]+, not walked \|/);
+  assert.match(md.stdout, /\| docs\/features\/m \| Merged, never signed off — close as is: built and in main with no landing of record; never signed off \| CLOSED — merged [0-9a-f]+, not walked \|/);
   assert.equal(archive(root, 'plan', '--summary').stdout.trim(), 'registry: 5 finished · 2 old to archive → $builder archive');
 });
 
@@ -237,6 +237,49 @@ test('a workspace with anything newer than the archived record is a reused name,
   assert.equal(p.items.find(i => i.path === '.builder/x'), undefined);
   utimesSync(join(root, '.builder/x/brainstorm.md'), new Date(past - DAY), new Date(past - DAY));
   assert.equal(JSON.parse(archive(root, 'plan', '--json').stdout).items.find(i => i.path === '.builder/x')?.action, 'workspace');
+});
+
+// 6.1.0 — verify is optional after sign-off: merged and signed off is SHIPPED, naming the check that ran.
+function record(root, name, rec) {
+  const features = join(root, '.git', 'builder-codex', 'features');
+  mkdirSync(features, { recursive: true });
+  writeFileSync(join(features, `${name}.json`), JSON.stringify({ name, ...rec }));
+}
+
+test('a landing names the check that ran: quick-checked, not verified (skipped or none), verified (full, or any landing before 6.1)', t => {
+  const root = repo(t);
+  commit(root, { 'README.md': 'x\n' }, 300, 'init');
+  const runs = { q1: 'quick', q2: 'skipped', q3: 'none', q4: 'full', q5: undefined };
+  for (const n of Object.keys(runs)) {
+    landed(root, n, 2);
+    record(root, n, { phase: 'merged', cleaned: true, mergedHead: git(root, ['rev-parse', 'HEAD']), ...(runs[n] ? { landedCheck: runs[n] } : {}) });
+  }
+  const p = JSON.parse(archive(root, 'plan', '--json').stdout);
+  assert.deepEqual(Object.fromEntries(p.items.map(i => [i.name, i.check])), { q1: 'quick-checked', q2: 'not verified', q3: 'not verified', q4: 'verified', q5: 'verified' });
+  assert.match(p.items.find(i => i.name === 'q1').why, /^landed on main through the merge queue \([0-9a-f]+\) — signed off, quick-checked$/);
+  assert.match(archive(root, 'plan').stdout, /\| SHIPPED — merged [0-9a-f]+ · quick-checked \|/);
+  const r = archive(root, 'apply', 'q1', 'q2', 'q4');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(text(root, `${REG}/_archive/q1/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · quick-checked$/);
+  assert.match(text(root, `${REG}/_archive/q2/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · not verified$/);
+  assert.match(text(root, `${REG}/_archive/q4/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · verified$/);
+});
+
+test('merged by hand: signed off is SHIPPED with its check at once; CLOSED only for one never signed off', t => {
+  const root = repo(t);
+  commit(root, { 'h/MANIFEST.md': 'size: md\nstate: signed-off\n', 'h/SPEC.md': SPEC('h'), 'h/PLAN.md': 'plan\n', 'k/MANIFEST.md': 'size: md\nstate: signed-off\n', 'k/SPEC.md': SPEC('k'), 'b/MANIFEST.md': 'size: md\nstate: built\n', 'b/SPEC.md': SPEC('b') }, 100, 'old work');
+  commit(root, { 'n/MANIFEST.md': 'size: md\nstate: signed-off\n', 'n/SPEC.md': SPEC('n') }, 1, 'recent');
+  record(root, 'k', { phase: 'signed-off', cleaned: true, check: { kind: 'quick', head: 'abc', date: '2026-10-20' } });
+  const p = JSON.parse(archive(root, 'plan', '--json').stdout);
+  assert.deepEqual(Object.fromEntries(p.items.map(i => [i.name, `${i.action}/${i.check ?? '-'}`])), { b: 'close/-', h: 'ship/not verified', k: 'ship/quick-checked', n: 'ship/not verified' });
+  assert.match(p.items.find(i => i.name === 'h').why, /^signed off and in main with no landing of record$/);
+  assert.match(archive(root, 'plan').stdout, /\| docs\/features\/b \| Merged, never signed off — close as is: built and in main with no landing of record; never signed off \| CLOSED — merged [0-9a-f]+, not walked \|/);
+  const r = archive(root, 'apply', 'h', 'k', 'b');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(text(root, `${REG}/_archive/h/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · not verified$/);
+  assert.match(text(root, `${REG}/_archive/k/SPEC.md`).split('\n')[1], /^> ✅ SHIPPED 2026-10-27 — merged [0-9a-f]+ · quick-checked$/);
+  assert.match(text(root, `${REG}/_archive/b/SPEC.md`).split('\n')[1], /^> ✅ CLOSED 2026-10-27 — merged [0-9a-f]+, not walked$/);
+  assert.equal(archivedOutcome(root, REG, 'h'), 'shipped');
 });
 
 test('the header goes directly under the title, joining a header block already there', () => {

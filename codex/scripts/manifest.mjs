@@ -22,3 +22,10 @@ export const parseManifest = (text) => {
 
 /** A manifest value that means "nothing": absent, empty, or the literal `none`. */
 export const isSet = (v) => v != null && v !== '' && v !== 'none'
+
+/**
+ * Which check a signed-off feature had, from its `verify:` line — the words a SHIPPED header, the
+ * archive and the status table use. Verify is optional after sign-off: `READY` is the full
+ * /builder:verify, `QUICK` verify-quick.mjs's one-call check, `SKIPPED` (or none) neither.
+ */
+export const verifyCheck = (v) => (/^READY\b/.test(v ?? '') ? 'verified' : /^QUICK\b/.test(v ?? '') ? 'quick-checked' : 'not verified')

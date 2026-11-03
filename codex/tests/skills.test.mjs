@@ -208,3 +208,18 @@ test('$builder archive: routed from SKILL.md, the plan is the review, one confir
   assert.match(d, /never pushes, never deletes a folder's only docs/);
   assert.ok(fs.existsSync(path.join(root, 'scripts/archive.mjs')));
 });
+
+test('6.1.0: after sign-off one optional check — quick check, ship it or full verify — explained above one picker; deliver needs only the sign-off', () => {
+  const d = ref('delivery');
+  assert.match(d, /## After sign-off: one optional check[\s\S]*\*\*Deliver refuses none of the three\.\*\*/);
+  assert.match(d, /Picker \*How do you want to check <feature> before it lands\?\* — \*\*Quick check \(Recommended\)\*\* · \*\*Ship it\*\* · \*\*Full verify\*\*/);
+  assert.ok(d.indexOf('- Quick check (recommended)') < d.indexOf('Picker *How do you want'), 'the choices are explained above the picker');
+  assert.match(d, /scripts\/verify-quick\.mjs <feature> --max-wait 540/);
+  assert.match(d, /verify-quick\.mjs <feature> --skip/);
+  assert.match(d, /Under `--auto` or an agent handoff nobody is asked: run the quick check, then deliver/);
+  assert.match(d, /deliver <feature>` once it is signed off — whatever check ran after it, or none/);
+  assert.match(ref('persistence'), /lifecycle\.mjs record-check <feature> --check quick\|skipped/);
+  assert.match(read('skills/builder/SKILL.md'), /signed-off → verified \(optional\) → merged/);
+  assert.match(read('README.md'), /## What's new in 6\.1\.0[\s\S]*## Upgrading to 6\.0\.0/);
+  assert.ok(fs.existsSync(path.join(root, 'scripts/verify-quick.mjs')));
+});

@@ -69,8 +69,8 @@ export function agentOffer(m, now = Date.now()) {
   if (NOT_BUILT.includes(m.phase)) return { offer: true, group: 0, does: 'not built yet · agents audit, plan, build, test and merge it' }
   if (m.phase === 'building') return { offer: true, group: 1, does: `part-built (${m.currentTask ? `at ${m.currentTask}` : 'in progress'}) · agents build the rest, test and merge it` }
   // A here build skipped the whole-feature final review, which still gates its landing (execution.md §Build here).
-  if (m.phase === 'built') return { offer: true, group: 2, does: m.build === 'here' ? 'built here by you, not tested yet · agents review, walk, verify and merge it' : 'built in a session, not tested yet · agents only walk it, verify and merge it' }
-  if (BUILT.includes(m.phase)) return { offer: true, group: 2, does: 'tested · agents only verify and merge it' }
+  if (m.phase === 'built') return { offer: true, group: 2, does: m.build === 'here' ? 'built here by you, not tested yet · agents review, walk, quick-check and merge it' : 'built in a session, not tested yet · agents only walk it, quick-check and merge it' }
+  if (BUILT.includes(m.phase)) return { offer: true, group: 2, does: 'tested · agents only quick-check and merge it' }
   if (m.phase === 'blocked') return { offer: true, group: 3, does: `blocked — ${String(m.nextAction ?? 'see PARKED.md').slice(0, 80)} · picking it rechecks the cause and retries` }
   return { offer: false, reason: `${f} — ${m.phase} is not a state agents can take` }
 }

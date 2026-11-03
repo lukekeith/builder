@@ -68,7 +68,22 @@ function targetReady(m) {
   }
   return { worktree, head: git(m.originRoot, 'rev-parse', `refs/heads/${m.targetBranch}`) };
 }
-function invalidate(m) { m.verifiedHead = null; }
+function invalidate(m) { m.verifiedHead = null; m.check = null; }
+/** Signed off: the walk passed (a human walk report, the agent walk, or a recorded no-walk). Verify is optional after it. */
+const SIGNED_OFF = ['signed-off', 'verified'];
+const today = () => process.env.BUILDER_TODAY || new Date().toISOString().slice(0, 10);
+/**
+ * Which check holds for `now` (6.1.0: verify is optional after sign-off) — `full` the verified
+ * checkpoint, `quick` verify-quick.mjs, `skipped` the owner's ship-it, `none` neither. A full or
+ * quick check holds on the commit it ran on and over registry-only commits after it.
+ */
+function checkRan(m, now) {
+  const holds = sha => Boolean(sha) && (sha === now || (ancestor(m.worktree, sha, now) && docsOnly(m.worktree, sha, now, m.registry)));
+  if (holds(m.verifiedHead)) return 'full';
+  if (m.check?.kind === 'quick' && holds(m.check.head)) return 'quick';
+  if (m.check?.kind === 'skipped') return 'skipped';
+  return 'none';
+}
 
 // ---- Landing through the verifier's merge queue (docs/plans/2026-11-01-codex-6-port.md Decision 3) 
 const lines = text => String(text ?? '').split('\n').filter(Boolean);
@@ -465,7 +480,7 @@ export async function run(command, name, options = {}) {
     assert(typeof options.report === 'string' && options.report.trim(), 'Human pass requires --report containing the received human walk report');
     idle(m.worktree); assert(!dirty(m.worktree), 'Human pass requires a clean committed feature worktree');
     m.humanReport = options.report; m.humanHead = head(m.worktree); m.awaitingHuman = false; m.phase = 'signed-off'; invalidate(m);
-    m.nextAction = 'Run checks again and record exact verified HEAD'; atomic(file, m); return m;
+    m.nextAction = 'Signed off — choose a check: quick check, ship it or full verify (none is required), then deliver'; atomic(file, m); return m;
   }
   if (command === 'checkpoint') {
     assert(options.phase && options.next, 'Checkpoint requires --phase and --next');
@@ -481,6 +496,16 @@ export async function run(command, name, options = {}) {
     if (options.task !== undefined) m.currentTask = options.task;
     // Verification is runtime-only: writing MANIFEST here would invalidate its tested tree.
     if (m.phase !== 'verified') manifest(m);
+    atomic(file, m); return m;
+  }
+  if (command === 'record-check') {
+    // After sign-off the owner (or --auto) picks a check; none is required. Runtime-only, like the verified checkpoint.
+    assert(['quick', 'skipped'].includes(options.check), 'record-check takes --check quick or skipped (a full verify is the verified checkpoint)');
+    assert(SIGNED_OFF.includes(m.phase), `${name} is not signed off yet — the walk comes first; there is no check to record`);
+    await humanReady(m);
+    idle(m.worktree); assert(!dirty(m.worktree), 'Recording a check requires a clean committed feature worktree');
+    m.check = { kind: options.check, head: head(m.worktree), date: today() };
+    m.nextAction = `${options.check === 'quick' ? 'Quick check passed' : 'Check skipped'} — deliver`;
     atomic(file, m); return m;
   }
   if (command === 'prepare') {
@@ -506,7 +531,8 @@ export async function run(command, name, options = {}) {
   }
   if (command === 'deliver') {
     await humanReady(m);
-    assert(m.phase === 'verified' && m.verifiedHead === head(m.worktree), 'Feature must remain verified at exact current HEAD');
+    // 6.1.0: signed off is enough — a quick check, a skip or a full verify is recorded, never required.
+    assert(SIGNED_OFF.includes(m.phase), `${name} is not signed off yet — the walk comes first (a human walk report through human-pass, or the agent walk's checkpoint --phase signed-off); a check after sign-off is optional`);
     idle(m.worktree); assert(!dirty(m.worktree), 'Feature worktree must be clean');
     assert(m.merge?.request, `No merge requested yet — run prepare ${name} first`);
     assert(!(options.setAside && options.commitMine !== undefined), 'Pick one: --commit-mine or --set-aside');
@@ -572,6 +598,7 @@ export async function run(command, name, options = {}) {
       if (landed?.overlap) return { ...park(landed.overlap), ...kept };
       throw new Error(`The landing was refused: ${landed?.refused ?? 'the verifier recorded no landed commit'}${back && !back.clean ? ` — and ${back.note}` : ''}`);
     }
+    m.landedCheck = checkRan(m, now);
     m.phase = 'merged'; m.mergedHead = landed; delete m.needsYou; m.nextAction = 'Optional explicit cleanup';
     if (back && !back.clean) m.setAside = back;
     atomic(file, m);
@@ -604,7 +631,7 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report; requires fresh checks)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA]\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause and human review invalidate verification. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|record-check|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report at the clean HEAD; signs the feature off)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA] (--phase verified is the full verify)\nrecord-check: --check quick|skipped, after sign-off: the check the owner chose (verify-quick.mjs records quick; ship it records skipped); runtime-only, none is required\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: a signed-off feature, whatever check ran (recorded as landedCheck: full · quick · skipped · none) [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause and human review invalidate verification and a recorded check. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2);
@@ -614,7 +641,7 @@ if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(f
       while (args.length) {
         const key = args.shift();
         if (key === '--set-aside') { options.setAside = true; continue; }
-        assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--tests', '--profile', '--report', '--commit-mine', '--metrics'].includes(key) && args.length, `Invalid option: ${key}`);
+        assert(['--root', '--phase', '--next', '--task', '--verified-head', '--into', '--tests', '--profile', '--report', '--commit-mine', '--metrics', '--check'].includes(key) && args.length, `Invalid option: ${key}`);
         options[key.slice(2).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] = args.shift();
       }
       const result = await run(command, name, options);

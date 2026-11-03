@@ -18,11 +18,13 @@ Write before a worker dispatch, after its review, at each phase/slice boundary, 
 
 Run from a known repository with explicit `--root` where needed. The helper updates MANIFEST in the feature worktree and runtime metadata. Record scope authorization, holds, walk provenance, acceptance coverage, and ledger details in the tracked files. Commit those updates in the worktree where authorized; otherwise identify all uncommitted checkpoint files in the handoff.
 
-After committing final tracked evidence and running required feature checks on that clean HEAD, use:
+After sign-off the check is optional (delivery.md §After sign-off), and deliver accepts a signed-off feature whichever ran. A **full verify**, after committing final tracked evidence and running the required feature checks on that clean HEAD, ends with:
 
 `node <plugin>/scripts/lifecycle.mjs checkpoint <feature> --phase verified --next "Deliver once the merge tier is green" --verified-head <full-tested-SHA>`
 
-This verified checkpoint is runtime-only so it cannot dirty the tested tree. MANIFEST's last tracked phase may be signed-off/built; runtime verifiedHead supplies exact verification identity. Report that distinction, rather than writing a new tracked verified claim after testing an earlier commit.
+A **quick check** that passed, or **ship it**, is recorded by `verify-quick.mjs` (`lifecycle.mjs record-check <feature> --check quick|skipped`: the kind, the HEAD and the date in the runtime record's `check`). Deliver records which one held for what landed as `landedCheck` (`full` · `quick` · `skipped` · `none`); a new approval, walk or pause clears a recorded check.
+
+This verified checkpoint, like a recorded check, is runtime-only so it cannot dirty the tested tree. MANIFEST's last tracked phase may be signed-off/built; runtime verifiedHead supplies exact verification identity. Report that distinction, rather than writing a new tracked verified claim after testing an earlier commit.
 
 ## continue.md: one screenful for a stranger
 
