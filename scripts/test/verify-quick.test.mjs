@@ -76,6 +76,25 @@ test('verify-quick: a signed-off feature whose merge tier is green on HEAD — P
   assert.deepEqual(s.calls().map((c) => c[0]), ['verdict'], 'a verdict on HEAD is read, never re-requested')
 })
 
+test('verify-quick: code committed after the sign-off is a walk gap — walk it again and sign off; registry commits are not', () => {
+  for (const signoff of ['agent', 'human']) {
+    const r = signedOff({ signoff })
+    const s = stubVerify()
+    writeFileSync(join(r.folder, 'walk-notes.md'), 'notes\n')
+    git(r.root, 'add', '-A')
+    git(r.root, 'commit', '-qm', 'walk notes')
+    const clean = run('verify-quick.mjs', [r.rel, '--no-record'], { cwd: r.root, env: { ...s.env, STUB_VERDICT_OUT: GREEN, STUB_VERDICT_EXIT: '0' } })
+    assert.match(clean.stdout, /^✓ walk: /m, `${signoff}: ${clean.stdout}`)
+    mkdirSync(join(r.root, 'app'), { recursive: true })
+    writeFileSync(join(r.root, 'app', 'fix.js'), 'fix\n')
+    git(r.root, 'add', '-A')
+    git(r.root, 'commit', '-qm', 'a fix after sign-off')
+    const out = run('verify-quick.mjs', [r.rel, '--no-record'], { cwd: r.root, env: { ...s.env, STUB_VERDICT_OUT: GREEN, STUB_VERDICT_EXIT: '0' } })
+    assert.equal(out.status, 1, out.stdout)
+    assert.match(out.stdout, /^✗ walk: note-tags changed since it was signed off at [0-9a-f]{7,} \(app\/fix\.js\) — walk it again and sign off \(the ship refuses it until then\)$/m, signoff)
+  }
+})
+
 test('verify-quick: gaps are listed one per line and nothing is recorded — exit 1', () => {
   const r = signedOff({ schema: 'planned' })
   const spec = join(r.folder, 'SPEC.md')

@@ -40,7 +40,7 @@ import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as release
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
 import { fileURLToPath } from 'node:url'
-import { signedOffShas, signoffHolds } from './feature-core.mjs'
+import { signedOff, signoffHolds } from './feature-core.mjs'
 
 // Runs per feature per fleet run. The build lane ends a run at the audit's and the go-ahead's commits
 // (a fresh context per stage, AGENT-MODE.md), so two of these are stage boundaries, not retries.
@@ -57,8 +57,8 @@ const START_GRACE_MS = 10 * 1000 // `start` with no `smoke`: give it this long, 
 const KILL_GRACE_MS = 5 * 1000 // SIGTERM, then SIGKILL if the group is still there
 
 const argv = process.argv.slice(2)
-const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --wait | --pause <feature>   (named while a fleet runs: added to its queue) | --land <feature> --commit-mine "<message>" | --set-aside   (a landing parked on your uncommitted changes: commit them first, or set them aside and put them back)'
-const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--wait', '--archived', '--pause', '--no-env-check', '--land', '--commit-mine', '--set-aside'])
+const USAGE = 'Usage: fleet.mjs <feature|path>… | --all [--parallel N] [--into <branch>] [--detach] [--dry-run] [--status [--archived [N]]] | --wait | --pause <feature>   (named while a fleet runs: added to its queue) | --land <feature> --commit-mine "<message>" | --set-aside   (a landing parked on your uncommitted changes: commit them first, or set them aside and put them back) | <feature>… --rewalk-by-agents   (a feature you signed off whose code changed since: agents walk it again and sign off in your place)'
+const KNOWN_FLAGS = new Set(['--all', '--parallel', '--into', '--detach', '--dry-run', '--status', '--wait', '--archived', '--pause', '--no-env-check', '--land', '--commit-mine', '--set-aside', '--rewalk-by-agents'])
 for (const [i, a] of argv.entries()) {
   if (argv[i - 1] === '--commit-mine') continue // the message, whatever it starts with
   if (a.startsWith('--') && !KNOWN_FLAGS.has(a)) {
@@ -232,6 +232,8 @@ const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
 /** Who unparked a feature, as its park record's History says it. */
 const BY_PERSON = 'a person — named to /builder:agent or /builder:fleet'
 const nameOf = (a) => basename(a.replace(/\/(MANIFEST|SPEC)\.md$/, '').replace(/\/+$/, ''))
+/** `--rewalk-by-agents`: the named features' human sign-off may be replaced by an agent re-walk (the person's choice). */
+const REWALK_BY_AGENTS = new Set(flag('--rewalk-by-agents') ? positional.map(nameOf) : [])
 
 function requested() {
   if (!flag('--all')) {
@@ -1087,6 +1089,7 @@ async function landNow(feature) {
     const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
     if (cfgDiff) return park(f, PARK_REASONS.config(TARGET, f.branch, CONFIG_PATH))
     const why = await mergeThroughVerifier(feature, f)
+    if (why?.files) return walkAgain(feature, f, why)
     if (why) return park(f, why)
   }
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
@@ -1118,7 +1121,8 @@ async function landNow(feature) {
  * merge commit). Conflict → an agent resolves it in the worktree, then a new request. A target that
  * moved since the run → run again. Red → park, naming the tests: verify read a green merge tier
  * before the ship, so red here means the code went red on a target that moved after it — the
- * folder is already archived, and the human decides. Null when landed; else a park reason.
+ * folder is already archived, and the human decides. Null when landed; signoffMoved's record when
+ * code changed since the sign-off (walkAgain); else a park reason.
  */
 async function mergeThroughVerifier(feature, f) {
   const message = `merge(${feature}): agent-verified, not human-tested`
@@ -1204,10 +1208,49 @@ async function mergeThroughVerifier(feature, f) {
  */
 function signoffMoved(feature, f) {
   if (!f.worktree || !existsSync(f.worktree)) return null
-  const s = signoffHolds(f.worktree, signedOffShas(f.worktree, specOf(feature)), CFG.registry, `refs/heads/${TARGET}`)
+  const by = signedOff(f.worktree, specOf(feature))
+  const s = signoffHolds(f.worktree, by.shas, CFG.registry, `refs/heads/${TARGET}`)
   if (s.holds) return null
   const files = [...s.changed.slice(0, 3), ...(s.changed.length > 3 ? ['…'] : [])].join(', ')
-  return `${feature} changed since it was signed off at ${s.sha.slice(0, 7)} (${files}) — walk it again and sign off — next: /builder:resume --path ${specOf(feature)} to walk the changes and sign off again, then /builder:agent ${feature}`
+  // A human's sign-off is never replaced by agents unasked; the person can hand it to them (--rewalk-by-agents).
+  return { sha: s.sha.slice(0, 7), files, agents: !by.human || REWALK_BY_AGENTS.has(feature) }
+}
+
+/** Times an agent sign-off may be walked again in one run before the fleet stops and says why. */
+const REWALK_LIMIT = 2
+
+/**
+ * Code changed since the sign-off (signoffMoved). Agent-signed: agents walk it again — the folder back
+ * to `state: built` (the ship commit reverted first when it already shipped), so the walk lane runs
+ * the agent walk, its sign-off, then the quick check, the ship and the landing. Bounded: past
+ * REWALK_LIMIT re-walks in a run it parks. Human-signed: a human-step park with the choice of walking
+ * it again yourself or handing the re-walk to agents. → the outcome to route.
+ */
+function walkAgain(feature, f, m) {
+  const folder = specOf(feature)
+  if (!m.agents) return park(f, `needs your walk again: ${feature} changed since you signed it off at ${m.sha} (${m.files}) — next: /builder:resume --path ${folder}`)
+  f.rewalks = (f.rewalks ?? 0) + 1
+  if (f.rewalks > REWALK_LIMIT)
+    return park(f, `${feature} changed again after ${REWALK_LIMIT} agent re-walks since its sign-off (now ${m.files}) — the fixes keep moving it — next: read the walk rounds and the commits since ${m.sha}, then /builder:agent ${feature}`)
+  const wt = f.worktree
+  if (!existsSync(join(wt, folder, 'MANIFEST.md'))) {
+    // Already shipped on the branch: the ship commit (registry only) is reverted, the folder live again.
+    const ship = tryGit(['log', '-n', '1', '--format=%H', '--diff-filter=D', '--', `${folder}/MANIFEST.md`], wt)
+    if (!ship || tryGit(['revert', '--no-edit', ship], wt) === null) {
+      tryGit(['revert', '--abort'], wt)
+      return park(f, `${feature} changed since its agent sign-off at ${m.sha} (${m.files}), and its ship could not be undone to walk it again — next: /builder:agent ${feature}`)
+    }
+  }
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
+  try {
+    execFileSync(process.execPath, [script, folder, '--set', 'state=built', '--set', 'walk=none', '--set', 'verify=none', '--commit', `chore({key}): {feature} — changed since its agent sign-off (${m.files}), walked again`], { cwd: wt, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    const why = String(e.stderr || e.message).trim().split('\n').pop()
+    return park(f, `${feature} changed since its agent sign-off at ${m.sha} (${m.files}), and it could not be set to walk again: ${why} — next: /builder:agent ${feature}`)
+  }
+  addNote(`${feature} changed since its agent sign-off at ${m.sha} (${m.files}) — agents walk it again (${f.rewalks} of ${REWALK_LIMIT})`)
+  save()
+  return 'walk'
 }
 
 /** The migration files `from..to` added under the config's §Walk readiness `migrations:` dir, with their text. */
@@ -1340,6 +1383,11 @@ async function drive(feature, lane) {
       continue
     }
     stalls = 0
+    // A ship-lane run that committed code after the sign-off (a gap fixed, a red test mended): walked again first.
+    if (lane === 'ship' && (d.action === 'again' || d.action === 'done')) {
+      const moved = signoffMoved(feature, f)
+      if (moved) return walkAgain(feature, f, moved)
+    }
     if (d.action === 'again') continue
     if (d.action === 'handoff') {
       Object.assign(f, { status: QUEUED[d.to] ?? 'queued', reason: null })
@@ -2214,7 +2262,8 @@ async function poolWorker() {
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
         const moved = why || lane !== 'ship' ? null : signoffMoved(feature, fleet.features[feature])
-        if (why || moved) outcome = park(fleet.features[feature], why || moved)
+        if (why) outcome = park(fleet.features[feature], why)
+        else if (moved) outcome = walkAgain(feature, fleet.features[feature], moved)
         else {
           if (lane === 'ship') await quickCheck(feature)
           outcome = await drive(feature, lane)

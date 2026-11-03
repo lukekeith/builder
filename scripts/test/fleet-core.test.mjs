@@ -1036,6 +1036,7 @@ const HUMAN_REASONS = [
   PARK_REASONS.config('main', 'builder/a', '.claude/builder.md'),
   PARK_REASONS.revising('docs/features/a'),
   'waiting for your walk — next: /builder:resume --path docs/features/a', // agent-walk writes it (skills/agent-walk)
+  'needs your walk again: a changed since you signed it off at abc1234 (app/x.js) — next: /builder:resume --path docs/features/a', // fleet walkAgain, a human sign-off
   // the verifier's release refusing because the target is checked out in another worktree
   'the merge tier passed but landing failed: r1: main refused the fast-forward (main is checked out in /repo-other — switch that worktree to another branch, then land again) — uncommitted changes there? — next: /builder:fleet to retry',
   // a fleet row a 5.x fleet left behind
@@ -1055,6 +1056,15 @@ test('D6: every human-step park reason the fleet produces carries a choice that 
   }
   // A park that is not human-only needs none.
   assert.deepEqual(parkChoices({ feature: 'a', reason: 'the walk failed twice — next: /builder:agent' }), [])
+})
+
+test('code changed since a human sign-off: walk it again yourself, or hand the re-walk to agents (their sign-off replaces yours)', () => {
+  const choices = parkChoices({ feature: 'a', reason: 'needs your walk again: a changed since you signed it off at abc1234 (app/x.js) — next: /builder:resume --path docs/features/a', folder: 'docs/features/a' })
+  assert.deepEqual(choices, [
+    { label: 'Walk it again yourself, then sign off', command: '/builder:resume --path docs/features/a' },
+    { label: 'Hand the re-walk to agents — their sign-off replaces yours, marked not human-tested', command: 'node <builder>/scripts/fleet.mjs a --rewalk-by-agents --detach' },
+    { label: 'Leave it for now', command: null },
+  ])
 })
 
 test('parkBlock never prints a human-step park without a choice — it fills one in, and never throws mid-run', () => {

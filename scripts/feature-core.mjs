@@ -282,18 +282,31 @@ export function signoffShas(spec) {
  * before. Only shas that are commits here: a hand-written or fixture sha pins nothing.
  */
 export function signedOffShas(root, folderRel) {
+  return signedOff(root, folderRel).shas
+}
+
+/**
+ * signedOffShas, and who signed: `human` when the newest sign-off line is a human's `> ✅ SIGNED OFF`
+ * (an agent must not replace that silently), false for the agent's `> 🤖 AGENT SIGNED OFF`.
+ */
+export function signedOff(root, folderRel) {
   const rel = `${folderRel.replace(/\/+$/, '')}/SPEC.md`
   const real = (shas) => shas.filter((s) => git(root, ['rev-parse', '--verify', '--quiet', `${s}^{commit}`], { allowFail: true }))
-  const now = real(signoffShas(read(join(root, rel))))
-  if (now.length) return now
+  const of = (spec) => {
+    const shas = real(signoffShas(spec))
+    const lines = String(spec ?? '').split('\n').filter((l) => SIGNED_LINE.test(l))
+    return { shas, human: /^> ✅ SIGNED OFF/.test(lines.at(-1) ?? '') }
+  }
+  const now = of(read(join(root, rel)))
+  if (now.shas.length) return now
   const log = git(root, ['log', '--format=%H', '-n', '20', '--', rel], { allowFail: true }) ?? ''
   for (const c of log.split('\n').filter(Boolean)) {
     for (const rev of [c, `${c}^`]) {
-      const shas = real(signoffShas(git(root, ['show', `${rev}:${rel}`], { allowFail: true })))
-      if (shas.length) return shas
+      const then = of(git(root, ['show', `${rev}:${rel}`], { allowFail: true }))
+      if (then.shas.length) return then
     }
   }
-  return []
+  return { shas: [], human: false }
 }
 
 /**

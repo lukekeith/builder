@@ -202,26 +202,63 @@ test('a merge tier that goes red at landing parks, naming the failing check', ()
   assert.doesNotMatch(git(root, 'log', '-1', '--format=%s', 'main'), /merge\(a\)/)
 })
 
-test('code committed after the sign-off parks the ship lane: what ships is what was signed off — walk it again and sign off', () => {
+const BUILT = ['audited', 'planned', 'building', 'READY-PENDING', 'built']
+
+test('code committed after an agent sign-off is walked again by agents, signed off again, then ships and lands — no park', () => {
   const root = makeRepo(['a'])
   withVerify(root, RED_CHECK)
-  const steps = HAPPY.map((s) => (s === 'signed-off' ? 'SIGNOFF' : s === 'verified' ? 'COMMIT:app/fix.js:verified' : s))
-  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
-  assert.equal(r.status, 1)
-  assert.equal(r.fleet.features.a.status, 'parked')
-  assert.match(r.fleet.features.a.reason, /^a changed since it was signed off at [0-9a-f]{7} \(app\/fix\.js\) — walk it again and sign off — next: \/builder:resume --path docs\/features\/a to walk the changes and sign off again/)
-  assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)|stub: a SHIP/)
+  const r = runFleet(root, ['a'], { a: [...BUILT, 'SIGNOFF', 'COMMIT:app/fix.js:verified', 'SIGNOFF', 'verified', 'SHIP'] }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.ok((r.fleet.notes ?? []).some((n) => /^a changed since its agent sign-off at [0-9a-f]{7} \(app\/fix\.js\) — agents walk it again \(1 of 2\)$/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.match(git(root, 'log', '--format=%s', 'main'), /— changed since its agent sign-off \(app\/fix\.js\), walked again/)
+  assert.ok(existsSync(join(root, 'app/fix.js')), 'the re-walked fix landed')
 })
 
-test('code that rode in with the ship is not landed: the sign-off is read from the SPEC as it was before the ship', () => {
+test('a landing conflict an agent resolved after the agent sign-off: the ship is undone, agents walk it again, and it lands — no park', () => {
+  const root = makeRepo(['u'])
+  writeFileSync(join(root, 'shared.txt'), 'base\n')
+  git(root, 'add', 'shared.txt')
+  git(root, 'commit', '-qm', 'shared')
+  withVerify(root, RED_CHECK)
+  // While the ship run is underway main edits the same file, so the landing's merge conflicts.
+  writeFileSync(join(root, '.stub/switch.sh'), `cd ${root} && printf 'ours\\n' > shared.txt && git commit -qam 'main edits shared'\n`)
+  const r = runFleet(root, ['u'], { u: [...BUILT.slice(0, 4), 'COMMIT:shared.txt:built', 'SIGNOFF', 'verified', 'SWITCH-THEN-SHIP', 'SIGNOFF', 'verified', 'SHIP'] }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'u')
+  assert.ok(r.calls.includes('resolve u RESOLVE'), JSON.stringify(r.calls))
+  assert.ok((r.fleet.notes ?? []).some((n) => /^u changed since its agent sign-off at [0-9a-f]{7} \(shared\.txt\) — agents walk it again \(1 of 2\)$/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.match(git(root, 'log', '--format=%s', 'main'), /^Revert "stub: u SHIP"$/m, 'the ship was undone to walk it again')
+  assert.match(readFileSync(join(root, 'shared.txt'), 'utf8'), /ours/)
+})
+
+test('code that keeps changing after each agent re-walk parks once it has been walked again 2 times', () => {
   const root = makeRepo(['a'])
   withVerify(root, RED_CHECK)
-  const steps = HAPPY.map((s) => (s === 'signed-off' ? 'SIGNOFF' : s === 'SHIP' ? 'COMMIT:app/fix.js:SHIP' : s))
-  const r = runFleet(root, ['a'], { a: steps }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  const churn = [1, 2, 3, 4].flatMap((n) => ['SIGNOFF', `COMMIT:app/f${n}.js:verified`])
+  const r = runFleet(root, ['a'], { a: [...BUILT, ...churn] }, { BUILDER_VERIFY_IDLE_MS: '1000' })
   assert.equal(r.status, 1)
   assert.equal(r.fleet.features.a.status, 'parked')
-  assert.match(r.fleet.features.a.reason, /^a changed since it was signed off at [0-9a-f]{7} \(app\/fix\.js\) — walk it again and sign off/)
-  assert.doesNotMatch(git(root, 'log', '-1', '--format=%s', 'main'), /merge\(a\)/)
+  assert.match(r.fleet.features.a.reason, /^a changed again after 2 agent re-walks since its sign-off \(now app\/f3\.js\) — the fixes keep moving it — next: /)
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)/)
+})
+
+test('code committed after a human sign-off is not walked by agents: it parks as a human step with the choice to walk it or hand it to agents', () => {
+  const root = makeRepo(['a'])
+  withVerify(root, RED_CHECK)
+  const r = runFleet(root, ['a'], { a: [...BUILT, 'HUMAN-SIGNOFF', 'COMMIT:app/fix.js:verified', 'SHIP'] }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(r.status, 1)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /^needs your walk again: a changed since you signed it off at [0-9a-f]{7} \(app\/fix\.js\) — next: \/builder:resume --path docs\/features\/a$/)
+  const out = readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8')
+  assert.match(out, /Walk it again yourself, then sign off/)
+  assert.match(out, /Hand the re-walk to agents — their sign-off replaces yours, marked not human-tested[\s\S]*fleet\.mjs a --rewalk-by-agents --detach/)
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)/)
+  // The person hands it to agents: walked again, signed off by the agent, landed.
+  const again = runFleet(root, ['a', '--rewalk-by-agents'], { a: [...BUILT, 'HUMAN-SIGNOFF', 'COMMIT:app/fix.js:verified', 'SIGNOFF', 'verified', 'SHIP'] }, { BUILDER_VERIFY_IDLE_MS: '1000' })
+  assert.equal(again.status, 0, again.stderr)
+  assertLanded(again, 'a')
+  assert.ok(existsSync(join(root, 'app/fix.js')))
 })
 
 test('a signed-off feature with only registry commits since its sign-off ships and lands', () => {
