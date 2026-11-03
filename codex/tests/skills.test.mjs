@@ -219,6 +219,7 @@ test('6.1.0: after sign-off one optional check — quick check, ship it or full 
   assert.match(d, /Under `--auto` or an agent handoff nobody is asked: run the quick check, then deliver/);
   assert.match(d, /deliver <feature>` once it is signed off and the sign-off covers HEAD — whatever check ran after it, or none/);
   assert.match(d, /changed since it was signed off — walk it again and sign off, then deliver/);
+  assert.match(d, /after the agent walk's \(or a no-walk\) sign-off, the agent walk runs again[\s\S]*at most 2 times[\s\S]*after a human walk \(human-pass\) agents never replace it unasked[\s\S]*\*\*Walk it again yourself\*\*[\s\S]*\*\*Hand the re-walk to the agent walk\*\*/);
   assert.doesNotMatch(d, /verify again/);
   assert.match(ref('persistence'), /lifecycle\.mjs record-check <feature> --check quick\|skipped/);
   assert.match(read('skills/builder/SKILL.md'), /signed-off → verified \(optional\) → merged/);

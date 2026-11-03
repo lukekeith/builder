@@ -1,7 +1,7 @@
 {
   "commit": "2bdc4cd5ebd94e233d6acf9023206d4a08ffe7b6",
   "version": "6.1.0",
-  "packageHash": "d3aceab2df321df021fe6c0cf3bc7f5795422d4fbb4be2508dd8aeff837ab4d7",
+  "packageHash": "803377798b68049a30b6c80fd591e337b3404126ac9407e857e180bbda1137bb",
   "decisions": [
     {
       "file": ".claude-plugin/plugin.json",
