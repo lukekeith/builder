@@ -10,8 +10,9 @@
  *   node <plugin>/scripts/verify-quick.mjs <feature> [--root R] --skip
  *
  * The checks, read from the Codex runtime record and the feature's SPEC.md in its worktree:
- *   walk        the runtime phase is signed-off (or verified); a human walk the plan requires
- *               covers HEAD (humanHead), as deliver will insist
+ *   walk        the runtime phase is signed-off (or verified), and the sign-off still covers HEAD
+ *               (only registry commits since); a human walk the plan requires covers HEAD
+ *               (humanHead), as deliver will insist
  *   fixes       no `- [ ]` left under `## Fixes`
  *   schema      every §Schema & API changes row's Status carries a migration id or a marking —
  *               not empty, `planned`, `pending`, `todo`, `tbd`, `open`
@@ -28,14 +29,15 @@
  * On PASS it records the check runtime-only — `lifecycle.mjs record-check <feature> --check quick`
  * (the verified checkpoint is runtime-only for the same reason: nothing dirties the tested tree); a
  * full verify that already holds on HEAD stands. --no-record writes nothing. --skip records
- * `--check skipped` without checking anything; refused only on a feature never signed off. Both
- * re-run as a no-op.
+ * `--check skipped` without checking anything; refused on a feature never signed off. Each holds
+ * only at the commit it was recorded at (and over registry commits after it); re-run at the same
+ * commit it is a no-op.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { run } from './lifecycle.mjs';
+import { run, signOffHolds } from './lifecycle.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VERIFY = path.join(HERE, 'verify', 'verify.mjs');
@@ -69,6 +71,7 @@ async function walkCheck(m, sha) {
   const { runtimeTestPlan } = await import('./profile.mjs');
   const required = m.humanWalkRequired || runtimeTestPlan(m).levers.human === 'yes';
   if (m.awaitingHuman || (required && m.humanHead !== sha)) return gap('walk', `the plan needs a human walk at HEAD ${short(sha)}, and the recorded one ${m.humanHead ? `is at ${short(m.humanHead)}` : 'is missing'} — walk the changes, then human-pass`);
+  if (!signOffHolds(m, sha)) return gap('walk', `${m.name} changed since it was signed off${m.signedHead ? ` at ${short(m.signedHead)}` : ''} — walk it again and sign off`);
   if (m.humanReport && m.humanHead === sha) return ok('walk', `signed off — human walk at ${short(sha)}`);
   return ok('walk', 'signed off — not human-tested (the agent walk, or a recorded no-walk)');
 }
@@ -133,7 +136,7 @@ export async function quickCheck(m, root, { maxWait = 1800 } = {}) {
 async function record(name, root, kind) {
   const m = await run('status', name, { root });
   if (kind === 'quick' && m.verifiedHead === m.head) return { recorded: null, line: `a full verify already holds at ${short(m.head)} — nothing recorded over it` };
-  if (m.check?.kind === kind && (kind === 'skipped' || m.check.head === m.head)) return { recorded: m.check, line: `already recorded: ${kind === 'quick' ? `quick check at ${short(m.check.head)}` : 'check skipped'}` };
+  if (m.check?.kind === kind && m.check.head === m.head) return { recorded: m.check, line: `already recorded: ${kind === 'quick' ? `quick check at ${short(m.check.head)}` : 'check skipped'}` };
   const r = await run('record-check', name, { root, check: kind });
   return { recorded: r.check, line: kind === 'quick' ? `recorded: quick check passed at ${short(r.check.head)} — deliver next` : 'recorded: check skipped — deliver next' };
 }

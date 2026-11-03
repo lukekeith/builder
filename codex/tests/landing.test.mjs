@@ -100,6 +100,7 @@ async function land(root, sql = 'CREATE TABLE "a" ();', { away = false, file = '
   fs.mkdirSync(path.dirname(path.join(m.worktree, file)), { recursive: true });
   fs.writeFileSync(path.join(m.worktree, file), sql);
   git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'a migration');
+  await run('checkpoint', 'mig', { root, phase: 'signed-off', next: 'Deliver' }); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'signed off');
   await run('checkpoint', 'mig', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
   const p = await run('prepare', 'mig', { root }); waitFor(root, p.request);
   if (away) git(root, 'checkout', '-q', '-b', 'elsewhere');
@@ -156,6 +157,7 @@ test('a target checked out nowhere gets a note for when you switch; a failed app
 test('a feature that brings no migrations lands with nothing to do', async t => {
   const root = repo(t, 'agent'); const m = await run('start', 'plain', { root });
   fs.writeFileSync(path.join(m.worktree, 'x.txt'), 'x\n'); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'x');
+  await run('checkpoint', 'plain', { root, phase: 'signed-off', next: 'Deliver' }); git(m.worktree, 'add', '.'); git(m.worktree, 'commit', '-m', 'signed off');
   await run('checkpoint', 'plain', { root, phase: 'verified', next: 'Prepare', verifiedHead: git(m.worktree, 'rev-parse', 'HEAD') });
   const p = await run('prepare', 'plain', { root }); waitFor(root, p.request); const d = await run('deliver', 'plain', { root });
   assert.equal(d.landing.action, 'none'); assert.ok(!fs.existsSync(path.join(root, 'applied.txt')));

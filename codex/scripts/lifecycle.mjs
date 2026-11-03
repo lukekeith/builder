@@ -72,16 +72,31 @@ function invalidate(m) { m.verifiedHead = null; m.check = null; }
 /** Signed off: the walk passed (a human walk report, the agent walk, or a recorded no-walk). Verify is optional after it. */
 const SIGNED_OFF = ['signed-off', 'verified'];
 const today = () => process.env.BUILDER_TODAY || new Date().toISOString().slice(0, 10);
+/** True when what was recorded at `sha` still holds for `now`: the same commit, or only registry commits since. */
+const holdsAt = (m, sha, now) => Boolean(sha) && (sha === now || (ancestor(m.worktree, sha, now) && docsOnly(m.worktree, sha, now, m.registry)));
+/**
+ * The commit the feature was signed off at: a human walk's (human-pass), or HEAD at the agent walk's
+ * or a no-walk `checkpoint --phase signed-off`. A record from before signedHead existed falls back to
+ * the verified commit, the human walk's, or the last checkpoint's.
+ */
+function signedAt(m) {
+  if ('signedHead' in m) return m.signedHead;
+  return (m.phase === 'verified' && m.verifiedHead) || m.humanHead || m.checkpointHead || null;
+}
+/**
+ * Whether the sign-off covers `now` — what lands is what was signed off (registry commits after it,
+ * the manifest and walk results, carry). Verify is optional after sign-off, so this is the one pin.
+ */
+export function signOffHolds(m, now = head(m.worktree)) { return holdsAt(m, signedAt(m), now); }
+const changedSinceSignOff = name => `${name} changed since it was signed off — walk it again and sign off, then deliver`;
 /**
  * Which check holds for `now` (6.1.0: verify is optional after sign-off) — `full` the verified
- * checkpoint, `quick` verify-quick.mjs, `skipped` the owner's ship-it, `none` neither. A full or
- * quick check holds on the commit it ran on and over registry-only commits after it.
+ * checkpoint, `quick` verify-quick.mjs, `skipped` the owner's ship-it, `none` neither. Each holds on
+ * the commit it was recorded at and over registry-only commits after it, never over new code.
  */
 function checkRan(m, now) {
-  const holds = sha => Boolean(sha) && (sha === now || (ancestor(m.worktree, sha, now) && docsOnly(m.worktree, sha, now, m.registry)));
-  if (holds(m.verifiedHead)) return 'full';
-  if (m.check?.kind === 'quick' && holds(m.check.head)) return 'quick';
-  if (m.check?.kind === 'skipped') return 'skipped';
+  if (holdsAt(m, m.verifiedHead, now)) return 'full';
+  if (['quick', 'skipped'].includes(m.check?.kind) && holdsAt(m, m.check.head, now)) return m.check.kind;
   return 'none';
 }
 
@@ -399,7 +414,7 @@ export async function run(command, name, options = {}) {
     // Carry only committed planning documents, never source code or manifest identity.
     const imports = originHead !== targetStartHead ? planningImports(originRoot, originHead, registry, name) : [];
     git(originRoot, 'worktree', 'add', '-b', featureBranch, worktree, targetStartHead);
-    const m = { name, originRoot, originBranch, originHead, targetBranch: landingBranch, targetStartHead, importedArtifacts: [], importState: imports.length ? 'pending' : 'complete', commonDir: common(originRoot), worktree, featureBranch, featurePath: path.join(worktree, registry, name), registry, profile: 'thorough', phase: 'exploring', currentTask: null, nextAction: 'Read project configuration and inspect relevant implementation', verifiedHead: null };
+    const m = { name, originRoot, originBranch, originHead, targetBranch: landingBranch, targetStartHead, importedArtifacts: [], importState: imports.length ? 'pending' : 'complete', commonDir: common(originRoot), worktree, featureBranch, featurePath: path.join(worktree, registry, name), registry, profile: 'thorough', phase: 'exploring', currentTask: null, nextAction: 'Read project configuration and inspect relevant implementation', verifiedHead: null, signedHead: null };
     // Register ownership before copying, so a rejected or interrupted import is recoverable.
     atomic(file, m);
     importArtifacts(m, file, imports); return m;
@@ -472,14 +487,14 @@ export async function run(command, name, options = {}) {
   }
   if (command === 'await-human') {
     assert(m.phase !== 'merged', 'Merged feature cannot await human review');
-    m.awaitingHuman = true; m.humanWalkRequired = true; m.humanHead = null; m.phase = 'built'; invalidate(m);
+    m.awaitingHuman = true; m.humanWalkRequired = true; m.humanHead = null; m.signedHead = null; m.phase = 'built'; invalidate(m);
     m.nextAction = 'Wait for an actual human walk report'; atomic(file, m); return m;
   }
   if (command === 'human-pass') {
     assert(m.awaitingHuman, 'Feature is not waiting for a human walk');
     assert(typeof options.report === 'string' && options.report.trim(), 'Human pass requires --report containing the received human walk report');
     idle(m.worktree); assert(!dirty(m.worktree), 'Human pass requires a clean committed feature worktree');
-    m.humanReport = options.report; m.humanHead = head(m.worktree); m.awaitingHuman = false; m.phase = 'signed-off'; invalidate(m);
+    m.humanReport = options.report; m.humanHead = head(m.worktree); m.signedHead = m.humanHead; m.awaitingHuman = false; m.phase = 'signed-off'; invalidate(m);
     m.nextAction = 'Signed off — choose a check: quick check, ship it or full verify (none is required), then deliver'; atomic(file, m); return m;
   }
   if (command === 'checkpoint') {
@@ -492,6 +507,11 @@ export async function run(command, name, options = {}) {
       idle(m.worktree); assert(!dirty(m.worktree), 'Verified checkpoint requires a clean feature worktree');
       m.verifiedHead = options.verifiedHead;
     } else { m.verifiedHead = null; }
+    // A check recorded after sign-off was for the commit it ran on; every checkpoint starts over.
+    m.check = null;
+    // The sign-off is pinned to this commit; a later phase before it (a fix, a new build) drops it.
+    if (options.phase === 'signed-off') m.signedHead = head(m.worktree);
+    else if (options.phase !== 'verified') m.signedHead = null;
     m.phase = options.phase; m.nextAction = options.next; m.checkpointHead = head(m.worktree);
     if (options.task !== undefined) m.currentTask = options.task;
     // Verification is runtime-only: writing MANIFEST here would invalidate its tested tree.
@@ -504,6 +524,7 @@ export async function run(command, name, options = {}) {
     assert(SIGNED_OFF.includes(m.phase), `${name} is not signed off yet — the walk comes first; there is no check to record`);
     await humanReady(m);
     idle(m.worktree); assert(!dirty(m.worktree), 'Recording a check requires a clean committed feature worktree');
+    assert(signOffHolds(m), changedSinceSignOff(name));
     m.check = { kind: options.check, head: head(m.worktree), date: today() };
     m.nextAction = `${options.check === 'quick' ? 'Quick check passed' : 'Check skipped'} — deliver`;
     atomic(file, m); return m;
@@ -534,6 +555,8 @@ export async function run(command, name, options = {}) {
     // 6.1.0: signed off is enough — a quick check, a skip or a full verify is recorded, never required.
     assert(SIGNED_OFF.includes(m.phase), `${name} is not signed off yet — the walk comes first (a human walk report through human-pass, or the agent walk's checkpoint --phase signed-off); a check after sign-off is optional`);
     idle(m.worktree); assert(!dirty(m.worktree), 'Feature worktree must be clean');
+    // What lands is what was signed off: new code after it (a fix after a red merge tier, a conflict resolved) is walked again.
+    assert(signOffHolds(m), changedSinceSignOff(name));
     assert(m.merge?.request, `No merge requested yet — run prepare ${name} first`);
     assert(!(options.setAside && options.commitMine !== undefined), 'Pick one: --commit-mine or --set-aside');
     assert(options.commitMine === undefined || (typeof options.commitMine === 'string' && options.commitMine.trim()), '--commit-mine needs the message to commit your changes with');
@@ -546,13 +569,13 @@ export async function run(command, name, options = {}) {
     if (PENDING.includes(r.state)) { m.nextAction = `Ready to land on ${t} once the merge tier is green — verify.mjs wait ${r.id}, then deliver`; return done({ status: 'testing', request: r.id }); }
     const verdict = r.verdict ?? { status: r.state };
     if (verdict.status === 'conflict') {
-      m.nextAction = `The feature conflicts with ${t} in ${(verdict.files ?? []).join(', ')} — merge ${t} into the feature worktree, resolve those files, commit, verify again, then prepare`;
+      m.nextAction = `The feature conflicts with ${t} in ${(verdict.files ?? []).join(', ')} — merge ${t} into the feature worktree, resolve those files, commit, sign off again (re-walk), then prepare; the check after is optional`;
       return done({ status: 'conflict', files: verdict.files ?? [], request: r.id });
     }
     if (verdict.status !== 'green') {
       const { summarize } = await import('./verify/verify.mjs');
       let summary = verdict.status; try { summary = summarize(verdict); } catch { /* a bare status */ }
-      m.nextAction = verdict.status === 'env-broken' ? `The merge tier could not run (env-broken) — fix what its ⚠ lines name, then prepare again` : `The merge tier is ${verdict.status} on ${t} — fix what it names in the feature, verify again, then prepare`;
+      m.nextAction = verdict.status === 'env-broken' ? `The merge tier could not run (env-broken) — fix what its ⚠ lines name, then prepare again` : `The merge tier is ${verdict.status} on ${t} — fix what it names in the feature, sign off again (re-walk), then prepare; the check after is optional`;
       return done({ status: verdict.status, summary, request: r.id });
     }
     // Landed by an earlier deliver that stopped before recording it: record it now, never land twice.
@@ -631,7 +654,7 @@ export async function run(command, name, options = {}) {
   }
   throw new Error(`Unknown command: ${command}`);
 }
-const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|record-check|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report at the clean HEAD; signs the feature off)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA] (--phase verified is the full verify)\nrecord-check: --check quick|skipped, after sign-off: the check the owner chose (verify-quick.mjs records quick; ship it records skipped); runtime-only, none is required\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: a signed-off feature, whatever check ran (recorded as landedCheck: full · quick · skipped · none) [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause and human review invalidate verification and a recorded check. Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
+const help = 'Usage: lifecycle.mjs start|status|resume|agent-ready|here|retry-import|approve|pause|unpause|await-human|human-pass|checkpoint|record-check|prepare|deliver|cleanup FEATURE [--root PATH]\n       lifecycle.mjs list [--root PATH] (features in flight; a merged feature drops out once cleaned up)\nstart: [--into TARGET] (configured merge_into, configured base_branch, or current branch)\nagent-ready: read-only; refuses a feature another session is building, merged, paused or awaiting a human walk, else says what workers would do\nhere: build it in this session without workers or reviewer agents (before the build starts); records build: here\nretry-import: retry an incomplete planning import, preserving local conflicts\napprove: --tests "walk=none|risk|full review=end|app|slice[ human=yes]" (or a legacy --profile VALUE; a 5.x slice=/end= value is mapped) [--into TARGET] (captured target cannot change)\nhuman-pass: --report TEXT (received human walk report at the clean HEAD; signs the feature off)\ncheckpoint: --phase VALUE --next TEXT [--task TEXT] [--verified-head SHA] (--phase verified is the full verify)\nrecord-check: --check quick|skipped, after sign-off: the check the owner chose (verify-quick.mjs records quick; ship it records skipped); runtime-only, none is required\nprepare: asks the verifier\'s merge tier to test the feature merged onto the target, held until deliver (from built on, so the walk runs beside it); returns the request id and any overlap with your uncommitted changes in the target checkout\ndeliver: a signed-off feature whose sign-off still covers HEAD (only registry commits since; else walk it again and sign off), whatever check ran (recorded as landedCheck: full · quick · skipped · none) [--commit-mine "MESSAGE" | --set-aside] [--metrics MEASURED_JSON] lands the held green merge by compare-and-swap (verify.mjs release, or carry when only registry commits came after it), then records history and the landed migrations. Exit 0 landed, 1 red/env-broken/refused, 3 needs you (your uncommitted changes overlap it; nothing touched), 4 conflict, 75 still testing or asked again (the target or feature moved)\nPause, human review and every checkpoint invalidate a recorded check; a check holds only at its own commit (and over registry commits after it). Resume never unpauses. Verified checkpoints are runtime-only; earlier checkpoints mirror MANIFEST.md. Deliver applies landed additive migrations to the target checkout only under Walk readiness apply_mode agent, otherwise notes the command. No push or PR is performed.';
 if ((() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   try {
     const args = process.argv.slice(2);
