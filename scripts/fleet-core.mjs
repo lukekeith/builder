@@ -853,7 +853,7 @@ export function branchExists(main, branch) {
  * fleet row used for it), the target checked out elsewhere, your walk, a revision, the config.
  * Each one carries choices (parkChoices) — a test feeds every alternative's producer (D6).
  */
-export const HUMAN_STEP = /^needs you: |uncommitted changes are in the way|is checked out in |waiting for your walk|^revising|^config change needed/
+export const HUMAN_STEP = /^needs you: |uncommitted changes are in the way|is checked out in |waiting for your walk|^needs your walk again|^revising|^config change needed/
 
 /** The human-step park reasons the fleet writes itself (agent-walk writes `waiting for your walk`). */
 export const PARK_REASONS = {
@@ -884,6 +884,13 @@ export function parkChoices({ feature, reason, folder = feature }) {
     ]
   const wt = /is checked out in (.+?)(?:, so it can't| — |\)|$)/.exec(r)?.[1]
   if (wt) return [{ label: `Switch ${wt} to another branch, then land it`, command: `/builder:fleet ${feature}` }, LEAVE]
+  // Code changed since a human sign-off: agents never replace it unasked.
+  if (/^needs your walk again/.test(r))
+    return [
+      { label: 'Walk it again yourself, then sign off', command: next ?? `/builder:resume --path ${folder}` },
+      { label: 'Hand the re-walk to agents — their sign-off replaces yours, marked not human-tested', command: `node <builder>/scripts/fleet.mjs ${feature} --rewalk-by-agents --detach` },
+      LEAVE,
+    ]
   if (/^waiting for your walk/.test(r)) return [{ label: 'Walk it yourself now', command: next ?? `/builder:resume --path ${folder}` }, LEAVE]
   if (/^revising/.test(r)) return [{ label: 'Revise it', command: next ?? `/builder:revise --path ${folder}` }, LEAVE]
   if (/^config change needed/.test(r)) return [{ label: 'Take what you want of the config change yourself and drop it from the branch (the next step says how), then rebuild', command: `/builder:agent --path ${folder}` }, LEAVE]

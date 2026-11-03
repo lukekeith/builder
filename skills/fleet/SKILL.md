@@ -24,9 +24,12 @@ human-tested`). That merge-tier run is requested, held, when the walk starts and
 Verify is optional after sign-off, so the fleet never runs the full `/builder:verify`: before the
 ship run it makes the one-call quick check (`verify-quick.mjs`, no model), which reads that held
 run and the spec's mechanical items — its gaps are noted in the report, never a block. What ships
-and lands is what was signed off: code committed after the sign-off (a fix, a conflict an agent
-resolved) parks the feature — walk it again and sign off; registry commits and clean merges of
-the target carry. A run
+and lands is what was signed off: after an **agent** sign-off, code committed since (a fix, a
+conflict an agent resolved at landing) sends the feature back to the walk lane — agents walk it
+again and sign off again (an already-shipped one has its ship commit reverted first), at most 2
+times a run before it parks. After **your** sign-off it parks as a human step: walk it again
+yourself, or hand the re-walk to agents (`fleet.mjs <feature> --rewalk-by-agents`; their sign-off
+replaces yours, marked not human-tested). Registry commits and clean merges of the target carry. A run
 that goes red at landing (the target moved after the quick check read it green) parks the feature naming the
 failing tests, and the fleet retries it. Then the fleet removes its worktree and `builder/` branch. **Migrations
 that landed reach your dev DB:** the walk only proved them on its throwaway walk DB, so after a merge
@@ -49,7 +52,7 @@ A parked feature you did not name stays parked — except that **the fleet retri
 own**, `agent_walk.auto_unpark` times per fleet run (2 by default): it unparks the feature and hands
 its park record (REFERENCE §The park record — `<folder>/PARKED.md`, which the fleet writes when the
 parking run didn't) to a fresh run that digs from *Where to dig*. A `kind: human-step` park — your
-uncommitted changes in the way, a `commit: manual` app — waits for you.
+uncommitted changes in the way, a `commit: manual` app, code changed since your sign-off — waits for you.
 Three lanes: the **build** and **ship** lanes share `--parallel` workers and never touch the dev env;
 the **walk** lane (walk readiness, agent walk, sign-off) runs one feature at a time; a signed-off
 feature goes to the ship lane, which quick-checks it first. **Every

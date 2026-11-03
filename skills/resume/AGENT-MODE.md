@@ -146,8 +146,9 @@ target merged with this branch.
    (Bash timeout 600000; `still running` → the same call again) reads that held verdict for HEAD and
    the spec's mechanical items. PASS records `verify: QUICK …`. **Gaps are noted, not blocking** —
    name each in the hand-off and ship anyway: a signed-off feature with gaps still ships — unless
-   code was committed after the sign-off (fixing a gap is one): then walk it again and sign off
-   before the ship, which refuses it otherwise — and the
+   code was committed after the sign-off (fixing a gap is one; the quick check's `walk` line says
+   so): the agent walk runs again and signs off again before the ship, which refuses it otherwise
+   (the fleet sends it back to the walk lane itself) — and the
    merge queue at landing tests the merged result. Nothing to run when `verify:` already reads
    READY, QUICK or SKIPPED (the fleet runs the check before this session; it is the same call). A
    `verify: INCOMPLETE` from an earlier full verify is worked as before (§Working `## Fixes`).

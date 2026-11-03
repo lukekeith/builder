@@ -11,7 +11,8 @@
  * The checks (skills/verify/SKILL.md's items, the mechanical subset):
  *   walk        (1)  the SPEC header carries `✅ SIGNED OFF` with a `walk:` line, or `🤖 AGENT SIGNED OFF`
  *                    with `walk: agent-pass …` (and, when it is on this machine, that round's report
- *                    ends `verdict: PASS`)
+ *                    ends `verdict: PASS`); and the sign-off still covers HEAD — code committed
+ *                    since (registry commits and clean merges of the target aside) is walked again
  *   fixes       (2)  no `- [ ]` left under `## Fixes`
  *   schema      (4)  every §Schema & API changes row's Status carries a migration id or a marking —
  *                    not empty, `planned`, `pending`, `todo`, `tbd`, `open`
@@ -40,7 +41,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { openFeature, read, mdSection, tableRows, shortHead, currentBranch, codeChangedSince, today, parseArgs, cli, BUILDER } from './feature-core.mjs'
+import { openFeature, read, mdSection, tableRows, shortHead, currentBranch, codeChangedSince, signedOffShas, signoffHolds, today, parseArgs, cli, BUILDER } from './feature-core.mjs'
 import { advance } from './advance.mjs'
 import { isSet } from './manifest.mjs'
 
@@ -71,6 +72,12 @@ const gap = (name, detail) => ({ name, ok: false, detail })
 function walkCheck(f, spec) {
   const s = signoffOf(spec)
   if (!s) return gap('walk', `no sign-off on the SPEC — the walk comes first (/builder:signoff --path ${f.rel}, or the agent walk)`)
+  // What ships is what was signed off: code after it (registry commits and clean merges of the target aside) is walked again.
+  const held = signoffHolds(f.root, signedOffShas(f.root, f.rel), f.cfg?.registry ?? 'docs/features', f.cfg?.mergeInto || f.cfg?.baseBranch || 'main')
+  if (!held.holds) {
+    const files = [...held.changed.slice(0, 3), ...(held.changed.length > 3 ? ['…'] : [])].join(', ')
+    return gap('walk', `${f.feature} changed since it was signed off at ${held.sha} (${files}) — walk it again and sign off (the ship refuses it until then)`)
+  }
   const mf = f.manifest
   const hasManifest = f.manifestText != null
   if (s.kind === 'human') {
