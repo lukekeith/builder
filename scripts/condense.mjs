@@ -11,7 +11,8 @@
  * --signoff agent   agent-walk §4 AGENT-PASS, whole: the 🤖 header line under the title, the §Plan
  *                   index cut by its heading, `git rm` PLAN.md (and PARKED.md), the manifest
  *                   (`walk: agent-pass <date> <sha>`, `state: signed-off`, `verify: none`, `head`,
- *                   `next: /builder:verify --path <folder>`) and the commit
+ *                   `next: /builder:resume --path <folder>` — verify is optional after sign-off;
+ *                   resume offers the quick check, ship it, or the full verify) and the commit
  *                   `docs(<key>): <feature> agent signed off (not human-tested)`. The round is the
  *                   newest `<WS>/agent-walk/round-N/report.md` whose verdict is PASS, its sha that
  *                   report's `sha:` line — or, when the manifest already says `walk: agent-pass …`,
@@ -19,13 +20,16 @@
  *                   `walk=none` sign-off at HEAD, with no walker.
  * --signoff human   ship §At sign-off: `> ✅ SIGNED OFF <date> — <sha> · by <name>: "<words>"` (+ the
  *                   `🛑 PR HELD` line when --hold or the manifest's `hold:` is set), the §Plan cut,
- *                   the `git rm`. The manifest's PASS row is /builder:signoff's — pass it as --set;
- *                   the commit defaults to `docs(<key>): condense <feature> at sign-off`.
+ *                   the `git rm`. The manifest's PASS row is /builder:signoff's — pass it as --set
+ *                   (`next:` defaults to resume, or the hold, when no --set names it); the commit defaults to `docs(<key>): condense <feature> at sign-off`.
  * --ship            ship §At ship: the archive collision check first, then the header flipped to
  *                   SHIPPED (PR form with --pr, agent form with --into), `git rm` MANIFEST.md, the
  *                   workspace removed, a program parent's `child:` line set to shipped (its
  *                   PROGRAM.md flipped and archived when every child has shipped), `git mv` into
- *                   `<registry>/_archive/`, one commit. Refuses unless `verify: READY`; --into also
+ *                   `<registry>/_archive/`, one commit. Verify is optional: it ships a signed-off feature whatever `verify:`
+ *                   says, and the header ends with which check ran — `verified` (READY), `quick-checked`
+ *                   (QUICK), `not verified` (SKIPPED, none, INCOMPLETE). Refuses a feature with no
+ *                   sign-off header (never walked or signed off); --into also
  *                   refuses until <branch> is merged into this branch. --merged is the form for a
  *                   feature whose code already reached the target with no ship (a manual merge, a
  *                   `build: here` feature, a PR merged before ship ran): `✅ SHIPPED <date> — merged
@@ -35,7 +39,8 @@
  * What stays with the skill (judgment): whether the walk passed at all (agent-walk §3 reads the
  * report); the human's name and verbatim words, and whether this is a PASS (/builder:signoff); that
  * the PR is open and which number it is (`gh pr view` — ask, never guess); the manifest's PASS row
- * for a human sign-off over an agent pass (verify READY at HEAD or not).
+ * for a human sign-off over an agent pass (verify READY at HEAD or not); which check runs after the
+ * sign-off — verify-quick.mjs, --skip, or /builder:verify — is the human's (or the fleet's) choice.
  *
  * Safe to re-run: each step looks before it writes — a header already in place, a §Plan already
  * gone, a PLAN.md already removed, a folder already archived — and a call whose result already
@@ -46,7 +51,7 @@ import { join, resolve, dirname, basename, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openFeature, headings, read, writeAtomic, git, shortHead, today, parseArgs, cli, posix, repoRoot, workspaceDir, setManifestKeys } from './feature-core.mjs'
 import { advance } from './advance.mjs'
-import { parseManifest, isSet } from './manifest.mjs'
+import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { parseTestPlan } from './profile.mjs'
 import { loadConfig } from './config.mjs'
 import { ARCHIVE } from './registry.mjs'
@@ -82,6 +87,15 @@ export function setHeader(spec, lines) {
 }
 
 const unquote = (v) => String(v ?? '').replace(/^"(.*)"$/, '$1')
+
+/** The `>` lines right under the SPEC's title, as one string. */
+function signoffBlock(spec) {
+  const all = String(spec ?? '').split('\n')
+  const t = all.findIndex((l) => /^# /.test(l))
+  const out = []
+  for (let j = t + 1; t >= 0 && j < all.length && all[j].startsWith('>'); j++) out.push(all[j])
+  return out.join('\n')
+}
 
 /** The newest round-N report with `verdict: PASS` → { n, sha } or null. */
 function passingRound(ws, want) {
@@ -145,7 +159,7 @@ function signoffAgent(f, a) {
   }
   const { out, add } = condenseFolder(f, [header])
   const r = advance(f, {
-    sets: [['walk', walk], ['state', 'signed-off'], ['verify', 'none'], ['next', `/builder:verify --path ${f.rel}`], ...sets(a)],
+    sets: [['walk', walk], ['state', 'signed-off'], ['verify', 'none'], ['next', `/builder:resume --path ${f.rel}`], ...sets(a)],
     unsets: a.unset ?? [],
     head: true,
     ledger: a.ledger ?? [],
@@ -165,8 +179,11 @@ function signoffHuman(f, a) {
   const hold = a.hold ?? (isSet(f.manifest.hold) ? unquote(f.manifest.hold) : null)
   const lines = [`> ✅ SIGNED OFF ${date} — ${sha} · by ${a.name}: "${a.words}"`, ...(hold ? [`> 🛑 PR HELD (${date}): "${hold}"`] : [])]
   const { out, add } = condenseFolder(f, lines)
+  // Verify is optional after sign-off: unless the caller names one, `next:` is resume, which offers
+  // the quick check, ship it, or the full verify.
+  const own = sets(a)
   const r = advance(f, {
-    sets: sets(a),
+    sets: own.some(([k]) => k === 'next') ? own : [['next', hold ? `🛑 held — ${hold}` : `/builder:resume --path ${f.rel}`], ...own],
     unsets: a.unset ?? [],
     head: !!a.head,
     ledger: a.ledger ?? [],
@@ -209,7 +226,10 @@ export function ship(a) {
   const resumed = !moved && !existsSync(f.manifestPath) && /^> ✅ SHIPPED/m.test(read(f.specPath) ?? '')
   if (!moved) {
     if (existsSync(arch)) throw new Error(`${posix(relative(f.root, arch))} already exists — a second folder of that name would make "has it shipped?" answer for the wrong feature. Nothing was touched.`)
-    if (!resumed && !/^READY\b/.test(f.manifest.verify ?? '')) throw new Error(`verify is not READY (verify: ${f.manifest.verify ?? 'absent'}) — ship §At ship runs only on a READY feature`)
+    // Verify is optional after sign-off: what ships is a signed-off feature, whatever `verify:` says.
+    // The sign-off header is the one requirement, checked here before anything is written.
+    if (!resumed && !/^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF|✅ SHIPPED)/m.test(signoffBlock(read(f.specPath))))
+      throw new Error('SPEC.md has no sign-off header line — never walked or signed off, so not shipped; the walk and its sign-off condense come first. Nothing was touched.')
     if (!resumed && merged) {
       const target = a.into ?? f.cfg?.mergeInto ?? 'main'
       if (git(f.root, ['rev-parse', '--verify', '--quiet', `${merged}^{commit}`], { allowFail: true }) === null) throw new Error(`${merged} is not a commit here — pass the sha that brought the feature into ${target}`)
@@ -238,7 +258,8 @@ export function ship(a) {
       const by = sign.startsWith('> ✅ SIGNED OFF') && human ? `signed off by ${human[1]}: "${human[2]}"` : `🤖 agent signed off (${round ? `walk round ${round}` : 'no walk'}), not human-tested`
       if (!merged && !a.into && !human) throw new Error(`cannot read the signer and words from: ${sign}`)
       const where = merged ? `merged ${merged}` : a.into ? `merged into ${a.into}` : `PR #${String(a.pr).replace(/^#/, '')}`
-      const shipped = `> ✅ SHIPPED ${today()} — ${where} · ${ticket} · ${by}`
+      // Which check ran after the sign-off — verify is optional: verified · quick-checked · not verified.
+      const shipped = `> ✅ SHIPPED ${today()} — ${where} · ${ticket} · ${by} · ${verifyCheck(f.manifest.verify)}`
       writeAtomic(f.specPath, setHeader(spec, [shipped]))
       out.push('SPEC: header flipped to SHIPPED')
     }

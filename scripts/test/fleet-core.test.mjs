@@ -12,10 +12,11 @@ test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'building' }), 'build')
   assert.equal(laneOf({ state: 'building', ready: 'pending "dev env (fleet walk lane)"' }), 'walk')
   assert.equal(laneOf({ state: 'built' }), 'walk')
-  assert.equal(laneOf({ state: 'signed-off' }), 'walk')
+  assert.equal(laneOf({ state: 'signed-off' }), 'ship', 'verify is optional after sign-off: the ship lane runs the quick check, then ships')
+  assert.equal(laneOf({ state: 'signed-off', verify: 'QUICK 2026-11-03 abc1234' }), 'ship')
   assert.equal(laneOf({ state: 'verified' }), 'ship')
   assert.equal(laneOf({ state: 'verified', pr: '#3' }), 'ship')
-  assert.equal(laneOf({ state: 'signed-off', pr: '#3' }), 'walk', 'a re-verify after CI fixes still needs the dev env')
+  assert.equal(laneOf({ state: 'signed-off', pr: '#3' }), 'ship')
   assert.equal(laneOf({ state: 'shipped' }), 'done')
   assert.equal(laneOf({ state: 'audited', blocked: '"x"' }), 'blocked')
   assert.equal(laneOf({ state: 'audited', blocked: 'none' }), 'build')
@@ -74,6 +75,13 @@ test('a run that timed out after shipping still counts as done', () => {
 
 test('the walk lane hands off to the ship lane at verify READY', () => {
   assert.deepEqual(decide({ ...base, lane: 'walk', manifestText: mf('state: verified\nverify: READY 2026-09-26') }), { action: 'handoff', to: 'ship' })
+})
+
+test('the walk lane hands off to the ship lane at sign-off — no verify required, batched or not', () => {
+  for (const batched of [false, true]) {
+    assert.deepEqual(decide({ ...base, lane: 'walk', batched, manifestText: mf('state: signed-off\nwalk: agent-pass 2026-09-26 abc1234\nverify: none') }), { action: 'handoff', to: 'ship' })
+    assert.deepEqual(decide({ ...base, lane: 'ship', batched, manifestText: mf('state: signed-off\nverify: QUICK 2026-09-26 abc1234') }), { action: 'again' }, 'the ship lane keeps it until it ships')
+  }
 })
 
 test('the build lane hands off once the feature needs the dev env', () => {
@@ -625,6 +633,11 @@ test('stagesFromCommits: a feature that came in audited and planned has no audit
   // A branch whose first mark is the walk (it came in built): its opening commits are the walk's.
   const walked = stagesFromCommits([c(0, 'chore(x): x — walk readiness passed in the walk env'), c(9, 'docs(x): x agent signed off'), c(29, 'docs(x): x — verify READY')], 'x')
   assert.deepEqual(Object.fromEntries(Object.entries(walked.stages).map(([k, v]) => [k, v / 60000])), { walk: 9, verify: 20 })
+  // The quick check (or a skip) closes the verify stage as READY does — verify is optional after sign-off.
+  const quick = stagesFromCommits([c(0, 'chore(x): x — walk readiness passed in the walk env'), c(9, 'docs(x): x agent signed off'), c(12, 'docs(x): x — quick check passed')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(quick.stages).map(([k, v]) => [k, v / 60000])), { walk: 9, verify: 3 })
+  const skipped = stagesFromCommits([c(0, 'chore(x): x — walk readiness passed in the walk env'), c(9, 'docs(x): x signed off'), c(10, 'docs(x): x — verify skipped')], 'x')
+  assert.deepEqual(Object.fromEntries(Object.entries(skipped.stages).map(([k, v]) => [k, v / 60000])), { walk: 9, verify: 1 })
 })
 
 test('stagesFromCommits: a feature the fleet audits and plans keeps its audit and plan', () => {
@@ -912,10 +925,10 @@ test('laneOf, batched: the walk lane keeps readiness and the walk; fixes and ver
   assert.equal(batched({ state: 'built' }), 'walk')
   assert.equal(batched({ state: 'built' }, fixes), 'build', 'a walk\'s open fixes are worked with no env')
   assert.equal(batched({ state: 'built' }, ticked), 'walk', 'ticked: back to a walk batch')
-  assert.equal(batched({ state: 'signed-off' }), 'ship', 'verify runs in the pool')
-  // not batched: as before
+  assert.equal(batched({ state: 'signed-off' }), 'ship', 'the quick check and the ship run in the pool')
+  // not batched: the walk stays in the walk lane; signed off goes to the ship lane too
   assert.equal(laneOf({ state: 'built' }, { specText: fixes }), 'walk')
-  assert.equal(laneOf({ state: 'signed-off' }), 'walk')
+  assert.equal(laneOf({ state: 'signed-off' }), 'ship')
   assert.equal(hasOpenFixes('## Testing\n\n- [ ] x\n'), false, 'a box outside ## Fixes is not a fix')
 })
 

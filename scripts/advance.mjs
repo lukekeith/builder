@@ -15,7 +15,7 @@
  *   --add <path>     another tracked path to commit with the manifest (a SPEC edit, a `git rm`-ed PLAN)
  *   --commit         the subject. `{key}` is the ticket or the feature, `{feature}` the feature; a
  *                    preset names a subject the skills fix: audited · aligned · plan · built ·
- *                    walk-lane · verify-ready · verify-incomplete
+ *                    walk-lane · verify-ready · verify-incomplete · verify-quick · verify-skipped
  *   --body / --trailer  the message body, and trailer lines after it. The skills ask for no trailer;
  *                    pass one when your harness asks for an attribution line
  *
@@ -40,6 +40,8 @@ export const PRESETS = {
   'walk-lane': 'chore({key}): {feature} — phases closed, awaiting the walk lane',
   'verify-ready': 'docs({key}): {feature} — verify READY',
   'verify-incomplete': 'docs({key}): {feature} — verify INCOMPLETE',
+  'verify-quick': 'docs({key}): {feature} — quick check passed',
+  'verify-skipped': 'docs({key}): {feature} — verify skipped',
 }
 
 export const subjectOf = (s, f) => (PRESETS[s] ?? s).replaceAll('{key}', f.key).replaceAll('{feature}', f.feature)

@@ -6,8 +6,9 @@
  * Each spec gets its own worktree and branch (builder/<feature>) cut from the target. A pool of
  * `parallel` workers runs the BUILD and SHIP lanes with --no-dev-env, so nothing touches the shared
  * dev environment; the WALK lane takes features one at a time through that environment — walk
- * readiness, the agent walk and its sign-off, verify. The SHIP lane brings the target in and writes
- * the ship commit; then the verifier's merge queue tests the feature merged onto the target and
+ * readiness, the agent walk and its sign-off. The SHIP lane takes a signed-off feature (verify is
+ * optional after sign-off: the fleet runs the one-call quick check, verify-quick.mjs, never the full
+ * /builder:verify), brings the target in and writes the ship commit; then the verifier's merge queue tests the feature merged onto the target and
  * fast-forwards the target to exactly that merge commit (one `--no-ff` merge commit per feature),
  * and the fleet removes its worktree and branch. Nothing is pushed. Progress is read from
  * each worktree's MANIFEST.md (and, once shipped, its SPEC header), never from a run's output.
@@ -2190,7 +2191,11 @@ async function poolWorker() {
       else if (parkIfPaused(fleet.features[feature], feature)) outcome = 'parked'
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
-        outcome = why ? park(fleet.features[feature], why) : await drive(feature, lane)
+        if (why) outcome = park(fleet.features[feature], why)
+        else {
+          if (lane === 'ship') await quickCheck(feature)
+          outcome = await drive(feature, lane)
+        }
       }
       inFlight--
       route(feature, outcome)
@@ -2276,6 +2281,34 @@ const execAsync = (cmd, args, opts) =>
     })
     if (child.pid) active.add(child)
   })
+
+/** How long the ship lane's quick check waits on the merge tier (seconds) — time, not tokens. */
+const QUICK_WAIT_S = Number(process.env.FLEET_QUICK_WAIT_S) || 1800
+
+/**
+ * The ship lane's check after sign-off. Verify is optional after sign-off, and the fleet uses the
+ * quick check in place of the full /builder:verify: verify-quick.mjs — one script, no model — reads
+ * (or waits on) the held merge tier and the spec's mechanical items. PASS records `verify: QUICK …`
+ * and commits it on the branch (registry only, so the held run still carries). Gaps are advice: a
+ * note, and the ship goes on — the merge queue at landing still tests the merged result. Nothing to do
+ * when a verify is already recorded (READY, QUICK, SKIPPED) or the feature is not signed off.
+ */
+async function quickCheck(feature) {
+  const f = fleet.features[feature]
+  const text = readManifest(f.worktree, feature)
+  const mf = text == null ? {} : parseManifest(text)
+  if (mf.state !== 'signed-off' || /^(READY|QUICK|SKIPPED)\b/.test(mf.verify ?? '')) return
+  f.reason = 'quick check: the merge tier and the spec, by script'
+  save()
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'verify-quick.mjs')
+  const message = `merge(${feature}): agent-verified, not human-tested`
+  const r = await execAsync(process.execPath, [script, join(f.worktree, specOf(feature)), '--max-wait', String(QUICK_WAIT_S), '--message', message], { cwd: f.worktree, env: envFor(feature, 'build') })
+  f.reason = null
+  const verdict = /^QUICK CHECK: .*$/m.exec(r.output)?.[0]
+  if (!verdict) addNote(`${feature}: the quick check could not run (exit ${r.status}: ${r.output.trim().split('\n').pop() ?? ''}) — shipped without it`)
+  else if (r.status !== 0) addNote(`${feature}: ${verdict} — shipped anyway (a quick check's gaps are advice): ${r.output.split('\n').filter((l) => l.startsWith('✗ ')).map((l) => l.slice(2)).join(' · ')}`)
+  save()
+}
 
 /**
  * One walk for several features: merge them into the walk worktree, bring the env up once (reset

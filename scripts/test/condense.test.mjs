@@ -53,7 +53,7 @@ test('condense --signoff agent: agent-walk §4 AGENT-PASS in one call — manife
   assert.match(mf, /^walk: agent-pass 2026-10-23 abc1234$/m)
   assert.match(mf, /^state: signed-off$/m)
   assert.match(mf, /^verify: none$/m)
-  assert.match(mf, /^next: \/builder:verify --path docs\/features\/note-tags$/m)
+  assert.match(mf, /^next: \/builder:resume --path docs\/features\/note-tags$/m, 'verify is optional after sign-off: resume offers quick check · ship it · full verify')
   assert.equal(git(r.root, 'log', '-1', '--format=%s'), 'docs(note-tags): note-tags agent signed off (not human-tested)')
   assert.equal(git(r.root, 'status', '--short'), '')
   assert.throws(() => git(r.root, 'cat-file', '-e', 'HEAD:docs/features/note-tags/PLAN.md'))
@@ -116,7 +116,7 @@ test('condense --ship --into: agent form — header flipped, manifest removed, w
   const arch = join(r.root, 'docs', 'features', '_archive', 'note-tags')
   assert.equal(existsSync(r.folder), false)
   assert.deepEqual(git(r.root, 'ls-files', 'docs/features').split('\n'), ['docs/features/_archive/note-tags/SPEC.md'])
-  assert.equal(readText(join(arch, 'SPEC.md')).split('\n')[1], '> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · 🤖 agent signed off (walk round 1), not human-tested')
+  assert.equal(readText(join(arch, 'SPEC.md')).split('\n')[1], '> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · 🤖 agent signed off (walk round 1), not human-tested · verified')
   assert.equal(existsSync(WS(r)), false)
   assert.equal(git(r.root, 'log', '-1', '--format=%s'), 'docs(note-tags): note-tags ready to land on main')
   assert.equal(git(r.root, 'status', '--short'), '')
@@ -157,9 +157,6 @@ test('condense --ship: a crash right after `git rm MANIFEST.md` — the re-run s
 test('condense --ship: human form on a PR — name and words carried over, hold dropped; refusals', () => {
   const r = built({ manifest: { ticket: 'NT-7' } })
   run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'good', '--sha', 'eee5555', '--hold', 'wait'], { cwd: r.root })
-  const notReady = run('condense.mjs', [r.rel, '--ship', '--pr', '12'], { cwd: r.root })
-  assert.equal(notReady.status, 1)
-  assert.match(notReady.stderr, /verify is not READY/)
   run('advance.mjs', [r.rel, '--set', 'verify=READY 2026-10-23', '--commit', 'verify-ready'], { cwd: r.root })
   mkdirSync(join(r.root, 'docs', 'features', '_archive', 'note-tags'), { recursive: true })
   writeFileSync(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md'), '# other\n')
@@ -170,7 +167,7 @@ test('condense --ship: human form on a PR — name and words carried over, hold 
   const ok = run('condense.mjs', [r.rel, '--ship', '--pr', '12'], { cwd: r.root })
   assert.equal(ok.status, 0, ok.stderr)
   const lines = readText(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md')).split('\n')
-  assert.equal(lines[1], '> ✅ SHIPPED 2026-10-23 — PR #12 · NT-7 · signed off by Luke: "good"')
+  assert.equal(lines[1], '> ✅ SHIPPED 2026-10-23 — PR #12 · NT-7 · signed off by Luke: "good" · verified')
   assert.equal(lines[2], '> md · no ticket')
   assert.equal(git(r.root, 'log', '-1', '--format=%s'), 'docs(NT-7): note-tags shipped in PR #12')
 })
@@ -219,7 +216,7 @@ test('condense --ship --merged: a feature already in the target — SHIPPED nami
   const ok = run('condense.mjs', [r.rel, '--ship', '--merged', sha], { cwd: r.root })
   assert.equal(ok.status, 0, ok.stderr)
   const arch = join(r.root, 'docs', 'features', '_archive', 'note-tags')
-  assert.equal(readText(join(arch, 'SPEC.md')).split('\n')[1], `> ✅ SHIPPED 2026-10-23 — merged ${sha} · NT-7 · signed off by Luke: "good"`)
+  assert.equal(readText(join(arch, 'SPEC.md')).split('\n')[1], `> ✅ SHIPPED 2026-10-23 — merged ${sha} · NT-7 · signed off by Luke: "good" · verified`)
   assert.equal(git(r.root, 'log', '-1', '--format=%s'), `docs(NT-7): note-tags shipped — merged ${sha}`)
   assert.equal(git(r.root, 'branch', '--show-current'), 'main')
   assert.equal(git(r.root, 'status', '--short'), '')
@@ -242,5 +239,35 @@ test('condense --ship --into: a human sign-off keeps its signer — never reads 
   run('advance.mjs', [r.rel, '--set', 'verify=READY 2026-10-23', '--commit', 'verify-ready'], { cwd: r.root })
   assert.equal(run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root }).status, 0)
   const line = readText(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md')).split('\n')[1]
-  assert.equal(line, '> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · signed off by Luke: "works"')
+  assert.equal(line, '> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · signed off by Luke: "works" · verified')
+})
+
+test('condense --ship: verify is optional after sign-off — a QUICK, SKIPPED or absent verify ships, the header says which check ran', () => {
+  for (const [verify, says] of [['QUICK 2026-10-23 abc1234', 'quick-checked'], ['SKIPPED 2026-10-23', 'not verified'], ['none', 'not verified'], ['INCOMPLETE 2026-10-23', 'not verified']]) {
+    const r = built()
+    assert.equal(run('condense.mjs', [r.rel, '--signoff', 'agent'], { cwd: r.root }).status, 0)
+    run('advance.mjs', [r.rel, '--set', `verify=${verify}`, '--commit', 'docs({key}): {feature} — set verify'], { cwd: r.root })
+    const out = run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root })
+    assert.equal(out.status, 0, `${verify}: ${out.stderr}`)
+    const line = readText(join(r.root, 'docs', 'features', '_archive', 'note-tags', 'SPEC.md')).split('\n')[1]
+    assert.equal(line, `> ✅ SHIPPED 2026-10-23 — merged into main · no ticket · 🤖 agent signed off (walk round 1), not human-tested · ${says}`)
+  }
+})
+
+test('condense --ship: a feature never walked or signed off is still refused, nothing touched', () => {
+  const r = built()
+  const out = run('condense.mjs', [r.rel, '--ship', '--into', 'main'], { cwd: r.root })
+  assert.equal(out.status, 1)
+  assert.match(out.stderr, /no sign-off/)
+  assert.ok(existsSync(join(r.folder, 'MANIFEST.md')))
+  assert.equal(git(r.root, 'status', '--short'), '')
+})
+
+test('condense --signoff human: next defaults to resume (not a mandatory verify); a --set next wins', () => {
+  const r = built()
+  assert.equal(run('condense.mjs', [r.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'ok', '--set', 'state=signed-off'], { cwd: r.root }).status, 0)
+  assert.match(readText(join(r.folder, 'MANIFEST.md')), /^next: \/builder:resume --path docs\/features\/note-tags$/m)
+  const h = built()
+  assert.equal(run('condense.mjs', [h.rel, '--signoff', 'human', '--name', 'Luke', '--words', 'ok', '--set', 'next=🛑 held — x'], { cwd: h.root }).status, 0)
+  assert.match(readText(join(h.folder, 'MANIFEST.md')), /^next: 🛑 held — x$/m)
 })

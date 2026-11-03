@@ -203,7 +203,7 @@ const inspect = (root, name) => {
     out.pr = grab(header, /PR\s*(#\d+)/)
     const held = /PR HELD/.test(header)
     out.state = `signed off — condensed${held ? ', 🛑 PR HELD' : ''}${out.pr ? `, ${out.pr}` : ''}`
-    out.next = `/builder:verify --path ${out.path}`
+    out.next = `/builder:resume --path ${out.path}` // verify is optional after sign-off: resume offers it
     return out
   }
 
@@ -413,6 +413,8 @@ const statusOf = (r) => {
   const state = r.layout === 'condensed' ? 'signed-off' : mf.state
   const verify = mf.verify ?? 'none'
   const noGoAhead = !mf['go-ahead'] || mf['go-ahead'] === 'none'
+  // Verify is optional after sign-off: the quick check (QUICK) or a skip (SKIPPED) is the record of it.
+  const checked = /^QUICK\b/.test(verify) ? 'quick-checked' : /^SKIPPED\b/.test(verify) ? 'verify skipped' : null
   const table = {
     spec: ['Spec written', CFG.design?.flag && mf[CFG.design.flag] && mf[CFG.design.flag] !== 'none' ? 'Align the design' : 'Audit the spec against the code'],
     aligned: ['Design aligned', 'Audit the spec against the code'],
@@ -420,7 +422,7 @@ const statusOf = (r) => {
     planned: ['Plan written', noGoAhead ? 'Approve the plan, then build' : 'Build'],
     building: ['Build in progress', 'Continue the build'],
     built: ['Build finished', '🔒 Walk it yourself, then /builder:signoff'],
-    'signed-off': ['Signed off', 'Deep verify'],
+    'signed-off': [`Signed off${checked ? ` — ${checked}` : ''}`, /^INCOMPLETE/.test(verify) ? 'Work the ## Fixes list, or ship as is' : checked ? 'Open the PR, then ship' : 'Ship (quick check offered)'],
     verified: [`Verified — ${verify.split(' ')[0]}`, /^INCOMPLETE/.test(verify) ? 'Work the ## Fixes list' : 'Open the PR, then ship'],
     shipped: ['Shipped', '—'],
   }
@@ -437,9 +439,12 @@ const statusOf = (r) => {
   if (state === 'built' && agentPass) {
     // Walked before agents signed off (pre-3.0): the sign-off and condense are still owed.
     lastDone = 'Agent-walked — not human-tested'
-    nextStep = 'Agent sign-off, then deep verify'
+    nextStep = 'Agent sign-off, then ship'
   } else if (state === 'built' && agentMode && /^yes/.test(ready)) nextStep = 'Agent walk (fleet)'
-  if (state === 'signed-off' && agentPass) lastDone = 'Agent signed off — not human-tested'
+  if (state === 'signed-off' && agentPass) {
+    lastDone = `Agent signed off — not human-tested${checked ? `, ${checked}` : ''}`
+    if (agentMode && !/^INCOMPLETE/.test(verify)) nextStep = checked ? 'Ship and merge into the fleet branch (agent)' : 'Quick check, then ship and merge into the fleet branch (agent)'
+  }
   if (state === 'verified' && agentPass)
     nextStep = agentMode ? 'Ship and merge into the fleet branch (agent)' : r.pr ? 'Review the PR, then /builder:signoff' : 'Open the PR'
   const held = mf.hold && mf.hold !== 'none' ? mf.hold.replace(/^"|"$/g, '') : null

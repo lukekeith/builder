@@ -9,15 +9,17 @@ import { ARCHIVE } from './registry.mjs'
 import { rowLabel } from './profile.mjs'
 
 const BUILD_STATES = new Set(['spec', 'aligned', 'audited', 'planned', 'building'])
-const WALK_STATES = new Set(['built', 'signed-off'])
-const SHIP_STATES = new Set(['verified'])
+const WALK_STATES = new Set(['built'])
+const SHIP_STATES = new Set(['signed-off', 'verified'])
 const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
 
 /**
  * Which lane a feature belongs in. `building` with `ready: pending` is every phase closed and only
- * walk readiness left — that needs the dev env, so it is walk-lane work. `verified` is the ship
- * lane: the PR, CI, the ship commit and the merge need no dev env, so they run in the parallel pool
- * and never hold the one-at-a-time walk lane while CI runs. An open PR is not done — merged is.
+ * walk readiness left — that needs the dev env, so it is walk-lane work. `signed-off` and `verified`
+ * are the ship lane: verify is optional after sign-off, so the fleet runs the one-call quick check
+ * (verify-quick.mjs, no model) and ships; the PR, CI, the ship commit and the merge need no dev env,
+ * so they run in the parallel pool and never hold the one-at-a-time walk lane while CI runs. An open
+ * PR is not done — merged is.
  */
 export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (isSet(mf.blocked)) return 'blocked'
@@ -25,10 +27,8 @@ export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (mf.state === 'building' && /^pending/.test(mf.ready ?? '')) return 'walk'
   if (BUILD_STATES.has(mf.state)) return 'build'
   // Batched walks (agent_walk.start with batch > 1): the walk lane holds only what needs the running
-  // env — readiness and the agent walk. A walk's fixes are worked in the parallel pool (no env), and
-  // verify + ship run there too.
+  // env — readiness and the agent walk. A walk's fixes are worked in the parallel pool (no env).
   if (batched && mf.state === 'built' && hasOpenFixes(specText)) return 'build'
-  if (batched && mf.state === 'signed-off') return 'ship'
   if (WALK_STATES.has(mf.state)) return 'walk'
   if (SHIP_STATES.has(mf.state)) return 'ship'
   return 'unknown'
@@ -1358,7 +1358,7 @@ const STAGE_MARKS = [
   ['finalReview', /final[- ]review/i],
   ['endGates', /— (phases closed|built, walk readiness pending|built, awaiting the walk)\b|built here — not walked/],
   ['walk', /agent walk round \d+|agent signed off|\bsigned off\b|re-signed|walk found \d+ problems|re-walk after verify/],
-  ['verify', /— verify (READY|INCOMPLETE)/],
+  ['verify', /— verify (READY|INCOMPLETE)|— verify skipped\b|— quick check passed\b/],
   ['ship', / shipped (into|in PR)\b|— PR #\d+ open/],
 ]
 /**
