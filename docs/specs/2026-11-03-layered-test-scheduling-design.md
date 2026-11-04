@@ -1,6 +1,6 @@
 # Tests run in layer order, scoped to the phase's app — design
 
-**Status:** open questions answered by the owner (D7–D9); awaiting the replay numbers, then the plan — nothing built · **Date:** 2026-11-03 · **Branch:** `fix/verifier-landing-base`
+**Status:** open questions answered by the owner (D7–D9); replayed (§Measuring it); next, the plan — nothing built · **Date:** 2026-11-03 · **Branch:** `fix/verifier-landing-base`
 
 ## Why
 
@@ -92,8 +92,34 @@ ancestor green) stand on their own and ship first.
 
 ## Measuring it
 
-Before building, replay the consuming project's ledger: for each recorded commit and phase run,
-compute the selection under D1–D3 and compare suite counts and minutes with what ran. The selection
-code runs offline against a local clone (`selectSuites` with the run's base). The replay needs git in
-that repo, which this design session's isolation blocked. It's the first step of the plan, and the
-numbers go into this spec before it's approved for build.
+**Replayed 2026-11-04**, on a local clone of the consuming project, from a copy of its verifier
+ledger. All 94 recorded commit and phase runs of two features were replayed: one stacked on unmerged
+iPhone work, one not. For each run: the selection that was recorded; the selection with this branch's two
+bug fixes (the feature's landing branch; the newest green that is an ancestor), via `selectSuites`; and
+that selection with D1/D8 applied (suites of the apps the run's own range touches, plus app-less ones).
+Runs selecting each suite, test files selected in brackets:
+
+| Feature · tier | Runs | Server suite: recorded → fixed → D1/D8 | iPhone suite: recorded → fixed → D1/D8 |
+|---|---|---|---|
+| stacked · commit | 56 | 50 (5293) → 47 (2646) → 34 (2495) | 42 (3076) → 22 (1546) → 22 (1546) |
+| stacked · phase | 3 | 3 (227) → 3 (307) → 2 (237) | 1 (70) → 2 (143) → 2 (143) |
+| not stacked · commit | 17 | 15 (669 + 4 whole) → 15 → 10 (596 + 4 whole) | 8 (424) → 8 → 6 (422) |
+| not stacked · phase | 18 | 14 (298 + 4 whole) → 16 (738 + 4 whole) → 11 (664 + 4 whole) | 4 (220) → 8 (433) → 6 (431) |
+
+What it shows:
+
+- **The bug fixes do most of the work.** On the stacked feature, the iPhone suite ran in 42 of 56
+  commit runs; with the fixes it runs in 22, and every one of those 22 is a range that changed iPhone
+  code. The server files selected halve too.
+- **D1/D8 cuts the other app's suite where the range didn't touch it**: the server suite stays out of
+  iPhone-only commits (47 → 34 runs on the stacked feature, 15 → 10 on the other). It also cuts the
+  shared-reach cases: 2 commit runs and 2 phase runs of the unstacked feature selected the iPhone suite
+  from server-only ranges.
+- **D3 and D4 held nothing back in these two histories.** Both builds already ran producer first: every
+  iPhone-touching commit came after the server phase tier was green, and no run that selected the iPhone
+  suite under D1/D8 had a red server suite. They are guarantees for builds that break the order (a fix
+  round across apps, a plan that interleaves), not a saving here.
+- The fixed selection is sometimes larger than what was recorded at the phase tier. The replay uses each
+  phase's recorded `--since`, and the unstacked feature's target as it stood just before it landed.
+  The recorded runs reused results the replay doesn't model. Minutes aren't replayed: the ledger
+  keeps one duration per run, not per suite.
