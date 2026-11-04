@@ -257,7 +257,11 @@ Finished features merge into one branch — `merge_into` in `.claude/builder.md`
 out when the fleet launches, so agent work merges back into the branch you are on. When you are asked
 **Land on?**, a feature branch you have checked out is the recommendation either way.
 A merged feature's worktree and branch are removed; a parked one keeps only its branch, with why and
-the next step. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
+the next step. **A park or failure always asks you**: the fleet raises a desktop notification
+(macOS, or Linux with `notify-send`; `BUILDER_NOTIFY=0` turns it off), the session watching the run
+wakes on it, the next session's brief raises it in the first reply, and `/builder:fleet:status`
+gives every parked or failed feature one picker — do its next step and retry, retry with agents, dig
+in yourself, or leave it. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
 what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
 worktree, one OK for everything safe (delete what's merged, remove dead worktrees, merge what's
 signed off — shipped on its branch first, so the target gets the archived SPEC), one question each for
@@ -297,7 +301,9 @@ The plugin ships two hooks (`hooks/hooks.json`), and both are silent in any repo
   plan and build, test-driven-development, systematic-debugging, verification-before-completion,
   receiving-code-review). What the fleet landed or parked since you last looked comes first; a
   landing your uncommitted changes are in the way of reads `⛔ <feature> needs you — <why> —
-  /builder:fleet:status to choose`, and Claude raises it in its first reply. Skipped under unattended runs.
+  /builder:fleet:status to choose`; any other park or failure reads `⛔ <feature> parked, waiting on
+  you — <why> — next: <step> — /builder:fleet:status to choose`. Claude says so in its first reply,
+  then raises each one's picker. Skipped under unattended runs.
 - **The PR lock** (PreToolUse on Bash) — `gh pr create` on a builder feature's branch is denied
   until the feature has been walked and signed off (`walk: none` → "🔒 walk it, then
   `/builder:signoff`"); an agent's sign-off passes only in agent mode. A PR on any other branch is

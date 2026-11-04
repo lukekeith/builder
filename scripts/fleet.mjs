@@ -33,7 +33,7 @@ import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
-import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
@@ -134,6 +134,7 @@ const clearPause = (feature) => rmSync(pauseFile(feature), { force: true })
 // small files per feature. The reading is kept on the row (lastProgress), so a feature whose worktree
 // is gone keeps its last value instead of the root checkout's 0%.
 const progressOf = (feature, f) => rowProgress(ROOT, CFG.registry, feature, f)
+const folderOf = (feature) => `${CFG.registry}/${feature}`
 // The table's Tests before the fleet has noted a row's facts: what its manifest's test plan reads as.
 const testsOf = (feature, f) => {
   const p = join(specDir(f.worktree && existsSync(f.worktree) ? f.worktree : ROOT, CFG.registry, feature), 'MANIFEST.md')
@@ -141,16 +142,22 @@ const testsOf = (feature, f) => {
 }
 
 if (flag('--status') || flag('--archived') || flag('--wait')) {
-  // --wait: block, silent, until no live fleet holds the lock; then the status, as --status prints it.
-  // A fleet just launched may not hold its lock yet: give it a grace to appear.
-  if (flag('--wait')) await waitForFleet(ROOT, { pollMs: Number(process.env.FLEET_WAIT_POLL_MS) || 20000, graceMs: process.env.FLEET_WAIT_GRACE_MS !== undefined ? Number(process.env.FLEET_WAIT_GRACE_MS) : 15000 })
+  // --wait: block, silent, until no live fleet holds the lock — or until a feature parks or fails
+  // while the rest run on, since it waits on a person from that moment — then the status, as
+  // --status prints it. A mid-run stop is named first, on a `⛔ waiting on you:` line: the session
+  // raises its choices and starts the watcher again. A fleet just launched may not hold its lock
+  // yet: give it a grace to appear.
+  if (flag('--wait')) {
+    const { parked } = await waitForFleet(ROOT, { pollMs: Number(process.env.FLEET_WAIT_POLL_MS) || 20000, graceMs: process.env.FLEET_WAIT_GRACE_MS !== undefined ? Number(process.env.FLEET_WAIT_GRACE_MS) : 15000, stopped: stoppedNames })
+    if (parked.length) console.log(`⛔ waiting on you: ${parked.join(', ')} — the fleet runs on with the rest; raise each one's choices, then start this watcher again\n`)
+  }
   const fleet = existsSync(join(DIR, 'fleet.json')) ? loadFleet(ROOT) : null
   // Opening the status is seeing what landed: the status line and the brief stop announcing it.
   // --wait is a watcher, not a person looking: an overnight finish stays on the line until it is opened.
   if (!flag('--wait')) markSeen(ROOT)
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
-    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf) : 'No fleet has run in this repo yet.')
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf, folderOf) : 'No fleet has run in this repo yet.')
     // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
@@ -712,7 +719,7 @@ const unlock = () => {
   } catch {}
 }
 process.on('exit', unlock)
-const save = () => saveFleet(ROOT, fleet, progressOf, testsOf)
+const save = () => saveFleet(ROOT, fleet, progressOf, testsOf, folderOf)
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {
@@ -2238,11 +2245,31 @@ function route(feature, outcome) {
  */
 function tellStop(feature, f, retry = null) {
   const { path, committed } = recordOf(feature)
-  const record = f.status === 'parked' && existsSync(path) ? path : null
-  const choices = f.status === 'parked' ? choicesOf(feature, f.reason) : []
+  const record = f.status === 'parked' && existsSync(path) ? (committed ? join(specOf(feature), 'PARKED.md') : path) : null
+  // A stop the fleet retries at once waits on no one; any other always says what a person can do.
+  const choices = retry ? [] : stopChoices({ feature, status: f.status, reason: f.reason, folder: specOf(feature) })
   try {
     mkdirSync(DIR, { recursive: true })
     appendFileSync(join(DIR, 'fleet.out'), parkBlock({ feature, status: f.status, reason: f.reason, choices, record, branch: committed ? f.branch : null, log: f.log, retry }))
+  } catch {}
+  if (!retry) notifyStop(feature, f)
+}
+
+/**
+ * A desktop notification for a stop that waits on a person — macOS (osascript) or Linux
+ * (notify-send). Best effort and fire-and-forget: a missing tool or a refusal changes nothing.
+ */
+function notifyStop(feature, f) {
+  if (!mayNotify()) return
+  const { title, body } = stopNotice({ feature, status: f.status, reason: f.reason })
+  const q = (s) => `"${String(s).replace(/[\\"]/g, '\\$&')}"`
+  const cmd = process.platform === 'darwin' ? ['osascript', ['-e', `display notification ${q(body)} with title ${q(title)}`]]
+    : process.platform === 'linux' ? ['notify-send', [title, body]] : null
+  if (!cmd) return
+  try {
+    const child = spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore' })
+    child.on('error', () => {})
+    child.unref()
   } catch {}
 }
 
