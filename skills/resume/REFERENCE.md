@@ -956,6 +956,14 @@ database and no `psql`.
 | **phase** | build, at each phase close — `--tier phase`, then `verify.mjs wait <id>` | the tests the branch can reach, reusing what already passed at this commit or at an earlier one of the range that nothing since reaches, and the `phase` checks | the build — its one wait |
 | **merge** | the fleet when the walk starts (held), or verify — `--tier merge` | every suite whole and every check, on the target merged with the branch | landing; the walk runs beside it |
 
+**The target** every tier compares against — and the merge tier lands on — is the feature's landing
+branch, resolved by the verifier, so a request passes no `--target`: an explicit `--target`, else the
+fleet's `--into` (its agents get it as `BUILDER_TARGET`), else the manifest's `target:` (the feature
+whose `branch:` this is, or the fleet's `builder/<feature>`), else `merge_into`. On a branch stacked
+on unmerged work, comparing against `merge_into` would count everything below the branch as changed.
+A commit run starts after the branch's newest green that HEAD descends from — a `--tree` run's
+snapshot is never one.
+
 **A verdict** names its sha and request, and lists **regressions** (fails here, passes on the
 target — the only thing that dispatches a fix, each with the commit that introduced it),
 **flakes** (failed, then passed on the same commit — listed automatically unless the branch owns
