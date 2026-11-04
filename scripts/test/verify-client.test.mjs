@@ -371,3 +371,82 @@ test('wait --json prints a verdict larger than a pipe buffer whole', () => {
   assert.ok(r.stdout.length > 65536, `stdout ${r.stdout.length} bytes, exit ${r.status}: ${r.stderr.slice(-300)}`)
   assert.equal(JSON.parse(r.stdout).known.length, 3000)
 })
+
+// ---- the landing branch a request compares against ---------------------------------------------
+
+const STACK_CONFIG = (extra = '') => `---\nproject: X\nbase_branch: main\n${extra}apps:\n  - name: server\n    path: server\n  - name: iphone\n    path: iphone\nverify:\n  workers: 1\n  suites:\n    server: { runner: node-test, files: "server/*.test.mjs", app: server }\n    iphone: { runner: node-test, files: "iphone/*.test.mjs", app: iphone }\n---\n`
+const unitTest = (n) => `import { test } from 'node:test'\ntest('${n}', () => {})\n`
+/**
+ * main → feature/stack (two iPhone-only commits, not on main) → builder/x in a worktree: its
+ * MANIFEST.md (with `target`, when given) and one server-only commit. The shape of a feature stacked
+ * on unmerged work, landing on that work's branch rather than main.
+ */
+function stackedRepo({ target = 'feature/stack', config = STACK_CONFIG() } = {}) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vcli-')))
+  git(root, 'init', '-q', '-b', 'main')
+  mkdirSync(join(root, '.claude'))
+  writeFileSync(join(root, '.claude', 'builder.md'), config)
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'init')
+  git(root, 'checkout', '-qb', 'feature/stack')
+  mkdirSync(join(root, 'iphone'))
+  for (const n of ['a', 'b']) {
+    writeFileSync(join(root, 'iphone', `${n}.test.mjs`), unitTest(`iphone ${n}`))
+    git(root, 'add', '.')
+    git(root, 'commit', '-qm', `iphone ${n}`)
+  }
+  git(root, 'checkout', '-q', 'main')
+  const wt = join(root, '..', `${root.split('/').pop()}-wt`)
+  git(root, 'worktree', 'add', '-qb', 'builder/x', wt, 'feature/stack')
+  mkdirSync(join(wt, 'docs', 'features', 'x'), { recursive: true })
+  writeFileSync(join(wt, 'docs', 'features', 'x', 'MANIFEST.md'), `state: building\nbranch: builder/x\n${target ? `target: ${target}\n` : ''}`)
+  git(wt, 'add', '.')
+  git(wt, 'commit', '-qm', 'docs(x): manifest')
+  mkdirSync(join(wt, 'server'))
+  writeFileSync(join(wt, 'server', 's.test.mjs'), unitTest('server s'))
+  git(wt, 'add', '.')
+  git(wt, 'commit', '-qm', 'server s')
+  return { root, wt }
+}
+const requested = (root, r) => {
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  return openLedger(root).getRequest(r.stdout.trim())
+}
+
+test('a commit request with no --target compares against the feature\'s target: — a server-only commit on a stacked branch selects no iPhone tests', () => {
+  const { root, wt } = stackedRepo()
+  const req = requested(root, cli(wt, 'request', wt, 'HEAD', '--tier', 'commit'))
+  assert.equal(req.target, 'feature/stack')
+  const w = cli(wt, 'wait', req.id, '--max', '120', '--json')
+  const v = JSON.parse(w.stdout)
+  assert.equal(v.status, 'green', w.stdout + w.stderr)
+  assert.equal(v.selection.server?.files, 1, JSON.stringify(v.selection))
+  assert.equal(v.selection.iphone?.files ?? 0, 0, `the iPhone commits below the branch are not its changes: ${JSON.stringify(v.selection)}`)
+})
+
+test('a phase request with no --target compares against the feature\'s target: too', () => {
+  const { root, wt } = stackedRepo()
+  assert.equal(requested(root, cli(wt, 'request', wt, 'HEAD', '--tier', 'phase')).target, 'feature/stack')
+})
+
+test('an explicit --target still wins over the manifest — against main, the iPhone commits below count as changed (the over-selection a missing target caused)', () => {
+  const { root, wt } = stackedRepo()
+  const req = requested(root, cli(wt, 'request', wt, 'HEAD', '--tier', 'commit', '--target', 'main'))
+  assert.equal(req.target, 'main')
+  const v = JSON.parse(cli(wt, 'wait', req.id, '--max', '120', '--json').stdout)
+  assert.equal(v.selection.iphone?.files, 2, JSON.stringify(v.selection))
+})
+
+test('the fleet\'s --into (BUILDER_TARGET in its agents\' env) wins over the manifest; an empty one is ignored', () => {
+  const { root, wt } = stackedRepo({ target: 'feature/elsewhere' })
+  const env = (v) => spawnSync('node', [CLIENT, 'request', wt, 'HEAD', '--tier', 'commit'], { cwd: wt, encoding: 'utf8', env: { ...process.env, BUILDER_VERIFY_IDLE_MS: '500', BUILDER_TARGET: v } })
+  assert.equal(requested(root, env('feature/stack')).target, 'feature/stack')
+  assert.equal(requested(root, env('')).target, 'feature/elsewhere')
+})
+
+test('a feature with no target: falls back to merge_into, then base_branch', () => {
+  const into = stackedRepo({ target: null, config: STACK_CONFIG('merge_into: develop\n') })
+  assert.equal(requested(into.root, cli(into.wt, 'request', into.wt, 'HEAD', '--tier', 'commit')).target, 'develop')
+  const base = stackedRepo({ target: null })
+  assert.equal(requested(base.root, cli(base.wt, 'request', base.wt, 'HEAD', '--tier', 'commit')).target, 'main')
+})
