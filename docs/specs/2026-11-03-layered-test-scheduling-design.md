@@ -1,6 +1,6 @@
 # Tests run in layer order, scoped to the phase's app — design
 
-**Status:** draft for the owner's approval — nothing built · **Date:** 2026-11-03 · **Branch:** `fix/verifier-landing-base`
+**Status:** open questions answered by the owner (D7–D9); awaiting the replay numbers, then the plan — nothing built · **Date:** 2026-11-03 · **Branch:** `fix/verifier-landing-base`
 
 ## Why
 
@@ -70,15 +70,19 @@ verifier's now", has no counterpart in it.
 **Owner's ruling, 2026-11-04:** the 4.x `slice=own+app` is resolved here, not restored. D1 is what
 limits a run to its app, and D6's warning replaces the silent drop of an old `slice=` line.
 
-## Open questions for the owner
+## Owner's answers, 2026-11-04
 
-1. **Repo-wide checks** (lint, type-check across apps): run in every phase (cheap, today's
-   behaviour), or only in the phase of the app whose files changed?
-2. **A consumer task inside a producer phase** isn't possible under one-app-per-phase, but a fix
-   round can touch both. Should a fix round's commit run take the apps its diff touches (D1 by diff),
-   or stay with the phase's app?
-3. **`app`-role repos** (one app, both layers): D2 orders their suites by file glob or `layer:` only.
-   Should `/builder:init` ask for `layer:` on suites when it can tell a data suite from a UI suite?
+- **D7. Repo-wide checks run in every phase.** Lint, and checks with no `app:`, stay in every commit
+  and phase run as today: they are small overhead and cost few tokens.
+- **D8. A fix round's runs take every app its diff touches.** D1 scopes by the phase's app, widened
+  for a fix round to each app whose files the round changed. D2 and D3 still order those apps' suites
+  and hold back a consumer's suite until its producer's is green.
+- **D9. `/builder:init` works out each suite's layer, and asks only when it isn't obvious.** It
+  reads the suite's app role, runner, glob and the files the glob matches (schema, migrations and
+  repositories → data; route and handler tests → API; component, view and UI tests → client). It
+  writes `layer:` only where a suite differs from its app's role. It asks one question per suite it
+  can't place, with its guess as the recommended answer. `/builder:init --update` does the same for
+  suites added later.
 
 ## Not changed
 
