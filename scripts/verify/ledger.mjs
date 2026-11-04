@@ -134,6 +134,10 @@ export function openLedger(root) {
     lastGreen(branch, tiers = ['commit', 'phase']) {
       return requests((r) => r.branch === branch && r.state === 'done' && tiers.includes(r.tier) && r.verdict?.status === 'green').at(-1) ?? null
     },
+    /** Every green request on the branch, newest first — for a caller that must skip some (a `--tree` snapshot is no ancestor). */
+    greens(branch, tiers = ['commit', 'phase']) {
+      return requests((r) => r.branch === branch && r.state === 'done' && tiers.includes(r.tier) && r.verdict?.status === 'green').reverse()
+    },
     readLines(sha, name) {
       const p = P.lines(sha, name)
       return existsSync(p) ? new Set(readFileSync(p, 'utf8').split('\n').filter(Boolean)) : null
