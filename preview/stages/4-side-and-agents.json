@@ -665,9 +665,9 @@
         }
       ],
       "stamp": {
-        "hash": "254c97c94dec",
-        "version": "6.0.0",
-        "date": "2026-11-03"
+        "hash": "a19ec5330e34",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -728,9 +728,9 @@
         }
       ],
       "stamp": {
-        "hash": "faa78833fa47",
-        "version": "6.0.0",
-        "date": "2026-11-03"
+        "hash": "71e771a94e2e",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -759,9 +759,9 @@
         }
       ],
       "stamp": {
-        "hash": "73d75e7bee1f",
-        "version": "6.0.0",
-        "date": "2026-11-03"
+        "hash": "1723121078c8",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -782,7 +782,39 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · last phase close 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n- **Parked** — cert-tags, after the fleet's 2 automatic retries. It's a real decision the spec left open (D7); the investigation is in `docs/features/cert-tags/PARKED.md` on `builder/cert-tags`. Answer D7, then naming it again in `/builder:agent` unparks and retries it.\n\n**Wrap-up** — what this checkout needs before you test what landed. Run now, here, it takes these, in this order:\n\n1. **migrate** — apply the migration cert-history brought to the dev DB, then regenerate (`pnpm -F api prisma migrate deploy`, then `pnpm -F api prisma generate`)\n2. **restart** — restart the dev server, so it runs what landed (`docker restart acme-api`)\n3. **fixtures** — reset the dev fixtures (`pnpm -F api fixtures:reset`)\n4. **smoke** — check the dev server answers (`curl -sf localhost:4000/health`)\n\nHeld — not in \"all\": the `builder/cert-tags` worktree — it's parked, and only `/builder:tidy` settles it.\n\n**Why all four:** each is what you'd otherwise do by hand before testing, in the order they stand on each other, and nothing in them can drop data."
+          "text": "# builder fleet — 4 feature(s): 3 merged this run · 1 parked · ▓▓▓▓▓▓▓▓▓░ 94%\n\nmerges into **main**\n\n7 archived (last: portal-downloads, 18m ago) · /builder:fleet:status --archived for the latest 20\nlast 5 landed, mean wall-clock 3h11m start → merge (audit 9m · plan 29m · build 47m · final review 17m · last phase close 24m · walk 34m · verify 19m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | risk · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 7 | 3h41m | when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7] | — |\n\n## Parked\n\n- **cert-tags** — when an owner deletes a tag, what a list filtered by it shows — the spec doesn't say whether the filter clears or the list goes empty [D7]\n  next: answer D7 in SPEC §Decisions, then /builder:agent\n\n- repo: 1 parked → /builder:tidy\n\n- **Done** — cert-history, portal-cert-list and portal-downloads are merged into `main`, one merge commit each; their worktrees and branches are gone and the specs are under `docs/features/_archive/`. Test them here and push when you're happy — `git revert -m 1 <merge>` takes one back out.\n\n**`cert-tags` is parked, and it waits on you.** After the fleet's 2 automatic retries it still needs a decision the spec left open — D7: when an owner deletes a tag, what a list filtered by that tag shows (the filter clears, or the list goes empty). The agents' investigation is on `builder/cert-tags`, in `docs/features/cert-tags/PARKED.md`.\n\nWhat each choice does:\n\n- **Do the next step, then retry** — you answer D7 here; I write it into SPEC §Decisions on `main`, then `/builder:agent --path docs/features/cert-tags` unparks it and the agents carry on.\n- **Retry it with agents** — unparks it as it is; with D7 still open it would most likely park again.\n- **Dig in yourself** — `/builder:resume --path docs/features/cert-tags`, in this session.\n- **Leave it for now** — nothing changes; the status line keeps `⛔ cert-tags` and the next session raises it again.\n\n**I recommend Do the next step, then retry** — D7 is a product call only you can make, and once it's answered the agents can finish it."
+        },
+        {
+          "role": "picker",
+          "question": "What should happen with cert-tags?",
+          "header": "cert-tags",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Do the next step, then retry (Recommended)",
+              "description": "Answer D7 here; it goes into the spec, then agents carry on"
+            },
+            {
+              "label": "Retry it with agents",
+              "description": "Unpark it as it is — likely to park again on D7"
+            },
+            {
+              "label": "Dig in yourself",
+              "description": "/builder:resume --path docs/features/cert-tags in this session"
+            },
+            {
+              "label": "Leave it for now",
+              "description": "It stays parked; the next session raises it again"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Leave it for now"
+        },
+        {
+          "role": "claude",
+          "text": "cert-tags stays parked — the status line keeps `⛔ cert-tags`, and the next session raises it again.\n\n**Wrap-up** — what this checkout needs before you test what landed. Run now, here, it takes these, in this order:\n\n1. **migrate** — apply the migration cert-history brought to the dev DB, then regenerate (`pnpm -F api prisma migrate deploy`, then `pnpm -F api prisma generate`)\n2. **restart** — restart the dev server, so it runs what landed (`docker restart acme-api`)\n3. **fixtures** — reset the dev fixtures (`pnpm -F api fixtures:reset`)\n4. **smoke** — check the dev server answers (`curl -sf localhost:4000/health`)\n\nHeld — not in \"all\": the `builder/cert-tags` worktree — it's parked, and only `/builder:tidy` settles it.\n\n**Why all four:** each is what you'd otherwise do by hand before testing, in the order they stand on each other, and nothing in them can drop data."
         },
         {
           "role": "picker",
@@ -830,9 +862,9 @@
         }
       ],
       "stamp": {
-        "hash": "b8133d673dc0",
-        "version": "5.5.0",
-        "date": "2026-10-29"
+        "hash": "4e8766c8034a",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -901,9 +933,79 @@
         }
       ],
       "stamp": {
-        "hash": "38c659b7d303",
-        "version": "6.0.0",
-        "date": "2026-11-03"
+        "hash": "d3503b0130dd",
+        "version": "6.1.1",
+        "date": "2026-11-04"
+      }
+    },
+    {
+      "id": "fleet-park-choices",
+      "skill": "fleet",
+      "title": "Fleet: a park that waits on you",
+      "when": "A feature parked or failed for any reason but your uncommitted changes — here the build agent stopped because the config the verifier reads is the human's to change — and the next session raises it, or the watcher wakes on it mid-run.",
+      "source": "skills/fleet/SKILL.md §Every other park or failure — its choices",
+      "sources": [
+        "commands/fleet/status.md §`/builder:fleet:status` — where the fleet stands"
+      ],
+      "feature": "cert-tags",
+      "turns": [
+        {
+          "role": "note",
+          "text": "The fleet parked cert-tags overnight with no session open. It raised a desktop notification — *builder: cert-tags parked — waiting on you* — and this session's brief carried `- ⛔ cert-tags parked, waiting on you — the verifier refuses the config: it still has ## Quality gates — next: apply the diff in PARKED.md to .claude/builder.md on main, then /builder:agent — /builder:fleet:status to choose`, so the first reply said so and ran the status."
+        },
+        {
+          "role": "user",
+          "text": "/builder:fleet:status"
+        },
+        {
+          "role": "tool",
+          "text": "⏺ Bash(node …/scripts/fleet.mjs --status)"
+        },
+        {
+          "role": "claude",
+          "text": "# builder fleet — 1 feature(s): 1 parked · ▓▓▓░░░░░░░ 27%\n\nmerges into **main**\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-tags | parked | risk · end | ▓▓▓░░░░░░░ 27% · build 9/40 | 2 | 49m | the verifier refuses the config: it still has ## Quality gates | — |\n\n## Parked\n\n- **cert-tags** — the verifier refuses the config: it still has ## Quality gates\n  next: apply the diff in PARKED.md to .claude/builder.md on main, then /builder:agent\n\n**`cert-tags` is parked, and it waits on you.** All nine Phase 1 tasks are committed, but no phase can close: the verifier reads `.claude/builder.md`, finds the old `## Quality gates` section and no `verify:` block, and runs no tests. Changing that config is yours, so the agents stopped and wrote the fix into the park record — a `verify:` block (install, then lint, typecheck and the tests against a fresh test database) that replaces the section. They ran its test command by hand and it passed; it hasn't been through the verifier yet.\n\nWhat each choice does:\n\n- **Do the next step, then retry** — I show you the exact change to `.claude/builder.md`; on your yes I commit it on `main`, then `/builder:agent --path docs/features/cert-tags` unparks it and Phase 1 closes.\n- **Retry it with agents** — unparks it as it is; the config is unchanged, so it would park again.\n- **Dig in yourself** — `/builder:resume --path docs/features/cert-tags`, in this session.\n- **Leave it for now** — nothing changes; the status line keeps `⛔ cert-tags` and the next session raises it again.\n\n**I recommend Do the next step, then retry** — the fix is written and checked, and only you may change the config."
+        },
+        {
+          "role": "picker",
+          "question": "What should happen with cert-tags?",
+          "header": "cert-tags",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Do the next step, then retry (Recommended)",
+              "description": "See the config change, approve it, then agents carry on"
+            },
+            {
+              "label": "Retry it with agents",
+              "description": "Unpark it as it is — it would park again"
+            },
+            {
+              "label": "Dig in yourself",
+              "description": "/builder:resume --path docs/features/cert-tags in this session"
+            },
+            {
+              "label": "Leave it for now",
+              "description": "It stays parked; the next session raises it again"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "text": "Do the next step, then retry (Recommended)"
+        },
+        {
+          "role": "claude",
+          "text": "Here's the change to `.claude/builder.md` on `main`:\n\n- **Adds** a `verify:` block after `agent_walk:` — `setup: pnpm install --frozen-lockfile`, and the checks `lint`, `typecheck`, `test` (a fresh test database, then every package's tests, one at a time) and `contract`.\n- **Removes** the `## Quality gates` section, up to `## Walk readiness`.\n\nCommit it and hand cert-tags back to the agents?"
+        },
+        {
+          "role": "note",
+          "text": "One more yes/no picker; on yes the edit is committed (`chore(builder): verify block for the verifier`) and `/builder:agent --path docs/features/cert-tags` relaunches it. A failed row gets the same picker, its review naming the log."
+        }
+      ],
+      "stamp": {
+        "hash": "fb6ec2c06e01",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -1144,9 +1246,9 @@
         }
       ],
       "stamp": {
-        "hash": "e397866e21ea",
-        "version": "5.5.0",
-        "date": "2026-11-01"
+        "hash": "10f7905b0f7f",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     },
     {
@@ -1177,9 +1279,9 @@
         }
       ],
       "stamp": {
-        "hash": "e397866e21ea",
-        "version": "5.5.0",
-        "date": "2026-11-01"
+        "hash": "10f7905b0f7f",
+        "version": "6.1.1",
+        "date": "2026-11-04"
       }
     }
   ]

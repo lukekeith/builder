@@ -49,7 +49,7 @@
     "steps": ["agent-pick", "agent-profile", "agent-launch", "fleet-status", "agent-walk-pass", "fleet-report"] },
   { "group": "Agents", "id": "fleet", "title": "Adding to a running fleet", "short": "fleet: add, status, report, needs you",
     "blurb": "More specs joining a fleet that is already running, its status mid-run, its final report, and a landing your uncommitted edits are in the way of — raised with its choices.",
-    "steps": ["fleet-add", "fleet-status", "fleet-report", "fleet-needs-you"] },
+    "steps": ["fleet-add", "fleet-status", "fleet-report", "fleet-needs-you", "fleet-park-choices"] },
 
   { "group": "Around the work", "id": "dashboards", "title": "Where things stand", "short": "status, the resume picker, tidy, archive",
     "blurb": "The read-mostly views: the status dashboard, the resume picker, tidy's table, archive's review, version and the help card.",

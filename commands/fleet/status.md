@@ -12,14 +12,19 @@ brief stop announcing what landed before now (`✔ <feature> merged`).
 
 Reply with its output **as markdown, never inside a code fence**: the heading line, then the table
 as a markdown table (the terminal renders it; fenced, it shows as raw pipes), then the `## Parked`
-list if there is one — each parked feature with its why and its `next:` step — then any notes as
-bullets. Change no cell. Then stop — unless a park needs you or the fleet has ended (below).
+list if there is one — each parked or failed feature with its why and its `next:` step (its
+`record:` and `choices:` lines are for the picker, not the reply) — then any notes as bullets.
+Change no cell. Then stop — unless something is parked or failed, or the fleet has ended (below).
 
-**A park that needs you** — a `## Parked` entry whose why starts `needs you:` (your uncommitted
-changes in a landing's way), or a note that your set-aside changes came back with conflicts: after
-the reply, raise it exactly as the fleet skill's §1 *A park that needs you — its choices* says
-([SKILL](../../skills/fleet/SKILL.md)) — the review of its files in plain words, one picker with its
-three choices, then the `--land` command the answer names, its exit relayed.
+🔴 **Every `## Parked` entry waits on the user, so every one gets a picker** — never stop at the
+list. After the reply, raise each one as the fleet skill's §1 says ([SKILL](../../skills/fleet/SKILL.md)):
+
+- **A park that needs you** — its why starts `needs you:` (your uncommitted changes in a landing's
+  way), or a note that your set-aside changes came back with conflicts: *A park that needs you — its
+  choices* — the review of its files in plain words, one picker with its three choices, then the
+  `--land` command the answer names, its exit relayed.
+- **Every other one**, parked or `(failed)`: *Every other park or failure — its choices* — what is
+  stuck in plain words from its record, one picker from its `choices:`, then the choice carried out.
 
 How to read it, when asked:
 

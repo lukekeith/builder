@@ -117,7 +117,8 @@ test('session-start: what the fleet parked or failed is listed with why and next
     busy: { status: 'building' },
   } }))
   const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
-  assert.match(text, /Stopped in the fleet — each waits on you \(\/builder:fleet:status has the table; naming one in \/builder:agent retries it; [^\n]*\):\n- ⛔ note-tags parked — merge into main conflicted and an agent run couldn't settle it — next: finish the merge in \/wt\/note-tags, then \/builder:agent\n- ⛔ other failed — run timed out twice — both no output for 30 min \(the idle timeout\) — next: \/builder:agent to retry\n/)
+  // Every stop waits on the user: the brief says so at the first reply and raises each one's picker.
+  assert.match(text, /Stopped in the fleet — each one waits on the user[^\n]*At the start of your first reply, say so[^\n]*run \/builder:fleet:status and raise each one's choices as one picker[^\n]*:\n- ⛔ note-tags parked, waiting on you — merge into main conflicted and an agent run couldn't settle it — next: finish the merge in \/wt\/note-tags, then \/builder:agent — \/builder:fleet:status to choose\n- ⛔ other failed, waiting on you — run timed out twice — both no output for 30 min \(the idle timeout\) — next: \/builder:agent to retry — \/builder:fleet:status to choose\n/)
   assert.doesNotMatch(text, /busy/)
   assert.doesNotMatch(text, /In flight/, 'the one in-flight feature is the parked one, said once')
 })
@@ -135,7 +136,7 @@ test('session-start: a needs-you park is raised to choose, and set-aside changes
   const text = brief(hook(SESSION_START, { env: { CLAUDE_PROJECT_DIR: root } })).additionalContext
   assert.match(text, /\n- ⛔ note-tags needs you — your uncommitted changes overlap it \(2 files\) — \/builder:fleet:status to choose\n/)
   assert.ok(text.includes(`\n- ${conflict}\n`), text)
-  assert.match(text, /needs you[^\n]*: say so at the start of your first reply/i)
+  assert.match(text, /waits on the user[^\n]*At the start of your first reply, say so[^\n]*changes that came back with conflicts/)
   assert.doesNotMatch(text, /dev-DB state/, 'only the notes that wait on you')
 })
 

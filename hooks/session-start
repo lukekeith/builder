@@ -36,7 +36,7 @@ if [ -n "$landed" ]; then
   brief+="${nl}Landed by the fleet since /builder:fleet:status was last opened — tell the user at the start of your first reply, and that they test it (opening /builder:fleet:status marks these seen and offers to wrap up — the migrations, a restart, the fixtures, the merged branches):${nl}${landed}${nl}"
 fi
 if [ -n "$parks" ]; then
-  brief+="${nl}Stopped in the fleet — each waits on you (/builder:fleet:status has the table; naming one in /builder:agent retries it; one that needs you, or changes that came back with conflicts: say so at the start of your first reply — /builder:fleet:status offers the choices):${nl}${parks}${nl}"
+  brief+="${nl}Stopped in the fleet — each one waits on the user, and nothing moves until they choose. At the start of your first reply, say so — every one, its why in a few words, and any changes that came back with conflicts. Then, once their own request is answered (at once, if they asked nothing else), run /builder:fleet:status and raise each one's choices as one picker, as it says — never leave a park as a line to go and act on:${nl}${parks}${nl}"
 fi
 if [ -n "$features" ]; then
   brief+="${nl}In flight, most recent first:${nl}${features}${nl}"
