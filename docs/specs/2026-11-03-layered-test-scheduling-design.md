@@ -67,6 +67,9 @@ verifier's now", has no counterpart in it.
   An old manifest's `slice=` reads with a one-line warning that slices no longer limit runs — D1 does
   — never silently.
 
+**Owner's ruling, 2026-11-04:** the 4.x `slice=own+app` is resolved here, not restored. D1 is what
+limits a run to its app, and D6's warning replaces the silent drop of an old `slice=` line.
+
 ## Open questions for the owner
 
 1. **Repo-wide checks** (lint, type-check across apps): run in every phase (cheap, today's
