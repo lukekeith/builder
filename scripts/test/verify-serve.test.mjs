@@ -417,3 +417,78 @@ test('agent_walk.copy files reach the checkout a request runs in', async () => {
   assert.equal(v.status, 'green', JSON.stringify(v))
   assert.deepEqual(v.debt, [], 'the check passed here — the file was copied in')
 })
+
+// ---- the commit tier's base: the newest green that is an ancestor -----------------------------
+
+const unit = (files = 't/*.test.mjs') => ({ workers: 1, timeoutMs: 60000, setup: null, setupInputs: [], db: null, simulator: null, env: null, checks: [], suites: [{ name: 'u', runner: 'node-test', files, app: null, cwd: '.', args: '', needs: [], tiers: ['commit', 'phase', 'merge'], command: null, report: null, scheme: null, target: null, destination: null }] })
+const testFile = (n) => `import { test } from 'node:test'\ntest('${n}', () => {})\n`
+/** Record a green verdict for `sha` on `branch`, as a finished request. */
+function green(l, { root, branch, sha, tier = 'commit' }) {
+  const r = l.newRequest({ worktree: root, branch, sha, tier, target: 'main' })
+  l.saveRequest({ ...r, state: 'done', verdict: { request: r.id, branch, sha, tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 } })
+}
+/**
+ * `branch` (cut from main, or main itself) with t/a and t/b added in separate commits (c1, c2),
+ * a `git stash create` snapshot of uncommitted work on c2 (what `request --tree` records), then c3,
+ * which touches `touch`. Separate commits: files changed together are co-changed.
+ */
+function snapshotRepo(branch, touch) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vsrv-')))
+  git(root, 'init', '-q', '-b', 'main')
+  writeFileSync(join(root, 'readme.txt'), '1\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'init')
+  if (branch !== 'main') git(root, 'checkout', '-qb', branch)
+  mkdirSync(join(root, 't'))
+  writeFileSync(join(root, 't', 'a.test.mjs'), testFile('a'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test a')
+  const c1 = git(root, 'rev-parse', 'HEAD')
+  writeFileSync(join(root, 't', 'b.test.mjs'), testFile('b'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test b')
+  writeFileSync(join(root, 'scratch.txt'), 'uncommitted\n')
+  git(root, 'add', 'scratch.txt')
+  const snapshot = git(root, 'stash', 'create')
+  git(root, 'reset', '-q', '--hard')
+  writeFileSync(join(root, 't', `${touch}.test.mjs`), testFile(`${touch}2`))
+  git(root, 'commit', '-qam', `touch ${touch}`)
+  const c3 = git(root, 'rev-parse', 'HEAD')
+  if (branch !== 'main') git(root, 'checkout', '-q', 'main')
+  return { root, c1, snapshot, c3 }
+}
+
+test('commit tier: a --tree snapshot as the newest green is skipped — the base is the newest green that is an ancestor', async () => {
+  const { root, c1, snapshot, c3 } = snapshotRepo('feat', 'b')
+  const l = openLedger(root)
+  green(l, { root, branch: 'feat', sha: c1 })
+  green(l, { root, branch: 'feat', sha: snapshot }) // newest, and not an ancestor of c3
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c3, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.selection.u.files, 1, `since c1 only t/b changed — not the whole branch: ${JSON.stringify(v.selection)}`)
+})
+
+test('commit tier: no green that is an ancestor → the base is still the merge-base', async () => {
+  const { root, snapshot, c3 } = snapshotRepo('feat', 'b')
+  const l = openLedger(root)
+  green(l, { root, branch: 'feat', sha: snapshot })
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c3, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.selection.u.files, 2, `the whole branch: ${JSON.stringify(v.selection)}`)
+})
+
+test('on the target itself: a --tree snapshot as the newest green is skipped — the range starts at the newest ancestor green, not sha^', async () => {
+  const { root, c1, snapshot, c3 } = snapshotRepo('main', 'a')
+  const l = openLedger(root)
+  green(l, { root, branch: 'main', sha: c1 })
+  green(l, { root, branch: 'main', sha: snapshot })
+  const r = l.newRequest({ worktree: root, branch: 'main', sha: c3, tier: 'phase', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.selection.u.files, 2, `since c1: t/b added, t/a touched — not only the last commit: ${JSON.stringify(v.selection)}`)
+})

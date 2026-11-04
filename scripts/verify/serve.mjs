@@ -280,18 +280,19 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       copyLocal(root, checkout, local)
       setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
       const after = (g) => g && g.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, req.sha) !== null
+      // The branch's newest green that this sha descends from. Not simply the newest green: a
+      // `--tree` run's sha is a `git stash create` commit, never an ancestor of the next real commit,
+      // and stopping there would test the whole branch again.
+      const lastGreenBelow = (tiers) => ledger.greens(req.branch, tiers).find(after) ?? null
       // Built on the target itself, the merge-base is the sha: there is no branch to cover. The
       // range is then what came after the branch's last green of any tier, else the one commit.
       const onTarget = req.branch === req.target && !req.since
       const mergeBase = onTarget
-        ? (() => {
-            const g = ledger.lastGreen(req.branch, ['commit', 'phase', 'merge'])
-            return after(g) ? g.sha : tryGit(root, 'rev-parse', '--verify', '-q', `${req.sha}^`) ?? EMPTY_TREE
-          })()
+        ? lastGreenBelow(['commit', 'phase', 'merge'])?.sha ?? tryGit(root, 'rev-parse', '--verify', '-q', `${req.sha}^`) ?? EMPTY_TREE
         : tryGit(root, 'merge-base', targetSha, req.sha) ?? targetSha
       // The commit tier starts after the branch's last green; the phase and merge tiers cover the branch.
-      const green = req.since || req.tier !== 'commit' || onTarget ? null : ledger.lastGreen(req.branch)
-      const base = req.since ?? (after(green) ? green.sha : mergeBase)
+      const green = req.since || req.tier !== 'commit' || onTarget ? null : lastGreenBelow(['commit', 'phase'])
+      const base = req.since ?? green?.sha ?? mergeBase
       let targetCo = null
       const ctx = {
         verify: v,
