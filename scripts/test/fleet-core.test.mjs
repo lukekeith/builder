@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
-import { landingLine, stopChoices, stopNotice, mayNotify, stoppedNames } from '../fleet-core.mjs'
+import { landingLine, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -1199,4 +1199,21 @@ test('stopNotice says the feature waits on you and where to choose; mayNotify is
   assert.equal(mayNotify({ BUILDER_NOTIFY: '0' }), false)
   assert.equal(mayNotify({ NODE_TEST_CONTEXT: 'child-v8' }), false)
   assert.equal(mayNotify(), false, 'this test run itself')
+})
+
+// A fleet that finished while the person was in another repo, or after the launching session ended,
+// told nobody: the status line only shows in a session opened in that repo.
+test('landNotice and endNotice name the repo, what landed or stopped, and where to look', () => {
+  assert.deepEqual(landNotice({ feature: 'qm-foundation', target: 'feature/qm', repo: 'Proj' }), {
+    title: 'builder: qm-foundation landed — Proj',
+    body: "merged into feature/qm — agent-verified, not human-tested. Open Claude Code in Proj and run /builder:fleet:status for what to test and what's next",
+  })
+  assert.equal(landNotice({ feature: 'a', target: 'main' }).title, 'builder: a landed')
+  assert.deepEqual(endNotice({ repo: 'Proj', landed: ['a', 'b'], parked: ['c'], failed: [] }), {
+    title: 'builder fleet finished — Proj',
+    body: '2 landed (a, b) · 1 parked (c) — open Claude Code in Proj and run /builder:fleet:status for the report and next steps',
+  })
+  assert.match(endNotice({ landed: [], parked: [], failed: ['x'] }).body, /^nothing landed · 1 failed \(x\) — open Claude Code and run/)
+  assert.match(endNotice({ landed: ['a', 'b', 'c', 'd', 'e'] }).body, /^5 landed \(a, b, c \+2\)/)
+  assert.match(stopNotice({ feature: 'x', status: 'parked', reason: 'stuck', repo: 'Proj' }).body, /open Claude Code in Proj and run \/builder:fleet:status to choose/)
 })

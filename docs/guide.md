@@ -261,7 +261,9 @@ the next step. **A park or failure always asks you**: the fleet raises a desktop
 (macOS, or Linux with `notify-send`; `BUILDER_NOTIFY=0` turns it off), the session watching the run
 wakes on it, the next session's brief raises it in the first reply, and `/builder:fleet:status`
 gives every parked or failed feature one picker — do its next step and retry, retry with agents, dig
-in yourself, or leave it. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
+in yourself, or leave it. **A landing and the fleet's end are announced the same way:** a desktop
+notification naming the repo, what landed (and what parked or failed), and to open
+`/builder:fleet:status` there, which gives the report, what to test and the wrap-up. `/builder:status` and every fleet report end with a `repo:` line — `repo: clean`, or
 what is left over — and **`/builder:tidy`** takes a repo back to clean: one table of every branch and
 worktree, one OK for everything safe (delete what's merged, remove dead worktrees, merge what's
 signed off — shipped on its branch first, so the target gets the archived SPEC), one question each for

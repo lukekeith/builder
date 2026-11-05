@@ -6,10 +6,12 @@ agree — see [RELEASING.md](RELEASING.md).
 
 ## Unreleased
 
-**A parked fleet always asks you.** Only a landing blocked by your uncommitted changes came with
-choices; every other park — a config only you may change, a decision the spec left open, a failed
-run — reached you as a `next:` line, often after the session that launched the fleet had ended, so
-it sat waiting without your knowing. Now every park and failure prompts you. Nothing to change in
+**A parked fleet always asks you, and a finished one always tells you.** Only a landing blocked by
+your uncommitted changes came with choices; every other park — a config only you may change, a
+decision the spec left open, a failed run — reached you as a `next:` line, often after the session
+that launched the fleet had ended, so it sat waiting without your knowing. A fleet that finished was
+just as quiet unless you happened to have a session open in that repo. Now every park and failure
+prompts you, and every landing and the fleet's end are announced. Nothing to change in
 `.claude/builder.md`.
 
 **Fixed:**
@@ -17,8 +19,10 @@ it sat waiting without your knowing. Now every park and failure prompts you. Not
   feature**: do its next step, then retry (when the step is an edit this session can make — a config
   diff the park record gives — it shows the change and makes it on your yes) · retry it with agents ·
   dig in yourself · leave it for now. `--status` and STATUS.md list each one's choices.
-- The fleet raises a **desktop notification** when a feature parks or fails for good — macOS, or
-  Linux with `notify-send`; `BUILDER_NOTIFY=0` turns it off.
+- The fleet raises a **desktop notification** when a feature parks or fails for good, when one lands,
+  and when the fleet ends — naming the repo, what landed, parked or failed, and to open
+  `/builder:fleet:status` there for what to test and what's next. macOS, or Linux with `notify-send`;
+  `BUILDER_NOTIFY=0` turns it off.
 - The session's `--wait` watcher wakes **the moment a feature parks or fails**, not only when the
   whole fleet ends, so its picker comes while the rest run on.
 - The next session's brief marks every park and failure as waiting on you, and Claude raises them in

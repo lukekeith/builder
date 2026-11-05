@@ -1008,12 +1008,39 @@ export function parkBlock({ feature, status, reason, choices = [], record = null
  * The desktop notification a park or failure raises, as `{ title, body }` — the fleet runs
  * detached, often with no session open, so this is how a person hears that it waits on them.
  */
-export function stopNotice({ feature, status, reason }) {
+export function stopNotice({ feature, status, reason, repo = null }) {
   const { why } = parkParts(reason ?? '')
   const short = (why || 'no reason recorded').replace(/\s—\ssee\s\S+$/, '')
   return {
     title: `builder: ${feature} ${status} — waiting on you`,
-    body: `${short.length > 180 ? `${short.slice(0, 179)}…` : short} — open Claude Code and run /builder:fleet:status to choose what happens next`,
+    body: `${short.length > 180 ? `${short.slice(0, 179)}…` : short} — ${openIn(repo)} to choose what happens next`,
+  }
+}
+
+const openIn = (repo) => `open Claude Code${repo ? ` in ${repo}` : ''} and run /builder:fleet:status`
+const names = (list, max = 3) => (list.length > max ? `${list.slice(0, max).join(', ')} +${list.length - max}` : list.join(', '))
+
+/**
+ * The notification a landing raises. The fleet runs detached, and only a session opened in this repo
+ * shows it on the status line, so a person working anywhere else hears of it here.
+ */
+export function landNotice({ feature, target, repo = null }) {
+  return {
+    title: `builder: ${feature} landed${repo ? ` — ${repo}` : ''}`,
+    body: `merged into ${target} — agent-verified, not human-tested. ${openIn(repo)[0].toUpperCase()}${openIn(repo).slice(1)} for what to test and what's next`,
+  }
+}
+
+/** The notification the fleet raises when it ends: what landed, parked and failed, and where to look. */
+export function endNotice({ repo = null, landed = [], parked = [], failed = [] }) {
+  const parts = [
+    landed.length ? `${landed.length} landed (${names(landed)})` : 'nothing landed',
+    ...(parked.length ? [`${parked.length} parked (${names(parked)})`] : []),
+    ...(failed.length ? [`${failed.length} failed (${names(failed)})`] : []),
+  ]
+  return {
+    title: `builder fleet finished${repo ? ` — ${repo}` : ''}`,
+    body: `${parts.join(' · ')} — ${openIn(repo)} for the report and next steps`,
   }
 }
 

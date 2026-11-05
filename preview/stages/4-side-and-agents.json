@@ -657,7 +657,7 @@
         },
         {
           "role": "claude",
-          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. While this session is open I'll report here when it finishes (a watcher is waiting); otherwise the `builder` status line and the next session's brief tell — a merge as `✔ <feature> merged` until you open `/builder:fleet:status`, a park as `⛔ <feature>: <why>`, and a block in `.builder/fleet/fleet.out`. `/builder:fleet:status` shows where it stands any time.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
+          "text": "```\nfleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n```\n\nIt's running on its own and outlives this session. While this session is open I'll report here when it finishes (a watcher is waiting); wherever you are, a desktop notification says when a feature lands or parks and when the fleet ends; otherwise the `builder` status line and the next session's brief tell — a merge as `✔ <feature> merged` until you open `/builder:fleet:status`, a park as `⛔ <feature>: <why>`, and a block in `.builder/fleet/fleet.out`. `/builder:fleet:status` shows where it stands any time.\n\n~~~\n📍 agents: 2 feature(s) running — next: /builder:fleet:status\n~~~"
         },
         {
           "role": "note",
@@ -665,9 +665,9 @@
         }
       ],
       "stamp": {
-        "hash": "a19ec5330e34",
+        "hash": "1dea4fb4b01a",
         "version": "6.1.1",
-        "date": "2026-11-04"
+        "date": "2026-11-05"
       }
     },
     {
@@ -728,9 +728,9 @@
         }
       ],
       "stamp": {
-        "hash": "71e771a94e2e",
+        "hash": "ceedba64f46d",
         "version": "6.1.1",
-        "date": "2026-11-04"
+        "date": "2026-11-05"
       }
     },
     {
