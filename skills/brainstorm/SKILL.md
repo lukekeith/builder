@@ -197,9 +197,14 @@ after every turn.
 
 ### The frame
 
-Open questions, in plain chat, **one per turn — no AskUserQuestion, no option list, no
-recommendation.** In this order, each one skipped when the input, an earlier answer or grounding already
-answers it (then stated as `assumed`, with what it was taken from):
+**One AskUserQuestion carrying every frame question still open** (up to four, one `header` each),
+after a short briefing that says in a line per question what you already know and why you ask. Each
+question offers **2–4 likely answers drawn from the input, recon and grounding** — concrete people,
+pains and outcomes in the product's own words, never placeholders. A recommendation only where the
+evidence picks one (` (Recommended)` first); otherwise none is marked. The tool's *Other* takes the
+user's own words, so never add a "something else" option. In this order, each one skipped when the
+input, an earlier answer or grounding already answers it (then stated as `assumed`, with what it was
+taken from):
 
 1. **Who it is for** — the people or roles, and what they are doing when they meet it.
 2. **The pain or the outcome** — what is hard, slow, missing or wrong today, or what becomes possible.
@@ -209,9 +214,10 @@ answers it (then stated as `assumed`, with what it was taken from):
 
 - **Grounding holds** (CONVERSATION §Grounding): a term in the user's words is looked up before it is
   asked about. The frame asks about intent and judgement, never about a fact the code holds.
-- **Reflect, then follow.** After every answer, play the frame back in a few lines — what the user
-  said kept apart from what you assume — and follow where they went, a tangent included. Never pull
-  them back to the next scripted question while they are mid-thought.
+- **Reflect, then follow.** After the answers, play the frame back in a few lines — what the user
+  said kept apart from what you assume — and follow where they went, a tangent included. A follow-up
+  question is a picker too, with the answers their reply points to. Never pull them back to the next
+  scripted question while they are mid-thought.
 - **Four is the ceiling**; the user ends it sooner with "that's the problem" or similar.
 
 ### Research
@@ -238,7 +244,8 @@ each rung said in chat before the next is offered:
    pattern for, an unfamiliar domain → likely yes, and name what you would look for ("how other apps
    let people filter a list by tags"); an internal refactor, a CLI flag, a data migration → likely
    no, said so.
-4. **Offer it — a lettered list** (CONVERSATION §Ways on), the entries that apply, in this order:
+4. **Offer it — one AskUserQuestion** (CONVERSATION §Ways on), the options that apply, in this order,
+   your evaluation's pick first with ` (Recommended)`; `multiSelect` when two can be combined:
    - *Stay with what we have* — concepts built from the design system and the product's own
      patterns. Always present; recommended when rung 1 covers the idea.
    - *Look at <installed tool>* — one entry per installed tool that would help, saying what it
@@ -248,9 +255,8 @@ each rung said in chat before the next is offered:
      (screen libraries for a new UI flow, say): name the kind of plugin and what it would add, an
      example only if you know one. Installing it is the user's step; picking this entry says how and
      carries on with what is here.
-   Four entries at most — when more apply, keep the most useful; the user can name two ("B and C").
-   Your evaluation picks one: it moves to **A** marked `(recommended)`, the rest keep this order
-   (§Ways on: A is always the default). The user's own words carry their own search terms.
+   Four options at most — when more apply, keep the most useful. The user's own words, in *Other*,
+   carry their own search terms.
 5. **Do it, bounded — and read through the design system.** An installed reference tool: a handful
    of searches around the frame's terms, read as patterns — how a flow is laid out, what a screen
    offers, what is common and what is rare — never as designs to copy. Online: a few searches and
@@ -269,29 +275,34 @@ search runs, and *Research* reads `not run (auto)` (CONVERSATION §Steering and 
 ### Concepts
 
 When the frame is played back, the design system is stated, research (if any) is in and recon (CONVERSATION §Discovery recon) is
-in, propose **two to four concepts** in chat, lettered — **A** is the one you recommend, marked
-`(recommended)`, and the turn closes with `Reply with a letter — "go" is A. Or combine them, ask
-"what if …", or say none fit.` (CONVERSATION §Ways on). Each:
+in, propose **two to four concepts**: a short briefing, then **one AskUserQuestion** with each concept
+as an option, the one you recommend first with ` (Recommended)` (CONVERSATION §Ways on). The briefing
+is **a few lines per concept, never a page** — the user reads it to choose:
 
-- its letter and a short name
-- what the user would experience, as a paragraph, from their point of view
-- **the design-system components and existing patterns it is built from, named** — "the filter chips the certificate list uses",
-  "a side panel like the owner view" — a borrowed one marked "(from research: <where>)", and
-  anything it needs that the product does not have
-- what it is good at, and what it closes off
-- a rough feel for size (a day, a week, a program) — never a sized estimate
+- its short name, in bold exactly as the picker shows it
+- what the user would experience, in one or two sentences, from their point of view
+- **built from:** the design-system components and existing patterns, named — "the filter chips the
+  certificate list uses", "a side panel like the owner view" — a borrowed one marked "(from research:
+  <where>)", and anything it needs that the product does not have
+- good at · closes off · a rough feel for size (a day, a week, a program) — one line, never a sized estimate
 
-The user may pick one; combine two (write the combination as a new concept); ask "what if …"
-(answer in the concept's terms and revise it); ask for one sketched deeper (a flow in prose, or an
-ASCII layout or mermaid diagram when parts move); add their own; or say none fit, which reopens the
-frame with what was learned. Every turn rewrites §Discovery · *Concepts* with each concept's
+Then one line on why the recommended one. The picker's labels are the concepts' names (1–5 words);
+each description says what picking it builds; concepts that differ in layout carry a `preview`
+(an ASCII sketch).
+
+The user may pick one; or, in *Other*: combine two (write the combination as a new concept); ask
+"what if …" (answer in the concept's terms and revise it); ask for one sketched deeper (a flow in
+prose, or an ASCII layout or mermaid diagram when parts move); add their own; or say none fit, which
+reopens the frame with what was learned. A revised set is offered again the same way — briefing,
+then the picker. Every turn rewrites §Discovery · *Concepts* with each concept's
 standing and why.
 
-🔴 **No AskUserQuestion in discovery** — the research offer and the concepts are lettered lists. The exit is the user naming the
-concept. **A letter (or a concept's name) names it outright**: state the two-line confirmation below
-and go on in the same turn — no "Right?". A combination, or a concept in the user's own words,
-is confirmed in two lines — "**Concept:** <name> — <what it is, one sentence>. <The patterns it uses.>
-Right?" — and a yes ends discovery. "That's enough" converges on your recommended concept, stated
+🔴 **Discovery is answered by picking** — the frame, the research offer and the concepts are each
+one AskUserQuestion (CONVERSATION §Ways on). The exit is the user naming the concept. **Picking one
+names it outright**: state the two-line confirmation below and go on in the same turn — no "Right?".
+A combination, or a concept in the user's own words, is confirmed in two lines — "**Concept:** <name>
+— <what it is, one sentence>. <The patterns it uses.>" — then one AskUserQuestion: **That's it
+(Recommended)** · **Adjust it** (say how, in *Other*); picking the first ends discovery. "That's enough" converges on your recommended concept, stated
 as such. Under `--auto`, CONVERSATION §Steering and --auto takes the recommended concept without a
 turn.
 
@@ -370,7 +381,7 @@ End each turn that waits on the user with the resume footer:
 The quick path's proposal ends with
 `📍 <feature>: quick path offered (<xs|sm>) — reply A to build, or resume with /builder:brainstorm --path <registry>/<feature>`.
 
-Every pause puts its ways on above that footer as a lettered list (CONVERSATION §Ways on) — the
-frame's open questions excepted.
+Every pause puts its ways on above that footer (CONVERSATION §Ways on): a picker for a question, a
+lettered list for a next step — never a bare open question.
 
 **Continuing:** a bare "go", "yes" or "proceed" after a hand-off footer runs its command yourself.

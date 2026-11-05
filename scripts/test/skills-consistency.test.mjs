@@ -590,7 +590,7 @@ test('brainstorm discovery: the record, the skill, spec and the listings agree o
   assert.match(conv, /skip discovery/)
   assert.match(skill, /^## Discovery$/m)
   assert.match(skill, /CONVERSATION §Discovery recon/)
-  assert.match(skill, /No AskUserQuestion in discovery\*\* — the research offer and the concepts are lettered lists/)
+  assert.match(skill, /Discovery is answered by picking\*\* — the frame, the research offer and the concepts are each\s+one AskUserQuestion/)
   assert.match(skill, /^### Research$/m)
   assert.match(read('skills/spec/SKILL.md'), /§Discovery/)
   for (const f of ['skills/help/SKILL.md', 'README.md']) assert.match(read(f), /explore/i, f)
@@ -604,10 +604,10 @@ test('brainstorm discovery: resume lands back in discovery, the steers are brain
   // Important 2: the discovery steers do not leak into /builder:intake.
   assert.match(conv, /"let's explore"[^.]*brainstorm only/)
   // Important 3: a frame question already answered by grounding is stated, not asked.
-  assert.match(skill, /skipped when the input, an earlier answer or grounding already/)
+  assert.match(skill, /skipped when the\s+input, an earlier answer or grounding already/)
   assert.match(skill, /what the product does is looked up and stated/)
-  // Minor 5: §Rounds' one-question rule carves out the frame.
-  assert.match(conv, /The frame in SKILL §Discovery is not a round/)
+  // The frame is no longer carved out of the rounds' rule: it is a picker like every question.
+  assert.doesNotMatch(conv, /The frame in SKILL §Discovery is not a round/)
   // Minor 9: "skip discovery" still writes a Concept: line.
   assert.match(conv, /\(skipped discovery\)/)
   // Minor 8: spec quotes the record's label.
@@ -631,7 +631,7 @@ test('4.11.2: brainstorm quick path — decided after grounding, one question th
   assert.match(conv, /quick path — offered/)
 })
 
-test('4.11.2: brainstorm ways on are a lettered list, "go" is A, at every pause but the frame', () => {
+test('4.11.2: brainstorm next steps are a lettered list, "go" is A; questions are pickers', () => {
   const skill = read('skills/brainstorm/SKILL.md')
   const conv = read('skills/brainstorm/CONVERSATION.md')
   assert.match(conv, /^## Ways on$/m)
@@ -651,7 +651,21 @@ test('4.11.2: brainstorm ways on are a lettered list, "go" is A, at every pause 
   // the quick path, the playback and the concepts
   assert.doesNotMatch(skill.slice(skill.indexOf('## Quick path'), skill.indexOf('## Discovery')), /AskUserQuestion/)
   assert.match(skill, /`A\. That's right — carry on \(recommended\)`/)
-  assert.match(skill, /A letter \(or a concept's name\) names it outright/)
+  assert.match(skill, /Picking one\s+names it outright/)
+})
+
+// A real brainstorm asked open questions with answers written as bullets, never a picker — the
+// frame's text-only style carried into the rounds. Every question is a picker now.
+test('brainstorm: every question is answered by picking — never a bare open question or bulleted answers', () => {
+  const skill = read('skills/brainstorm/SKILL.md')
+  const conv = read('skills/brainstorm/CONVERSATION.md')
+  assert.match(conv, /Every question that waits on the user is answered by picking/)
+  assert.match(conv, /\*\*Never\*\* a bare open question, and \*\*never\*\* answers written as\s+bullets ending in "tell me in your own words"/)
+  assert.match(skill, /One AskUserQuestion carrying every frame question still open/)
+  assert.match(skill, /Offer it — one AskUserQuestion/)
+  assert.match(skill, /then \*\*one AskUserQuestion\*\* with each concept\s+as an option/)
+  for (const gone of [/no AskUserQuestion, no option list/, /No AskUserQuestion in discovery/, /frame's open questions excepted/, /Reply with a letter — "go" is A\. Or combine/])
+    assert.doesNotMatch(skill + conv, gone)
 })
 
 test('the response preview: every stage cites a skill section that exists, every path step is a stage', async () => {
