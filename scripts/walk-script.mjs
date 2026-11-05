@@ -16,7 +16,10 @@
  *   - under --agent-walk (the manifest's `agent-walk: on`, a fleet build's BUILDER_FLEET_DIR, or --cross-app): `## Cross-app (verify E2E)`,
  *     SPEC §Testing's human-verification / E2E script as numbered steps E1…En, in its order — only
  *     when two or more apps are in scope. With one, there is no cross-app walk: the script's steps ARE
- *     that app's items (the per-app test items are the verifier's to prove), so nothing is walked twice.
+ *     that app's items. Either way §Testing's per-app items are what the tests prove — the verifier's —
+ *     and are not walked when the script is. Only the first verification block is the script (a later
+ *     "human verification" note is not more steps); a fenced script is one step per line; a step that
+ *     runs an automated test is tagged `[verifier]` and passed from the verifier's result, unrun.
  *
  * What stays with the orchestrator: the `<!-- orchestrator: … -->` block of each app — how to reach
  * it (a URL, the command prefix, scratch files), surfaces that cannot work locally, and a readiness
@@ -82,25 +85,84 @@ export function parseTesting(specText, apps) {
         continue
       }
       if (app) {
-        cur = { kind: 'app', app, intro: plain, lines: [] }
+        cur = { kind: 'app', app, intro: plain, head: h ? '' : bold[2], lines: [] }
         blocks.push(cur)
         continue
       }
     }
     cur.lines.push(line)
   }
-  const out = { apps: Object.fromEntries(apps.map((a) => [a, []])), cross: { intro: '', steps: [] } }
+  const out = { apps: Object.fromEntries(apps.map((a) => [a, []])), tested: Object.fromEntries(apps.map((a) => [a, new Set()])), cross: { intro: '', steps: [] } }
   for (const b of blocks) {
     const items = listItems(b.lines)
-    if (b.kind === 'app') out.apps[b.app].push(...items)
-    if (b.kind === 'cross') {
-      out.cross.intro ||= b.intro
-      if (items.length) out.cross.steps.push(...items)
-      else out.cross.steps.push(...splitSteps(paragraph(b.lines)))
+    if (b.kind === 'app') {
+      out.apps[b.app].push(...items)
+      for (const t of testedItems(b)) out.tested[b.app].add(t)
+    }
+    // The first verification block with steps is the walk. A later one — a "human verification"
+    // note saying how a person would check the same thing — is not more steps: glued on, it turned
+    // its prose into E-rows nobody could walk.
+    if (b.kind === 'cross' && !out.cross.steps.length) {
+      const steps = items.length ? items : fencedLines(b.lines)
+      out.cross.steps.push(...(steps.length ? steps : splitSteps(paragraph(b.lines))))
+      if (out.cross.steps.length) out.cross.intro = b.intro
+      else out.cross.intro ||= b.intro
     }
   }
   return out
 }
+
+/**
+ * The items of an app block that describe what a test proves: every item after the block's opening
+ * line, or a prose line within it, names a test file or a test run (`**server** — `test/x.test.mjs`
+ * …:`). Those are the verifier's. An item with no test named before it — "the chip wraps on an iPhone
+ * SE" — is something a person checks in the running app, and stays a walk item.
+ */
+function testedItems(b) {
+  return listItems(b.lines).filter((_, i) => itemsAfterTest(b, i))
+}
+
+/** Whether the block names a test before its i-th item — in its opening line, or a prose line (never an item's own continuation). */
+function itemsAfterTest(b, i) {
+  let tested = RUNS_TESTS.test(b.head ?? '')
+  let n = -1
+  let base = null
+  let cur = false
+  for (const line of b.lines) {
+    if (!line.trim()) {
+      cur = false
+      continue
+    }
+    const m = LIST.exec(line)
+    if (m && (base == null || m[1].length <= base)) {
+      base ??= m[1].length
+      n++
+      if (n === i) return tested
+      cur = true
+      continue
+    }
+    if (!cur && RUNS_TESTS.test(line)) tested = true
+  }
+  return false
+}
+
+/** The non-blank lines of a block's fenced code — a script written as one command per line, one step each. */
+function fencedLines(lines) {
+  const out = []
+  let inFence = false
+  for (const l of lines) {
+    if (/^\s*```/.test(l)) inFence = !inFence
+    else if (inFence && l.trim()) out.push(l.trim())
+  }
+  return out
+}
+
+/**
+ * A step that runs an automated test (`node --test …`, `npm test`, a `*.test.*` file) is the
+ * verifier's, which runs every test at the commit: the walker runs no tests, so walking it could only
+ * end UNVERIFIABLE. It is tagged `[verifier]` and the walker passes it from the verifier's result.
+ */
+export const RUNS_TESTS = /\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|\b(?:npx\s+)?(?:jest|vitest|mocha|pytest)\b|\bgo\s+test\b|\bcargo\s+test\b|\.test\.[cm]?[jt]sx?\b|\.spec\.[cm]?[jt]sx?\b/
 
 /** ` (a (nested) note): rest` → { paren: '(a (nested) note)', after: 'rest' } — parentheses balanced. */
 function leadingParen(text) {
@@ -222,6 +284,7 @@ export function render(f, { cross, previous }) {
   ]
   let total = 0
   let risky = 0
+  const crossWritten = !!cross && !single && t.cross.steps.length > 0
   for (const app of apps) {
     const cfgApp = f.cfg?.apps.find((a) => a.name === app)
     // One app in scope and a verification script: the script IS the walk — what a person does in the
@@ -229,13 +292,22 @@ export function render(f, { cross, previous }) {
     // verifier runs those; walking them by hand as well, and the script again as E1…En, is what made a
     // one-screen feature an 18-step walk.
     const scripted = single && t.cross.steps.length > 0
-    const items = scripted ? [...t.cross.steps] : [...(t.apps[app] ?? [])].reverse()
+    // Two or more apps with the cross-app section written: an item §Testing files under a test
+    // ("**server** — `test/shares-api.test.mjs`: …") is what that test proves — the verifier's — and
+    // the cross-app section walks the app. Listing those too made a two-app feature a 35-row walk, a
+    // third of it items the walker may not check (it runs no tests). An item no test is named for — a
+    // check on a screen — stays a walk item.
+    const own = [...(t.apps[app] ?? [])].reverse()
+    const proven = crossWritten ? own.filter((x) => t.tested[app]?.has(x)) : []
+    const items = scripted ? [...t.cross.steps] : own.filter((x) => !proven.includes(x))
     lines.push('', `## ${app}`, '', `Where: \`${cfgApp?.path ?? app}\` — this checkout${cfgApp?.role ? ` (${cfgApp.role})` : ''}.`, '', OPEN(app))
-    const body = kept[app] ?? (items.length ? '' : `SPEC §Testing names nothing to walk in ${app} — say what a person checks here, or that there is nothing.\n`)
+    const body = kept[app] ?? (items.length || proven.length ? '' : `SPEC §Testing names nothing to walk in ${app} — say what a person checks here, or that there is nothing.\n`)
     lines.push(body.replace(/\n$/, '') || null, CLOSE)
+    if (proven.length) lines.push('', `§Testing's ${proven.length} ${app} test item${proven.length === 1 ? '' : 's'} — what its tests prove — ${proven.length === 1 ? 'is' : 'are'} the verifier's${items.length ? '' : `; ${app} is walked in the cross-app section below`}.`)
     if (items.length) {
       lines.push('', scripted ? `The verification script (SPEC §Testing — ${t.cross.intro || 'the human-verification script'}); §Testing's per-app items are the verifier's to prove:` : 'Newest first:', '')
       items.forEach((item, i) => {
+        if (RUNS_TESTS.test(item)) return lines.push(`${i + 1}. [verifier] ${item}`)
         const r = isRisk(item, tokens)
         risky += r ? 1 : 0
         lines.push(`${i + 1}. ${r ? '[risk] ' : ''}${item}`)
@@ -250,7 +322,7 @@ export function render(f, { cross, previous }) {
   }
   if (cross && !single && t.cross.steps.length) {
     lines.push('', '## Cross-app (verify E2E)', '', `From SPEC §Testing — ${t.cross.intro || 'the human-verification script'}:`, '')
-    t.cross.steps.forEach((s, i) => lines.push(`E${i + 1}. ${s}`))
+    t.cross.steps.forEach((s, i) => lines.push(`E${i + 1}. ${RUNS_TESTS.test(s) ? '[verifier] ' : ''}${s}`))
   }
   const text = lines.filter((l) => l !== null).join('\n') + '\n'
   return { text, apps, total, risky, steps: cross && !single ? t.cross.steps.length : 0, single }

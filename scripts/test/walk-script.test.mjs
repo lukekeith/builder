@@ -84,8 +84,55 @@ test('walk-script: share — a section per in-scope app with its landmines, the 
   assert.match(out.stdout, /\nE1\. start the server on `\$PORT`\n/)
 })
 
+test('walk-script: two apps with the cross-app section — the per-app test items are the verifier\'s, not walk items', () => {
+  const r = leanRepo('share', { feature: 'note-sharing' })
+  const out = run('walk-script.mjs', [r.rel, '--cross-app', '--print'], { cwd: r.root })
+  assert.equal(out.status, 0, out.stderr)
+  assert.match(out.stdout, /§Testing's 6 server test items — what its tests prove — are the verifier's; server is walked in the cross-app section below\./)
+  assert.doesNotMatch(out.stdout, /Newest first|POST: 201 shape|Token: first server command/)
+  assert.match(out.stdout, /— 0 items in 2 apps \(0 \[risk\]\) \+ cross-app E1–E/)
+  // without the cross-app section there is nothing else to walk: the per-app items stay
+  const off = run('walk-script.mjs', [r.rel, '--no-cross-app', '--print'], { cwd: r.root })
+  assert.match(off.stdout, /Newest first:[\s\S]*POST: 201 shape/)
+})
+
+test('walk-script: an app item no test is named for — a check on a screen — stays a walk item beside the cross-app section', () => {
+  const r = leanRepo('share', { feature: 'note-sharing' })
+  const sp = join(r.folder, 'SPEC.md')
+  writeFileSync(sp, readText(sp).replace(/\*\*Cross-app E2E walk\*\*/, '**cli by hand**: in a narrow terminal:\n- a long note wraps under its code in `shares`\n\n**Cross-app E2E walk**'))
+  const out = run('walk-script.mjs', [r.rel, '--cross-app', '--print'], { cwd: r.root })
+  assert.match(out.stdout, /\n## cli\n[\s\S]*Newest first:\n\n1\. a long note wraps under its code in `shares`\n/)
+  assert.match(out.stdout, /§Testing's \d+ cli test items — what its tests prove — are the verifier's\.\n/)
+  assert.doesNotMatch(out.stdout, /`share` prints only a code/)
+})
+
+test('parseTesting: a fenced script is one step per line; a later human-verification note is not more steps; a test run is [verifier]', () => {
+  const s = spec('share').replace(/\*\*Cross-app E2E walk\*\*[\s\S]*?(?=\n## |$)/, [
+    '**The cross-app E2E walk** — two scratch notes files.',
+    '```',
+    'NOTES_FILE=A notes add "buy milk"   → 1',
+    'NOTES_FILE=A notes share 1          → a code alone',
+    'node --test apps/cli/test/fetch.test.mjs   → the expiry test passes',
+    '```',
+    '',
+    '**The human-verification script** is that walk, plus expiry: run `node --test apps/server/test/shares-env.test.mjs`; restart by hand.',
+    '',
+  ].join('\n'))
+  const t = parseTesting(s, ['server', 'cli'])
+  assert.equal(t.cross.intro, 'The cross-app E2E walk')
+  assert.deepEqual(t.cross.steps, ['NOTES_FILE=A notes add "buy milk"   → 1', 'NOTES_FILE=A notes share 1          → a code alone', 'node --test apps/cli/test/fetch.test.mjs   → the expiry test passes'])
+  const r = leanRepo('share', { feature: 'note-sharing' })
+  writeFileSync(join(r.folder, 'SPEC.md'), s)
+  const out = run('walk-script.mjs', [r.rel, '--cross-app', '--print'], { cwd: r.root })
+  assert.match(out.stdout, /\nE3\. \[verifier\] node --test apps\/cli\/test\/fetch\.test\.mjs/)
+  assert.match(out.stdout, /\nE1\. NOTES_FILE=A notes add "buy milk"/)
+  assert.doesNotMatch(out.stdout, /E4\.|restart by hand|```/)
+})
+
 test('walk-script: an in-scope app §Testing says nothing about gets a section that says so', () => {
   const r = leanRepo('share', { feature: 'note-sharing' })
+  const mf = join(r.folder, 'MANIFEST.md')
+  writeFileSync(mf, readText(mf).replace(/^agent-walk:.*$/m, 'agent-walk: off'))
   const sp = join(r.folder, 'SPEC.md')
   writeFileSync(sp, readText(sp).replace(/\*\*cli\*\* \(`apps\/cli[\s\S]*?(?=\*\*Cross-app)/, ''))
   run('walk-script.mjs', [r.rel], { cwd: r.root })

@@ -118,14 +118,17 @@ never the build's context: the agent that built it does not grade it.
   these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.
 - 🔴 **the walker runs no tests** — no test suite, no build. It judges the running app; tests are
   the verifier's, which runs the merge tier beside this walk. A build run here rewrites what the
-  walk env's dev server serves from this worktree and takes the env down mid-walk.
+  walk env's dev server serves from this worktree and takes the env down mid-walk. A `[verifier]`
+  item (one that runs an automated test — `walk-script.mjs` tags it) is recorded `PASS (verifier)`
+  without running anything: the verifier's merge tier proves it.
 
 ## 3. Judge the report
 
 Read `report.md`. Open an evidence file only to spot-check a `FAIL`.
 
 - Every `walk.md` item in scope (under `walk=risk`, the `[risk]` and `E` items) present and `PASS` — a
-  `PASS (carried from round <n> @ <sha>)` row counts, its evidence the earlier round's —
+  `PASS (carried from round <n> @ <sha>)` row counts, its evidence the earlier round's, and so does a
+  `[verifier]` item's `PASS (verifier)` —
   `UNVERIFIABLE` allowed only when there is no driver, and each one listed — → **AGENT-PASS**.
 - Any `FAIL`, an item of `walk.md` missing from the report (count it `FAIL — not walked`), or any
   `UNVERIFIABLE` item while a driver is configured → **AGENT-PROBLEMS**.

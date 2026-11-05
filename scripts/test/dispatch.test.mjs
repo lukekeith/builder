@@ -217,6 +217,20 @@ test('dispatch: findings travel as files — each review names its findings file
   assert.match(none.stderr, /no findings in .*task-1-re-review-1\.md/)
 })
 
+test('dispatch final-review: the feature\'s own folder (PLAN, SPEC, MANIFEST) is in the stat but not the diff', () => {
+  const r = leanRepo('note-tags')
+  commitTask(r)
+  writeFileSync(join(r.folder, 'PLAN.md'), readText(join(r.folder, 'PLAN.md')) + '\nPLAN-ONLY-MARKER\n')
+  git(r.root, 'add', '-A')
+  git(r.root, 'commit', '-qm', 'docs: plan')
+  assert.equal(run('dispatch.mjs', ['final-review', r.rel], { cwd: r.root }).status, 0)
+  const diff = readText(join(WS(r), 'review-final.diff'))
+  assert.match(diff, /## Files changed[\s\S]*PLAN\.md/)
+  assert.match(diff, /\(left out of the diff: docs\/features\/note-tags\)/)
+  assert.match(diff, /\+\/\/ feat\(note-tags\)/)
+  assert.doesNotMatch(diff, /PLAN-ONLY-MARKER/)
+})
+
 test('dispatch implementer --final: the final review\'s one fix wave from final-review.md; the re-review --final reads its brief', () => {
   const r = leanRepo('note-tags')
   const ws = WS(r)

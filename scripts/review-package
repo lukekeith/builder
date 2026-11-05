@@ -3,7 +3,11 @@
 # written to a file the reviewer reads in one call. Using the recorded per-task BASE (not HEAD~1)
 # keeps multi-commit tasks intact.
 #
-# Usage: review-package BASE HEAD OUTFILE
+# Usage: review-package BASE HEAD OUTFILE [EXCLUDE...]
+#
+# EXCLUDE paths stay in the commit list and the stat, but out of the diff: the final review passes the
+# feature's own folder (PLAN.md, SPEC.md, MANIFEST.md — the reviewer reads the SPEC on its own), which
+# was two thirds of a real final-review diff.
 #
 # OUTFILE is REQUIRED here (upstream defaults it from the plan's basename, which collides when
 # every feature's plan is PLAN.md). Name it per range, so a re-review after fixes gets a fresh file.
@@ -12,14 +16,17 @@
 # see LICENSE-THIRD-PARTY.md.
 set -euo pipefail
 
-if [ $# -ne 3 ]; then
-  echo "usage: review-package BASE HEAD OUTFILE" >&2
+if [ $# -lt 3 ]; then
+  echo "usage: review-package BASE HEAD OUTFILE [EXCLUDE...]" >&2
   exit 2
 fi
 
 base=$1
 head=$2
 out=$3
+shift 3
+pathspec=()
+for x in "$@"; do pathspec+=(":(exclude)$x"); done
 
 git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
 git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
@@ -35,7 +42,12 @@ mkdir -p "$(dirname "$out")"
   git diff --stat "${base}..${head}"
   echo
   echo "## Diff"
-  git diff -U10 "${base}..${head}"
+  if [ ${#pathspec[@]} -gt 0 ]; then
+    echo "(left out of the diff: $*)"
+    git diff -U10 "${base}..${head}" -- . "${pathspec[@]}"
+  else
+    git diff -U10 "${base}..${head}"
+  fi
 } > "$out"
 
 commits=$(git rev-list --count "${base}..${head}")
