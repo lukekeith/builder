@@ -90,7 +90,7 @@
  * later commits, describes the same range.
  */
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { BUILDER, openFeature, read, writeAtomic, git, mdSection, configSection, tableRows, parseArgs, cli } from './feature-core.mjs'
@@ -216,8 +216,8 @@ const loadState = (ws) => {
 const saveState = (ws, s) => writeAtomic(statePath(ws), JSON.stringify(s, null, 2) + '\n')
 const short = (root, ref) => git(root, ['rev-parse', '--short', ref])
 
-function reviewPackage(f, base, head, out) {
-  execFileSync(join(BUILDER, 'scripts', 'review-package'), [base, head, out], { cwd: f.root, stdio: ['ignore', 'pipe', 'pipe'] })
+function reviewPackage(f, base, head, out, exclude = []) {
+  execFileSync(join(BUILDER, 'scripts', 'review-package'), [base, head, out, ...exclude], { cwd: f.root, stdio: ['ignore', 'pipe', 'pipe'] })
   return out
 }
 
@@ -622,7 +622,8 @@ function finalReview(f, a, ws) {
   rec.reviewed[0] ??= short(f.root, 'HEAD')
   saveState(ws, st)
   const head = rec.reviewed[0]
-  const diff = reviewPackage(f, rec.base, head, join(ws, 'review-final.diff'))
+  // The feature's own folder stays out of the diff: the reviewer reads SPEC.md whole, and PLAN.md is not code.
+  const diff = reviewPackage(f, rec.base, head, join(ws, 'review-final.diff'), [relative(f.root, f.dir).split(sep).join('/')])
   const ledger = read(join(ws, 'progress.md')) ?? ''
   const carried = ledger.split('\n').filter((l) => /minor \(deferred\)|\bparked\b/i.test(l))
   const spec = read(f.specPath) ?? ''
@@ -721,6 +722,7 @@ function agentWalk(f, a, ws) {
     '- **Walk by screen.** Group the items by the screen or component they exercise; reach each one once and check every item on it in order — one app session, one launch — recording a row per item. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving every item from a fresh launch is the slow way to walk a screen that holds them all.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
     '- Run no tests — no test suite, no build. You judge the running app; tests are the verifier\'s. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
+    '- A `[verifier]` item runs an automated test, which is the verifier\'s: it runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on.',
     '',
     '## Output',
     '',
@@ -791,6 +793,7 @@ function walkBatch(features, a, root) {
     '- Never edit code, never commit, never touch any manifest or SPEC.',
     "- The `## Cross-app (verify E2E)` sections are walked like every other item: one row per step, `#` = `E<k>`, App = `cross-app`, with its evidence.",
     "- Run no tests — no test suite, no build. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
+    '- A `[verifier]` item runs an automated test, which is the verifier\'s: it runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on.',
   )
   if (a.context) lines.push('', a.context.trim())
   const ws = join(root, '.builder', '_walk')
