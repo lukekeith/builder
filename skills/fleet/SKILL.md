@@ -156,6 +156,28 @@ files, that nothing of theirs was dropped (it is all in the kept stash), and the
 resolve those files, then `git stash drop` the stash the note names. Offer to go through them; run
 nothing unasked.
 
+### Every other park or failure — its choices
+
+🔴 **A stop never reaches the user as a line to go and act on.** Every other `## Parked` entry —
+parked or `(failed)` — waits on the user too, and each has a `choices:` list. After the status reply,
+raise each one — one screen each, up to four features per AskUserQuestion (a question each):
+
+1. **The review**, in plain words above the picker: what is stuck and why, from its record when it
+   has one (`record: git show <branch>:<folder>/PARKED.md` — read *What is stuck*, *The diff* or
+   *Recommended next step*), else from its why; then what each choice does. Never a path to go and read.
+2. **One picker**, header `<feature>`, the `choices:` in order, the first marked ` (Recommended)`
+   unless the record recommends another, **Leave it for now** last.
+3. **On the answer:**
+   - **Do the next step, then retry** — when the step is something this session can do (an edit to
+     `.claude/builder.md`, a diff the record gives, a config value), show exactly what changes and do it
+     only on the user's yes, committed on the target branch; a step only they can do (an account,
+     a secret, a product call) — say it in words and wait. Then the choice's command: `/builder:agent
+     --path <folder>` unparks and retries it.
+   - **Retry it with agents** → `/builder:agent --path <folder>`.
+   - **Dig in yourself** → `/builder:resume --path <folder>` in this session.
+   - **Leave it** → nothing runs; it stays parked, the status line keeps `⛔ <feature>`, and the
+     next session's brief raises it again.
+
 ## 2. Always dry-run first
 
 ```bash
@@ -222,7 +244,10 @@ The **watcher** is the opposite: right after that line (it prints only once the 
 also run `node <builder>/scripts/fleet.mjs --wait` as a background task of this session (the Bash
 tool's `run_in_background`). It prints nothing while the fleet runs; when the fleet exits it prints
 what `--status` prints and ends 0 — without marking it seen: only opening `/builder:fleet:status`
-does, so an overnight finish still shows on the status line and in the next brief. Its completion
+does, so an overnight finish still shows on the status line and in the next brief. It also ends 0
+the moment a feature parks or fails while others still run, its output then led by `⛔ waiting on
+you: <features>`: raise each named one's choices at once (§1 *Every other park or failure*, or *A park
+that needs you*), then start the watcher again — the run goes on. Otherwise its completion
 notice is the cue to reply with §5's report — only when its output is that status: a watcher that
 was killed or ended non-zero is not a finish. The fleet is never the background task; the watcher is,
 because if the session ends or the task is killed nothing is lost — the status line and the next
@@ -261,7 +286,8 @@ works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets
 the feature parks.
 
 Then say, in two lines: it's running on its own and outlives this session; while this session is open
-the chat reports when it finishes (the watcher), otherwise the `builder` status line and the next
+the chat reports when it finishes (the watcher); wherever you are, a desktop notification says when a
+feature lands or parks and when the fleet ends; otherwise the `builder` status line and the next
 session's brief tell; `/builder:fleet:status` shows where it stands any time. A merge: the status line
 reads `✔ <feature> merged — /builder:fleet:status` once the fleet has exited (on a narrow line,
 `✔ <feature> merged`, then `✔ <n> merged`; never folded into "+N more"), and the next session's brief names it with its sha
@@ -274,13 +300,18 @@ or failed feature with its next step — one that needs you (your uncommitted ch
 way) leads the status line as `⛔ <feature> needs you: <why> — /builder:fleet:status`, the command
 never cut, and the brief says `⛔ <feature> needs you — <why> — /builder:fleet:status to choose`
 (§1 *A park that needs you*), and `.builder/fleet/fleet.out` gets a block per park — why,
-next, and its PARKED.md. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
+next, its choices, and its PARKED.md. Each park the fleet doesn't retry itself also raises a desktop
+notification (macOS, or Linux with `notify-send`; `BUILDER_NOTIFY=0` turns it off) that says it waits on
+you and to open `/builder:fleet:status`, where every park and failure gets its picker. Each landing,
+and the fleet's end, raise one too — naming the repo, what landed, parked or failed, and to open
+`/builder:fleet:status` there for what to test and what's next — so a run that finishes while the
+person is in another repo, or after this session ended, still reaches them. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
 a line under `/builder:fleet:status`. A fleet whose process is gone with work mid-run shows
 `⚠ fleet stopped` under the table, with the `--detach` command that resumes it.
 
 ## 5. When it finishes
 
-When the watcher ends 0 with the status as its output, or when asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown — the table as a table, not in a code fence — as
+When the watcher ends 0 with the status as its output, or when asked after the fleet has ended (`/builder:fleet:status` shows no row in flight), reply with `.builder/fleet/STATUS.md` as markdown (each park's `record:` and `choices:` lines left for its picker) — the table as a table, not in a code fence — as
 §1 does. Then, briefly:
 
 - **done** — merged into the target, its worktree and branch removed, and archived: the row leaves the table for
@@ -288,13 +319,14 @@ When the watcher ends 0 with the status as its output, or when asked after the f
   `.builder/fleet/logs/_archive/` (kept `agent_walk.keep_logs` days, 30 by default). `git log --merges`
   lists them. Test the result here; push when you're happy. `git revert -m 1 <merge>` takes one back out.
 - **parked** — the fleet already retried it `agent_walk.auto_unpark` times. STATUS.md's `## Parked`
-  list gives each one's why and its recommended `next:` step, and `<folder>/PARKED.md` in its
-  worktree has the investigation — what was tried, the evidence, where to dig; relay the why and the
-  next step, and point at the record. Naming it again (`/builder:agent`, or `/builder:fleet <feature>`) unparks and retries
-  it — answer what it asks in the SPEC first when the next step says so. A park whose why is not a
-  decision the spec left open or a step the config reserves — a conflict, a red verdict, a walk — is work
-  the agents should have done; retrying it is the right next step.
-- **failed** — the log path.
+  list gives each one's why, its `next:` step, its `choices:`, and its record —
+  `git show <branch>:<folder>/PARKED.md` (the worktree is gone), the investigation: what was tried,
+  the evidence, where to dig. 🔴 **Never just relay it: raise each one's picker** (§1 *Every other
+  park or failure — its choices*, or *A park that needs you*), so the user sees that it waits on them
+  and chooses what happens. A park whose why is not a decision the spec left open or a step the
+  config reserves — a conflict, a red verdict, a walk — is work the agents should have done; there
+  **Retry it with agents** is the recommended choice.
+- **failed** — the same picker; its review names the log path.
 
 **Then the wrap-up** — what's left to do in this checkout now that features landed:
 `node <builder>/scripts/wrapup.mjs plan --json`. Its steps run in the order they stand on each

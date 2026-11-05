@@ -146,7 +146,7 @@ export function loadFleet(root) {
 }
 
 /** Atomic: a fleet killed mid-write leaves the previous fleet.json, never half of one. */
-export function saveFleet(root, fleet, progress = null, testsOf = null) {
+export function saveFleet(root, fleet, progress = null, testsOf = null, folderOf = null) {
   const dir = fleetDir(root)
   mkdirSync(dir, { recursive: true })
   const ignore = join(root, '.builder', '.gitignore')
@@ -154,7 +154,7 @@ export function saveFleet(root, fleet, progress = null, testsOf = null) {
   const tmp = join(dir, 'fleet.json.tmp')
   writeFileSync(tmp, JSON.stringify(fleet, null, 2) + '\n')
   renameSync(tmp, join(dir, 'fleet.json'))
-  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), testsOf))
+  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), testsOf, folderOf))
 }
 
 // ---- the archive -------------------------------------------------------------------------------
@@ -363,13 +363,39 @@ export function ago(iso, now = Date.now()) {
 }
 
 /**
- * Resolves when no live fleet holds the lock. Silent. A launch returns before its fleet takes the
+ * Resolves when no live fleet holds the lock — `{ parked: [] }` — or, with `stopped` (root → the
+ * names of its parked and failed rows), as soon as a row stops that had not stopped when the watch
+ * began: `{ parked: [names] }`. A stop counts once two polls in a row see it, so a park the fleet
+ * retries at once (autoRetry) wakes no one. Silent. A launch returns before its fleet takes the
  * lock, so with `graceMs` a lock that is not there yet gets that long to appear before "no fleet".
  */
-export async function waitForFleet(root, { pollMs = 20000, graceMs = 0, alive = fleetAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export async function waitForFleet(root, { pollMs = 20000, graceMs = 0, alive = fleetAlive, stopped = null, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const step = Math.min(pollMs, 1000)
   for (let waited = 0; !alive(root) && waited < graceMs; waited += step) await sleep(step)
-  while (alive(root)) await sleep(pollMs)
+  const known = new Set(stopped ? stopped(root) : [])
+  let seen = new Set()
+  while (alive(root)) {
+    await sleep(pollMs)
+    if (!stopped) continue
+    const current = stopped(root)
+    // One retried since the watch began is new again if it stops again.
+    for (const n of known) if (!current.includes(n)) known.delete(n)
+    const now = current.filter((n) => !known.has(n))
+    const held = now.filter((n) => seen.has(n))
+    if (held.length) return { parked: held.sort() }
+    seen = new Set(now)
+  }
+  return { parked: [] }
+}
+
+/** The names of a fleet's parked and failed rows, from its fleet.json ([] when there is none). */
+export function stoppedNames(root) {
+  try {
+    const fleet = JSON.parse(readFileSync(join(fleetDir(root), 'fleet.json'), 'utf8'))
+    return Object.entries(fleet.features ?? {}).filter(([, f]) => f?.status === 'parked' || f?.status === 'failed').map(([n]) => n)
+  } catch {
+    return []
+  }
 }
 
 /** True when `<root>/.builder/fleet/lock` names a live process. */
@@ -897,6 +923,24 @@ export function parkChoices({ feature, reason, folder = feature }) {
   return []
 }
 
+/**
+ * What a person can do about ANY parked or failed row, as `[{ label, command }]` — recommended first,
+ * leaving it always last. A park never reaches a person without a choice: a human-step park keeps
+ * its own (parkChoices); every other stop gets the step its reason names (when it names one besides
+ * the retry), a retry by agents, digging in in a session, or leaving it. `folder` is the feature's
+ * registry folder.
+ */
+export function stopChoices({ feature, status = 'parked', reason, folder = feature }) {
+  const own = status === 'parked' ? parkChoices({ feature, reason, folder }) : []
+  if (own.some((c) => c.command)) return own
+  const next = parkParts(unquote(reason ?? '')).next?.trim()
+  const retry = { label: 'Retry it with agents', command: `/builder:agent --path ${folder}` }
+  const dig = { label: 'Dig in yourself, in a session', command: `/builder:resume --path ${folder}` }
+  // A next step that is only the retry is the retry; any other is the person's to do first.
+  const step = next && !/^\/builder:(agent|fleet)\b/.test(next) ? { label: 'Do the next step, then retry', command: next.startsWith('/') ? next : `/builder:agent --path ${folder}` } : null
+  return [...(step ? [step] : []), retry, dig, LEAVE]
+}
+
 /** A park record's `## Your choices` section. */
 export const choicesSection = (choices) => ['## Your choices', ...choices.map((c, i) => `${i + 1}. ${c.label}${c.command ? ` — \`${c.command}\`` : ''}`)].join('\n')
 
@@ -952,12 +996,59 @@ export function parkBlock({ feature, status, reason, choices = [], record = null
     `  why:    ${why || 'no reason recorded'}`,
     `  next:   ${next ?? RETRY_NEXT}`,
     ...(choices.length ? ['  choices:', ...choices.map((c, i) => `    ${i + 1}. ${c.label}${c.command ? ` — ${c.command}` : ''}`)] : []),
-    ...(record ? [`  record: ${record}${branch ? ` (committed on ${branch})` : ''}`] : []),
+    // A committed record is read from its branch: the fleet removes a parked feature's worktree.
+    ...(record ? [`  record: ${branch ? `git show ${branch}:${record}` : record}`] : []),
     ...(log && !String(reason).includes(log) ? [`  log:    ${log}`] : []),
     ...(retry ? [`  the fleet retries it now — ${retry}`] : []),
     '',
   ].join('\n')
 }
+
+/**
+ * The desktop notification a park or failure raises, as `{ title, body }` — the fleet runs
+ * detached, often with no session open, so this is how a person hears that it waits on them.
+ */
+export function stopNotice({ feature, status, reason, repo = null }) {
+  const { why } = parkParts(reason ?? '')
+  const short = (why || 'no reason recorded').replace(/\s—\ssee\s\S+$/, '')
+  return {
+    title: `builder: ${feature} ${status} — waiting on you`,
+    body: `${short.length > 180 ? `${short.slice(0, 179)}…` : short} — ${openIn(repo)} to choose what happens next`,
+  }
+}
+
+const openIn = (repo) => `open Claude Code${repo ? ` in ${repo}` : ''} and run /builder:fleet:status`
+const names = (list, max = 3) => (list.length > max ? `${list.slice(0, max).join(', ')} +${list.length - max}` : list.join(', '))
+
+/**
+ * The notification a landing raises. The fleet runs detached, and only a session opened in this repo
+ * shows it on the status line, so a person working anywhere else hears of it here.
+ */
+export function landNotice({ feature, target, repo = null }) {
+  return {
+    title: `builder: ${feature} landed${repo ? ` — ${repo}` : ''}`,
+    body: `merged into ${target} — agent-verified, not human-tested. ${openIn(repo)[0].toUpperCase()}${openIn(repo).slice(1)} for what to test and what's next`,
+  }
+}
+
+/** The notification the fleet raises when it ends: what landed, parked and failed, and where to look. */
+export function endNotice({ repo = null, landed = [], parked = [], failed = [] }) {
+  const parts = [
+    landed.length ? `${landed.length} landed (${names(landed)})` : 'nothing landed',
+    ...(parked.length ? [`${parked.length} parked (${names(parked)})`] : []),
+    ...(failed.length ? [`${failed.length} failed (${names(failed)})`] : []),
+  ]
+  return {
+    title: `builder fleet finished${repo ? ` — ${repo}` : ''}`,
+    body: `${parts.join(' · ')} — ${openIn(repo)} for the report and next steps`,
+  }
+}
+
+/**
+ * Whether the fleet may raise a desktop notification: never under a test run (node --test sets
+ * NODE_TEST_CONTEXT, inherited by every fleet a test spawns), nor with BUILDER_NOTIFY=0.
+ */
+export const mayNotify = (env = process.env) => env.BUILDER_NOTIFY !== '0' && !env.NODE_TEST_CONTEXT
 
 /** How long a running feature may go with no commit and no ledger tick before it is flagged. */
 export const STALL_MS = 45 * 60 * 1000
@@ -1060,8 +1151,9 @@ export function progressBar(pct) {
  * `progress(name, f)` → `{ pct, label }` adds a Progress column and an overall bar (the mean) to the
  * heading; without it the table is as before. `testsOf(name, f)` → a test-plan label is the Tests
  * cell for a row the fleet has noted no facts for yet (the caller reads the manifest). A `done` row is archive material — counted in the archived line, never listed.
+ * `folderOf(name)` → the feature's registry folder, for each stop's choices and park record.
  */
-export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null) {
+export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null, folderOf = null) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
   const archived = (fleet.archived ?? 0) + (all.length - rows.length)
@@ -1102,14 +1194,20 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
       lines.push(`| ${cell(name)} | ${cell(f.status)} | ${cell(rowLabel(f.facts) ?? testsOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
-  const parked = rows.filter(([, f]) => f.status === 'parked')
+  // Every parked or failed row waits on a person: each is listed with its choices, which
+  // /builder:fleet:status raises as a picker — a stop never reaches anyone as a line to go and act on.
+  const parked = rows.filter(([, f]) => STOPPED.has(f.status))
   if (parked.length) {
     lines.push('', '## Parked', '')
     for (const [name, f] of parked) {
       const { why, next } = parkParts(f.reason)
-      lines.push(`- **${name}** — ${why || 'no reason recorded'}`, `  next: ${next ?? RETRY_NEXT}`)
+      const folder = folderOf?.(name) ?? name
+      lines.push(`- **${name}**${f.status === 'failed' ? ' (failed)' : ''} — ${why || 'no reason recorded'}`, `  next: ${next ?? RETRY_NEXT}`)
       // A needs-you park's every file, for the review /builder:fleet:status shows before its choices.
       if (NEEDS_YOU.test(unquote(f.reason ?? '')) && f.overlap?.length) lines.push(`  files: ${f.overlap.join(', ')}`)
+      if (f.status === 'parked' && f.branch && folderOf) lines.push(`  record: git show ${f.branch}:${folder}/PARKED.md`)
+      const choices = stopChoices({ feature: name, status: f.status, reason: f.reason, folder })
+      lines.push('  choices:', ...choices.map((c, i) => `    ${i + 1}. ${c.label}${c.command ? ` — ${c.command}` : ''}`))
     }
   }
   if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))

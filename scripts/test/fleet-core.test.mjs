@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
-import { landingLine } from '../fleet-core.mjs'
+import { landingLine, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'spec' }), 'build')
@@ -281,13 +281,13 @@ test('fleetStops lists parked and failed rows with why and next; parkBlock is wh
     { name: 'b', status: 'failed', why: 'run timed out twice — both no output for 30 min (the idle timeout)', next: '/builder:agent to retry' },
     { name: 'd', status: 'parked', why: 'something with no next step', next: '/builder:agent — naming it again unparks it and retries' },
   ])
-  const block = parkBlock({ feature: 'a', status: 'parked', reason: fleet.features.a.reason, record: '/wt/a/docs/features/a/PARKED.md', branch: 'builder/a', log: '/l/a-03.log', retry: 'automatic retry 1 of 2', at: new Date('2026-10-27T14:05:09Z') })
+  const block = parkBlock({ feature: 'a', status: 'parked', reason: fleet.features.a.reason, record: 'docs/features/a/PARKED.md', branch: 'builder/a', log: '/l/a-03.log', retry: 'automatic retry 1 of 2', at: new Date('2026-10-27T14:05:09Z') })
   assert.equal(block, [
     '',
     '[2026-10-27 14:05Z] ⛔ a parked',
     '  why:    plan wants to split',
     '  next:   /builder:revise --path docs/features/a',
-    '  record: /wt/a/docs/features/a/PARKED.md (committed on builder/a)',
+    '  record: git show builder/a:docs/features/a/PARKED.md',
     '  log:    /l/a-03.log',
     '  the fleet retries it now — automatic retry 1 of 2',
     '',
@@ -1125,4 +1125,95 @@ test('landingLine: says which check ran after sign-off — verified, quick-check
   assert.equal(how({ walked: true, verify: null }), 'agent-walked and verified')
   assert.equal(how({ walked: false, verify: 'quick-checked' }), 'no walk, quick-checked')
   assert.equal(how({ walked: false, verify: null }), 'agent-verified, no walk')
+})
+
+// A park the build agent wrote itself (a config the human must change) matched no HUMAN_STEP
+// alternative, so it reached the user as a `next:` line with nothing to choose. Every stop has choices.
+const AGENT_PARK = 'the test verifier refuses the config because it still uses the old Quality gates format, so no phase can close — next: apply the diff in PARKED.md to .claude/builder.md on feature/x, then /builder:agent'
+
+test('stopChoices: every parked or failed row has choices — the step it names, retry, dig in, leave it last', () => {
+  assert.deepEqual(stopChoices({ feature: 'x', reason: AGENT_PARK, folder: 'docs/features/x' }), [
+    { label: 'Do the next step, then retry', command: '/builder:agent --path docs/features/x' },
+    { label: 'Retry it with agents', command: '/builder:agent --path docs/features/x' },
+    { label: 'Dig in yourself, in a session', command: '/builder:resume --path docs/features/x' },
+    { label: 'Leave it for now', command: null },
+  ])
+  // a next step that is a command is the command
+  assert.equal(stopChoices({ feature: 'x', reason: 'plan wants to split — next: /builder:revise --path docs/features/x' })[0].command, '/builder:revise --path docs/features/x')
+  // a next step that is only the retry, or none at all, starts at the retry
+  for (const reason of ['the walk failed twice — next: /builder:agent', 'run cap (12) reached', null]) {
+    assert.equal(stopChoices({ feature: 'x', reason, folder: 'f' })[0].label, 'Retry it with agents', String(reason))
+  }
+  assert.equal(stopChoices({ feature: 'x', status: 'failed', reason: 'run timed out — see /l.log — next: /builder:agent to retry' })[0].label, 'Retry it with agents')
+  // a human-step park keeps its own
+  const overlap = PARK_REASONS.overlap(['a.ts'])
+  assert.deepEqual(stopChoices({ feature: 'x', reason: overlap }), parkChoices({ feature: 'x', reason: overlap }))
+  for (const reason of [AGENT_PARK, 'stuck', null, ...HUMAN_REASONS]) {
+    const c = stopChoices({ feature: 'x', reason })
+    assert.ok(c.some((o) => o.command), String(reason))
+    assert.equal(c.at(-1).label, 'Leave it for now')
+  }
+})
+
+test('renderStatus: every parked and failed row is listed with its record and numbered choices', () => {
+  const out = renderStatus({ features: {
+    x: { status: 'parked', runs: 2, branch: 'builder/x', reason: AGENT_PARK },
+    y: { status: 'failed', runs: 1, reason: 'run timed out twice — next: /builder:agent to retry' },
+    z: { status: 'building', runs: 1 },
+  } }, null, null, Date.now(), [], null, (n) => `docs/features/${n}`)
+  const parked = out.slice(out.indexOf('## Parked'))
+  assert.match(parked, /^ {2}record: git show builder\/x:docs\/features\/x\/PARKED\.md$/m)
+  assert.match(parked, /^- \*\*x\*\* — the test verifier refuses[^\n]*\n {2}next: [^\n]*\n {2}record: [^\n]*\n {2}choices:\n {4}1\. Do the next step, then retry — \/builder:agent --path docs\/features\/x\n {4}2\. Retry it with agents — [^\n]*\n {4}3\. Dig in yourself, in a session — \/builder:resume --path docs\/features\/x\n {4}4\. Leave it for now$/m)
+  assert.match(parked, /^- \*\*y\*\* \(failed\) — run timed out twice\n {2}next: \/builder:agent to retry\n {2}choices:\n {4}1\. Retry it with agents/m)
+  assert.doesNotMatch(parked, /\*\*z\*\*/)
+})
+
+test('waitForFleet wakes on a new stop that holds for two polls — not on one the fleet retries at once, nor one there before', async () => {
+  let polls = 0
+  const seq = [['old'], ['old'], ['old', 'flick'], ['old'], ['old', 'x'], ['old', 'x']]
+  const res = await waitForFleet('/x', { pollMs: 1, alive: () => polls < 20, stopped: () => seq[Math.min(polls, seq.length - 1)], sleep: async () => void polls++ })
+  assert.deepEqual(res, { parked: ['x'] })
+  assert.equal(polls, 5, 'woke on the second poll that saw x')
+  assert.deepEqual(await waitForFleet('/x', { pollMs: 1, alive: () => false, stopped: () => ['a'] }), { parked: [] }, 'the fleet ended: nothing new')
+  // parked before the watch, retried, parked again → it wakes
+  polls = 0
+  const again = [['a'], [], ['a'], ['a']]
+  assert.deepEqual(await waitForFleet('/x', { pollMs: 1, alive: () => polls < 20, stopped: () => again[Math.min(polls, again.length - 1)], sleep: async () => void polls++ }), { parked: ['a'] })
+})
+
+test('stoppedNames reads parked and failed rows from fleet.json; none → []', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sn-'))
+  assert.deepEqual(stoppedNames(root), [])
+  mkdirSync(fleetDir(root), { recursive: true })
+  writeFileSync(join(fleetDir(root), 'fleet.json'), JSON.stringify({ features: { a: { status: 'parked' }, b: { status: 'building' }, c: { status: 'failed' } } }))
+  assert.deepEqual(stoppedNames(root).sort(), ['a', 'c'])
+})
+
+test('stopNotice says the feature waits on you and where to choose; mayNotify is off under tests and BUILDER_NOTIFY=0', () => {
+  const n = stopNotice({ feature: 'x', status: 'parked', reason: AGENT_PARK })
+  assert.equal(n.title, 'builder: x parked — waiting on you')
+  assert.match(n.body, /^the test verifier refuses the config.* — open Claude Code and run \/builder:fleet:status to choose what happens next$/)
+  assert.doesNotMatch(stopNotice({ feature: 'y', status: 'failed', reason: 'boom — see /l/y.log — next: /builder:agent' }).body, /see \/l/)
+  assert.ok(stopNotice({ feature: 'x', status: 'parked', reason: 'w'.repeat(400) }).body.length < 300)
+  assert.equal(mayNotify({}), true)
+  assert.equal(mayNotify({ BUILDER_NOTIFY: '0' }), false)
+  assert.equal(mayNotify({ NODE_TEST_CONTEXT: 'child-v8' }), false)
+  assert.equal(mayNotify(), false, 'this test run itself')
+})
+
+// A fleet that finished while the person was in another repo, or after the launching session ended,
+// told nobody: the status line only shows in a session opened in that repo.
+test('landNotice and endNotice name the repo, what landed or stopped, and where to look', () => {
+  assert.deepEqual(landNotice({ feature: 'qm-foundation', target: 'feature/qm', repo: 'Proj' }), {
+    title: 'builder: qm-foundation landed — Proj',
+    body: "merged into feature/qm — agent-verified, not human-tested. Open Claude Code in Proj and run /builder:fleet:status for what to test and what's next",
+  })
+  assert.equal(landNotice({ feature: 'a', target: 'main' }).title, 'builder: a landed')
+  assert.deepEqual(endNotice({ repo: 'Proj', landed: ['a', 'b'], parked: ['c'], failed: [] }), {
+    title: 'builder fleet finished — Proj',
+    body: '2 landed (a, b) · 1 parked (c) — open Claude Code in Proj and run /builder:fleet:status for the report and next steps',
+  })
+  assert.match(endNotice({ landed: [], parked: [], failed: ['x'] }).body, /^nothing landed · 1 failed \(x\) — open Claude Code and run/)
+  assert.match(endNotice({ landed: ['a', 'b', 'c', 'd', 'e'] }).body, /^5 landed \(a, b, c \+2\)/)
+  assert.match(stopNotice({ feature: 'x', status: 'parked', reason: 'stuck', repo: 'Proj' }).body, /open Claude Code in Proj and run \/builder:fleet:status to choose/)
 })

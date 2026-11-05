@@ -67,7 +67,7 @@ try {
     const lines = [
       ...found.stops.map((s) => s.needsYou
         ? `- ⛔ ${s.name} needs you — ${needsYouWhy(s.why)} — /builder:fleet:status to choose`
-        : `- ⛔ ${s.name} ${s.status}${s.why ? ` — ${s.why}` : ''} — next: ${s.next}`),
+        : `- ⛔ ${s.name} ${s.status}, waiting on you${s.why ? ` — ${s.why}` : ''} — next: ${s.next} — /builder:fleet:status to choose`),
       ...found.notes.map((n) => `- ${n}`),
     ]
     if (lines.length) process.stdout.write(lines.join('\n'))
