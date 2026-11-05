@@ -15,7 +15,7 @@ test('every step resolves: each mapped file and section exists in this checkout 
 
 test('docs build: EXECUTION.md, the REFERENCE sections build names, the config — once each, with headings, no zsh-hostile separators', () => {
   const r = leanRepo('note-tags')
-  const out = run('docs.mjs', ['build'], { cwd: r.root })
+  const out = run('docs.mjs', ['build', '--whole'], { cwd: r.root })
   assert.equal(out.status, 0, out.stderr)
   const s = out.stdout
   assert.match(s, /^# builder docs: build — \d+ sections, \d+ KB/)
@@ -28,7 +28,7 @@ test('docs build: EXECUTION.md, the REFERENCE sections build names, the config �
   assert.doesNotMatch(s, /^={3,}/m)
   assert.equal(s.split('\n### §Contract and the contract freeze\n').length, 2, 'contract printed once')
   assert.doesNotMatch(s, /# Implementer subagent prompt/)
-  assert.match(run('docs.mjs', ['build', '--prompts'], { cwd: r.root }).stdout, /# Implementer subagent prompt/)
+  assert.match(run('docs.mjs', ['build', '--prompts', '--whole'], { cwd: r.root }).stdout, /# Implementer subagent prompt/)
 })
 
 test('docs walk-lane: §Walk readiness and build §When the last phase signs — what the walk lane read in 4 calls', () => {
@@ -41,13 +41,32 @@ test('docs walk-lane: §Walk readiness and build §When the last phase signs —
 })
 
 test('docs brainstorm: CONVERSATION.md plus exactly the four sections it names — §Sizes, §The classifier, §The review, §Walk readiness', () => {
-  const s = run('docs.mjs', ['brainstorm', '--no-config'], { cwd: leanRepo('note-tags').root }).stdout
+  const s = run('docs.mjs', ['brainstorm', '--no-config', '--whole'], { cwd: leanRepo('note-tags').root }).stdout
   assert.match(s, /--- skills\/brainstorm\/CONVERSATION\.md/)
   assert.match(s, /\n## Sizes\n/)
   assert.match(s, /\n## The classifier\n/)
   assert.match(s, /\n## The review — what an approval shows\n/)
   assert.match(s, /\n## Walk readiness\n/)
   assert.doesNotMatch(s, /\n## Flags\n/)
+})
+
+test('docs: a bundle over one Bash output prints in parts — whole sections, each part ≤ 30,000, every part but the last naming the next call', () => {
+  const r = leanRepo('note-tags')
+  for (const step of Object.keys(STEPS)) {
+    const whole = run('docs.mjs', [step, '--whole'], { cwd: r.root }).stdout
+    const parts = []
+    for (let k = 1; k <= 5; k++) {
+      const p = run('docs.mjs', [step, '--part', String(k)], { cwd: r.root })
+      assert.equal(p.status, 0, step + p.stderr)
+      assert.ok(p.stdout.length <= 30000, `${step} part ${k}: ${p.stdout.length} chars`)
+      parts.push(p.stdout)
+      if (!/not the whole of what this step reads/.test(p.stdout)) break
+    }
+    if (parts.length > 1) assert.match(parts[0], new RegExp(`Next: \`node \\S+docs\\.mjs ${step} --part 2\``))
+    // every section of the whole bundle is in exactly one part
+    const heads = (t) => t.split('\n').filter((l) => l.startsWith('--- '))
+    assert.deepEqual(parts.flatMap(heads), heads(whole), step)
+  }
 })
 
 test('docs: --list names every step and what it prints; an unknown step is a usage error', () => {
@@ -228,7 +247,7 @@ test('the later lanes — walk-lane, agent-walk, verify, ship — read their bun
     const b = realRun([step, '--no-config'])
     assert.equal(b.status, 0, step + b.stderr)
     assert.equal((b.stdout.match(CONFIG_HEAD) ?? []).length, 0, `${step} --no-config has no config`)
-    assert.equal((realRun([step]).stdout.match(CONFIG_HEAD) ?? []).length, 1, `a human ${step} still prints the whole config`)
+    assert.equal((realRun([step, '--whole']).stdout.match(CONFIG_HEAD) ?? []).length, 1, `a human ${step} still prints the whole config`)
   }
   const cut = (step) => {
     const r = realRun(['fleet-config', step])
