@@ -39,9 +39,9 @@
         }
       ],
       "stamp": {
-        "hash": "d03d2aa3a44e",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "faaacf345912",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -134,9 +134,9 @@
         }
       ],
       "stamp": {
-        "hash": "fbdf4ac46ab3",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "cb1141c70f47",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -204,9 +204,9 @@
         }
       ],
       "stamp": {
-        "hash": "0283c6e983ad",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "17c6947e785d",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -249,9 +249,9 @@
         }
       ],
       "stamp": {
-        "hash": "d4290d68cb23",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "e640373b0538",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -427,9 +427,9 @@
         }
       ],
       "stamp": {
-        "hash": "1bbc99553659",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "5fe5c13fd6b5",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -446,33 +446,87 @@
         },
         {
           "role": "claude",
-          "text": "Who's having trouble finding certificates — owners looking for their own, or someone looking across everyone's — and what are they in the middle of when it happens?\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+          "text": "Three things to pin down before any design. What I know so far:\n\n- **Who** — owners see only their own certificates; admins see everyone's (`CertificateList` scopes by `owner_id`). Which of them struggles decides where this lives.\n- **When** — the pain could be answering someone, routine housekeeping, or an audit; each wants a different shape.\n- **Better** — how you'd know it worked tells me what to optimise: seconds to one certificate, or a whole set at once.\n- **Today** is already known: web search matches title only; mobile has no search, just the list by expiry date. *(from the code)*\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "picker",
+          "questions": [
+            {
+              "header": "Who",
+              "question": "Who has trouble finding certificates?",
+              "multiSelect": false,
+              "options": [
+                {
+                  "label": "Owners, their own",
+                  "description": "One owner looking through their own list — often on the phone"
+                },
+                {
+                  "label": "Admins, across everyone",
+                  "description": "Someone looking across every owner's certificates"
+                },
+                {
+                  "label": "Both, equally",
+                  "description": "Both views need it; the design has to serve two lists"
+                }
+              ]
+            },
+            {
+              "header": "When",
+              "question": "What are they in the middle of when it happens?",
+              "multiSelect": false,
+              "options": [
+                {
+                  "label": "Answering a customer",
+                  "description": "Someone asked for one particular certificate and is waiting"
+                },
+                {
+                  "label": "Renewals and housekeeping",
+                  "description": "Working through what is expiring or overdue"
+                },
+                {
+                  "label": "An audit or inspection",
+                  "description": "Pulling every certificate of one kind or for one site"
+                }
+              ]
+            },
+            {
+              "header": "Better",
+              "question": "How would you know it worked?",
+              "multiSelect": false,
+              "options": [
+                {
+                  "label": "One in seconds",
+                  "description": "The certificate someone asked for is on screen in a couple of seconds"
+                },
+                {
+                  "label": "A set in one tap",
+                  "description": "A whole group (expiring, a site, a type) appears without typing"
+                },
+                {
+                  "label": "Nothing slips through",
+                  "description": "Nothing expires unnoticed; finding is about not missing things"
+                }
+              ]
+            }
+          ]
         },
         {
           "role": "user",
-          "text": "owners mostly. they get an email from a customer asking for 'the fire safety one' and have to scroll through 200 certs on their phone"
+          "text": "Owners, their own · Other: answering a customer who emails asking for \"the fire safety one\" — they scroll through 200 certs on their phone · One in seconds — and it's the same 3 or 4 kinds of question every time: expiring soon, fire safety, a particular site"
         },
         {
           "role": "claude",
-          "text": "So far:\n- **For:** owners, answering a customer who's asked for one particular certificate — often on their phone. *(you said)*\n- **Pain:** they know it by what it's *about* (\"the fire safety one\"), and the only way in is scrolling ~200 rows. *(you said)*\n- **Today:** web's search matches title only; mobile has no search, just the list by expiry date — so on the phone it really is scrolling. *(from the code)*\n- **Assumed:** customers rarely quote a certificate id.\n\nWhat would better look like — when you'd notice it worked, what would have happened instead of the scroll?\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
-        },
-        {
-          "role": "user",
-          "text": "I'd find it in a couple of seconds. honestly it's the same 3 or 4 kinds of question every time — expiring soon, fire safety, the ones for a particular site"
-        },
-        {
-          "role": "claude",
-          "text": "The frame:\n- **For:** owners answering a customer's request, often on mobile.\n- **Pain:** they think of a certificate by what it's about or where it's for; the product only knows titles and expiry order.\n- **Today:** title search on web only; mobile is a scroll. *(from the code)*\n- **Better:** found in a couple of seconds — and the questions repeat: expiring soon, a type (\"fire safety\"), a site.\n\nThat's the frame — no more questions on it."
+          "text": "The frame:\n- **For:** owners answering a customer's request, often on mobile. *(you said)*\n- **Pain:** they think of a certificate by what it's about or where it's for (\"the fire safety one\"); the product only knows titles and expiry order, so on the phone it's a scroll through ~200 rows. *(you said)*\n- **Today:** title search on web only; mobile is a scroll. *(from the code)*\n- **Better:** found in a couple of seconds — and the questions repeat: expiring soon, a type, a site. *(you said)*\n- **Assumed:** customers rarely quote a certificate id.\n\nThat's the frame — no more questions on it."
         },
         {
           "role": "note",
-          "text": "Frame item 3 (how it's handled today) is looked up and stated, never asked. Four questions at most; the user can end it sooner. These questions carry no lettered list — the only pauses without one — but still end in the 📍 footer."
+          "text": "Every frame question still open goes in one picker, each with likely answers drawn from recon — never a bare open question. Frame item 3 (how it's handled today) is looked up and stated, never asked. A recommendation is marked only where the evidence picks one; here none does. The picker's Other carries the user's own words, as the second answer shows."
         }
       ],
       "stamp": {
-        "hash": "378f04700991",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "2dc7376e7194",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -486,17 +540,37 @@
         {
           "role": "claude",
           "inferred": true,
-          "text": "**What we already have — the design system.** acme-certs has one: `packages/ui`, documented in `docs/design/README.md`. For finding certificates it already offers:\n- `FilterChips` — how lists filter here, above the table, as on the certificate list; the README says chips are for a handful of fixed values, never free text.\n- `Tabs` — switching between views of the same data, as on the owner view.\n- `DataTable` — the web list itself, with its toolbar slot for search and actions.\n- `EmptyState` — what a filter or search that matches nothing shows, with a way back.\nMobile uses the same components through `packages/ui`'s native exports, but its certificate screen uses none of the filtering ones yet.\n\n**What this session has:** web search. No screen-library or design-file plugin is installed.\n\nWorth weighing: the design system covers the building blocks — chips, tabs, an empty state — so concepts can be built from what's here. Looking further would only add how other apps lay out search and quick views on a long list on a phone, which `docs/design/README.md` has no pattern for.\n\nA. Stay with what we have (recommended) — concepts built from `packages/ui` and the product's own screens\nB. Search the web — a few searches on how mobile apps help people find one item in a long list (search scopes, quick views, recent searches), sources kept\nC. Suggest a plugin — a screen-library plugin (real app screens and flows) would show those layouts directly; installing it is your step, and we carry on with what's here\nReply A, B or C — \"go\" is A.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+          "text": "**What we already have — the design system.** acme-certs has one: `packages/ui`, documented in `docs/design/README.md`. For finding certificates it already offers:\n- `FilterChips` — how lists filter here, above the table, as on the certificate list; the README says chips are for a handful of fixed values, never free text.\n- `Tabs` — switching between views of the same data, as on the owner view.\n- `DataTable` — the web list itself, with its toolbar slot for search and actions.\n- `EmptyState` — what a filter or search that matches nothing shows, with a way back.\nMobile uses the same components through `packages/ui`'s native exports, but its certificate screen uses none of the filtering ones yet.\n\n**What this session has:** web search. No screen-library or design-file plugin is installed.\n\nWorth weighing: the design system covers the building blocks — chips, tabs, an empty state — so concepts can be built from what's here. Looking further would only add how other apps lay out search and quick views on a long list on a phone, which `docs/design/README.md` has no pattern for.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "picker",
+          "question": "Where should the concepts come from?",
+          "header": "Research",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Stay with what we have (Recommended)",
+              "description": "Concepts built from `packages/ui` and the product's own screens"
+            },
+            {
+              "label": "Search the web",
+              "description": "A few searches on how mobile apps help people find one item in a long list (search scopes, quick views, recent searches), sources kept"
+            },
+            {
+              "label": "Suggest a plugin",
+              "description": "A screen-library plugin (real app screens and flows) would show those layouts directly; installing it is your step, and we carry on with what's here"
+            }
+          ]
         },
         {
           "role": "note",
-          "text": "The design system is stated, never asked, before anything outside is offered. The installed tools are read from the session's tool list. Here there's no screen-library plugin, only web search, so the offer is Stay · Search the web · Suggest a plugin. The offer is a lettered list, not a picker; Stay is always first and recommended when the design system covers the idea. Nothing outside the repo runs without a yes."
+          "text": "The design system is stated, never asked, before anything outside is offered. The installed tools are read from the session's tool list. Here there's no screen-library plugin, only web search, so the offer is Stay · Search the web · Suggest a plugin — one picker, the evaluation's pick first. Nothing outside the repo runs without a yes."
         }
       ],
       "stamp": {
-        "hash": "ec9b14f35494",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "8ab9206e5e99",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       },
       "sources": [
         "skills/brainstorm/CONVERSATION.md §Discovery recon",
@@ -516,7 +590,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "b"
+          "text": "Search the web"
         },
         {
           "role": "tool",
@@ -529,17 +603,39 @@
         {
           "role": "claude",
           "inferred": true,
-          "text": "**Research (web), in our design system's terms:** list apps mostly do one of two things. Either one search box matches everything a record has, with recent searches under it (Material's search guidelines) — we'd build that from `DataTable`'s toolbar search and `EmptyState`, but `packages/ui` has no search field with suggestions. Or a row of quick views answers the common questions in one tap (GitHub and Linear docs on saved views) — that's `Tabs` over the list, nothing new. Free-form tagging is rarer and needs upkeep (Nielsen Norman Group on filters vs facets).\n\n**A. Search everything (recommended)**\nYou type \"fire\" into one box on web or mobile and get every certificate whose title, owner, site or certificate number mentions it, the match highlighted, newest first. On mobile the box sits above the list, with your last few searches under it.\n- **Built from:** `DataTable`'s toolbar search (web's existing box) and `EmptyState` for no matches, from `packages/ui`; the API's `parseCertificateFilters`; recent searches *(from research: web — Material search guidelines)*, which needs a suggestions list `packages/ui` doesn't have yet. Also needs: search on mobile, and the search widened beyond title.\n- **Good at:** the \"the fire safety one\" request — one box, nothing new to learn. **Closes off:** nothing; views could come later on top.\n- **Feel:** a few days.\n\n**B. Quick views**\nAbove the list, a row of views — *Expiring soon*, *Overdue*, *By site*, *All* — each one tap. They're the questions you said repeat, answered without typing.\n- **Built from:** `Tabs` from `packages/ui` (as the owner view uses them) over `DataTable`, the status filters web keeps in the URL (`useCertificateFilters`), `EmptyState` for an empty view; views over a list as a pattern *(from research: web — GitHub and Linear docs on saved views)*, which `packages/ui` already covers with `Tabs`.\n- **Good at:** the repeat questions, especially on a phone. **Closes off:** a request that doesn't fit a view still means scrolling.\n- **Feel:** about a week.\n\n**C. Tags and a tag filter**\nOwners tag certificates (\"fire safety\", \"Site 4\") and filter the list by tag.\n- **Built from:** `FilterChips` from `packages/ui` for the tag filter; needs a new tag model and tagging UI in both apps — and overlaps `cert-tags`, which is already in the registry.\n- **Good at:** grouping that matches how owners think. **Closes off:** only as good as the tagging, and it duplicates `cert-tags`.\n- **Feel:** a program's worth with cert-tags.\n\nReply with a letter — \"go\" is A. Or combine them, ask \"what if …\", or say none fit.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+          "text": "**Research (web), in our design system's terms:** list apps mostly do one of two things. Either one search box matches everything a record has, with recent searches under it (Material's search guidelines) — we'd build that from `DataTable`'s toolbar search and `EmptyState`, but `packages/ui` has no search field with suggestions. Or a row of quick views answers the common questions in one tap (GitHub and Linear docs on saved views) — that's `Tabs` over the list, nothing new. Free-form tagging is rarer and needs upkeep (Nielsen Norman Group on filters vs facets).\n\nThree ways to go:\n\n**Search everything** — type \"fire\" in one box, on web or mobile, and get every certificate whose title, owner, site or number mentions it; your last searches sit under the box.\n- **Built from:** `DataTable`'s toolbar search and `EmptyState` (`packages/ui`), the API's `parseCertificateFilters` widened beyond title; recent searches *(from research: Material search guidelines)* need a suggestions list `packages/ui` lacks.\n- Good at the \"fire safety one\" request · closes off nothing · a few days.\n\n**Quick views** — a row of one-tap views above the list: *Expiring soon*, *Overdue*, *By site*, *All* — the questions you said repeat, answered without typing.\n- **Built from:** `Tabs` over `DataTable` (as the owner view does), web's URL filters (`useCertificateFilters`), `EmptyState`; views over a list *(from research: GitHub and Linear saved views)*.\n- Good at the repeat questions on a phone · a request outside a view still means scrolling · about a week.\n\n**Tags and a tag filter** — owners tag certificates (\"fire safety\", \"Site 4\") and filter by tag.\n- **Built from:** `FilterChips`; needs a tag model and tagging UI in both apps, and overlaps `cert-tags`, already in the registry.\n- Matches how owners think · only as good as the tagging, duplicates `cert-tags` · a program's worth.\n\n**Why Search everything:** it answers the request you described with nothing new to learn, and quick views can still come later on top.\n\n📍 find-certs: brainstorming (0/0 settled) — resume with /builder:brainstorm --path docs/features/find-certs"
+        },
+        {
+          "role": "picker",
+          "question": "Which concept should we build on?",
+          "header": "Concept",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Search everything (Recommended)",
+              "description": "One box on web and mobile matching title, owner, site and number, with recent searches — a few days",
+              "preview": "┌──────────────────────────────┐\n│ 🔍 fire                      │\n│   recent: site 4 · expiring  │\n├──────────────────────────────┤\n│ Fire safety — Site 4   ⚠ 12d │\n│ Fire door check — HQ         │\n└──────────────────────────────┘"
+            },
+            {
+              "label": "Quick views",
+              "description": "One-tap views above the list — Expiring soon, Overdue, By site, All — about a week",
+              "preview": "┌──────────────────────────────┐\n│ [Expiring] Overdue  Site  All│\n├──────────────────────────────┤\n│ Fire safety — Site 4   ⚠ 12d │\n│ Gas safety — Site 2    ⚠ 20d │\n└──────────────────────────────┘"
+            },
+            {
+              "label": "Tags and a tag filter",
+              "description": "Owners tag certificates and filter by tag; overlaps cert-tags — a program's worth"
+            }
+          ]
         },
         {
           "role": "note",
-          "text": "The user picked B (Search the web) on the research offer, so the search runs, bounded, before the concepts. Every pattern found is described in the design system's terms: which components would build it, and what's missing. Each concept is built from the design system first; a pattern from outside is marked '(from research: <where>)', with what building it would take. Size is only a rough feel, never a sized estimate."
+          "text": "The user picked Search the web on the research offer, so the search runs, bounded, before the concepts. Each concept is a few lines — what you'd experience, what it's built from, good at · closes off · size — then one picker, the recommendation first, previews where the layouts differ. Combining, \"what if\" or none-fit go in the picker's Other."
         }
       ],
       "stamp": {
-        "hash": "b1bb2786e961",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "ab59c4192d99",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {
@@ -556,7 +652,7 @@
       "turns": [
         {
           "role": "user",
-          "text": "b"
+          "text": "Quick views"
         },
         {
           "role": "claude",
@@ -584,13 +680,13 @@
         },
         {
           "role": "note",
-          "text": "A letter names the concept outright — no 'Right?'. A combination, or a concept in the user's own words, would get the same two lines ending in 'Right?' and wait for a yes. The chosen concept's choices become settled branches; the others go to Rejected with the reason each lost. Round B says 'specced' because two apps are already in play."
+          "text": "Picking a concept names it outright — no \"Is that right?\". A combination, or a concept in the user's own words (via Other), gets the same two lines, then a picker: That's it · Adjust it. The chosen concept's choices become settled branches; the others go to Rejected with the reason each lost. Round B says 'specced' because two apps are already in play."
         }
       ],
       "stamp": {
-        "hash": "eaba1e37e143",
-        "version": "5.5.0",
-        "date": "2026-10-28"
+        "hash": "eecb202bf08c",
+        "version": "6.1.1",
+        "date": "2026-11-05"
       }
     },
     {

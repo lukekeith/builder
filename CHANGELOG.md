@@ -44,6 +44,23 @@ branch counted as changed and server-only commits ran other apps' whole suites. 
 - The fleet only reuses or lands a held merge run aimed at its own target, never one filed for
   another branch.
 
+**Brainstorm lets you pick instead of type.** Discovery, the path brainstorm takes for an open idea,
+asked its first questions as open questions with no options, offered research and concepts as long
+lettered text, and that text-only style carried on into the question rounds after it, where every
+question is meant to be a picker. Nothing to change in `.claude/builder.md`.
+
+**Fixed:**
+- Every brainstorm question you answer is a picker with 2–4 concrete answers, the recommended one
+  first when there is one; *Other* still takes your own words. Never a bare open question, and never
+  answers written as bullets ending "tell me in your own words".
+- Discovery's frame asks every open question at once in one picker, each with likely answers drawn
+  from what the code and your words already show.
+- The research offer and the concepts are pickers; each concept is a few lines (what you'd see, what
+  it's built from, good at · closes off · size), with a sketch where layouts differ. A concept in your
+  own words is confirmed with *That's it* · *Adjust it*.
+- Lettered `A/B/C` replies stay for next steps in the flow — build it, write the spec, the review
+  parts.
+
 ## 6.1.1
 
 **Only the commit that was signed off ships.** With verify optional, nothing tied what ships to the

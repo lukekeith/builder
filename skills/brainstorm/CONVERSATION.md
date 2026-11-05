@@ -150,7 +150,16 @@ not. Recon never holds up a turn: the frame goes on while it runs; the concepts 
 
 ## Ways on
 
-Every turn that waits on the user ends with the ways on as a **lettered list** — the user should
+🔴 **Every question that waits on the user is answered by picking.** A question about the product or
+the design — a round, the frame, the research offer, the concepts, a confirmation — is **one
+AskUserQuestion** with 2–4 concrete answers, the recommended one first when there is one; its
+built-in *Other* takes the user's own words. A next step in the flow (the lettered places under
+*Where*, below) is a lettered list. **Never** a bare open question, and **never** answers written as
+bullets ending in "tell me in your own words" — a turn that ends that way is a defect, however the
+question came up (a follow-up, a clarification, a question after discovery): when the answers can be
+listed, they go in a picker.
+
+Every turn that waits on the user on a next step ends with the ways on as a **lettered list** — the user should
 never have to think up how to continue, or remember a phrase. A reply of one letter is enough.
 
 ```
@@ -172,18 +181,16 @@ Reply A, B or C — "go" is A.<  Or say what's wrong.>
   that opens a picker (AskUserQuestion) puts every choice in the picker and prints **no** lettered
   list beside it — the picker takes the input, so letters above it are a menu nobody can answer.
   A round's ways on live inside its picker (§Rounds).
-- **Where:** the quick path (SKILL §Quick path), the intent playback, discovery's research offer,
-  the concepts (each concept lettered), §Confirm, the small path's approval and the md+ hand-off (§Size and the
-  small path) — never a round, which has its picker. The frame's open questions in discovery are the exception — they end in the
-  question, so the user answers in their own words.
+- **Where:** the quick path (SKILL §Quick path), the intent playback, §Confirm, the small path's
+  approval and the md+ hand-off (§Size and the small path) — each a step in the flow. Never a round,
+  the frame, discovery's research offer or the concepts: each of those is a picker.
 
 ## Rounds
 
 - **The frontier** is every `open` branch whose prerequisites are settled. A question whose answer
   depends on another still-open question waits until that one is answered.
 - **🔴 One question per turn, by default** — the frontier question that unblocks the most of the
-  tree goes first. (The frame in SKILL §Discovery is not a round: its questions are open, in chat, with
-  no options.) Every question has two parts, in this order:
+  tree goes first. Every question has two parts, in this order:
 
   1. **The briefing, in chat** — a short heading naming the decision, then what a person needs to
      choose or to write their own answer:
