@@ -271,9 +271,14 @@ export function presetTests(copy, feature, tests) {
   return true
 }
 
-/** The claude flags every session of a pipeline gets: permissions, the plugin under test, the settings. */
+/**
+ * The claude flags every session of a pipeline gets: permissions, the plugin under test, the settings,
+ * and no MCP servers — the owner's connectors loaded 214 tools (14 servers) into every session, ~33k
+ * tokens of first-turn cache write that measure the machine, not the pipeline. The fixtures use none.
+ * The fleet's own sessions get the same flags through the copy's `agent_walk.claude_args`.
+ */
 export function flagsFor(pipeline, copy) {
-  const flags = ['--permission-mode', 'bypassPermissions', '--settings', join(copy, '.claude', 'bench-settings.json')]
+  const flags = ['--permission-mode', 'bypassPermissions', '--strict-mcp-config', '--settings', join(copy, '.claude', 'bench-settings.json')]
   if (pipeline === 'builder') flags.push('--plugin-dir', BUILDER)
   if (pipeline === 'superpowers') {
     const sp = superpowersDir()
