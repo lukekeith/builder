@@ -78,8 +78,11 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     `run_in_background`, and never end your turn with something still
     running. Never kill a process you did not start in this task, and never
     `pkill`/`killall` by name or pattern: other worktrees share this machine,
-    and their test suites look exactly like yours in `ps`. If a command of
-    yours may hang, wrap it in `timeout <seconds>` when you start it.
+    and their test suites look exactly like yours in `ps`. Start every test
+    run, and anything else that may hang, under a cap: `[CAP] 120 '<command>'`
+    — it kills what the command started and exits 124 on a hang. Never
+    `timeout`: macOS has none. Read a run's exit code before you filter its
+    output — a `| grep` hides a command that never started.
 
     ## You do not dispatch subagents
 
@@ -206,4 +209,5 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
   `<builder>/skills/{test-driven-development,systematic-debugging,receiving-code-review,verification-before-completion}/SKILL.md`.
   🔴 Paths, not pasted text: a subagent reads them, and pasting four documents
   into every brief would dwarf the task itself
+- `[CAP]` — `node <builder>/scripts/cap.mjs`, the portable time limit
 - `[REPORT_FILE]` — REQUIRED: where the implementer writes its detailed report

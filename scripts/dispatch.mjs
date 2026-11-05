@@ -242,7 +242,8 @@ function constraints(f) {
   return g.replaceAll('<TICKET>', f.key).replace(/\s+$/, '')
 }
 
-const craftValues = () => Object.fromEntries(Object.entries(CRAFT).map(([k, v]) => [k, skillPath(v)]))
+// CAP: the portable time limit (scripts/cap.mjs) — `timeout` is GNU-only, and macOS has none.
+const craftValues = () => ({ ...Object.fromEntries(Object.entries(CRAFT).map(([k, v]) => [k, skillPath(v)])), CAP: `node ${join(BUILDER, 'scripts', 'cap.mjs')}` })
 
 function planOf(f) {
   const plan = read(f.planPath)

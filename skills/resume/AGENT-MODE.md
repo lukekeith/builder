@@ -30,8 +30,9 @@ a reviewer whose verdict is never read, a feature the fleet then parks for "no p
   wait <id>` in the foreground, **Bash timeout 600000**, again while it exits 75, until it prints a
   verdict. Nothing else waits: tests run in the verifier, not in this run.
 - **Never kill a process you did not start in this run**, and never `pkill`/`killall` by pattern:
-  other fleet worktrees share this machine, and their suites look exactly like yours. Wrap a command
-  of yours that may hang in `timeout`.
+  other fleet worktrees share this machine, and their suites look exactly like yours. Start a command
+  of yours that may hang under `node <builder>/scripts/cap.mjs <seconds> '<command>'` (exit 124 =
+  it hung) — never `timeout`, which macOS has none of.
 - **The run's last message is a handoff after the work finished** — never "waiting on …", "I'll
   pick this up when …", or "still running". Work that cannot finish in this run ends at a committed
   manifest the next run resumes from.
