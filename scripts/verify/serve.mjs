@@ -200,6 +200,18 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       } else v = r.verify
     }
     const cfg = loadConfig(root)
+    const registry = `${String(cfg.ok && cfg.registry ? cfg.registry : 'docs/features').replace(/\/+$/, '')}/`
+    /**
+     * Whether green run `g` at this sha already proves what a phase request diffed from `base` would:
+     * its tier runs every check and suite the phase tier does, and each phase suite was run whole there
+     * or from a base at or before this one (a wider range selects at least as much).
+     */
+    const covers = (g, base) => {
+      const has = (x) => !x.tiers.includes('phase') || x.tiers.includes(g.tier)
+      if (!(v?.checks ?? []).every(has) || !(v?.suites ?? []).every(has)) return false
+      const wider = g.verdict?.base && (g.verdict.base === base || tryGit(root, 'merge-base', '--is-ancestor', g.verdict.base, base) !== null)
+      return (v?.suites ?? []).filter((s) => s.tiers.includes('phase')).every((s) => g.verdict?.selection?.[s.name]?.files === 'all' || wider)
+    }
     const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
     // agent_walk.copy: untracked local files the tests may need, copied into every checkout after it moves.
     const local = cfg.ok ? cfg.agentWalk?.copy ?? [] : []
@@ -270,15 +282,6 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       if (!commitExists(root, req.sha)) return empty(req, 'gone')
       if (tryGit(root, 'rev-parse', '--verify', '-q', `refs/heads/${req.target}`) === null) return empty(req, 'env-broken', { broken: [{ suite: '-', reason: `target branch "${req.target}" does not exist` }] })
       const targetSha = git(root, 'rev-parse', `refs/heads/${req.target}`)
-      const checkout = ensureCheckout(root, slot)
-      let sha = req.sha
-      if (req.tier === 'merge') {
-        const m = mergedCheckout(checkout, targetSha, req.sha, req.message ?? `Merge ${req.branch} into ${req.target}`)
-        if (m.conflict) return empty(req, 'conflict', { files: m.files })
-        sha = m.sha
-      } else checkoutAt(checkout, req.sha)
-      copyLocal(root, checkout, local)
-      setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
       const after = (g) => g && g.sha !== req.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, req.sha) !== null
       // The branch's newest green that this sha descends from. Not simply the newest green: a
       // `--tree` run's sha is a `git stash create` commit, never an ancestor of the next real commit,
@@ -293,6 +296,27 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       // The commit tier starts after the branch's last green; the phase and merge tiers cover the branch.
       const green = req.since || req.tier !== 'commit' || onTarget ? null : lastGreenBelow(['commit', 'phase'])
       const base = req.since ?? green?.sha ?? mergeBase
+      // Nothing to run, decided before a checkout moves: a commit or phase range that changed only the
+      // registry (walk results, a manifest, the SPEC) — the merge tier's `carry` rule — and a phase
+      // request at a sha an equal-or-wider green run already covered. A benchmark run spent 4 of its 5
+      // phase runs re-testing what the commit tier had just tested, and two more on docs-only commits.
+      if (req.tier !== 'merge') {
+        const changed = (tryGit(root, 'diff', '--name-only', '--no-renames', base, req.sha) ?? '\0').split('\n').filter(Boolean)
+        if (changed.length && changed.every((f) => f.startsWith(registry))) return empty(req, 'green', { docsOnly: true, base, why: `only ${registry} changed since ${base.slice(0, 7)}` })
+        if (req.tier === 'phase') {
+          const prior = ledger.greens(req.branch, ['commit', 'phase']).find((g) => g.sha === req.sha && covers(g, base))
+          if (prior) return { ...prior.verdict, reusedFrom: prior.id, base, ms: 0 }
+        }
+      }
+      const checkout = ensureCheckout(root, slot)
+      let sha = req.sha
+      if (req.tier === 'merge') {
+        const m = mergedCheckout(checkout, targetSha, req.sha, req.message ?? `Merge ${req.branch} into ${req.target}`)
+        if (m.conflict) return empty(req, 'conflict', { files: m.files })
+        sha = m.sha
+      } else checkoutAt(checkout, req.sha)
+      copyLocal(root, checkout, local)
+      setupIfNeeded(checkout, v, (cmd) => shell(cmd, { cwd: checkout, timeout: v.timeoutMs }))
       let targetCo = null
       const ctx = {
         verify: v,
@@ -339,6 +363,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       const commits = (tryGit(root, 'rev-list', '--reverse', '--first-parent', `${base}..${req.sha}`) ?? '').split('\n').filter(Boolean)
       const verdict = await run({ ...req, sha, base, commits: commits.length ? commits : [req.sha], changed: changedFiles(root, mergeBase, req.sha) }, ctx)
       verdict.sha = req.sha
+      verdict.base = base // what this run's selection was diffed from — a later phase request may reuse it (covers)
       if (untested) verdict.untested = true
       if (req.tier === 'merge') {
         verdict.merged = sha

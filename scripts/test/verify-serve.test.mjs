@@ -492,3 +492,84 @@ test('on the target itself: a --tree snapshot as the newest green is skipped —
   assert.equal(v.status, 'green', JSON.stringify(v))
   assert.equal(v.selection.u.files, 2, `since c1: t/b added, t/a touched — not only the last commit: ${JSON.stringify(v.selection)}`)
 })
+
+/** feat: c1 adds t/a.test.mjs (code), c2 changes only the registry (docs/features/x/MANIFEST.md). */
+function docsRepo() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vsrv-')))
+  git(root, 'init', '-q', '-b', 'main')
+  writeFileSync(join(root, 'readme.txt'), '1\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'init')
+  git(root, 'checkout', '-qb', 'feat')
+  mkdirSync(join(root, 't'))
+  writeFileSync(join(root, 't', 'a.test.mjs'), testFile('a'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test a')
+  const c1 = git(root, 'rev-parse', 'HEAD')
+  mkdirSync(join(root, 'docs', 'features', 'x'), { recursive: true })
+  writeFileSync(join(root, 'docs', 'features', 'x', 'MANIFEST.md'), 'state: built\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'docs: manifest')
+  const c2 = git(root, 'rev-parse', 'HEAD')
+  git(root, 'checkout', '-q', 'main')
+  return { root, c1, c2 }
+}
+const greenVerdict = (r, sha, extra) => ({ request: r.id, branch: 'feat', sha, tier: r.tier, status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], reused: 0, ms: 5, ...extra })
+
+test('a commit request whose range since the last green changed only the registry is green without a run', async () => {
+  const { root, c1, c2 } = docsRepo()
+  const l = openLedger(root)
+  green(l, { root, branch: 'feat', sha: c1 })
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.docsOnly, true)
+  assert.deepEqual(v.selection, {}, 'nothing ran')
+})
+
+test('a docs commit whose range still holds untested code runs as before', async () => {
+  const { root, c2 } = docsRepo()
+  const l = openLedger(root)
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.docsOnly, undefined)
+  assert.equal(v.selection.u.files, 1)
+})
+
+test('a phase request at a sha a green run already covered (whole suite) reuses its verdict; a narrower earlier run does not', async () => {
+  const { root, c1 } = docsRepo()
+  const l = openLedger(root)
+  const whole = l.newRequest({ worktree: root, branch: 'feat', sha: c1, tier: 'commit', target: 'main' })
+  l.saveRequest({ ...whole, state: 'done', verdict: greenVerdict(whole, c1, { selection: { u: { files: 'all', why: 'x' } } }) })
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c1, tier: 'phase', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const v = l.getRequest(r.id).verdict
+  assert.equal(v.status, 'green', JSON.stringify(v))
+  assert.equal(v.reusedFrom, whole.id)
+  assert.equal(v.tier, 'phase', "the verdict is this request's")
+
+  const { root: root2, c1: d1 } = docsRepo()
+  const l2 = openLedger(root2)
+  const narrow = l2.newRequest({ worktree: root2, branch: 'feat', sha: d1, tier: 'commit', target: 'main' })
+  // one file, selected from a base after the phase tier's merge-base: a narrower range
+  l2.saveRequest({ ...narrow, state: 'done', verdict: greenVerdict(narrow, d1, { selection: { u: { files: 1, why: 'x' } }, base: d1 }) })
+  const r2 = l2.newRequest({ worktree: root2, branch: 'feat', sha: d1, tier: 'phase', target: 'main' })
+  await serve(root2, opts({ verify: unit() }))
+  const v2 = l2.getRequest(r2.id).verdict
+  assert.equal(v2.status, 'green', JSON.stringify(v2))
+  assert.equal(v2.reusedFrom, undefined)
+})
+
+test('a phase request is not reused from a commit-tier run when the phase tier has checks the commit tier does not run', async () => {
+  const { root, c1 } = docsRepo()
+  const l = openLedger(root)
+  const whole = l.newRequest({ worktree: root, branch: 'feat', sha: c1, tier: 'commit', target: 'main' })
+  l.saveRequest({ ...whole, state: 'done', verdict: greenVerdict(whole, c1, { selection: { u: { files: 'all', why: 'x' } } }) })
+  const cfg = { ...unit(), checks: [{ name: 'lint', run: 'true', cwd: '.', compare: 'exit', match: null, tiers: ['phase', 'merge'], needs: [] }] }
+  const r = l.newRequest({ worktree: root, branch: 'feat', sha: c1, tier: 'phase', target: 'main' })
+  await serve(root, opts({ verify: cfg }))
+  assert.equal(l.getRequest(r.id).verdict.reusedFrom, undefined)
+})
