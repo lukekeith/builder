@@ -13,6 +13,8 @@
  * A command that cannot start exits 127 with the reason. Otherwise the command's own exit code.
  */
 import { spawn } from 'node:child_process'
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 export function run(seconds, argv, { graceMs = 5000, stdio = 'inherit' } = {}) {
   return new Promise((resolveRun) => {
@@ -49,7 +51,13 @@ export function run(seconds, argv, { graceMs = 5000, stdio = 'inherit' } = {}) {
   })
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+})()
 if (isMain) {
   const [secs, ...argv] = process.argv.slice(2)
   const seconds = Number(secs)
