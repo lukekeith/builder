@@ -277,7 +277,8 @@ test('a blocked spec parks with its reason and the fleet exits 1', () => {
   assert.equal(r.fleet.features.b.reason, 'plan wants to split')
   const out = readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8')
   assert.match(out, /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z\] ⛔ b parked$/m)
-  assert.match(out, /^  why: +plan wants to split\n  next: +\/builder:agent — naming it again unparks it and retries\n  record: .*\/docs\/features\/b\/PARKED\.md \(committed on builder\/b\)$/m)
+  // Every park says what a person can do, and its record is read from the branch (the worktree goes).
+  assert.match(out, /^  why: +plan wants to split\n  next: +\/builder:agent — naming it again unparks it and retries\n  choices:\n    1\. Retry it with agents — \/builder:agent --path docs\/features\/b\n    2\. Dig in yourself, in a session — \/builder:resume --path docs\/features\/b\n    3\. Leave it for now\n  record: git show builder\/b:docs\/features\/b\/PARKED\.md$/m)
 })
 
 test('a run that changes nothing parks as no progress', () => {
