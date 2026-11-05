@@ -25,7 +25,7 @@ export function requestMerge(root, wt, { target, message }) {
   const ledger = openLedger(root)
   const head = git(wt, 'rev-parse', 'HEAD')
   const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')
-  const live = ledger.requests((r) => r.tier === 'merge' && r.branch === branch && r.sha === head && (['queued', 'running'].includes(r.state) || (r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held))).at(-1)
+  const live = ledger.requests((r) => r.tier === 'merge' && r.branch === branch && r.sha === head && r.target === target && (['queued', 'running'].includes(r.state) || (r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held))).at(-1)
   if (live) return live.id
   for (const r of ledger.requests((x) => x.tier === 'merge' && x.branch === branch && ['queued', 'running'].includes(x.state))) client(root, 'cancel', r.id, '--in', root)
   const r = client(wt, 'request', wt, 'HEAD', '--tier', 'merge', '--hold', '--target', target, '--message', message)
@@ -33,14 +33,18 @@ export function requestMerge(root, wt, { target, message }) {
   return r.out
 }
 
-/** The latest done merge-tier verdict for exactly this sha of the branch, or null. */
-export function mergeVerdict(root, branch, sha) {
-  return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.sha === sha && r.state === 'done').at(-1)?.verdict ?? null
+/**
+ * The latest done merge-tier verdict for exactly this sha of the branch, or null. With `target`, only
+ * one that merged into it: a run aimed at another branch (a quick check's, filed for merge_into while
+ * the fleet lands on its --into) tested a different merge and would land elsewhere.
+ */
+export function mergeVerdict(root, branch, sha, target = null) {
+  return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.sha === sha && r.state === 'done' && (!target || r.target === target)).at(-1)?.verdict ?? null
 }
 
-/** The branch's latest held green merge-tier verdict (whatever sha it tested), or null. */
-export function heldMerge(root, branch) {
-  return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held).at(-1)?.verdict ?? null
+/** The branch's latest held green merge-tier verdict (whatever sha it tested), or null; with `target`, only one aimed at it. */
+export function heldMerge(root, branch, target = null) {
+  return openLedger(root).requests((r) => r.tier === 'merge' && r.branch === branch && r.state === 'done' && r.verdict?.status === 'green' && r.verdict.held && (!target || r.target === target)).at(-1)?.verdict ?? null
 }
 
 /**

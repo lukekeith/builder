@@ -5,6 +5,7 @@
  * fleet call this; it writes requests, starts the service when none runs, and reads verdicts.
  *
  *   verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <b>] [--hold] [--since <sha>] [--message <m>] [--tree]
+ *     (no --target: the feature's landing branch — BUILDER_TARGET, the manifest's target:, merge_into; verify/target.mjs)
  *   verify.mjs release <request>   (a held green merge → land it; exit 7 if the target moved, 1 if the checkout refused — then, when your uncommitted changes overlap the feature, an `overlap: <JSON list>` line)
  *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
  *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (a `pending: <tier> <state> <id>` line per run still going — after a finished verdict, those newer than it; an id to wait on)
@@ -24,6 +25,7 @@ import { land, ensureCheckout, mergedCheckout } from './checkouts.mjs'
 import { openLedger, verifyDir } from './ledger.mjs'
 import { serviceAlive } from './serve.mjs'
 import { loadConfig } from '../config.mjs'
+import { landingTarget } from './target.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
 const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--tier commit|phase|merge] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
@@ -175,7 +177,9 @@ async function main() {
     const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')
     const sha = flag('--tree') ? tryGit(wt, 'stash', 'create') || git(wt, 'rev-parse', 'HEAD') : git(wt, 'rev-parse', shaArg)
     const cfg = loadConfig(root)
-    const target = opt('--target') ?? (cfg.ok ? cfg.mergeInto : 'main')
+    // The feature's landing branch, not just the config's: on a branch stacked on unmerged work,
+    // comparing against merge_into counts everything between the two as this branch's change.
+    const target = landingTarget({ explicit: opt('--target'), wt, branch, cfg })
     const req = ledger.newRequest({ worktree: wt, branch, sha, tier, target, ...(flag('--hold') && tier === 'merge' && { hold: true }), ...(opt('--since') && { since: git(wt, 'rev-parse', opt('--since')) }), ...(opt('--message') && { message: opt('--message') }) })
     ensureService(root)
     console.log(req.id)

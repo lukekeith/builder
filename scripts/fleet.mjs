@@ -341,6 +341,9 @@ function envFor(feature, lane) {
   env.BUILDER_FLEET_DIR = DIR
   // The builder root, so the skills' `<builder>/scripts/…` needs no resolving (and no `B=…;` prefix).
   env.BUILDER_DIR = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'))
+  // Where this run lands (--into): every verifier request an agent files — commit, phase, the quick
+  // check's merge — compares against it (verify/target.mjs), not merge_into.
+  env.BUILDER_TARGET = TARGET
   return env
 }
 
@@ -1161,8 +1164,8 @@ async function mergeThroughVerifier(feature, f) {
     const moved = signoffMoved(feature, f)
     if (moved) return moved
     const head = tryGit(['rev-parse', 'HEAD'], f.worktree)
-    const done = mergeVerdict(ROOT, f.branch, head)
-    const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch)
+    const done = mergeVerdict(ROOT, f.branch, head, TARGET)
+    const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch, TARGET)
     if (held) {
       const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
       const c = carryMerge(ROOT, held.request)
