@@ -30,6 +30,20 @@ prompts you, and every landing and the fleet's end are announced. Nothing to cha
 - A park record's path in `fleet.out` reads from its branch (`git show <branch>:<path>`) — the
   worktree it named is removed once the feature parks.
 
+**Test runs compare against the branch the feature lands on.** On a feature branch stacked on
+unmerged work, commit and phase runs compared against `merge_into`, so every commit below the
+branch counted as changed and server-only commits ran other apps' whole suites. Nothing to change in
+`.claude/builder.md`.
+
+**Fixed:**
+- A verifier request with no `--target` resolves the feature's landing branch: the fleet's `--into`,
+  else the manifest's `target:`, else `merge_into`. An explicit `--target` still wins.
+- A commit run starts after the branch's newest green that HEAD descends from. A `--tree` run (a
+  snapshot of uncommitted work) as the newest green no longer sends the run back to the whole branch;
+  on the target branch itself, back to only the last commit.
+- The fleet only reuses or lands a held merge run aimed at its own target, never one filed for
+  another branch.
+
 ## 6.1.1
 
 **Only the commit that was signed off ships.** With verify optional, nothing tied what ships to the

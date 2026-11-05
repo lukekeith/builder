@@ -101,3 +101,23 @@ test('awaitVerdict gives up after maxMs (null — the caller parks) when no serv
   assert.equal(await awaitVerdict(root, r.id, { pollMs: 50, maxMs: 300 }), null)
   assert.ok(Date.now() - t0 < 2000)
 })
+
+test('a held merge aimed at another branch is never the fleet\'s to reuse: heldMerge, mergeVerdict and requestMerge read the target', async () => {
+  const { root, wt } = repo()
+  const { openLedger } = await import('../verify/ledger.mjs')
+  const l = openLedger(root)
+  const head = git(wt, 'rev-parse', 'HEAD')
+  // e.g. the quick check's own merge request, filed for main while the fleet lands on feature/stack
+  const r = l.newRequest({ worktree: wt, branch: 'builder/f', sha: head, tier: 'merge', target: 'main', hold: true })
+  l.saveRequest({ ...r, state: 'done', verdict: { request: r.id, branch: 'builder/f', sha: head, tier: 'merge', status: 'green', held: true, regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 } })
+  assert.equal(heldMerge(root, 'builder/f', 'feature/stack'), null)
+  assert.equal(mergeVerdict(root, 'builder/f', head, 'feature/stack'), null)
+  assert.equal(heldMerge(root, 'builder/f', 'main').request, r.id)
+  assert.equal(mergeVerdict(root, 'builder/f', head, 'main').request, r.id)
+  assert.equal(heldMerge(root, 'builder/f').request, r.id, 'no target given: as before')
+  git(root, 'branch', 'feature/stack')
+  process.env.BUILDER_VERIFY_IDLE_MS = '500'
+  const id = requestMerge(root, wt, { target: 'feature/stack', message: 'x' })
+  assert.notEqual(id, r.id, 'a new request for the fleet\'s own target, not the held main one')
+  assert.equal(l.getRequest(id).target, 'feature/stack')
+})
