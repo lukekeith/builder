@@ -4,7 +4,9 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
-## Unreleased
+## 6.2.0
+
+Three fixes from real runs: a fleet that parks always asks you and one that finishes always tells you; test runs compare against the branch a feature lands on; brainstorm lets you pick instead of type.
 
 **A parked fleet always asks you, and a finished one always tells you.** Only a landing blocked by
 your uncommitted changes came with choices; every other park — a config only you may change, a
