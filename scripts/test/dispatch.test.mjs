@@ -72,6 +72,9 @@ test('dispatch implementer: the brief (task + SPEC sections + §Contract + recip
     assert.ok(p.includes(`**${sp}**`), s)
     assert.ok(existsSync(sp))
   }
+  // A hang is capped portably: cap.mjs, never GNU `timeout` (macOS has none — a benchmark lost 24m to it).
+  assert.ok(p.includes(`node ${join(BUILDER, 'scripts', 'cap.mjs')} 120 '<command>'`), 'the cap command, with its absolute path')
+  assert.doesNotMatch(p, /wrap it in `timeout/)
   // The constraints close the brief, once — the prompt points at them rather than repeating them.
   assert.doesNotMatch(p, /- No dependencies\. Node's own modules only\./)
   assert.match(p, /Read it\s+with the Read tool, in one call — never `cat` or `sed` it/)
