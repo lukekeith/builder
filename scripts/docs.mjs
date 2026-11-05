@@ -263,7 +263,7 @@ const describe = (step) =>
   STEPS[step].map(([file, name]) => (file === '<config>' ? '.claude/builder.md' : name ? `${file.replace('skills/resume/', '')} §${name}` : file)).join(' · ')
 
 async function main(argv) {
-  const a = parseArgs(argv, { bool: ['prompts', 'no-config', 'list'] })
+  const a = parseArgs(argv, { bool: ['prompts', 'no-config', 'list', 'whole'] })
   if (a.list) {
     for (const step of Object.keys(STEPS)) console.log(`${step.padEnd(11)} ${describe(step)}`)
     return 0
@@ -319,10 +319,34 @@ async function main(argv) {
     return 1
   }
   const kb = Math.round(b.sections.reduce((n, s) => n + Buffer.byteLength(s.text), 0) / 1024)
-  const out = [`# builder docs: ${step} — ${b.sections.length} sections, ${kb} KB (from ${BUILDER})`, '']
-  for (const s of b.sections) out.push(`--- ${s.label}`, '', s.text, '')
-  process.stdout.write(out.join('\n'))
+  const blocks = b.sections.map((s) => [`--- ${s.label}`, '', s.text, ''].join('\n'))
+  const parts = a.whole ? [blocks] : packParts(blocks)
+  const k = Math.min(Math.max(Number(a.part) || 1, 1), parts.length)
+  const again = ['node', posix(join(BUILDER, 'scripts', 'docs.mjs')), step, ...(a['no-config'] ? ['--no-config'] : []), ...(a.prompts ? ['--prompts'] : []), ...(a.path ? ['--path', a.path] : [])].join(' ')
+  const next = k < parts.length ? `🔴 Part ${k} of ${parts.length} — not the whole of what this step reads. Next: \`${again} --part ${k + 1}\`, read before you act.` : null
+  const head = parts.length > 1 ? `# builder docs: ${step} — part ${k} of ${parts.length} · ${b.sections.length} sections, ${kb} KB in all (from ${BUILDER})` : `# builder docs: ${step} — ${b.sections.length} sections, ${kb} KB (from ${BUILDER})`
+  process.stdout.write([head, ...(next ? [next] : []), '', ...parts[k - 1], ...(next ? [next, ''] : [])].join('\n'))
   return 0
+}
+
+/**
+ * One Bash output shows ~30,000 chars; past that the model gets a 2 KB preview of a persisted file and
+ * pages it in by grep — the audit bundle (47 KB) cost 3–5 turns that way, and its §Findings shape was
+ * never read inline. So a bundle prints in parts, whole sections each, every part under PART_MAX.
+ */
+export const PART_MAX = 29000
+export function packParts(blocks, max = PART_MAX) {
+  const parts = [[]]
+  let size = 0
+  for (const b of blocks) {
+    if (size && size + b.length > max) {
+      parts.push([])
+      size = 0
+    }
+    parts.at(-1).push(b)
+    size += b.length
+  }
+  return parts
 }
 
 if ((() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)) } catch { return false } })()) cli(main)
