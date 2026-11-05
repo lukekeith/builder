@@ -133,6 +133,9 @@ task-number range.
 App: <app>
 Phase: <n>
 Recipe: <the companion skill to read FIRST, or the REFERENCE section that governs this work; append ` · tiny` for a one-file edit with its test, so the build reviews it at the cheapest tier>
+<!-- Recipe values dispatch resolves: a builder skill name (`test-driven-development`), `REFERENCE §<section>`,
+     or a project skill under .claude/skills/<name>/ — any other text reaches the implementer verbatim as a
+     §Companion skills name, and the task then runs on the implementer that carries the Skill tool. -->
 
 **Files:**
 - Create: `exact/path/to/file.ts` — <its one responsibility>
@@ -223,7 +226,10 @@ checklist you run yourself — not a subagent dispatch.
 2. **Step scan.** Each step lets the implementer write exactly one reasonable thing, and carries no
    more: a line that decides nothing is a gap (the red flags above); a body the signature and tests
    already determine is a transcript. Fix both.
-3. **Behaviour coverage.** Check every Behaviour line has a Test that would fail without it.
+3. **Behaviour coverage.** Check every Behaviour line has a Test that would fail without it — **by
+   reading** the test against the line. 🔴 Never by running code: no prototype implementation, no
+   injected bugs, no test run. Planning writes no code to check itself; the implementer's failing
+   test first (TDD) proves it, at no extra cost.
 4. **Type consistency.** Do the types, signatures and property names in later tasks match what
    earlier tasks defined? A function called `clearLayers()` in Task 3 and `clearFullLayers()` in
    Task 7 is a bug.
@@ -233,7 +239,8 @@ checklist you run yourself — not a subagent dispatch.
 7. **Proportion.** Compare the plan's length to the SPEC's. A plan several times longer than its spec
    is a transcript of the program. The plan is words, test assertions, and the opinionated code above: if code blocks
    beyond those are most of the document, replace them with words, and re-check each step is
-   still unambiguous. A guide, not a hard limit.
+   still unambiguous. Over **2×** the SPEC (and over 16 KB), `plan-slices.mjs --index --write`
+   refuses with exit 3 and writes no index — cut the plan and run it again.
 
 Fix what you find inline. No need to re-review — fix and move on. A SPEC requirement with no task
 gets a task.

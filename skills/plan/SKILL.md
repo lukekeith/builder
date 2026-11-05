@@ -213,6 +213,7 @@ reading `Phase N · Task M · <name>` and nothing else. Condense strips §Plan b
 reads it by position. Never per-phase docs. **The script writes it** from PLAN.md's headings and
 `## Phases` table — never type it by hand:
 `node <builder>/scripts/plan-slices.mjs <folder> --index --write` (re-running it rewrites the same index).
+Exit 3 means the plan is over 2× its SPEC (PLAN-FORMAT §Self-review 7): cut it to words and run it again.
 
 **The manifest:** `state: planned`, `head`, `branch`, `next: /builder:resume --path <folder>`. Commit
 `PLAN.md`, the SPEC and the manifest together: `docs(<ticket-or-feature>): plan <feature>` — one call:

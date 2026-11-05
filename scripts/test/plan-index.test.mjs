@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { planIndex, spliceIndex } from '../plan-slices.mjs'
+import { planIndex, spliceIndex, overProportion } from '../plan-slices.mjs'
 import { leanRepo, run, git, readText, LEAN } from './fixtures/lean-repo.mjs'
 
 const PLAN = readFileSync(join(LEAN, 'note-tags', 'PLAN.md'), 'utf8')
@@ -49,4 +49,22 @@ test('CLI: --index prints it; --index --write puts it in SPEC.md once, however o
   assert.equal(spec.split('\n## Plan\n').length, 2)
   assert.ok(spec.endsWith(INDEX + '\n'))
   assert.match(spec, /\| F2 \|.*\n\n## Plan\n/)
+})
+
+test('overProportion: a plan over 2× its SPEC (and over 16 KB) is refused; the §Plan index does not count; a tiny plan never is', () => {
+  const spec = 'x'.repeat(10 * 1024)
+  assert.equal(overProportion('p'.repeat(20 * 1024), spec), null, 'exactly 2× is in proportion')
+  assert.match(overProportion('p'.repeat(25 * 1024), spec), /^PLAN\.md is 2\.5× its SPEC \(25\.0 KB vs 10\.0 KB\) — over 2×/)
+  assert.equal(overProportion('p'.repeat(15 * 1024), 'x'.repeat(1024)), null, 'under 16 KB: never nagged')
+  assert.equal(overProportion('p'.repeat(25 * 1024), spec + '\n## Plan\n\n' + '- Phase 1 · Task 1 · a\n'.repeat(10)), overProportion('p'.repeat(25 * 1024), spec))
+})
+
+test('CLI: --index --write refuses an over-long plan with exit 3 and leaves SPEC.md alone', () => {
+  const r = leanRepo('note-tags')
+  const before = readText(join(r.folder, 'SPEC.md'))
+  writeFileSync(join(r.folder, 'PLAN.md'), PLAN + '\n```js\n' + '// transcript\n'.repeat(Math.ceil((before.length * 2.2) / 14)) + '```\n')
+  const w = run('plan-slices.mjs', [r.rel, '--index', '--write'], { cwd: r.root })
+  assert.equal(w.status, 3)
+  assert.match(w.stderr, /over 2×, a transcript of the code \(PLAN-FORMAT §Self-review 7\)/)
+  assert.equal(readText(join(r.folder, 'SPEC.md')), before)
 })
