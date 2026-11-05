@@ -286,7 +286,8 @@ works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets
 the feature parks.
 
 Then say, in two lines: it's running on its own and outlives this session; while this session is open
-the chat reports when it finishes (the watcher), otherwise the `builder` status line and the next
+the chat reports when it finishes (the watcher); wherever you are, a desktop notification says when a
+feature lands or parks and when the fleet ends; otherwise the `builder` status line and the next
 session's brief tell; `/builder:fleet:status` shows where it stands any time. A merge: the status line
 reads `✔ <feature> merged — /builder:fleet:status` once the fleet has exited (on a narrow line,
 `✔ <feature> merged`, then `✔ <n> merged`; never folded into "+N more"), and the next session's brief names it with its sha
@@ -301,7 +302,10 @@ never cut, and the brief says `⛔ <feature> needs you — <why> — /builder:fl
 (§1 *A park that needs you*), and `.builder/fleet/fleet.out` gets a block per park — why,
 next, its choices, and its PARKED.md. Each park the fleet doesn't retry itself also raises a desktop
 notification (macOS, or Linux with `notify-send`; `BUILDER_NOTIFY=0` turns it off) that says it waits on
-you and to open `/builder:fleet:status`, where every park and failure gets its picker. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
+you and to open `/builder:fleet:status`, where every park and failure gets its picker. Each landing,
+and the fleet's end, raise one too — naming the repo, what landed, parked or failed, and to open
+`/builder:fleet:status` there for what to test and what's next — so a run that finishes while the
+person is in another repo, or after this session ended, still reaches them. A feature with no commit or ledger tick for 45 minutes gets a `⚠` there and
 a line under `/builder:fleet:status`. A fleet whose process is gone with work mid-run shows
 `⚠ fleet stopped` under the table, with the `--detach` command that resumes it.
 

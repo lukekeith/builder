@@ -33,7 +33,7 @@ import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
 import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
-import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
+import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
@@ -1061,6 +1061,7 @@ function archiveRow(feature, facts, thisRun = true) {
   rmSync(join(DIR, 'parked', feature), { recursive: true, force: true })
   fleet.archived = (fleet.archived ?? 0) + 1
   if (thisRun) fleet.landedThisRun = [...new Set([...(fleet.landedThisRun ?? []), feature])]
+  if (thisRun) desktopNotify(landNotice({ feature, target: fleet.target ?? TARGET, repo: basename(ROOT) }))
   landed.add(feature)
   const why = archiveLogs(ROOT, feature, AW.keepLogs)
   if (why) addNote(why)
@@ -2252,16 +2253,17 @@ function tellStop(feature, f, retry = null) {
     mkdirSync(DIR, { recursive: true })
     appendFileSync(join(DIR, 'fleet.out'), parkBlock({ feature, status: f.status, reason: f.reason, choices, record, branch: committed ? f.branch : null, log: f.log, retry }))
   } catch {}
-  if (!retry) notifyStop(feature, f)
+  if (!retry) desktopNotify(stopNotice({ feature, status: f.status, reason: f.reason, repo: basename(ROOT) }))
 }
 
 /**
- * A desktop notification for a stop that waits on a person — macOS (osascript) or Linux
- * (notify-send). Best effort and fire-and-forget: a missing tool or a refusal changes nothing.
+ * A desktop notification — a stop that waits on a person, a landing, the fleet's end — on macOS
+ * (osascript) or Linux (notify-send). The fleet runs detached, and the status line only shows it in a
+ * session opened in this repo, so this is how a person working anywhere else hears of it. Best effort
+ * and fire-and-forget: a missing tool or a refusal changes nothing; the child outlives the fleet's exit.
  */
-function notifyStop(feature, f) {
+function desktopNotify({ title, body }) {
   if (!mayNotify()) return
-  const { title, body } = stopNotice({ feature, status: f.status, reason: f.reason })
   const q = (s) => `"${String(s).replace(/[\\"]/g, '\\$&')}"`
   const cmd = process.platform === 'darwin' ? ['osascript', ['-e', `display notification ${q(body)} with title ${q(title)}`]]
     : process.platform === 'linux' ? ['notify-send', [title, body]] : null
@@ -2661,5 +2663,8 @@ fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))
 addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))
 save()
 unlock()
+// The run is over: say so wherever the person is — the session that launched it may be long gone.
+const ended = (s) => Object.entries(fleet.features).filter(([, f]) => f.status === s).map(([n]) => n).sort()
+desktopNotify(endNotice({ repo: basename(ROOT), landed: fleet.landedThisRun ?? [], parked: ended('parked'), failed: ended('failed') }))
 console.log(readFileSync(join(DIR, 'STATUS.md'), 'utf8'))
 process.exit(Object.values(fleet.features).every((f) => f.status === 'done') ? 0 : 1)
