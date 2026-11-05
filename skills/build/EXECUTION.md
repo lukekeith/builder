@@ -338,8 +338,10 @@ After the last phase's tasks, not after each phase — under every test plan: it
 model**, pointed at the ledger's deferred-minor and parked lines and at SPEC §Contract. Its report is
 written to `<WS>/final-review.md`.
 
-If it returns findings, dispatch **ONE** fix subagent with the complete list — not one fixer per
-finding: `dispatch.mjs implementer <folder> --final` (it takes `<WS>/final-review.md`). Per-finding
+If it returns **Critical or Important** findings, dispatch **ONE** fix subagent with the complete
+list (its Minors ride along) — not one fixer per finding. Minors alone are no fix wave: append each
+to the ledger as `deferred-minor` and go on to Finish — a wave, its re-review and a phase verify for
+Minors cost ~2 minutes and change nothing a reader of the hand-off would act on. The fix wave: `dispatch.mjs implementer <folder> --final` (it takes `<WS>/final-review.md`). Per-finding
 fixers each rebuild context and re-run suites; a real session's final-review fix
 wave cost more than all its tasks combined. Then run **exactly one** scoped re-review of the fix wave:
 `dispatch.mjs re-review <folder> --final --round 1 --findings-file <WS>/final-review.md`.

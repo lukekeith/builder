@@ -364,7 +364,8 @@ manifest, commit and footer `/builder:spec --auto` produces.
 3. Run `/builder:spec`'s §1–§3 as written, under `--auto`, with this turn's tree as the record: every
    product choice takes its recommendation (`auto (recommended) YYYY-MM-DD`), SPEC.md and
    MANIFEST.md (PROGRAM.md at xl) are written, `check-obligations.mjs` proves it, one commit
-   `docs(<ticket-or-feature>): design <feature>`, no review printed — the one line and the footer.
+   `docs(<ticket-or-feature>): design <feature>` **on the current branch** (no branch is made here —
+   the build or the fleet makes its own), no review printed — the one line and the footer.
 4. Set the stub's `status: handed-off` — its `spec:` line already points at the SPEC.
 
 **After a crash, re-run the same command** — step 1 of §Where to start reads the stub and finishes

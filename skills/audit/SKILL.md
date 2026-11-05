@@ -18,6 +18,9 @@ has already paid to learn · REFERENCE §SPEC.md gives the §Findings / §Decisi
 §MANIFEST.md is the file written at the end · §Prototype mode holds the three-way choice ·
 §Agent model tiering sets the model per item. Surfaces:
 [`SURFACE-CHECK.md`](../resume/SURFACE-CHECK.md).
+**Under `--agent-walk`, two calls instead: `docs.mjs audit-agent`** — the same less §The review, §The
+two-way footer and §Continuing on "go", which an unattended audit never uses — **then `docs.mjs
+fleet-config audit`**, the config; each fits one Bash output where `audit` is over it.
 
 Input: `<folder>/SPEC.md` + `MANIFEST.md`; output: the spec corrected in one write plus the manifest.
 **Read-only against app code** — nothing under any app's path is edited here, and neither is the
@@ -190,7 +193,10 @@ this pass already read. It is a map, not a finding: anything that needs a decisi
 
 **One SPEC edit, at the end of the pass**: corrections in place (including §Apps rows this pass proved
 wrong), §Findings & risks rows, OPEN §Decisions rows with recommendations, and `build-time risk` on
-anything the cap leaves unsettled.
+anything the cap leaves unsettled. **Under `--auto`** the decisions gate would take every
+recommendation anyway (resume SKILL §Under `--auto`), so this edit writes each new §Decisions row
+already ruled — its Recommended ruling as an implementable statement, decider `auto (recommended)
+YYYY-MM-DD` — and leaves none OPEN. A later session re-reading the SPEC to rule them is the waste.
 
 **The manifest:** `state: audited`, `head`, `branch`, `apps:` refreshed if sweep 3 corrected §Apps,
 and `next: /builder:resume --path <folder>` — one command either way, because the orchestrator routes

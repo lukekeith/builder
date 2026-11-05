@@ -11,7 +11,7 @@
  * membership source), else the block's `Phase:` line. --write puts it into SPEC.md: an existing
  * `## Plan` section is replaced by its heading, else it goes after §Findings & risks (before any
  * later section — §Prototype, §Replaced surfaces, `## Fixes`), else at the end. Re-running it writes
- * the same file.
+ * the same file. A plan over 2× its SPEC is refused (exit 3, see overProportion) and nothing written.
  *
  * Levers: --tests, else the manifest's tests:/profile: line, else the recommendation for the folder.
  */
@@ -209,6 +209,23 @@ export function planScan(planText, apps = []) {
   return lines.join('\n') + '\n'
 }
 
+/**
+ * PLAN-FORMAT §Self-review 7, enforced: a plan more than MAX_RATIO× its SPEC (and over MIN_PLAN
+ * bytes, so a tiny feature is never nagged) is a transcript of the code. On the share benchmark a
+ * 76 KB plan for a 21.5 KB SPEC took ~5 minutes to write and 26–35 KB briefs to read. The SPEC is
+ * measured without its §Plan index, so re-running after the index is written gives the same answer.
+ * Returns null when the plan is in proportion, else the refusal's text.
+ */
+export const MAX_RATIO = 2
+export const MIN_PLAN = 16 * 1024
+export function overProportion(planText, specText) {
+  const spec = String(specText ?? '').replace(/\n## Plan\n[\s\S]*?(?=\n## |$)/, '\n')
+  const plan = String(planText ?? '')
+  if (!spec.length || plan.length <= MIN_PLAN || plan.length <= MAX_RATIO * spec.length) return null
+  const kb = (n) => `${(n / 1024).toFixed(1)} KB`
+  return `PLAN.md is ${(plan.length / spec.length).toFixed(1)}× its SPEC (${kb(plan.length)} vs ${kb(spec.length)}) — over ${MAX_RATIO}×, a transcript of the code (PLAN-FORMAT §Self-review 7). Replace every code block that is not a test assertion, exact spec copy, a migration, the frozen contract, a security mechanism or an algorithm the tests don't determine with the words that decide it, then run this again. The index is not written until then.`
+}
+
 /** SPEC §Plan's index for a plan in `rel` (the feature folder, relative to the repo). */
 export function planIndex(planText, rel) {
   const { phaseOf } = phaseApps(planText)
@@ -308,6 +325,8 @@ function main(argv) {
     if (!flag('--write')) { console.log(index); return }
     const spec = read('SPEC.md')
     if (!spec) { console.error(`builder: no SPEC.md in ${dir}`); process.exit(1) }
+    const over = overProportion(planText, spec)
+    if (over) { console.error(`builder: ${over}`); process.exit(3) }
     const next = spliceIndex(spec, index)
     if (next === spec) console.log(`SPEC §Plan: already current (${slices(planText).length} tasks)`)
     else { writeAtomic(join(dir, 'SPEC.md'), next); console.log(`SPEC §Plan: written (${slices(planText).length} tasks) → ${join(dir, 'SPEC.md')}`) }

@@ -110,6 +110,9 @@ time**, stopping at the first rung that answers it:
    it: an Explore agent (`sonnet`) searches wider — synonyms, the domain behind the word, docs,
    tests. Only the branches that hang on that term wait for it; the rest of the conversation goes on.
 
+Grounding **reads** tests — it never runs them, nor a build: what the code does today is in the code
+and its test files, and a suite run here (one took 36 s) proves nothing the spec needs.
+
 **Then, and only then, ask — and only what the code cannot answer:**
 
 - **One clear meaning** → state it with its evidence and carry on (`assumed`, listed at §Confirm).

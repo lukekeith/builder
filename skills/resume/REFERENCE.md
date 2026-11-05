@@ -688,7 +688,8 @@ Sections in this order; md writes only the ones its work touches (**§Idea, §Ap
 ## Decisions            | # | Decision | Ruling | Who / date |     OPEN rows block the go-ahead
 ## Contract             the interface every consumer codes against — §The contract freeze
 ## Schema & API changes | # | ADD/EDIT/RENAME/REMOVE | Model.field | Wire | Reason | Status |
-<!-- Every data/API change, or the one line "No schema change (established YYYY-MM-DD)".
+<!-- Row ids are SC1, SC2… — check-obligations reads only SC<n> rows (S<n> is a prototype gap).
+     Every data/API change, or the one line "No schema change (established YYYY-MM-DD)".
      Migrations follow the config's house rules for the producing app. A NOT NULL add on a
      populated table needs a stated backfill. -->
 **Data plan:** <backfill/default/retention for anything touching existing rows — REMOVE and

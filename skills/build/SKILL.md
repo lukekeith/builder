@@ -340,8 +340,9 @@ step 3 when it runs, and `docs.mjs section skills/build/EXECUTION.md "Finish"` a
    `node <builder>/scripts/dispatch.mjs final-review <folder>` renders
    [`prompts/final-reviewer.md`](prompts/final-reviewer.md) — on the most capable model, pointed at
    the ledger's deferred-minor and parked lines **and at §Contract**, its report written to
-   `<WS>/final-review.md`. ONE fix dispatch (`dispatch.mjs implementer <folder> --final`, which takes
-   that file), one scoped re-review (`dispatch.mjs re-review <folder> --final --round 1
+   `<WS>/final-review.md`. Only Minors → no fix wave: each goes to the ledger as `deferred-minor`,
+   and step 1's re-request is skipped (nothing was committed). Any Critical or Important → ONE fix
+   dispatch (`dispatch.mjs implementer <folder> --final`, which takes that file), one scoped re-review (`dispatch.mjs re-review <folder> --final --round 1
    --findings-file <WS>/final-review.md`), then adjudicate. No second fix wave.
 3. 🔴 **Walk readiness** — [REFERENCE](../resume/REFERENCE.md) §Walk readiness: pending
    migrations applied to the **dev** database (asked for, not assumed), stale processes restarted,

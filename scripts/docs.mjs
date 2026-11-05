@@ -10,7 +10,7 @@
  *                                                       `verify`, `agent_walk` — which fleet-setup leaves out)
  *   node <builder>/scripts/docs.mjs fleet-config <step>   (the config cut to what that fleet step acts on, alone —
  *                                                       the second of a fleet session's two first reads; a step is
- *                                                       build|plan|resume|walk-lane|agent-walk|verify|ship)
+ *                                                       build|audit|plan|resume|walk-lane|agent-walk|verify|ship)
  *
  * Each section is printed whole, under a `--- <file> §<heading> (lines a–b)` line. A whole file
  * (EXECUTION.md, CONVERSATION.md, PLAN-FORMAT.md) is printed whole. A section nested inside another
@@ -55,6 +55,10 @@ export const STEPS = {
   // audit SKILL: §SPEC.md, §Apps, §Contract and the contract freeze, §MANIFEST.md, §Prototype mode,
   // §Agent model tiering; SURFACE-CHECK.md for surfaces; §The review's delta form, the footer.
   audit: [...R('SPEC.md', 'MANIFEST.md', 'Prototype mode', 'Agent model tiering', 'The review', 'The two-way footer', 'Continuing on "go"'), FILE('skills/resume/SURFACE-CHECK.md'), CONFIG],
+  // audit SKILL under --agent-walk: the same less §The review, §The two-way footer and §Continuing on "go" (no human
+  // reads the delta or answers a footer), and no config — `fleet-config audit` prints it in its own call. `audit` is
+  // ~47,000 chars, over one Bash output: the model got a 2 KB preview and grepped for the §Findings shape.
+  'audit-agent': [...R('SPEC.md', 'MANIFEST.md', 'Prototype mode', 'Agent model tiering'), FILE('skills/resume/SURFACE-CHECK.md')],
   // plan SKILL: PLAN-FORMAT.md · REFERENCE (§Sizes · §Contract and the contract freeze · §MANIFEST.md · §Branch and ticket),
   // §The review (the go-ahead's recap), §Flags (--here), §Continuing on "go".
   plan: [FILE('skills/plan/PLAN-FORMAT.md'), ...R('Sizes', 'Contract and the contract freeze', 'MANIFEST.md', 'Branch and ticket', 'The review', 'Flags', 'Continuing on "go"'), CONFIG],
@@ -111,6 +115,8 @@ const OMIT = {
  * always kept — real configs put phase-deciding rules there. Per step, only the builder-owned front-matter
  * blocks and `## ` sections it never acts on are cut. `docs.mjs fleet-config <step>`. What each step keeps:
  *   build  — the task loop: §House rules, §Environment landmines, §Standing traps (fleet-setup prints it).
+ *   audit  — the sweeps: §House rules (sweep 1), §Standing traps, §Global constraints, §Verification and §Environment
+ *            landmines (probes), §Companion skills.
  *   plan   — writing PLAN.md: `agent_walk:` (the walk task and the agent-walk precondition); §Verification (the
  *            phase tier per app), §Global constraints (the plan header), §House rules (the phase skeleton),
  *            §Companion skills (Recipe: lines), §Standing traps.
@@ -130,6 +136,7 @@ const OMIT = {
 export const BUILDER_SECTIONS = ['Verification', 'Walk readiness', 'Walk readiness notes', 'Global constraints', 'House rules', 'Environment landmines', 'Companion skills', 'Quality gates', 'Standing traps']
 export const FLEET_CONFIG = {
   build: { drop: /^(verify|agent_walk):/, sections: ['House rules', 'Environment landmines', 'Standing traps'] },
+  audit: { drop: /^verify:/, sections: ['Verification', 'Global constraints', 'House rules', 'Environment landmines', 'Companion skills', 'Standing traps'] },
   plan: { drop: /^verify:/, sections: ['Verification', 'Global constraints', 'House rules', 'Companion skills', 'Standing traps'] },
   resume: { drop: /^verify:/, sections: ['Walk readiness', 'Environment landmines', 'Standing traps'] },
   'walk-lane': { drop: /^verify:/, sections: ['Walk readiness', 'Walk readiness notes', 'Environment landmines', 'Standing traps'] },
