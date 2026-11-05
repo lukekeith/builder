@@ -52,7 +52,7 @@ export function describeCall(b) {
 }
 
 function emptyStep(name, start) {
-  return { name, start, end: start, ms: 0, turns: 0, toolCalls: {}, files: [], commands: [], tests: [], subagents: [], gaps: [] }
+  return { name, start, end: start, ms: 0, turns: 0, toolCalls: {}, agentToolCalls: 0, files: [], commands: [], tests: [], subagents: [], gaps: [] }
 }
 
 /** The last timestamp in the stream — the result's when there is one. */
@@ -85,7 +85,18 @@ export function deriveSteps(parsed, { prompt, root = null }) {
     cur = emptyStep(name, at)
     steps.push(cur)
   }
+  const agentCalls = new Set()
   for (const e of events) {
+    // A subagent's own events (their parent is an Agent call) are not the step's: its tool calls,
+    // files, tests and waits were credited to the orchestrator, which sent a waste analysis after the
+    // wrong session. They count once, as agentToolCalls; the step's subagents list says who ran them.
+    if (e.top) for (const b of e.blocks) if (b.kind === 'tool_use' && AGENT_TOOLS.has(b.name)) agentCalls.add(b.id)
+    if (!e.top && agentCalls.has(e.parent)) {
+      for (const b of e.blocks) if (b.kind === 'tool_use' && AGENT_TOOLS.has(b.name)) agentCalls.add(b.id) // an agent's own agent
+      if (!cur) open('(prompt)', t0)
+      cur.agentToolCalls += e.blocks.filter((b) => b.kind === 'tool_use').length
+      continue
+    }
     // The wait that ends at this event belongs to the step that was running during it — so it is
     // recorded before a Skill call in this event opens the next step.
     if (cur && lastEvent && e.t - lastEvent.t > 0) cur.gaps.push({ ms: e.t - lastEvent.t, after: lastEvent.label })
@@ -394,7 +405,7 @@ export function renderReport(data) {
       if (s.plugins?.length) out.push(`plugins: ${s.plugins.join(', ')}`)
       out.push('')
       for (const st of s.steps ?? []) {
-        out.push(`- **${st.name}** — ${dur(st.ms)}, ${st.turns} turns${calls(st.toolCalls) ? `, ${calls(st.toolCalls)}` : ''}`)
+        out.push(`- **${st.name}** — ${dur(st.ms)}, ${st.turns} turns${calls(st.toolCalls) ? `, ${calls(st.toolCalls)}` : ''}${st.agentToolCalls ? ` · subagents' own tool calls ${st.agentToolCalls}` : ''}`)
         if (st.files?.length) out.push(`  - files: ${st.files.join(', ')}`)
         if (st.tests?.length) out.push(`  - tests: ${[...new Set(st.tests)].join(' · ')}`)
         if (st.subagents?.length) out.push(`  - subagents: ${st.subagents.map((a) => `${a.type} — ${a.first}`).join(' · ')}`)

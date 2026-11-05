@@ -39,15 +39,16 @@ test('steps open on each top-level Skill call; time before the first is (prompt)
   assert.equal(steps[2].end, T0 + 300000)
 })
 
-test('a step counts its top-level turns and every tool call inside it, subagents included', () => {
+test('a step counts its own top-level turns and tool calls; a subagent\'s calls are its own count, not the step\'s files, tests or waits', () => {
   const [, brainstorm, plan] = deriveSteps(parseStream(STREAM), { prompt: 'x' })
   assert.equal(brainstorm.turns, 2)
   assert.deepEqual(brainstorm.toolCalls, { Skill: 1, Read: 1 })
-  assert.deepEqual(plan.toolCalls, { Skill: 1, Agent: 1, Edit: 1, Bash: 1 })
-  assert.deepEqual(plan.files, ['/tmp/x/src/cli.mjs'])
-  assert.deepEqual(plan.commands, ['npm test'])
-  assert.deepEqual(plan.tests, ['npm test'])
+  assert.deepEqual(plan.toolCalls, { Skill: 1, Agent: 1 })
+  assert.equal(plan.agentToolCalls, 2, "the implementer's Edit and Bash")
+  assert.deepEqual(plan.files, [])
+  assert.deepEqual(plan.tests, [], "the implementer's npm test is not the orchestrator's")
   assert.deepEqual(plan.subagents, [{ type: 'general-purpose', first: 'Implement task 1: add --tag' }])
+  assert.match(renderReport({ runId: 'r', feature: 'f', startedAt: T0, endedAt: T0, versions: {}, runs: [{ config: 'c', status: 'done', ms: 1, totals: { turns: 1 }, sessions: [{ name: 's', prompt: 'x', steps: [plan] }] }] }), /subagents' own tool calls 2/)
 })
 
 test('gaps are the longest waits between consecutive events in the step, naming what came before', () => {
@@ -72,9 +73,9 @@ test('a Skill-less session with a non-slash prompt is named after its first line
 
 test('files are relative to the root (also through /private); a heredoc that mentions npm test is not a test run', () => {
   const steps = deriveSteps(parseStream(STREAM), { prompt: 'x', root: '/tmp/x' })
-  assert.deepEqual(steps[2].files, ['src/cli.mjs'])
+  assert.deepEqual(steps[1].files, ['src/cli.mjs'])
   const priv = deriveSteps(parseStream(STREAM.replaceAll('/tmp/x', '/private/var/x')), { prompt: 'x', root: '/var/x' })
-  assert.deepEqual(priv[2].files, ['src/cli.mjs'])
+  assert.deepEqual(priv[1].files, ['src/cli.mjs'])
   const ev = (cmd) => JSON.stringify({ type: 'assistant', parent_tool_use_id: null, timestamp: '2026-10-13T10:00:01.000Z', message: { content: [{ type: 'tool_use', id: 'b', name: 'Bash', input: { command: cmd } }] } })
   const init = STREAM.split('\n')[0]
   const s = deriveSteps(parseStream([init, ev("cat > x.mjs <<'EOF'\nnpm test\nEOF"), ev('npm test 2>&1 | tail -5')].join('\n')), { prompt: 'x' })
