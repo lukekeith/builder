@@ -563,6 +563,33 @@ test('a phase request at a sha a green run already covered (whole suite) reuses 
   assert.equal(v2.reusedFrom, undefined)
 })
 
+test('a commit request at the sha of a phase request whose --since covers it folds into the phase run and takes its verdict', async () => {
+  const { root, c1, c2 } = docsRepo()
+  const l = openLedger(root)
+  green(l, { root, branch: 'feat', sha: c1 })
+  const phase = l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'phase', target: 'main', since: c1 })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const p = l.getRequest(phase.id)
+  const c = l.getRequest(commit.id)
+  assert.equal(p.verdict.status, 'green', JSON.stringify(p.verdict))
+  assert.equal(c.state, 'done')
+  assert.equal(c.foldedInto, phase.id)
+  assert.equal(c.verdict.request, phase.id, 'the commit request is answered by the phase run')
+})
+
+test('a commit request is not folded into a phase run whose range starts after the commit run would', async () => {
+  const { root, c1, c2 } = docsRepo()
+  const l = openLedger(root)
+  green(l, { root, branch: 'feat', sha: git(root, 'rev-parse', 'main') }) // the commit run would start at init
+  l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'phase', target: 'main', since: c1 })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: c2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const c = l.getRequest(commit.id)
+  assert.equal(c.foldedInto, undefined)
+  assert.equal(c.verdict.request, commit.id)
+})
+
 test('a phase request is not reused from a commit-tier run when the phase tier has checks the commit tier does not run', async () => {
   const { root, c1 } = docsRepo()
   const l = openLedger(root)

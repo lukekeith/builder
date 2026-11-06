@@ -212,6 +212,33 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       const wider = g.verdict?.base && (g.verdict.base === base || tryGit(root, 'merge-base', '--is-ancestor', g.verdict.base, base) !== null)
       return (v?.suites ?? []).filter((s) => s.tiers.includes('phase')).every((s) => g.verdict?.selection?.[s.name]?.files === 'all' || wider)
     }
+    /**
+     * A queued commit request at the sha of a queued or running phase request on its branch is
+     * answered by that phase run: the fleet requests both for a phase's last commit in the same
+     * second, the phase is picked first, and the commit run then re-tested the same commit (4 of 4
+     * phase closes on the share benchmark). Folded only when the phase run provably covers it: the
+     * phase tier runs every suite and check the commit tier does, and its --since is at or before
+     * where the commit run would start (the branch's newest green below the sha).
+     */
+    const foldIntoPhase = (keep) => {
+      const inTier = (t) => (x) => x.tiers.includes(t)
+      const commitSuites = (v?.suites ?? []).filter(inTier('commit'))
+      const commitChecks = (v?.checks ?? []).filter(inTier('commit'))
+      if (!commitSuites.every(inTier('phase')) || !commitChecks.every(inTier('phase'))) return
+      const phases = [...keep.filter((r) => r.tier === 'phase'), ...[...running.values()].map((h) => h.req).filter((r) => r.tier === 'phase')]
+      for (const c of keep.filter((r) => r.tier === 'commit' && !running.has(r.id))) {
+        const p = phases.find((x) => x.branch === c.branch && x.sha === c.sha && x.since)
+        if (!p) continue
+        const below = ledger.greens(c.branch, ['commit', 'phase']).find((g) => g.sha !== c.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, c.sha) !== null)
+        if (!below || (below.sha !== p.since && tryGit(root, 'merge-base', '--is-ancestor', p.since, below.sha) === null)) continue
+        const cur = ledger.getRequest(c.id)
+        const host = ledger.getRequest(p.id)
+        if (cur?.state !== 'queued' || !host || host.state === 'done' || host.state === 'cancelled') continue
+        ledger.saveRequest({ ...host, foldedFrom: [...(host.foldedFrom ?? []), c.id, ...(cur.foldedFrom ?? [])] })
+        ledger.saveRequest({ ...cur, state: 'folded', foldedInto: p.id })
+        keep.splice(keep.indexOf(c), 1)
+      }
+    }
     const walkEnv = cfg.ok ? cfg.agentWalk?.env ?? {} : {}
     // agent_walk.copy: untracked local files the tests may need, copied into every checkout after it moves.
     const local = cfg.ok ? cfg.agentWalk?.copy ?? [] : []
@@ -272,7 +299,8 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       }
       const done = { ...cur, state: 'done', doneAt: new Date().toISOString(), verdict: { ...verdict, request: req.id, branch: req.branch, sha: req.sha, tier: req.tier } }
       ledger.saveRequest(done)
-      for (const id of req.foldedFrom ?? []) {
+      // The ledger's list: a commit request can fold into this one while it runs (foldIntoPhase).
+      for (const id of done.foldedFrom ?? req.foldedFrom ?? []) {
         const f = ledger.getRequest(id)
         if (f?.state === 'folded') ledger.saveRequest({ ...f, state: 'done', doneAt: done.doneAt, verdict: done.verdict })
       }
@@ -450,6 +478,7 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         const cur = ledger.getRequest(r.id)
         if (cur?.state === 'queued' && !(same(cur.foldedFrom, r.foldedFrom) && same(cur.commits, r.commits))) ledger.saveRequest({ ...cur, foldedFrom: r.foldedFrom, commits: r.commits })
       }
+      foldIntoPhase(keep)
       while (slots.length) {
         const next = pickNext(
           keep.filter((r) => !running.has(r.id)),
