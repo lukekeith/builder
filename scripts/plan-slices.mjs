@@ -223,7 +223,7 @@ export function overProportion(planText, specText) {
   const plan = String(planText ?? '')
   if (!spec.length || plan.length <= MIN_PLAN || plan.length <= MAX_RATIO * spec.length) return null
   const kb = (n) => `${(n / 1024).toFixed(1)} KB`
-  return `PLAN.md is ${(plan.length / spec.length).toFixed(1)}× its SPEC (${kb(plan.length)} vs ${kb(spec.length)}) — over ${MAX_RATIO}×, a transcript of the code (PLAN-FORMAT §Self-review 7). Replace every code block that is not a test assertion, exact spec copy, a migration, the frozen contract, a security mechanism or an algorithm the tests don't determine with the words that decide it, then run this again. The index is not written until then.`
+  return `PLAN.md is ${(Math.ceil((plan.length / spec.length) * 10) / 10).toFixed(1)}× its SPEC (${kb(plan.length)} vs ${kb(spec.length)}) — over ${MAX_RATIO}×, a transcript of the code (PLAN-FORMAT §Self-review 7). Replace every code block that is not a test assertion, exact spec copy, a migration, the frozen contract, a security mechanism or an algorithm the tests don't determine with the words that decide it, then run this again. The index is not written until then.`
 }
 
 /** SPEC §Plan's index for a plan in `rel` (the feature folder, relative to the repo). */

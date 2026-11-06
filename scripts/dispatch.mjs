@@ -722,7 +722,7 @@ function agentWalk(f, a, ws) {
     '- **Walk by screen.** Group the items by the screen or component they exercise; reach each one once and check every item on it in order — one app session, one launch — recording a row per item. Relaunch, sign out or reset only when an item needs a fresh start (a first launch, a cold cache, a signed-out state), and say so in its row. Driving every item from a fresh launch is the slow way to walk a screen that holds them all.',
     '- The `## Cross-app (verify E2E)` section, when present, is walked like every other item: one report row per step, `#` = `E<k>`, App = `cross-app`, with its evidence. Verify quotes these rows instead of driving the app again, so an `E` row without evidence is a `FAIL`.',
     '- Run no tests — no test suite, no build. You judge the running app; tests are the verifier\'s. A build here rewrites what the walk env\'s dev server serves from this worktree and takes the env down mid-walk.',
-    '- A `[verifier]` item runs an automated test, which is the verifier\'s: it runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on.',
+    '- An item that runs an automated test — tagged `[verifier]`, or not: a step that is `node --test …`, `npm test`, a `*.test.*` file — is the verifier\'s, which runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on. A missing tag is no reason to treat it otherwise.',
     '',
     '## Output',
     '',
@@ -793,7 +793,7 @@ function walkBatch(features, a, root) {
     '- Never edit code, never commit, never touch any manifest or SPEC.',
     "- The `## Cross-app (verify E2E)` sections are walked like every other item: one row per step, `#` = `E<k>`, App = `cross-app`, with its evidence.",
     "- Run no tests — no test suite, no build. A build here rewrites what the walk env's dev server serves and takes the env down mid-walk.",
-    '- A `[verifier]` item runs an automated test, which is the verifier\'s: it runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on.',
+    '- An item that runs an automated test — tagged `[verifier]`, or not: a step that is `node --test …`, `npm test`, a `*.test.*` file — is the verifier\'s, which runs every test at this commit. Do not run it and do not mark it `UNVERIFIABLE` — record Result `PASS (verifier)`, evidence `the verifier\'s merge tier`, and move on. A missing tag is no reason to treat it otherwise.',
   )
   if (a.context) lines.push('', a.context.trim())
   const ws = join(root, '.builder', '_walk')
