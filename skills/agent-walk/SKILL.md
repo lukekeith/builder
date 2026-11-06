@@ -119,7 +119,8 @@ never the build's context: the agent that built it does not grade it.
 - 🔴 **the walker runs no tests** — no test suite, no build. It judges the running app; tests are
   the verifier's, which runs the merge tier beside this walk. A build run here rewrites what the
   walk env's dev server serves from this worktree and takes the env down mid-walk. A `[verifier]`
-  item (one that runs an automated test — `walk-script.mjs` tags it) is recorded `PASS (verifier)`
+  item — any item whose step runs an automated test, tagged or not (a hand-edited walk.md can drop
+  the tag `walk-script.mjs` writes) — is recorded `PASS (verifier)`
   without running anything: the verifier's merge tier proves it.
 
 ## 3. Judge the report
