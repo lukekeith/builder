@@ -4,6 +4,49 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.2.1
+
+Agent builds waste less time: on a two-app benchmark feature the recommended test plan went from 1h07m to 31m, every acceptance test still passing. Nothing to change in `.claude/builder.md`.
+
+**A hung test no longer stalls a build.** Implementers were told to wrap a command that may hang in
+`timeout`, which macOS doesn't have: the wrap failed (often hidden by a `| grep`), the test ran
+uncapped, and one hung test cost a run 24 minutes.
+
+**Fixed:**
+- Implementers start test runs under `scripts/cap.mjs`, a portable time limit that kills everything
+  the command started and exits 124 on a hang. Agent mode uses it too.
+
+**Walks walk what needs the running app.** A two-app walk had 35 rows, a third of them items the
+walker could not check: per-app items describing what a test file proves, a "human verification"
+note turned into steps, and a step that runs a test while the walker may run none.
+
+**Fixed:**
+- With the cross-app script written, an app item filed under a named test file is the verifier's;
+  an item no test is named for — a check on a screen — is still walked.
+- Only the first verification block is the script; a script written as a code block is one step per
+  line.
+- A step that runs an automated test is the verifier's whether or not it carries the `[verifier]`
+  tag: the walker records `PASS (verifier)` without running it.
+
+**Plans, reviews and the verifier do less that changes nothing.**
+
+**Fixed:**
+- A PLAN.md more than twice its SPEC (and over 16 KB) is refused when its index is written, so the
+  planner cuts code transcripts back to words. Behaviour coverage is checked by reading — no
+  prototype implementation or injected bugs.
+- A final review with only Minor findings sends them to the ledger: no fix wave, re-review or extra
+  phase run.
+- The final-review diff leaves out the feature's own folder; the reviewer reads the SPEC on its own.
+- The verifier answers a commit request from the phase run at the same commit when that run covers
+  it, gives a range that changed only the registry a green result without a run, and reuses an
+  earlier green phase result at the same commit.
+- Under `--auto` the audit writes its decisions already ruled, so no later session re-reads the SPEC
+  to rule them. The brainstorm reads tests and never runs them.
+- A docs bundle longer than one command output prints in parts, each naming the next; the audit has
+  a smaller bundle for agent runs.
+- The SPEC template names schema rows `SC1`, `SC2`…; the plan format lists the Recipe values; an
+  `--auto` spec commits on the current branch.
+
 ## 6.2.0
 
 Three fixes from real runs: a fleet that parks always asks you and one that finishes always tells you; test runs compare against the branch a feature lands on; brainstorm lets you pick instead of type.
