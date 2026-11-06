@@ -48,3 +48,27 @@ review on the top model (caught the only Important defect); walk=risk on share (
 ## Projection
 
 Fixes 1–4 alone bring share/builder from 1h07m to roughly 35–40m (estimate, not measured); 5–13 trim another ~5–8m per run.
+
+## Re-run after the fixes (2026-11-05 16:20, runs `2026-11-05-1620-tags`, `2026-11-05-1649-share`)
+
+Same features, same configs, 1 rep. Sessions now load no MCP servers (`--strict-mcp-config`), so part
+of each cost drop is that, not builder.
+
+| Run | Config | Before | After | Accept |
+|---|---|---|---|---|
+| share | builder | 1h07m · 150 turns · $13.24 | **31m · 126 turns · $10.54** | 9/9 |
+| share | builder-everything | 49m · 210 turns · $17.76 | 48m · 181 turns · $15.18 | 9/9 |
+| tags | builder | 13m · 95 turns · $5.84 | 12m · 94 turns · $5.11 | 7/7 |
+| tags | builder-everything | 19m · 110 turns · $7.43 | 16m · 101 turns · $6.44 | 7/7 |
+
+What fired: `cap.mjs` 13–61× per run, no bare `timeout`; docs bundles read in parts (12–16 `--part 2`
+per run); the plan refusal once per share run (60.2 KB and 53.9 KB plans cut to ≤ 2× and accepted);
+`[verifier]` walk rows in every run; share/builder's walk 3m → 1m.
+
+What didn't, and was fixed after:
+- The phase-tier reuse never fired: the fleet requests commit and phase for a phase's last commit in
+  the same second and the phase runs first, so it was the *commit* run that repeated it (4 of 4
+  phase closes). Now the commit request folds into the phase run (`0e322ac`). No docs-only request
+  occurred in these runs.
+- builder-everything still ran 2 walk rounds: an orchestrator hand edit dropped E8's `[verifier]`
+  tag and the walker went by the tag. The walker now goes by the step's content (`e468629`).
