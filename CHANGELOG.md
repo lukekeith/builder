@@ -4,6 +4,43 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.2.2
+
+A fleet build no longer stops for the night because it ran long, and an iPhone build no longer
+spends most of its time waiting on compile errors the verifier called the environment's. Found in a
+27-task, two-app fleet build that stopped at 00:01 after two six-hour runs and sat idle until 08:52.
+Nothing to change in `.claude/builder.md`.
+
+**A long fleet run is not a failed one.** Both runs were still landing tasks (6 in the second) when
+the 6-hour run timeout killed them, and two timeouts failed the feature.
+
+**Fixed:**
+- A run killed while HEAD or the manifest moved goes on in a fresh run from its ledger; only a run
+  that timed out having landed nothing counts toward "timed out twice".
+- The run timeout is now a budget met at a task boundary: past it, `dispatch.mjs next` closes the task
+  and prints `time up — …` in place of the next render, and the run ends itself. The kill waits two
+  hours more (`FLEET_RUN_GRACE_MS`), so an implementer in flight is not cut off half done.
+- A killed run's tokens and turns are counted from its stream (the cost stays unknown) rather than
+  recorded as zero.
+
+**A compile error is red, not env-broken.** An `xcodebuild` that did not compile left no report, so
+the verifier retried it in a fresh lease (another 8–16 minutes) and then called it env-broken — which
+the build goes past at the commit tier. Implementers polled by hand and searched the disk for output.
+
+**Fixed:**
+- A build that fails is a regression (`<suite>::build`) carrying the compiler's `file:line: error:`
+  lines, never retried. It is env-broken only when the target fails to build too.
+- `verify.mjs request --tree` snapshots untracked files as well; new files no longer have to be
+  `git add`ed for their own tests to run.
+- `verify.mjs results <request> [--grep <text>]` lists which tests a run judged and how each ended.
+- Implementers wait with `verify.mjs wait` (again on exit 75) rather than a `sleep` loop, never
+  `--amend`, and restore files a build only rewrote (an `Info.plist`) before committing.
+
+**Also fixed:**
+- `dispatch.mjs --findings` given twice keeps both, in order — the last alone once dropped a
+  security finding from a fix round. A second `--findings-file` is refused.
+- The plan's slice table counts Swift tests (`func test…()`, `@Test`), not only `it(`/`test(`.
+
 ## 6.2.1
 
 Agent builds waste less time: on a two-app benchmark feature the recommended test plan went from 1h07m to 31m, every acceptance test still passing. Nothing to change in `.claude/builder.md`.

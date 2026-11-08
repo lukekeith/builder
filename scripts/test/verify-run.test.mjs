@@ -9,6 +9,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { openLedger } from '../verify/ledger.mjs'
 import { runRequest, runShell, bisect, reapStrays } from '../verify/run.mjs'
 import { selectSuites } from '../verify/select.mjs'
+import { ADAPTERS } from '../verify/adapters.mjs'
 
 const T = (body) => `import { test } from 'node:test'\nimport assert from 'node:assert'\n${body}\n`
 function project(files) {
@@ -91,6 +92,40 @@ test('no report → broken, retried once; still broken → env-broken, never red
   assert.equal(v.status, 'env-broken')
   assert.equal(calls, 2)
   assert.match(v.broken[0].reason, /no report|empty report/)
+})
+
+// A runner whose build fails in any checkout holding a `broken` file — xcodebuild's shape: a
+// `file:line:col: error:` diagnostic, its summary, exit 65 and no report. Uses xcodebuild's own judge.
+ADAPTERS['fake-build'] = {
+  command: () => `if [ -f broken ]; then echo "$PWD/App/Thing.swift:3:5: error: cannot find 'Foo' in scope"; echo '** TEST FAILED **'; echo 'The following build commands failed:'; echo '	SwiftCompile normal arm64 Thing.swift'; exit 65; fi; exit 0`,
+  parse: () => [],
+  errorLines: ADAPTERS.xcodebuild.errorLines,
+  buildErrors: ADAPTERS.xcodebuild.buildErrors,
+}
+const buildSuite = { name: 'ios', runner: 'fake-build', files: null, cwd: '.', args: '', needs: [], tiers: ['commit', 'phase', 'merge'] }
+const buildCtx = (co, target, counter) => ctxFor(co, target, { verify: { suites: [buildSuite], checks: [], timeoutMs: 60000, db: null }, lease: async () => (counter.n++, { env: {}, release() {} }) })
+
+test('a compile error in a file the branch changed is red at once, with the compiler\'s words — never retried, never env-broken', async () => {
+  const co = project({ broken: '' })
+  const n = { n: 0 }
+  const v = await runRequest(req({ changed: ['App/Thing.swift'] }), buildCtx(co, co, n))
+  assert.equal(v.status, 'red')
+  assert.equal(n.n, 1, 'one build: not retried in a fresh lease, the target not asked')
+  assert.equal(v.regressions[0].id, 'ios::build')
+  assert.match(v.regressions[0].msg, /the build failed[\s\S]*Thing\.swift:3:5: error: cannot find 'Foo' in scope/)
+  assert.equal(v.regressions[0].introducedBy, 'abc')
+  assert.deepEqual(v.broken, [])
+})
+
+test('a compile error in a file the branch did not change: red when the target builds, env-broken when it does not either', async () => {
+  const co = project({ broken: '' })
+  const n = { n: 0 }
+  const red = await runRequest(req(), buildCtx(co, project({}), n))
+  assert.equal(red.status, 'red', 'the target builds: the branch broke it (a renamed API, say)')
+  assert.equal(n.n, 2, 'here once, the target once')
+  const both = await runRequest(req({ id: 'r2' }), buildCtx(co, project({ broken: '' }), { n: 0 }))
+  assert.equal(both.status, 'env-broken')
+  assert.match(both.broken[0].reason, /the build failed: .*the target does not build either/)
 })
 
 test('an env-broken run never changes known failures: a failure on both sides is listed, not filed; a real red still files its debt', async () => {

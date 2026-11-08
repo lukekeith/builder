@@ -342,11 +342,14 @@ async function judgeRequest(req, ctx, tmp, slots) {
       // so the whole suite is its files named, never the glob. No glob, no files: the command runs all.
       const whole = files === 'all' && suite.runner === 'junit' && suite.files ? fromCwd(suite.cwd, trackedFor(suite, where).list()) : null
       const cmd = adapter.command({ suite, files: files === 'all' ? whole : fromCwd(suite.cwd, files), grep, pairs: pairs && pairs.map((p) => ({ ...p, file: fromCwd(suite.cwd, [p.file])[0] })), report })
-      const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal })
+      const r = await runShell(cmd, { cwd, env: env(lease), timeoutMs: verify.timeoutMs, signal, ...(adapter.errorLines && { lines: adapter.errorLines }) })
       cut = r.timedOut
       // A run cut short streams a partial report: its rows would read as a complete record of the file.
+      const results = r.timedOut || !existsSync(report) ? [] : adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
+      // The code did not compile: no report, and no point retrying it — a red, with the compiler's words.
+      const build = !results.length && r.code !== 0 && !r.timedOut ? adapter.buildErrors?.(r) : null
+      if (build) return { results: null, build, reason: `the build failed: ${build.slice(0, 3).join(' · ')}` }
       if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
-      const results = adapter.parse(readFileSync(report, 'utf8'), { root: cwd })
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
       const tracked = trackedFor(suite, where)
       return { results: results.map((x) => ({ ...x, file: repoFile(suite, where, x.file, tracked) })) }
@@ -363,6 +366,18 @@ async function judgeRequest(req, ctx, tmp, slots) {
   const rerunMany = async (suite, fs, where) => {
     const res = await runSuite(suite, [...new Set(fs.map((f) => f.file))], { where, grep: fs.map((f) => f.name), pairs: fs.map((f) => ({ file: f.file, name: f.name })) })
     return new Map(fs.map((f) => [f.id, statusIn(res, f)]))
+  }
+  /**
+   * A build that failed here: the branch's when a compiler error names a file it changed, or when the
+   * target builds the same selection; the target's own when it fails to build too. → 'branch' | 'target'.
+   */
+  const buildBlame = async (suite, files, errs) => {
+    const named = errs.map((e) => /^(.+?\.[A-Za-z]+):\d+/.exec(e)?.[1]).filter(Boolean)
+    // Diagnostics name absolute paths in the run's checkout; the branch's changes are repo-relative.
+    if (named.some((p) => owns.some((c) => p === c || p.endsWith(`/${c}`)))) return 'branch'
+    if (!ctx.targetCheckout) return 'branch'
+    const there = await runSuite(suite, files, { where: await ctx.targetCheckout() })
+    return there.build ? 'target' : 'branch'
   }
   /**
    * The re-run questions for a suite's failures that classify() will actually ask (not known, not
@@ -514,9 +529,20 @@ async function judgeRequest(req, ctx, tmp, slots) {
     verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null }
     if (files !== 'all' && !files.length) continue
     let res = await runSuite(s, files)
-    // A missing report is retried once in a fresh lease; a timeout is not — it would only double the wait.
-    if (!res.results && !res.timedOut && !signal?.aborted) res = await runSuite(s, files)
+    // A missing report is retried once in a fresh lease; a timeout is not — it would only double the
+    // wait — and neither is a build that failed: the same code fails the same way.
+    if (!res.results && !res.timedOut && !res.build && !signal?.aborted) res = await runSuite(s, files)
     if (signal?.aborted) break
+    if (res.build) {
+      const why = await buildBlame(s, files, res.build)
+      if (signal?.aborted) break
+      if (why === 'target') verdict.broken.push({ suite: s.name, reason: `${res.reason} — and the target does not build either, so it is not this branch's` })
+      else {
+        const msg = ['the build failed — the compiler says:', ...res.build.slice(0, 20), ...(res.build.length > 20 ? [`… and ${res.build.length - 20} more`] : [])].join('\n')
+        verdict.regressions.push({ suite: s.name, id: `${s.name}::build`, file: null, name: 'build', msg, build: true, introducedBy: null })
+      }
+      continue
+    }
     if (!res.results) {
       verdict.broken.push({ suite: s.name, reason: res.reason })
       continue
@@ -561,13 +587,17 @@ async function judgeRequest(req, ctx, tmp, slots) {
     if (verdict.debt.length) ledger.addKnown(req.target, verdict.debt)
     if (req.tier === 'merge' && !signal?.aborted) ledger.removeKnown(req.target, passed)
   }
-  if (verdict.regressions.length && (req.commits?.length ?? 0) > 1 && !signal?.aborted) {
-    await bisect(verdict.regressions, req.commits, {
+  // A build that failed is not bisected — every step would be one more full build, and the compiler's
+  // errors already name the files: it is the range's newest commit's to fix.
+  for (const g of verdict.regressions) if (g.build) g.introducedBy = req.commits?.at(-1) ?? req.sha
+  const toBisect = verdict.regressions.filter((g) => !g.build)
+  if (toBisect.length && (req.commits?.length ?? 0) > 1 && !signal?.aborted) {
+    await bisect(toBisect, req.commits, {
       signal,
       atCommit: ctx.atCommit,
       statusAt: async (g) => (g.suite === 'check' ? ((await checkFails(checksRun.get(g.id), checkout)).fail ? 'fail' : 'pass') : rerun(suiteOf.get(g.suite), g, checkout)),
     })
-  } else for (const g of verdict.regressions) g.introducedBy = req.commits?.at(-1) ?? req.sha
+  } else for (const g of toBisect) g.introducedBy = req.commits?.at(-1) ?? req.sha
   verdict.status = signal?.aborted ? 'cancelled' : verdict.regressions.length ? 'red' : verdict.broken.length ? 'env-broken' : 'green'
   verdict.ms = Date.now() - t0
   return verdict

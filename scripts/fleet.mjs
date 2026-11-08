@@ -49,6 +49,11 @@ const RUN_CAP = 14
 // still be healthy. Its stream-json output is the heartbeat. The hard cap is only a backstop.
 const IDLE_TIMEOUT_MS = Number(process.env.FLEET_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
 const RUN_TIMEOUT_MS = Number(process.env.FLEET_RUN_TIMEOUT_MS) || 6 * 60 * 60 * 1000
+// The run timeout is the run's time budget, met at a task boundary: past it, `dispatch.mjs next`
+// renders no further task and the run ends itself (BUILDER_RUN_DEADLINE). The kill waits this much
+// longer — enough for a slow implementer already in flight (an iPhone task took 90 minutes) to land.
+// A third of the budget, at most 2 hours: 2 hours on the default 6.
+const RUN_GRACE_MS = Number(process.env.FLEET_RUN_GRACE_MS) || Math.min(2 * 60 * 60 * 1000, Math.round(RUN_TIMEOUT_MS / 3))
 const CLAUDE = process.env.FLEET_CLAUDE || 'claude'
 const SMOKE_TIMEOUT_MS = Number(process.env.FLEET_SMOKE_TIMEOUT_MS) || 5 * 60 * 1000
 const SMOKE_INTERVAL_MS = Number(process.env.FLEET_SMOKE_INTERVAL_MS) || 2000
@@ -828,6 +833,7 @@ async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifest
     const out = createWriteStream(log)
     const raw = createWriteStream(log.replace(/\.log$/, '.jsonl'))
     const t0 = Date.now()
+    env.BUILDER_RUN_DEADLINE = new Date(t0 + RUN_TIMEOUT_MS).toISOString()
     let result = null // the last `result` event: { duration_ms, num_turns }
     const meter = streamMeter() // per-dispatch turns and context, from the stream as it streams
     let settled = false
@@ -855,10 +861,11 @@ async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifest
       raw.end()
       active.delete(child)
       delete rec.pgid
-      // Time and turns per run: Claude's own result event, or wall-clock when the run never sent one.
+      // Time, turns and tokens per run: Claude's own result event — or, for a run killed before it sent
+      // one, wall-clock and what the stream carried (turns and tokens counted, the cost left unknown).
       const timing = rec.timing ?? (rec.timing = [])
       // start/end are wall-clock, for the stage timeline (queueing, parks); ms is the run's own time.
-      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? null, tokens: tokensOf(result), meter: meter.summary() })
+      timing.push({ n, lane: lane === 'walk' ? 'walk' : 'build', ms: result?.duration_ms ?? Date.now() - t0, start: new Date(t0).toISOString(), end: new Date().toISOString(), turns: result?.num_turns ?? (result ? null : meter.summary().orchestrator.turns || null), tokens: result ? tokensOf(result) : meter.tokens(), meter: meter.summary() })
       save()
       try {
         child.stdout.destroy()
@@ -919,7 +926,7 @@ async function runClaude(wt, feature, lane, n, prompt = buildLanePrompt(manifest
       idle = setTimeout(kill, IDLE_TIMEOUT_MS, `no output for ${mins(IDLE_TIMEOUT_MS)} (the idle timeout)`)
       out.write(chunk)
     })
-    const timer = setTimeout(kill, RUN_TIMEOUT_MS, `still running after ${mins(RUN_TIMEOUT_MS)} (the run timeout)`)
+    const timer = setTimeout(kill, RUN_TIMEOUT_MS + RUN_GRACE_MS, `still running after ${mins(RUN_TIMEOUT_MS + RUN_GRACE_MS)} (the run timeout)`)
     child.on('error', (e) => {
       out.write(`\n[fleet] could not start ${CLAUDE}: ${e.message}\n`)
       finish(127)

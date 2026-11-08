@@ -122,7 +122,10 @@ export function decide({ lane, manifestText, specText = null, exit, failures, st
   if (shipped) return { action: 'done', pr: shipped }
   const mf = manifestText == null ? null : parseManifest(manifestText)
   if (mf && laneOf(mf, { batched, specText }) === 'done') return { action: 'done', pr: mf.pr ?? null }
-  if (exit !== 0) {
+  // A run killed while it was still landing work (HEAD or the manifest moved) is a long run, not a
+  // broken one: judged as if it had ended there, so it goes on from its ledger. Counting it as a
+  // failure parked a build that landed six tasks in its second six-hour run, for a night.
+  if (exit !== 0 && !(exit === null && progressed)) {
     const what = exit === null ? 'timed out' : `failed (exit ${exit})`
     return failures >= 1 ? { action: 'fail', reason: `run ${what} twice${exit === null ? killCause(killed) : ''}` } : { action: 'retry' }
   }
@@ -509,8 +512,9 @@ export function streamMeter() {
       const m = ev.message
       const u = m.usage ?? {}
       const id = m.id ?? `${parent}:${msgs.size}`
-      const cur = msgs.get(id) ?? { parent, input: 0, cacheRead: 0, cacheCreation: 0 }
+      const cur = msgs.get(id) ?? { parent, model: m.model ?? null, input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
       cur.input = Math.max(cur.input, u.input_tokens ?? 0)
+      cur.output = Math.max(cur.output, u.output_tokens ?? 0)
       cur.cacheRead = Math.max(cur.cacheRead, u.cache_read_input_tokens ?? 0)
       cur.cacheCreation = Math.max(cur.cacheCreation, u.cache_creation_input_tokens ?? 0)
       msgs.set(id, cur)
@@ -553,7 +557,25 @@ export function streamMeter() {
       dispatches: [...dispatches.entries()].map(([id, d]) => ({ ...d, ...(groups.get(id) ?? none), testRuns: tests.get(id) ?? 0 })),
     }
   }
-  return { add, summary }
+  /**
+   * A run killed before Claude sent its `result` event has no usage from Claude: its tokens are summed
+   * from the stream instead, in tokensOf's shape: the top-level counts the orchestrator's own thread (as
+   * tokensOf's do), byModel every thread, sub-agents too. The cost is
+   * Claude's to say, so it stays null (unknown), never 0; `from: 'stream'` marks the estimate.
+   */
+  const tokens = () => {
+    const sum = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+    const byModel = {}
+    for (const m of msgs.values()) {
+      const t = (byModel[m.model ?? 'unknown'] ??= { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, costUsd: null })
+      for (const k of Object.keys(sum)) {
+        t[k] += m[k]
+        if (m.parent == null) sum[k] += m[k]
+      }
+    }
+    return { ...sum, costUsd: null, byModel, from: 'stream' }
+  }
+  return { add, summary, tokens }
 }
 
 /**

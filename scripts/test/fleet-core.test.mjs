@@ -34,16 +34,28 @@ test('a failed run is retried once, then fails', () => {
   assert.match(d.reason, /failed \(exit 3\) twice/)
 })
 
-test('a timeout counts as a failure', () => {
-  const d = decide({ ...base, exit: null, failures: 1, manifestText: mf('state: spec') })
+test('a timeout that landed nothing counts as a failure', () => {
+  const d = decide({ ...base, exit: null, failures: 1, progressed: false, manifestText: mf('state: spec') })
   assert.equal(d.action, 'fail')
   assert.match(d.reason, /timed out twice/)
+})
+
+test('a run killed while it was still landing work goes on — a long run is not a failure', () => {
+  const cap = 'still running after 6 h (the run timeout)'
+  // The second of two killed runs, both of which moved HEAD: before, this failed the feature for a night.
+  assert.deepEqual(decide({ ...base, exit: null, failures: 1, progressed: true, manifestText: mf('state: building'), killed: [cap, cap] }), { action: 'again' })
+  assert.deepEqual(decide({ ...base, exit: null, failures: 0, progressed: true, manifestText: mf('state: building') }), { action: 'again' })
+  // Still bounded by the run cap, and a lane change still hands off.
+  assert.equal(decide({ ...base, exit: null, progressed: true, runs: 12, manifestText: mf('state: building') }).action, 'park')
+  assert.deepEqual(decide({ ...base, exit: null, progressed: true, manifestText: mf('state: built') }), { action: 'handoff', to: 'walk' })
+  // An exit code is still a failure, progress or not.
+  assert.equal(decide({ ...base, exit: 3, failures: 1, progressed: true, manifestText: mf('state: building') }).action, 'fail')
 })
 
 test('two timeouts keep their cause: the idle timeout is not the run cap', () => {
   const idle = 'no output for 30 min (the idle timeout)'
   const cap = 'still running after 6 h (the run timeout)'
-  const at = (killed) => decide({ ...base, exit: null, failures: 1, manifestText: mf('state: spec'), killed }).reason
+  const at = (killed) => decide({ ...base, exit: null, failures: 1, progressed: false, manifestText: mf('state: spec'), killed }).reason
   assert.equal(at([idle, idle]), `run timed out twice — both ${idle}`)
   assert.equal(at([idle, cap]), `run timed out twice — ${idle}, then ${cap}`)
   assert.equal(at([null, cap]), `run timed out twice — ${cap}`)

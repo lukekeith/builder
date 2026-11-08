@@ -84,6 +84,20 @@ Subagent (builder:implementer — dispatch.mjs prints the type; general-purpose 
     `timeout`: macOS has none. Read a run's exit code before you filter its
     output — a `| grep` hides a command that never started.
 
+    **When you run a test through the verifier** (`verify.mjs request … --tree`,
+    for a suite this machine can only run there): wait with `verify.mjs wait <id>`
+    (Bash timeout 600000), and on exit 75 call the same `wait` again — never a
+    `sleep` loop, a file you poll, or a search of the filesystem for its output.
+    Its verdict prints every failure, a compile error with the compiler's own
+    lines; `verify.mjs results <id> --grep <test or file name>` lists which
+    tests ran and how each ended. New files need no `git add` first.
+
+    **Commits:** never `git commit --amend` or rebase — a fix is a new commit,
+    and the reviewer's diff range depends on it. Before you commit, read
+    `git status`: a file changed only as a side effect of a build or a tool
+    (an `Info.plist` an `xcodebuild` rewrote, a lockfile, a cache) is restored
+    with `git checkout -- <file>`, never committed.
+
     ## You do not dispatch subagents
 
     Do all of this task's work yourself. Never spawn a subagent to implement

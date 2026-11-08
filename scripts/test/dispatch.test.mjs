@@ -203,6 +203,13 @@ test('dispatch: findings travel as files — each review names its findings file
   assert.match(fp, /Critical and Important issues and its ❌ spec-compliance items/)
   assert.match(fp, /- src\/cli\.mjs:20 — list prints a trailing space/)
   assert.match(fp, /Added by the controller:\n\n- ⚠️ confirmed: rm does not drop tags/)
+  // Every --findings is kept, in order — the last one alone once dropped a security finding.
+  const two = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--round', '1', '--findings-file', reviewFile, '--findings', '- ⚠️ first: rm does not drop tags', '--findings', '- ⚠️ second: a member can read drafts'], { cwd: r.root })
+  assert.equal(two.status, 0, two.stderr)
+  assert.match(readText(pathFrom(two)), /Added by the controller:\n\n- ⚠️ first: rm does not drop tags\n\n- ⚠️ second: a member can read drafts/)
+  const files = run('dispatch.mjs', ['implementer', r.rel, '--task', '1', '--round', '1', '--findings-file', reviewFile, '--findings-file', reviewFile], { cwd: r.root })
+  assert.notEqual(files.status, 0)
+  assert.match(files.stderr, /one --findings-file per dispatch/)
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): review round 1')
   const rr = run('dispatch.mjs', ['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', reviewFile], { cwd: r.root })
   assert.equal(rr.status, 0, rr.stderr)
@@ -640,6 +647,22 @@ test('next --close under a pause request renders nothing and prints `paused — 
   const local = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { BUILDER_FLEET_DIR: '' })
   assert.match(local.stdout, /^paused — requested here$/m)
   assert.doesNotMatch(local.stdout, /Agent call/)
+})
+
+test('next --close past the fleet run\'s deadline closes the task but renders nothing, and says where the next run resumes', () => {
+  const { next, ledger, stubCalls } = nextRepo()
+  const past = new Date(Date.now() - 60000).toISOString()
+  const res = next(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { BUILDER_RUN_DEADLINE: past })
+  assert.equal(res.status, 0, res.stderr)
+  assert.match(ledger(), /^Task 1: complete/m, 'the finished task is ledgered first')
+  assert.equal(stubCalls('request').length, 1, 'and its commit-tier request filed')
+  assert.match(res.stdout, /^time up — this run passed its time budget \(.+\): .*resumes at Task 2 from the ledger$/m)
+  assert.doesNotMatch(res.stdout, /Agent call|dispatch-implementer-task-2\.md/)
+  // Before the deadline, or with none set, it renders as usual.
+  const { next: next2 } = nextRepo()
+  const ok = next2(['--close', '1', '--ledger', 'Task 1: complete (commits a..b, review clean)'], { BUILDER_RUN_DEADLINE: new Date(Date.now() + 3600000).toISOString() })
+  assert.match(ok.stdout, /dispatch-implementer-task-2\.md/)
+  assert.doesNotMatch(ok.stdout, /time up/)
 })
 
 test('next --after-implement under review=slice+second names the second review on a §Contract or §Schema task, and only there', () => {

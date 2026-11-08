@@ -18,6 +18,13 @@ const alt = (xs) => (xs.length > 1 ? `(${xs.join('|')})` : xs[0])
 const join = (...parts) => parts.filter(Boolean).join(' ')
 const NODE_REPORTER = fileURLToPath(new URL('./node-reporter.mjs', import.meta.url))
 
+/** xcodebuild's own list of what failed to build, when no `file:line: error:` line was caught. */
+function buildSummary(out) {
+  const ls = String(out ?? '').split('\n')
+  const i = ls.findIndex((l) => /The following build commands failed:/.test(l))
+  return (i >= 0 ? ls.slice(i, i + 6) : ls.filter((l) => /error:/.test(l)).slice(-6)).map((l) => l.trim()).filter(Boolean).join('\n') || 'the build failed'
+}
+
 export const ADAPTERS = {
   'node-test': {
     command: ({ suite, files, grep, report }) =>
@@ -50,6 +57,15 @@ export const ADAPTERS = {
       return `rm -rf ${q(bundle)}; ${join('xcodebuild test', `-scheme ${q(suite.scheme)}`, `-destination ${dest}`, `-resultBundlePath ${q(bundle)}`, suite.args, ...only)}; rc=$?; xcrun xcresulttool get test-results tests --path ${q(bundle)} > ${q(report)}; exit $rc`
     },
     parse: (text) => parseXcresult(text),
+    // A compile error leaves xcodebuild with no result bundle to read: it is the code's failure, not
+    // the environment's. Its diagnostics are collected over the whole output (the tail runShell keeps
+    // can lose them under the build log); the summary line says it was a build that failed.
+    errorLines: ':\\d+(?::\\d+)?: (?:fatal )?error: ',
+    buildErrors: ({ out, lines }) => {
+      const errs = [...(lines ?? [])].filter((l) => /\.(swift|m|mm|h|c|cpp|metal|xib|storyboard|plist):\d+(:\d+)?: (fatal )?error: /.test(l))
+      const failed = /The following build commands failed:|\*\* (BUILD|TEST BUILD|TEST) FAILED \*\*/.test(out ?? '') && /SwiftCompile|SwiftDriver|CompileC|Ld |CompileStoryboard|CompileXIB|error: /.test(out ?? '')
+      return errs.length || failed ? (errs.length ? errs : [buildSummary(out)]) : null
+    },
   },
   playwright: {
     command: ({ suite, files, grep, report }) => join(`PLAYWRIGHT_JUNIT_OUTPUT_NAME=${q(report)} npx playwright test --reporter=junit`, grep && `--grep ${q(leaves(grep).join('|'))}`, suite.args, ...(files ?? []).map(q)),

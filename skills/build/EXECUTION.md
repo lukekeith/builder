@@ -322,7 +322,9 @@ renders the phase's next task (`--context` goes to it) and prints its Agent call
 nothing: act on each regression exactly as above, then run the `dispatch.mjs implementer` command it
 names (or close the phase, when that line follows). An ENV-BROKEN verdict line at the commit tier →
 go on; the phase tier decides. On `paused — …` it renders nothing: park as build §Dispatch, review,
-fix says. Re-run after a crash: what is done says `already applied`.
+fix says. On `time up — …` (the fleet run's time budget has passed) it renders nothing: start no
+other dispatch — not the phase close, not a fix — and end the run with one status line; the ledger
+already holds the task, and a fresh run resumes from it. Re-run after a crash: what is done says `already applied`.
 
 Then mark the todo complete and move on. **Never move to the next task while the review has open
 Critical/Important issues** that are neither fixed nor parked-with-ruling at the cap.

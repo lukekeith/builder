@@ -1,5 +1,7 @@
 import { execFileSync, execSync } from 'node:child_process'
-import { dirname } from 'node:path'
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 
 const run = (cwd, a) => execFileSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 const FALLBACK = { 'user.name': 'builder-verify', 'user.email': 'verify@localhost' }
@@ -31,6 +33,30 @@ export const tryGit = (cwd, ...a) => {
     return null
   }
 }
+/**
+ * `--tree`: the worktree as it stands — staged, unstaged AND untracked files (.gitignore'd ones left
+ * out) — as a commit on HEAD, without touching the index, the branch or the files. `git stash create`
+ * leaves untracked files out, so a task's new files were missing from its own test run and the
+ * build failed as env-broken. HEAD itself when nothing differs from it.
+ */
+export function treeSnapshot(wt) {
+  const dir = mkdtempSync(join(tmpdir(), 'verify-tree-'))
+  const index = join(dir, 'index')
+  try {
+    const real = resolve(wt, git(wt, 'rev-parse', '--git-path', 'index'))
+    if (existsSync(real)) copyFileSync(real, index)
+    const env = { ...process.env, GIT_INDEX_FILE: index }
+    const g = (...a) => execFileSync('git', [...identity(wt), ...a], { cwd: wt, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    g('add', '-A', '--', '.')
+    const tree = g('write-tree')
+    const head = git(wt, 'rev-parse', 'HEAD')
+    if (tree === git(wt, 'rev-parse', 'HEAD^{tree}')) return head
+    return g('commit-tree', tree, '-p', head, '-m', 'verify --tree: the worktree as it stood, untracked files included')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 /** The main checkout of the repo `cwd` belongs to — where `.builder/verify/` lives for every worktree. */
 export const mainRoot = (cwd) => dirname(git(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
 /**

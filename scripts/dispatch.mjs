@@ -4,7 +4,8 @@
  * line ("Read <file> and do what it says") plus, at most, one paragraph only the controller knows.
  *
  *   node <builder>/scripts/dispatch.mjs <kind> <folder> [--task N] [--round N] [--context "<one paragraph>"]
- *        [--findings "<verbatim>" | --findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]
+ *        [--findings "<verbatim>"]… [--findings-file <path>] [--base <sha>] [--head <sha>] [--phase N] [--final]
+ *        (--findings may be given more than once: each is kept, in order)
  *        [--model haiku|sonnet|opus]   override the printed default (an implementer's is recorded; rounds 4–5 escalate from it)
  *
  * kinds and what each fills (skills/build/prompts/*.md, build SKILL §Composing the brief and
@@ -64,7 +65,9 @@
  *                          finishes only what is missing; a re-run with a different ledger line
  *                          keeps the first one. A --ledger line not starting `Task N: complete` is
  *                          refused (exit 2). A pause request ($BUILDER_FLEET_DIR/requests/<feature>.pause)
- *                          renders nothing and prints `paused — <its first line>`. Judgement stays the orchestrator's: whether
+ *                          renders nothing and prints `paused — <its first line>`. Past the fleet run's
+ *                          time budget ($BUILDER_RUN_DEADLINE) it renders nothing and prints `time up — …`:
+ *                          the run ends there and a fresh one resumes. Judgement stays the orchestrator's: whether
  *                          findings need a fix round, whether a verdict's regression needs a fix dispatch.
  *                          BUILDER_VERIFY_BIN overrides the verify client (tests stub it).
  *
@@ -841,6 +844,12 @@ function pauseRequest(f) {
   return text == null ? null : text.split('\n')[0].trim() || '(no reason given)'
 }
 
+/** `BUILDER_RUN_DEADLINE` (the fleet sets it per run: start + its run timeout) once passed → that time, else null. */
+function runDeadlinePassed(now = Date.now()) {
+  const at = Date.parse(process.env.BUILDER_RUN_DEADLINE ?? '')
+  return Number.isFinite(at) && now >= at ? new Date(at).toISOString().replace(/\.\d+Z$/, 'Z') : null
+}
+
 /** build SKILL §The test plan: `slice+second` adds a second reviewer on every task touching §Contract or §Schema & API changes. */
 const SECOND_REVIEW = /§\s*Contract\b|§\s*Schema\b|\bcontract\b|\bschema\b|\bmigrations?\b|\bSC\d+\b/i
 
@@ -869,6 +878,14 @@ function close(f, ws, n, line, context, model) {
   }
 
   const p = phaseEnd(f, n, read(join(ws, 'progress.md')) ?? '')
+  // Past the fleet run's time budget: this task is closed, so end the run here — a fresh run resumes
+  // from the ledger — rather than start a task the run timeout's kill would cut off half done.
+  const up = runDeadlinePassed()
+  if (up) {
+    if (verdict.status === 1) out.push('verdict red — the next run acts on it (EXECUTION §5)')
+    out.push(`time up — this run passed its time budget (${up}): start nothing more and end the run now with one status line; the fleet starts a fresh run that resumes at ${p.next == null ? `phase ${p.phase ?? '?'}'s close` : `Task ${p.next}`} from the ledger`)
+    return { lines: out, render: null }
+  }
   if (p.next == null) {
     if (verdict.status === 1) out.push('verdict red — act on it (EXECUTION §5)')
     out.push(`phase ${p.phase ?? '?'} closes — build §Phase close`)
@@ -917,7 +934,12 @@ function emit(r, root) {
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
 
 async function main(argv) {
-  const a = parseArgs(argv, { bool: ['final'] })
+  const a = parseArgs(argv, { bool: ['final'], repeat: ['findings', 'findings-file'] })
+  // Every --findings goes in, in order: keeping only the last dropped a security finding from a fix
+  // round. Two findings files are two reports — one round takes one; the other is its own round.
+  if (a['findings-file']?.length > 1) throw new Error(`one --findings-file per dispatch — got ${a['findings-file'].length}: ${a['findings-file'].join(', ')}`)
+  a['findings-file'] = a['findings-file']?.[0]
+  a.findings = a.findings?.map((x) => x.replace(/\s+$/, '')).filter((x) => x.trim()).join('\n\n') || undefined
   const [kind, folder] = a._
   if (kind === 'walk-batch') {
     const folders = a._.slice(1)

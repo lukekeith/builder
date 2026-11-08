@@ -10,6 +10,7 @@
  *   verify.mjs carry <request>     (land a held green merge's branch tip when it added only registry commits; exit 2 if code changed)
  *   verify.mjs verdict <branch> [<sha>] [--tier commit|phase|merge] [--json]   (a `pending: <tier> <state> <id>` line per run still going — after a finished verdict, those newer than it; an id to wait on)
  *   verify.mjs wait <request> [--max <seconds>] [--json]       (default 540 — under one 10-minute Bash call)
+ *   verify.mjs results <request> [--grep <text>] [--json]     (each test the run judged: status and id — the tests a verdict counted, without searching for files)
  *   verify.mjs cancel <request>
  *   verify.mjs status [--json]
  *   (each takes --in <worktree>, default the cwd; the ledger is the main checkout's)
@@ -20,7 +21,7 @@ import { spawn } from 'node:child_process'
 import { openSync, closeSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { git, tryGit, mainRoot } from './git.mjs'
+import { git, tryGit, mainRoot, treeSnapshot } from './git.mjs'
 import { land, ensureCheckout, mergedCheckout } from './checkouts.mjs'
 import { openLedger, verifyDir } from './ledger.mjs'
 import { serviceAlive } from './serve.mjs'
@@ -28,7 +29,7 @@ import { loadConfig } from '../config.mjs'
 import { landingTarget } from './target.mjs'
 
 const SERVE = fileURLToPath(new URL('./serve.mjs', import.meta.url))
-const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--tier commit|phase|merge] [--json] | wait <request> [--max <seconds>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
+const USAGE = 'usage: verify.mjs request <worktree> <sha|HEAD> --tier commit|phase|merge [--target <branch>] [--hold] [--since <sha>] [--message <text>] [--tree] | release <request> | carry <request> | verdict <branch> [<sha>] [--tier commit|phase|merge] [--json] | wait <request> [--max <seconds>] [--json] | results <request> [--grep <text>] [--json] | cancel <request> | status [--json]   (each: [--in <worktree>])'
 const EXIT = { green: 0, red: 1, 'env-broken': 3, conflict: 4, gone: 5, cancelled: 6 }
 export const exitFor = (status) => EXIT[status] ?? 75
 
@@ -90,7 +91,7 @@ const opt = (f) => {
   const i = argv.indexOf(f)
   return i >= 0 ? argv[i + 1] : null
 }
-const positional = argv.filter((a, i) => !a.startsWith('--') && !['--tier', '--target', '--since', '--message', '--max', '--in'].includes(argv[i - 1]))
+const positional = argv.filter((a, i) => !a.startsWith('--') && !['--tier', '--target', '--since', '--message', '--max', '--in', '--grep'].includes(argv[i - 1]))
 const die = (m) => {
   console.error(m)
   process.exit(2)
@@ -175,7 +176,7 @@ async function main() {
     if (!wtArg || !shaArg || !['commit', 'phase', 'merge'].includes(tier)) die(USAGE)
     const wt = resolve(wtArg)
     const branch = git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')
-    const sha = flag('--tree') ? tryGit(wt, 'stash', 'create') || git(wt, 'rev-parse', 'HEAD') : git(wt, 'rev-parse', shaArg)
+    const sha = flag('--tree') ? treeSnapshot(wt) : git(wt, 'rev-parse', shaArg)
     const cfg = loadConfig(root)
     // The feature's landing branch, not just the config's: on a branch stacked on unmerged work,
     // comparing against merge_into counts everything between the two as this branch's change.
@@ -211,6 +212,23 @@ async function main() {
     console.log(pending.length ? `verify ${branch}: pending (${pending.map((r) => `${r.tier} ${r.state}`).join(', ')})` : `verify ${branch}: no verdict`)
     printPending(pending)
     process.exit(pending.length ? 75 : 5)
+  }
+  if (cmd === 'results') {
+    const [, id] = positional
+    if (!id) die(USAGE)
+    const r = ledger.getRequest(id)
+    if (!r) die(`no request ${id}`)
+    const grep = opt('--grep')
+    const rows = ledger.resultsOf(id).filter((x) => !grep || x.id.includes(grep))
+    if (flag('--json')) console.log(JSON.stringify(rows, null, 2))
+    else {
+      for (const x of rows) console.log(`${x.status.padEnd(4)}  ${x.id}`)
+      const n = (st) => rows.filter((x) => x.status === st).length
+      const broken = (r.verdict?.broken ?? []).map((b) => `\n  ⚠ ${b.suite}: ${b.reason}`).join('')
+      const state = r.state === 'done' ? String(r.verdict?.status ?? 'done').toUpperCase() : `still ${r.state} — results so far; \`verify.mjs wait ${id}\` for the verdict`
+      console.log(`${id}: ${plural(rows.length, 'test')}${grep ? ` matching "${grep}"` : ''} — ${n('pass')} pass · ${n('fail')} fail${n('skip') ? ` · ${n('skip')} skip` : ''} · ${state}${broken}`)
+    }
+    process.exit(rows.length ? 0 : 5)
   }
   if (cmd === 'wait') {
     const [, id] = positional

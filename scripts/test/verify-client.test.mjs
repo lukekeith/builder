@@ -99,6 +99,43 @@ test('--tree snapshots uncommitted work without touching the branch', () => {
   cli(wt, 'wait', id, '--max', '60')
 })
 
+test('--tree takes untracked files too, leaving the index and the files as they were', () => {
+  const { root, wt } = repo()
+  writeFileSync(join(wt, 'new-test.txt'), 'never git added\n')
+  writeFileSync(join(wt, '.gitignore'), 'ignored.txt\n')
+  writeFileSync(join(wt, 'ignored.txt'), 'stays out\n')
+  const id = cli(wt, 'request', wt, 'HEAD', '--tier', 'commit', '--tree').stdout.trim()
+  const sha = openLedger(root).getRequest(id).sha
+  assert.equal(git(wt, 'show', `${sha}:new-test.txt`), 'never git added')
+  assert.throws(() => git(wt, 'show', `${sha}:ignored.txt`), 'a .gitignore\'d file stays out')
+  assert.match(git(wt, 'status', '--porcelain'), /^\?\? new-test\.txt$/m, 'still untracked: the index is untouched')
+  cli(wt, 'wait', id, '--max', '60')
+  // Nothing to snapshot: HEAD itself.
+  const { root: r2, wt: w2 } = repo()
+  const id2 = cli(w2, 'request', w2, 'HEAD', '--tier', 'commit', '--tree').stdout.trim()
+  assert.equal(openLedger(r2).getRequest(id2).sha, git(w2, 'rev-parse', 'HEAD'))
+  cli(w2, 'wait', id2, '--max', '60')
+})
+
+test('results lists each test a run judged, filtered by --grep, with the verdict', () => {
+  const { root, wt } = repo()
+  const ledger = openLedger(root)
+  const q = ledger.newRequest({ worktree: wt, branch: 'r', sha: 'aaa', tier: 'commit', target: 'main' })
+  ledger.appendResults([
+    { run: q.id, sha: 'aaa', tier: 'commit', id: 'ios::App/LoginTests.swift::testOk()', status: 'pass' },
+    { run: q.id, sha: 'aaa', tier: 'commit', id: 'ios::App/LoginTests.swift::testBad()', status: 'fail' },
+    { run: 'other', sha: 'bbb', tier: 'commit', id: 'ios::App/LoginTests.swift::testOk()', status: 'fail' },
+  ])
+  const all = cli(wt, 'results', q.id)
+  assert.equal(all.status, 0, all.stderr)
+  assert.match(all.stdout, /^pass  ios::App\/LoginTests\.swift::testOk\(\)$/m)
+  assert.match(all.stdout, /2 tests — 1 pass · 1 fail · still queued/)
+  const one = cli(wt, 'results', q.id, '--grep', 'testBad')
+  assert.match(one.stdout, /1 test matching "testBad" — 0 pass · 1 fail/)
+  assert.doesNotMatch(one.stdout, /testOk/)
+  assert.equal(cli(wt, 'results', q.id, '--grep', 'nope').status, 5)
+})
+
 test('summarize and exitFor', () => {
   assert.equal(exitFor('green'), 0)
   assert.equal(exitFor('red'), 1)

@@ -278,3 +278,8 @@ test('--brief: 60 tasks stay one line each and under 30,000 characters', async (
   assert.match(b, /## Phases/)
   assert.ok(b.length <= 30000)
 })
+
+test('countTests counts Swift tests: XCTest `func test…()` and Swift Testing `@Test`', () => {
+  const block = ['**Tests:**', '```swift', 'final class LoginTests: XCTestCase {', '  func testOk() {}', '  func testBad() throws {}', '  func helper() {}', '}', '@Test func decodes() {}', '```'].join('\n')
+  assert.equal(countTests(block), 3)
+})

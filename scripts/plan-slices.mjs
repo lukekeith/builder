@@ -25,7 +25,8 @@ import { RECOMMENDED, parseTests, parseTestPlan, recommend, cost, formatTests, s
 import { headings, writeAtomic } from './feature-core.mjs'
 
 const FENCE = /^\s*(`{3,}|~{3,})/
-const TEST_CASE = /(?<![\w.$])(?:it|test)\s*\(|\bdef test_\w*|\bfunc Test\w*|#\[test\]/g
+// XCTest's `func testX()` and Swift Testing's `@Test` count too: an iPhone task's tests read `—` without them.
+const TEST_CASE = /(?<![\w.$])(?:it|test)\s*\(|\bdef test_\w*|\bfunc [Tt]est\w*\s*\(|@Test\b|#\[test\]/g
 const HEADING = /^### Task (\d+)\b[\s:—–-]*(.*)$/
 const APP = /^\s*[-*]*\s*\**App:?\**:?\s*`?([\w.-]+)`?/
 const PHASE = /^\s*[-*]*\s*\**Phase:?\**:?\s*(\d+)/
@@ -43,7 +44,7 @@ function fenced(text) {
   })
 }
 
-/** The test cases a block's code fences carry: `it(`, `test(`, `def test_`, `func Test`, `#[test]`. */
+/** The test cases a block's code fences carry: `it(`, `test(`, `def test_`, `func Test`/`func test…(` (Go, XCTest), `@Test` (Swift Testing), `#[test]`. */
 export const countTests = (text) => fenced(text).reduce((n, { line, inside }) => n + (inside ? (line.match(TEST_CASE) ?? []).length : 0), 0)
 
 const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())

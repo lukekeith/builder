@@ -127,3 +127,17 @@ test('stallOf counts a walk round\'s evidence as movement', async () => {
   const st = stallOf('f', { ...row, status: 'building' }, now)
   assert.ok(st && st.runningMs >= 3 * 3600000 - 1000, JSON.stringify(st))
 })
+
+test('streamMeter.tokens counts the orchestrator\'s thread, and every thread per model, for a run killed before its result event', () => {
+  const m = streamMeter()
+  const msg = (id, model, parent, u) => ({ type: 'assistant', parent_tool_use_id: parent, message: { id, model, content: [], usage: u } })
+  m.add(msg('a', 'claude-opus-5-5', null, { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 }))
+  m.add(msg('a', 'claude-opus-5-5', null, { input_tokens: 10, output_tokens: 40, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 })) // a later chunk of the same message
+  m.add(msg('b', 'claude-sonnet-5-5', 'toolu_1', { input_tokens: 3, output_tokens: 7, cache_read_input_tokens: 50, cache_creation_input_tokens: 0 }))
+  const t = m.tokens()
+  assert.deepEqual({ input: t.input, output: t.output, cacheRead: t.cacheRead, cacheCreation: t.cacheCreation }, { input: 10, output: 40, cacheRead: 100, cacheCreation: 20 }, 'the orchestrator\'s own thread, as tokensOf counts it')
+  assert.equal(t.costUsd, null, 'the cost is unknown, never 0')
+  assert.equal(t.from, 'stream')
+  assert.deepEqual(t.byModel['claude-sonnet-5-5'], { input: 3, output: 7, cacheRead: 50, cacheCreation: 0, costUsd: null })
+  assert.equal(t.byModel['claude-opus-5-5'].output, 40)
+})

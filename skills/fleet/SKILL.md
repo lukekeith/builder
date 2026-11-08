@@ -280,8 +280,10 @@ which re-walks only what its fix changed. A batch whose env won't come up falls 
 per feature, with the env-repair run.
 
 A run is killed only when it goes **quiet** — 30 minutes with no output
-(`FLEET_IDLE_TIMEOUT_MS`), with a 6-hour backstop (`FLEET_RUN_TIMEOUT_MS`) — so a long build that is
-still working is never cut off. Each run's words go to `.builder/fleet/logs/<feature>-NN.log` as it
+(`FLEET_IDLE_TIMEOUT_MS`). A long build that is still working is never cut off mid-task: after 6 hours
+(`FLEET_RUN_TIMEOUT_MS`) it ends itself at the next task boundary and a fresh run resumes from the
+ledger, with a kill only 2 hours past that (`FLEET_RUN_GRACE_MS`; a third of a shorter budget). A run killed while it was still
+landing work goes on in a fresh run — it never fails the feature. Each run's words go to `.builder/fleet/logs/<feature>-NN.log` as it
 works, its raw stream to the `.jsonl` beside it. A run that changes nothing gets one more run before
 the feature parks.
 

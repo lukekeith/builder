@@ -84,6 +84,19 @@ export function openLedger(root) {
       }
       return by
     },
+    /** Every row one run recorded, in order — `verify.mjs results`. */
+    resultsOf(run) {
+      if (!existsSync(P.results)) return []
+      const out = []
+      for (const l of readFileSync(P.results, 'utf8').split('\n')) {
+        if (!l || !l.includes(run)) continue
+        try {
+          const r = JSON.parse(l)
+          if (r.run === run) out.push(r)
+        } catch {}
+      }
+      return out
+    },
     resultsAt(sha) {
       return this.resultsAtAll([sha]).get(sha)
     },
