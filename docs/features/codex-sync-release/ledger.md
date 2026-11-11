@@ -1,6 +1,6 @@
 # Delivery evidence
 
-Intent: Claude-first Builder maintenance, semantic Codex sync and release, and matching local rollout. Target main, start b34854bea6bfc21681dd289f7093bdecacc6344e. Existing port source worktree remained untouched; integrated snapshot includes its outstanding 4.9 adaptations. No consumer repository was modified.
+Intent: Claude-first Builder maintenance, semantic Codex sync and release, and matching local rollout. Target main, start b17762dbc6b0997dd573e0eaac5236b196fd1a07. Existing port source worktree remained untouched; integrated snapshot includes its outstanding 4.9 adaptations. No consumer repository was modified.
 
 Design and plan: docs/specs/2026-10-04-codex-sync-release-design.md and docs/plans/2026-10-04-codex-sync-release.md. Separate alignment is irrelevant: no external normative contract beyond the supplied plugin and official Codex packaging format. Ordinary intermediate approval checkpoints were skipped under the user's build/release authorization.
 
