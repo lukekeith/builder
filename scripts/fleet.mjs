@@ -32,11 +32,11 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { footprintOf, groupsOf } from './groups-core.mjs'
+import { footprintOf, groupsOf, takeWalkBatch } from './groups-core.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
@@ -1632,13 +1632,19 @@ async function walkOne(feature) {
   if (parkIfPaused(f, feature)) return 'parked'
   f.status = 'walking'
   save()
+  // A group member walks on the member before it as that one is now — its walk may have fixed code.
+  const routed = await chainForWalk(feature)
+  if (routed) return routed
   try {
     const text = readManifest(f.worktree, feature)
     if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
       const why = await syncTarget(f.worktree, 'what other features merged', feature)
       if (why) return park(f, why)
     }
-    requestMergeAtWalk(feature, f)
+    // One at a time, a group's held merge tier is requested when its tip walks: by then the tip
+    // holds every walk before it. A group of one requests its own.
+    const g = groupOf(feature)
+    if (!g || g.members.length < 2 || tipOf(g) === feature) requestWalkMerge(feature)
     for (let restarts = 0; ; restarts++) {
       // A walk env that won't come up gets one agent run to find and fix the cause, then one more try.
       for (let attempt = 0; ; attempt++) {
@@ -1692,8 +1698,23 @@ function stateOf(feature) {
   if (text != null) return parseManifest(text).state ?? null
   return shippedPr(readSpec(base, feature)) ? 'shipped' : null
 }
-/** Built or further — the point a member after it may stack on its branch — or landed. */
-const isBuilt = (feature) => landedOn(feature) || PAST_BUILDING.has(stateOf(feature))
+/**
+ * Its build lane done — the point a member after it may stack on its branch, and the point it
+ * waits at for its group's walk (D8) — or landed. That is `built` or further, and also `building`
+ * with walk readiness pending: readiness needs the walk env, so it is the walk lane's, and a group
+ * earns it once, on its tip. Counting only `built` would deadlock a group: the member before would
+ * wait at the walk for the one after to build, and that one would wait for it to reach `built`.
+ * A built member with open ## Fixes in a batched fleet is back in the build lane, so not built.
+ */
+function isBuilt(feature) {
+  if (landedOn(feature)) return true
+  const base = baseOf(fleet.features[feature])
+  const text = readManifest(base, feature)
+  if (text == null) return Boolean(shippedPr(readSpec(base, feature)))
+  // A park is not a lane: what the member had built still stands, whatever stopped it after.
+  const lane = laneOf({ ...parseManifest(text), blocked: null }, { batched: SPLIT, specText: readSpec(base, feature) })
+  return lane === 'walk' || lane === 'ship' || lane === 'done'
+}
 const startedBuilding = (feature) => STARTED.has(stateOf(feature))
 /** The group a feature is in, as `{ id, members, waitsOn }`, or null for a group of one. */
 function groupOf(feature) {
@@ -1779,9 +1800,11 @@ function groupHold(f, wait) {
   save()
   return 'waiting'
 }
-const waitText = (w) =>
-  w.until === 'built' ? `after ${w.on.join(', ')} build${w.on.length > 1 ? '' : 's'} (group ${w.group})` : `after ${w.on.join(', ')} land${w.on.length > 1 ? '' : 's'} (group ${w.group})`
-const waitOver = (w) => w.on.every((n) => (w.until === 'built' ? isBuilt(n) : landedOn(n)))
+const VERB = { built: ['build', 'builds'], 'signed-off': ['sign off', 'signs off'], landed: ['land', 'lands'] }
+const waitText = (w) => (w.until === 'walk' ? `waiting for ${w.group} to be built` : `after ${w.on.join(', ')} ${VERB[w.until][w.on.length > 1 ? 0 : 1]} (group ${w.group})`)
+/** Whether member `n` is where a `until` wait needs it. */
+const reached = (until, n) => (until === 'built' ? isBuilt(n) : until === 'signed-off' ? pastWalk(n) : landedOn(n))
+const waitOver = (w) => w.on.every((n) => reached(w.until, n))
 
 /**
  * Before a member builds (D6): the member before it must be built, and its branch merged into this
@@ -1790,7 +1813,12 @@ const waitOver = (w) => w.on.every((n) => (w.until === 'built' ? isBuilt(n) : la
  */
 async function stackGate(feature, f) {
   const mf = manifestOf(f.worktree, feature)
-  const builds = (mf.state === 'building' && !/^pending/.test(mf.ready ?? '')) || (mf.state === 'planned' && isSet(mf['go-ahead']))
+  // A walk's fixes worked in the pool (batched walks) are a build too: the group goes back to
+  // building from its earliest member with fixes (D8), so a later one works its own on top of that.
+  const builds =
+    (mf.state === 'building' && !/^pending/.test(mf.ready ?? '')) ||
+    (mf.state === 'planned' && isSet(mf['go-ahead'])) ||
+    (SPLIT && mf.state === 'built' && hasOpenFixes(readSpec(f.worktree, feature)))
   // A dependency or predecessor that landed while this one planned is the target's code now, and
   // its group may be gone with it: the pool's sync ran before this lane's first run, not since, so
   // the target is merged in here — once per landed one — before this feature builds on it.
@@ -1875,10 +1903,187 @@ async function chainGroup(id, from = 0) {
   return out
 }
 
+// ---- the barrier (D8, D8a) ---------------------------------------------------------------------
+// A group is tested once, on its tip: every member waits at the walk lane until all are built, then
+// the group walks as a unit — one held merge tier, on the tip, which holds every member's code.
+const IN_A_RUN = new Set(Object.values(RUNNING))
+const SIGNED = new Set(['signed-off', 'verified', 'shipped'])
+const STOPPED = new Set(['parked', 'failed'])
+/** The member whose branch holds the whole group: the last one still to land. */
+const tipOf = (g) => [...g.members].reverse().find((m) => fleet.features[m] && !landedOn(m)) ?? null
+
 /**
- * Until Task 4's barrier: a member past building, in a group of more than one, walks, ships or lands
+ * Ready for its group's walk: built, with a worktree, and not in a run of its own (a run still
+ * owns its manifest and its worktree — `self`, the member asking, is the one whose run just ended).
+ * A parked or failed member is not: the group waits for it, and says so when the fleet ends.
+ */
+function walkReady(m, self) {
+  if (landedOn(m)) return true
+  const f = fleet.features[m]
+  if (!f?.worktree || !existsSync(f.worktree) || STOPPED.has(f.status)) return false
+  if (m !== self && IN_A_RUN.has(f.status)) return false
+  return isBuilt(m)
+}
+/** Signed off or further, and not on its way back to the walk; or landed. */
+function pastWalk(m) {
+  if (landedOn(m)) return true
+  const f = fleet.features[m]
+  if (!f || STOPPED.has(f.status) || f.status === 'awaiting-walk' || f.status === 'walking') return false
+  return SIGNED.has(stateOf(m))
+}
+
+/** Whether `branch` lacks code `prev` has — a commit outside the registry. Registry commits (a walk's verdict) don't count. */
+const codeBehind = (branch, prev) => Boolean(tryGit(['rev-list', '-n', '1', `refs/heads/${prev}`, `^refs/heads/${branch}`, '--', '.', `:(exclude)${CFG.registry}`]))
+/** Code (outside the registry) that came into a worktree since `before`. */
+const codeSince = (wt, before) => Boolean(before && tryGit(['diff', '--name-only', before, 'HEAD', '--', '.', `:(exclude)${CFG.registry}`], wt))
+
+/**
+ * The first member whose branch lacks code the member before it has (D7): the stack no longer
+ * chains there — a walk fix, a fix round or a sync moved the member before it. -1 when it chains.
+ */
+function chainBreak(g) {
+  for (let i = 1; i < g.members.length; i++) {
+    const [p, m] = [g.members[i - 1], g.members[i]]
+    const [fp, f] = [fleet.features[p], fleet.features[m]]
+    if (!fp || !f || landedOn(p) || landedOn(m) || !startedBuilding(m)) continue
+    if (codeBehind(f.branch, fp.branch)) return i
+  }
+  return -1
+}
+
+/**
+ * A member at the walk lane (D8): a group of one walks as it always has (→ false). A member of a
+ * bigger group waits here, `awaiting-walk`, until every member is built; the last to get there
+ * opens the barrier. → true when it was held or queued.
+ */
+function walkGate(feature) {
+  const g = groupOf(feature)
+  if (!g || g.members.length < 2) return false
+  const f = fleet.features[feature]
+  delete f.groupWait
+  if (walkQueue.includes(feature)) {
+    Object.assign(f, { status: 'awaiting-walk', reason: null })
+    save()
+    return true
+  }
+  const on = g.members.filter((m) => m !== feature && !walkReady(m, feature))
+  if (on.length) {
+    Object.assign(f, { status: 'awaiting-walk', groupWait: { until: 'walk', on, group: g.id, lane: 'walk' }, reason: waitText({ until: 'walk', group: g.id }) })
+    save()
+    return true
+  }
+  openBarrier(g, feature)
+  return true
+}
+const barrierOpen = (g, feature) => g.members.every((m) => m === feature || walkReady(m, feature))
+
+/**
+ * The group enters the walk queue as a unit, members in order: every member held at the barrier
+ * (and `feature`, the one that opened it), and — where the stack no longer chains — every member
+ * from there on, signed off or not: it is re-chained before the walk, and an agent sign-off that
+ * moved with it is walked again (prepareUnit). A signed-off member is taken off its ship wait.
+ */
+function openBarrier(g, feature) {
+  const k = chainBreak(g)
+  for (const [i, m] of g.members.entries()) {
+    const f = fleet.features[m]
+    if (!f || landedOn(m) || walkQueue.includes(m)) continue
+    const held = f.groupWait?.until === 'walk'
+    const rechain = k >= 0 && i >= k && f.worktree && startedBuilding(m) && !IN_A_RUN.has(f.status) && !STOPPED.has(f.status)
+    if (m !== feature && !held && !rechain) continue
+    delete f.groupWait
+    for (let j = pool.length - 1; j >= 0; j--) if (pool[j].feature === m) pool.splice(j, 1)
+    Object.assign(f, { status: 'awaiting-walk', reason: null })
+    walkQueue.push(m)
+  }
+  save()
+}
+
+/**
+ * A member on its way to the ship or the landing (`lane`). No member ships or lands alone (D9):
+ * it waits until every member of its group is signed off. A stack that no longer chains goes back
+ * through the walk first (openBarrier). Then, until group landing, members land in order: it waits
+ * for each member before it to land (holdForLanding). A group of one → false at once.
+ */
+function shipHold(feature, lane) {
+  const g = groupOf(feature)
+  if (!g || g.members.length < 2) return false
+  if (g.members.every((m) => m === feature || pastWalk(m)) && chainBreak(g) >= 0) {
+    openBarrier(g, null)
+    if (walkQueue.includes(feature)) return true
+  }
+  const on = g.members.filter((m) => m !== feature && !pastWalk(m))
+  if (on.length) {
+    groupHold(fleet.features[feature], { until: 'signed-off', on, group: g.id, lane })
+    return true
+  }
+  return holdForLanding(feature, lane)
+}
+
+/**
+ * Before a member walks, in a batch or alone: merge the member before it, if it has moved (D7).
+ * → null to walk it, or the outcome that routes it instead: 'ship' (it is signed off and the
+ * sign-off still holds, or is a human's, never replaced) or 'parked' (the merge did not take, or
+ * walkAgain's bound was reached).
+ */
+async function chainForWalk(feature) {
+  const g = groupOf(feature)
+  const i = g ? g.members.indexOf(feature) : -1
+  if (i < 1) return null
+  const f = fleet.features[feature]
+  const before = tryGit(['rev-parse', 'HEAD'], f.worktree)
+  const why = await stackOn(feature, g.members[i - 1], g.id)
+  if (why) return park(f, why)
+  return afterChain(feature, before, g.members[i - 1])
+}
+
+/**
+ * A member that may have received the code of the member before it (`before`: its HEAD then).
+ * Signed off: an agent's sign-off on code that moved goes — back to `built` (walkAgain), walked
+ * again with the group; a human's is never replaced: it is recorded (`humanSignoffMoved`) for the
+ * group's landing to stop on as a human step, and the member goes back to waiting to ship. Built
+ * with code new to it: its walk readiness is void, so it is earned again (rearmReadiness).
+ * → null to walk it, 'ship', or 'parked'.
+ */
+function afterChain(feature, before, prev) {
+  const f = fleet.features[feature]
+  if (SIGNED.has(stateOf(feature))) {
+    const m = signoffMoved(feature, f)
+    if (m?.agents) {
+      if (walkAgain(feature, f, m) !== 'walk') return 'parked'
+    } else {
+      if (m) f.humanSignoffMoved = { sha: m.sha, files: m.files }
+      Object.assign(f, { status: 'awaiting-ship', reason: null })
+      save()
+      return 'ship'
+    }
+  }
+  if (stateOf(feature) === 'built' && codeSince(f.worktree, before)) {
+    const why = rearmReadiness(feature, f, `${prev}'s branch`)
+    if (why) return park(f, why)
+  }
+  return null
+}
+
+/**
+ * The held merge tier of a walk (D8): a group's one run is on its tip, which holds every member's
+ * code, and every member's row records it. A group of one requests its own, as before.
+ */
+function requestWalkMerge(feature) {
+  const g = groupOf(feature)
+  if (!g || g.members.length < 2) return requestMergeAtWalk(feature, fleet.features[feature])
+  const tip = tipOf(g)
+  const ft = fleet.features[tip]
+  if (!ft?.worktree || !existsSync(ft.worktree)) return
+  requestMergeAtWalk(tip, ft)
+  for (const m of g.members) if (fleet.features[m] && ft.mergeReq) fleet.features[m].mergeReq = ft.mergeReq
+  save()
+}
+
+/**
+ * Before Task 5's group landing: a member past the walk, in a group of more than one, ships or lands
  * only once every member before it has landed — so it can never land first, carrying their code onto
- * the target ahead of them. `lane` is where it was going: walk, ship or land. → true when it was held.
+ * the target ahead of them. `lane` is where it was going: ship or land. → true when it was held.
  */
 function holdForLanding(feature, lane) {
   const g = groupOf(feature)
@@ -1896,11 +2101,12 @@ function expectedWait(feature, w) {
   const i = g ? g.members.indexOf(feature) : -1
   if (w.lane === 'build' && w.until === 'built') return i > 0 ? [g.members[i - 1]] : []
   if (w.lane === 'build') return i === 0 && g.waitsOn ? (fleet.groups?.[g.waitsOn]?.members ?? []) : []
+  if (w.until === 'signed-off') return g ? g.members.filter((m) => m !== feature) : []
   return i > 0 ? g.members.slice(0, i) : []
 }
 /** A wait no longer on the member's current predecessor (or group): dropped, and checked again where it goes. */
 function staleWait(feature, w) {
-  const open = (list) => new Set(list.filter((n) => !(w.until === 'built' ? isBuilt(n) : landedOn(n))))
+  const open = (list) => new Set(list.filter((n) => !reached(w.until, n)))
   const now = open(expectedWait(feature, w))
   const was = open(w.on)
   return now.size !== was.size || [...now].some((n) => !was.has(n))
@@ -1910,17 +2116,22 @@ function staleWait(feature, w) {
 function releaseGroups() {
   let any = false
   for (const [feature, f] of Object.entries(fleet.features)) {
-    if (f.status !== 'waiting' || !f.groupWait) continue
+    if (!f.groupWait || !['waiting', 'awaiting-walk'].includes(f.status)) continue
+    // The barrier: open once every member is built; a member a regroup moved goes through the gate again.
+    if (f.groupWait.until === 'walk') {
+      const g = groupOf(feature)
+      if (g?.id === f.groupWait.group && !barrierOpen(g, feature)) continue
+      delete f.groupWait
+      any = true
+      walkGate(feature) || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
+      continue
+    }
     if (!waitOver(f.groupWait) && !staleWait(feature, f.groupWait)) continue
     const lane = f.groupWait.lane
     delete f.groupWait
     any = true
-    if (lane === 'walk') {
-      if (holdForLanding(feature, lane)) continue
-      Object.assign(f, { status: 'awaiting-walk', reason: null })
-      walkQueue.push(feature)
-    } else if (lane === 'ship' || lane === 'land') {
-      if (holdForLanding(feature, lane)) continue
+    if (lane === 'ship' || lane === 'land') {
+      if (shipHold(feature, lane)) continue
       Object.assign(f, { status: 'awaiting-ship', reason: null })
       pool.push({ feature, lane })
     } else {
@@ -1964,14 +2175,14 @@ function enqueue(feature) {
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf, { batched: SPLIT, specText: readSpec(f.worktree, feature) })
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
-  else if (text == null && shippedPr(readSpec(f.worktree, feature))) holdForLanding(feature, 'land') || (Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' })) // shipped, the merge still owed
+  else if (text == null && shippedPr(readSpec(f.worktree, feature))) shipHold(feature, 'land') || (Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' })) // shipped, the merge still owed
   else if (lane === 'done') {
     f.pr = mf.pr ?? null
     archiveRow(feature)
   }
-  else if (lane === 'ship') holdForLanding(feature, 'ship') || (Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane }))
+  else if (lane === 'ship') shipHold(feature, 'ship') || (Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane }))
   else if (lane === 'build') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
-  else if (lane === 'walk') holdForLanding(feature, 'walk') || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
+  else if (lane === 'walk') walkGate(feature) || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
   else Object.assign(f, { status: 'parked', reason: `MANIFEST.md is missing or its state is not one the fleet knows — next: /builder:resume --path ${specOf(feature)} to set it right` })
 }
 
@@ -2509,6 +2720,7 @@ function drainInbox() {
   }
   if (joining.length) regroup()
   for (const name of joining) enqueue(name)
+  if (joining.length) releaseGroups()
   if (joining.length) save()
   return joining.length > 0
 }
@@ -2549,8 +2761,8 @@ function route(feature, outcome) {
     if (retried) return
   }
   if (outcome === 'failed') tellStop(feature, fleet.features[feature])
-  if (outcome === 'walk') holdForLanding(feature, 'walk') || walkQueue.push(feature)
-  else if (outcome === 'ship') holdForLanding(feature, 'ship') || pool.push({ feature, lane: outcome })
+  if (outcome === 'walk') walkGate(feature) || walkQueue.push(feature)
+  else if (outcome === 'ship') shipHold(feature, 'ship') || pool.push({ feature, lane: outcome })
   else if (outcome === 'build') pool.push({ feature, lane: outcome })
   else if (outcome === 'done') release()
   releaseGroups()
@@ -2597,6 +2809,11 @@ async function poolWorker() {
     if (closing) return
     if (pool.length) {
       const { feature, lane } = pool.shift()
+      // A member queued to ship when its group was all signed off: one may have gone back since.
+      if (lane !== 'build' && shipHold(feature, lane)) {
+        wakeAll()
+        continue
+      }
       fleet.features[feature].status = RUNNING[lane]
       save()
       inFlight++
@@ -2653,16 +2870,39 @@ function chargeBatch(rec, features) {
   save()
 }
 
+/** A walk batch's features as units — each group's members together, in group order; anything else alone. */
+function unitsOf(features) {
+  const units = []
+  for (const x of features) {
+    const id = fleet.features[x]?.group
+    const u = id && units.find((y) => fleet.features[y[0]]?.group === id)
+    if (u) u.push(x)
+    else units.push([x])
+  }
+  for (const u of units) {
+    const g = groupOf(u[0])
+    if (g) u.sort((x, y) => g.members.indexOf(x) - g.members.indexOf(y))
+  }
+  return units
+}
+const branchRef = (feature) => `refs/heads/${fleet.features[feature].branch}`
+/** What a unit merges into the walk tree (D8a): each member not already held by a later one — once chained, the tip alone. */
+const headsOf = (unit) => unit.filter((x, i) => !unit.slice(i + 1).some((y) => tryGit(['merge-base', '--is-ancestor', branchRef(x), branchRef(y)]) !== null))
+
 /**
- * The walk worktree: the target with each batched feature's branch merged in, in order. A feature
- * that won't merge is sorted by what it conflicts with, so a batch is never requeued unchanged:
- *   stale     — it conflicts with the target itself; walkBatch syncs it (an agent resolves the
- *               conflict) and puts it back first in line. Deferring it would hand the walk lane the
- *               same batch again, and the lane spun every few seconds with no agent running.
- *   deferred  — it conflicts only with a feature merged before it in this batch: it waits for the
+ * The walk worktree: the target with each batched unit merged in, in order — a feature alone, or a
+ * group by the branches its later members don't already hold (D8a; once chained, just the tip). A
+ * unit that won't merge is backed out whole and sorted by what it conflicts with, so a batch is
+ * never requeued unchanged:
+ *   stale     — a branch it merges conflicts with the target itself; walkBatch syncs that branch
+ *               (an agent resolves the conflict) and puts the unit back first in line. Deferring it
+ *               would hand the walk lane the same batch again, and the lane spun every few seconds
+ *               with no agent running.
+ *   deferred  — it conflicts only with a unit merged before it in this batch: it waits for the
  *               next batch (first in line). The others walk, so that is progress.
  *   stuck     — it conflicts with neither, and nothing merged before it: it parks.
- * Untracked files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
+ * stale is [{ unit, sync }] (the branches to sync), stuck [{ unit, head }]; merged and deferred are
+ * features. Untracked files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
  */
 function prepareWalkTree(features) {
   if (!existsSync(WALK_WT)) {
@@ -2676,14 +2916,23 @@ function prepareWalkTree(features) {
   const deferred = []
   const stale = []
   const stuck = []
-  for (const feature of features) {
-    const branch = `refs/heads/${fleet.features[feature].branch}`
-    if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${feature}`, branch], WALK_WT) === null) {
+  for (const unit of unitsOf(features)) {
+    const at = git(['rev-parse', 'HEAD'], WALK_WT)
+    const heads = headsOf(unit)
+    const failed = heads.find((x) => {
+      if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${x}`, branchRef(x)], WALK_WT) !== null) return false
       tryGit(['merge', '--abort'], WALK_WT)
-      if (conflictsWithTarget(branch)) stale.push(feature)
-      else if (merged.length) deferred.push(feature)
-      else stuck.push(feature)
-    } else merged.push(feature)
+      return true
+    })
+    if (!failed) {
+      merged.push(...unit)
+      continue
+    }
+    git(['reset', '--hard', '--quiet', at], WALK_WT)
+    const sync = heads.filter((x) => conflictsWithTarget(branchRef(x)))
+    if (sync.length) stale.push({ unit, sync })
+    else if (merged.length) deferred.push(...unit)
+    else stuck.push({ unit, head: failed })
   }
   if (AW.sync && merged.length) {
     const log = join(DIR, 'logs', '_walk-sync.log')
@@ -2701,21 +2950,69 @@ function prepareWalkTree(features) {
 }
 
 /**
+ * A group's members, before the group walks (D7, D8). A paused member parks, and the rest go back
+ * to the barrier to wait for it. The stack is re-chained (chainGroup) from the unit's first member;
+ * a merge no agent resolves parks every member, with the same reason. Then each member is settled
+ * (afterChain): one whose sign-off still holds, or a human's, goes back to waiting to ship; an agent
+ * sign-off that moved is walked again. Last, its tip-most walking member is synced with the target
+ * when its state asks for it (SYNC_BEFORE_WALK) — the tip carries the target for the whole group.
+ * → the members that walk now.
+ */
+async function prepareUnit(unit) {
+  const g = groupOf(unit[0])
+  const paused = unit.filter((x) => existsSync(pauseFile(x)))
+  if (paused.length) {
+    for (const x of paused) route(x, park(fleet.features[x], PARK_REASONS.revising(specOf(x))))
+    for (const x of unit.filter((y) => !paused.includes(y))) route(x, 'walk')
+    return []
+  }
+  const heads = Object.fromEntries(g.members.map((m) => [m, fleet.features[m]?.worktree && existsSync(fleet.features[m].worktree) ? tryGit(['rev-parse', 'HEAD'], fleet.features[m].worktree) : null]))
+  const broke = (await chainGroup(g.id, Math.max(0, g.members.indexOf(unit[0]) - 1))).find((c) => c.why)
+  if (broke) {
+    for (const x of new Set([broke.feature, ...unit])) {
+      const fx = fleet.features[x]
+      delete fx.groupWait
+      for (let j = pool.length - 1; j >= 0; j--) if (pool[j].feature === x) pool.splice(j, 1)
+      route(x, x === broke.feature ? 'parked' : park(fx, broke.why))
+    }
+    return []
+  }
+  const walk = []
+  for (const x of unit) {
+    const i = g.members.indexOf(x)
+    const out = i > 0 ? afterChain(x, heads[x], g.members[i - 1]) : null
+    if (out) route(x, out)
+    else walk.push(x)
+  }
+  const last = walk.at(-1)
+  const fl = last && fleet.features[last]
+  const text = last && readManifest(fl.worktree, last)
+  if (text && SYNC_BEFORE_WALK.has(parseManifest(text).state)) {
+    const why = await syncTarget(fl.worktree, 'what other features merged', last)
+    if (why) {
+      for (const x of walk) route(x, park(fleet.features[x], why))
+      return []
+    }
+  }
+  return walk
+}
+
+/**
  * A `built` feature's `ready: yes <sha>` is void once the target merged into it (a code commit since
  * that sha), and the batch walk would refuse it as not walkable. Back to `building` with ready
  * pending: the batch's own readiness (agent-walk §Batched walks, steps 1–2) re-earns it on the merged
  * code. → null, or why it could not be set.
  */
-function rearmReadiness(feature, f) {
+function rearmReadiness(feature, f, merged = TARGET) {
   const folder = specOf(feature)
   const text = readManifest(f.worktree, feature)
   if (!text || parseManifest(text).state !== 'built') return null
   const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
   try {
-    execFileSync(process.execPath, [script, folder, '--set', 'state=building', '--set', `ready=pending "${TARGET} merged in for the walk batch"`, '--commit', `chore({key}): {feature} — ${TARGET} merged in, walk readiness again`], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
+    execFileSync(process.execPath, [script, folder, '--set', 'state=building', '--set', `ready=pending "${merged} merged in for the walk batch"`, '--commit', `chore({key}): {feature} — ${merged} merged in, walk readiness again`], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
     return null
   } catch (e) {
-    return `${TARGET} was merged into it for the walk batch, but its walk readiness could not be reset: ${String(e.stderr || e.message).trim().split('\n').pop()} — next: /builder:agent ${feature}`
+    return `${merged} was merged into it for the walk batch, but its walk readiness could not be reset: ${String(e.stderr || e.message).trim().split('\n').pop()} — next: /builder:agent ${feature}`
   }
 }
 
@@ -2772,7 +3069,17 @@ async function quickCheck(feature) {
  */
 async function walkBatch(batch) {
   const live = []
-  for (const feature of batch) {
+  for (const unit of unitsOf(batch)) {
+    // A group walks as a unit (D8): re-chained, its sign-offs settled, its tip synced first.
+    if (groupOf(unit[0])?.members.length > 1) {
+      for (const x of await prepareUnit(unit)) {
+        fleet.features[x].status = 'walking'
+        live.push(x)
+      }
+      save()
+      continue
+    }
+    const [feature] = unit
     const f = fleet.features[feature]
     if (parkIfPaused(f, feature)) {
       route(feature, 'parked')
@@ -2802,21 +3109,27 @@ async function walkBatch(batch) {
   } catch (e) {
     return one(live, `the walk worktree could not be prepared (${e.message})`)
   }
-  for (const feature of tree.stuck)
-    route(feature, park(fleet.features[feature], `it would not merge into the walk worktree, though it conflicts with neither ${TARGET} nor another feature in the batch — next: run git merge ${fleet.features[feature].branch} on ${TARGET} in a scratch worktree to see what stops it, then /builder:agent`))
-  // A stale feature is synced with the target now — an agent resolves the conflict — and goes back
-  // first in line, so the next batch merges it. A sync that does not bring the target in parks it.
+  // A unit parks whole: a group's members walk together or not at all.
+  for (const { unit, head } of tree.stuck)
+    for (const x of unit) route(x, park(fleet.features[x], `it would not merge into the walk worktree, though it conflicts with neither ${TARGET} nor another feature in the batch — next: run git merge ${fleet.features[head].branch} on ${TARGET} in a scratch worktree to see what stops it, then /builder:agent`))
+  // A stale unit's conflicting branch — a group's tip, once chained — is synced with the target now
+  // (an agent resolves the conflict), and the unit goes back first in line, so the next batch merges
+  // it. A sync that does not bring the target in parks the unit, every member with the same reason.
   const synced = []
-  for (const feature of tree.stale) {
-    const f = fleet.features[feature]
-    let why =
-      (await syncTarget(f.worktree, `the walk batch could not merge it: it conflicts with ${TARGET}`, feature)) ??
-      (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`]) === null
-        ? `it conflicts with ${TARGET}, and merging ${TARGET} into it did not go in (uncommitted changes in ${f.worktree}?) — next: merge ${TARGET} into ${f.branch} and commit it, then /builder:agent`
-        : null)
-    if (why) route(feature, park(f, why))
-    else if ((why = rearmReadiness(feature, f))) route(feature, park(f, why))
-    else synced.push(feature)
+  for (const { unit, sync } of tree.stale) {
+    let why = null
+    for (const feature of sync) {
+      const f = fleet.features[feature]
+      why =
+        (await syncTarget(f.worktree, `the walk batch could not merge it: it conflicts with ${TARGET}`, feature)) ??
+        (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`]) === null
+          ? `it conflicts with ${TARGET}, and merging ${TARGET} into it did not go in (uncommitted changes in ${f.worktree}?) — next: merge ${TARGET} into ${f.branch} and commit it, then /builder:agent`
+          : null) ??
+        rearmReadiness(feature, f)
+      if (why) break
+    }
+    if (why) for (const x of unit) route(x, park(fleet.features[x], why))
+    else synced.push(...unit)
   }
   for (const feature of [...synced, ...tree.deferred].reverse()) {
     Object.assign(fleet.features[feature], { status: 'awaiting-walk', reason: null })
@@ -2825,7 +3138,7 @@ async function walkBatch(batch) {
   if (tree.merged.length < 2) return one(tree.merged)
   // Requested only now, for what merged: a stale feature's HEAD is about to be replaced by its sync,
   // and one walked alone (walkOne) requests its own.
-  for (const feature of tree.merged) requestMergeAtWalk(feature, fleet.features[feature])
+  for (const unit of unitsOf(tree.merged)) requestWalkMerge(unit[0])
   const rec = walkRec()
   let active = [...tree.merged]
   const failures = {}
@@ -2880,6 +3193,17 @@ async function walkBatch(batch) {
         addNote('the walk env stopped answering during a batch session — restarted without a reset')
         restart = true
       }
+      // Walk fixes on a member send its group back to building from there (D8): the members after it
+      // stop walking here — they would sign off code about to change — and wait at the barrier.
+      const back = []
+      for (const [x, d] of leaving) {
+        const g = d.action === 'handoff' && d.to === 'build' ? groupOf(x) : null
+        for (const y of g ? g.members.slice(g.members.indexOf(x) + 1) : [])
+          if (next.includes(y)) {
+            next.splice(next.indexOf(y), 1)
+            back.push(y)
+          }
+      }
       for (const [x, d] of leaving) {
         const fx = fleet.features[x]
         failures[x] = 0
@@ -2897,6 +3221,7 @@ async function walkBatch(batch) {
           route(x, fx.status)
         }
       }
+      for (const y of back) route(y, 'walk')
       active = next
       if (restart && active.length) {
         await killStart(rec)
@@ -2969,7 +3294,9 @@ async function walkLane() {
     if (closing) return
     if (walkQueue.length && BATCHED) {
       // Everything waiting to walk, up to agent_walk.batch: one walk branch, one env, one walker.
-      const batch = walkQueue.splice(0, BATCH)
+      // A batch takes whole groups (D8): a group bigger than agent_walk.batch walks alone.
+      const { batch, rest } = takeWalkBatch(walkQueue, Object.fromEntries(Object.entries(fleet.features).filter(([, f]) => f.group).map(([n, f]) => [n, f.group])), BATCH)
+      walkQueue.splice(0, walkQueue.length, ...rest)
       inFlight++
       await walkBatch(batch)
       inFlight--
@@ -3004,6 +3331,9 @@ const poll = setInterval(() => {
   if (!closing && drainInbox()) wakeAll()
 }, INBOX_POLL_MS)
 envCheck = envPreflight().catch((e) => addNote(`walk env launch check: ${e.message}`))
+// A member queued before the rest of its group had worktrees waits at the barrier: the group is
+// all queued now, so whatever waits on it is checked once more before the lanes start.
+releaseGroups()
 do {
   closing = false
   await Promise.all([...Array.from({ length: PARALLEL }, poolWorker), walkLane()])
@@ -3012,10 +3342,11 @@ clearInterval(poll)
 
 // Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
 for (const [feature, f] of Object.entries(fleet.features))
-  if (f.status === 'waiting' && f.groupWait) {
+  if (['waiting', 'awaiting-walk'].includes(f.status) && f.groupWait) {
     const { until, on, group } = f.groupWait
-    const not = on.filter((d) => !(until === 'built' ? isBuilt(d) : landedOn(d)))
-    const what = until === 'built' ? 'to build first' : 'to land first'
+    // At the barrier, what it waits on is every member not ready for the group's walk, as of now.
+    const not = until === 'walk' ? (fleet.groups?.[group]?.members ?? on).filter((d) => d !== feature && !walkReady(d, feature)) : on.filter((d) => !reached(until, d))
+    const what = { built: 'to build first', walk: 'to build first', 'signed-off': 'to sign off first', landed: 'to land first' }[until]
     Object.assign(f, { status: 'parked', reason: `waits on ${not.map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')} ${what} (group ${group}), which ${not.length > 1 ? 'they' : 'it'} never did — next: settle ${not.join(', ')}, then pick both in /builder:agent` })
     delete f.groupWait
     tellStop(feature, f)

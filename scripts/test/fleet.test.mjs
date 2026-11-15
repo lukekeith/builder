@@ -1274,7 +1274,8 @@ test('two planned features whose plans share a path stack in one lane: the secon
   assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
   assertLanded(r, 'a')
   assertLanded(r, 'b')
-  const aBuilt = endOfStep(r.calls, 'a', 'built')
+  // Built is the build lane done — walk readiness is the walk lane's, earned once on the group's tip (D8).
+  const aBuilt = endOfStep(r.calls, 'a', 'READY-PENDING')
   const bBuilds = r.calls.findIndex((l) => l.startsWith('start b build '))
   assert.ok(aBuilt >= 0 && bBuilds > aBuilt, `b's build starts after a is built:\n${r.calls.join('\n')}`)
   // b's worktree held a's commits when it built: a's code commit is an ancestor of b's.
@@ -1309,7 +1310,7 @@ test('a declared dependent in the same run plans beside its dependency and start
   const at = (feature, step) => r.calls.findIndex((l) => l.startsWith(`start ${feature} `) && stepOf(l) === step)
   assert.ok(at('ui', 'audited') < r.calls.findIndex((l) => l.startsWith('end api ')), `planning stays parallel:\n${r.calls.join('\n')}`)
   const uiBuilds = at('ui', 'COMMIT:app/ui.txt:building')
-  assert.ok(uiBuilds > endOfStep(r.calls, 'api', 'built'), `ui stacks on api's built branch:\n${r.calls.join('\n')}`)
+  assert.ok(uiBuilds > endOfStep(r.calls, 'api', 'READY-PENDING'), `ui stacks on api's built branch:\n${r.calls.join('\n')}`)
   assert.ok(uiBuilds < at('api', 'SHIP'), `ui builds before api lands:\n${r.calls.join('\n')}`)
   execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: api commits app/api.txt'), shaOf(root, 'stub: ui commits app/ui.txt')], { cwd: root })
 })
@@ -1321,15 +1322,20 @@ test("a predecessor's branch that can't be merged into the next member's worktre
   plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
   const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP'], b: ['building'] }, {}, { timeout: 90000 })
   assert.equal(r.signal, null)
-  assertLanded(r, 'a')
   const b = r.fleet.features.b
   assert.equal(b.status, 'parked', JSON.stringify(b))
   assert.equal(b.reason, `a's branch is not in b's worktree (uncommitted changes there) — next: commit or set aside the changes in ${b.worktree}, then /builder:agent b`)
   assert.ok(!r.calls.some((l) => l.startsWith('start b ')), 'b never built')
+  // a waited at the barrier for b to be built (D8), so it never walked or landed alone.
+  assert.equal(r.fleet.features.a.status, 'parked', JSON.stringify(r.fleet.features.a))
+  assert.equal(r.fleet.features.a.reason, 'waits on b (parked) to build first (group g-a), which it never did — next: settle b, then pick both in /builder:agent')
+  assert.ok(!r.calls.some((l) => l.startsWith('start a walk ')), 'a never walked')
 })
 
+// In one group a dependency never lands before its dependent is built (the barrier, D8): the cap
+// (group_max: 1) cuts them into two, the second waiting for the first to land.
 test("a dependent whose dependency lands while it plans builds on the landed code", () => {
-  const root = makeRepo(['api', 'ui'])
+  const root = makeRepo(['api', 'ui'], { lines: ['group_max: 1'] })
   program(root, ['api', 'ui'], { ui: 'api' })
   writeFileSync(join(root, 'docs/features/api/MANIFEST.md'), 'size: md\nstate: built\nnext: x\n')
   git(root, 'commit', '-qam', 'api built')
@@ -1377,6 +1383,106 @@ test('--status shows a group line above the table; a group of one shows none', (
   const r = runFleet(root, ['--status'], {})
   assert.match(r.stdout, /^group g-a: a ✓ → b ▶ → c ·$/m)
   assert.equal((r.stdout.match(/^group /gm) ?? []).length, 1, r.stdout)
+})
+
+// ---- group lanes: the barrier (D8, D8a) --------------------------------------------------------
+/** Merge-tier requests the verifier has, oldest first. */
+const mergeRequests = (root) => {
+  const dir = join(root, '.builder/verify/requests')
+  if (!existsSync(dir)) return []
+  return readdirSync(dir).map((n) => JSON.parse(readFileSync(join(dir, n), 'utf8'))).filter((q) => q.tier === 'merge').sort((x, y) => x.createdAt.localeCompare(y.createdAt))
+}
+const startTs = (l) => Number(l.split(' ')[3])
+
+test('group lanes: a group of two walks once, in one batch, only once both are built — and only the tip’s merge tier is requested at walk start', async () => {
+  const { root, starts } = await walkEnvRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'SIGNOFF', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const batches = r.calls.filter((l) => l.startsWith('batch '))
+  assert.deepEqual(batches.map((l) => l.split(' ')[1]), ['a,b'], r.calls.join('\n'))
+  // One walk each — the batch's — and no walk of its own: the env came up for the launch check and the batch.
+  for (const x of ['a', 'b']) assert.equal(r.calls.filter((l) => l.startsWith(`start ${x} walk `)).length, 1, r.calls.join('\n'))
+  assert.equal(starts(), 2, `env starts: ${starts()}`)
+  // a waited for b: the batch came only once b's build lane was done.
+  assert.ok(r.calls.indexOf(batches[0]) > endOfStep(r.calls, 'b', 'READY-PENDING'), r.calls.join('\n'))
+  // Held at walk start: one merge tier, on the tip (b), which holds a's code too.
+  const walkAt = startTs(r.calls.find((l) => l.startsWith('start a walk ')))
+  const held = mergeRequests(root).filter((q) => Date.parse(q.createdAt) < walkAt)
+  assert.deepEqual(held.map((q) => q.branch), ['builder/b'], JSON.stringify(held))
+})
+
+test('group lanes: walk fixes on the first member send it back to building; the second re-chains onto the fix, is walked again, and the group walks together', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const r = runFleet(root, ['a', 'b'], {
+    a: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'FIXES', 'COMMIT:app/fix.txt:FIXED', 'SIGNOFF', 'verified', 'SHIP'],
+    b: ['COMMIT:app/b.txt:building', 'READY-PENDING', 'built', 'SIGNOFF', 'SIGNOFF', 'verified', 'SHIP'],
+  }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const fixed = r.calls.findIndex((l) => /^start a build .* COMMIT:app\/fix\.txt:FIXED /.test(l))
+  assert.ok(fixed >= 0, 'the fix ran in the pool: ' + r.calls.join('\n'))
+  const batches = r.calls.map((l, i) => [l, i]).filter(([l]) => l.startsWith('batch '))
+  assert.ok(batches.every(([l]) => l.split(' ')[1] === 'a,b'), 'every walk took the whole group: ' + batches.map(([l]) => l).join('\n'))
+  assert.ok(batches.at(-1)[1] > fixed, 'the group walked again after the fix: ' + r.calls.join('\n'))
+  // b took a's fix by re-chaining, and its agent sign-off went with it.
+  assert.ok((r.fleet.notes ?? []).some((n) => /^b changed since its agent sign-off at [0-9a-f]{7} \(app\/fix\.txt\) — agents walk it again \(1 of 2\)$/.test(n)), JSON.stringify(r.fleet.notes))
+  execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: a commits app/fix.txt'), shaOf(root, 'changed since its agent sign-off (app/fix.txt), walked again')], { cwd: root })
+})
+
+test('group lanes: a group whose first member conflicts with the target, but whose tip already holds the target, walks with no sync', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'])
+  writeFileSync(join(root, 'a.txt'), 'base\n')
+  for (const x of ['a', 'b']) {
+    writeFileSync(join(root, 'docs/features', x, 'MANIFEST.md'), `size: md\nstate: built\nbranch: feat/${x}\ntests: slice=own end=risk review=end\nnext: x\n`)
+    writeFileSync(join(root, 'docs/features', x, 'PLAN.md'), planOf(x, ['a.txt']))
+  }
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'built features')
+  git(root, 'switch', '-q', '-c', 'feat/a')
+  writeFileSync(join(root, 'a.txt'), "a's change\n")
+  git(root, 'commit', '-qam', 'a changes a.txt')
+  git(root, 'switch', '-q', 'main')
+  writeFileSync(join(root, 'a.txt'), 'the target moved on\n')
+  git(root, 'commit', '-qam', 'the target changes a.txt')
+  // b stacked on a and has merged the target since, resolving the conflict a still has.
+  git(root, 'switch', '-q', '-c', 'feat/b', 'feat/a')
+  spawnSync('git', ['merge', '-q', '--no-edit', 'main'], { cwd: root })
+  writeFileSync(join(root, 'a.txt'), "a's change, on the target\n")
+  git(root, 'commit', '-qam', 'b merges main')
+  writeFileSync(join(root, 'b.txt'), "b's change\n")
+  git(root, 'add', 'b.txt')
+  git(root, 'commit', '-qm', 'b adds b.txt')
+  git(root, 'switch', '-q', 'main')
+  const r = runFleet(root, ['a', 'b'], { a: ['BLOCK:walked'], b: ['BLOCK:walked'] }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.deepEqual(r.calls.filter((l) => l.startsWith('batch ')).map((l) => l.split(' ')[1]), ['a,b'], r.calls.join('\n'))
+  assert.ok(!r.calls.some((l) => l.startsWith('resolve ')), 'no sync with the target: ' + r.calls.join('\n'))
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'feat/a'), /walk readiness again/)
+  for (const x of ['a', 'b']) assert.equal(r.fleet.features[x].reason, 'walked', JSON.stringify(r.fleet.features[x]))
+})
+
+test('group lanes: with no walk env of its own, members walk one at a time, in group order, once both are built', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const walks = (x) => r.calls.map((l, i) => [l, i]).filter(([l]) => l.startsWith(`start ${x} walk `)).map(([, i]) => i)
+  assert.equal(r.calls.filter((l) => l.startsWith('batch ')).length, 0)
+  assert.ok(walks('a').length && walks('b').length, r.calls.join('\n'))
+  assert.ok(walks('a')[0] > endOfStep(r.calls, 'b', 'READY-PENDING'), `a walks only once b is built:\n${r.calls.join('\n')}`)
+  assert.ok(walks('b')[0] > walks('a').at(-1), `a walks first, then b:\n${r.calls.join('\n')}`)
 })
 
 test('a child whose dependency is not in the run is refused', () => {
