@@ -1,6 +1,6 @@
 # Group lanes: features that share code build in one lane, are tested once, and land together — design
 
-**Status:** proposed — nothing built; every decision is open for the owner's review · **Date:** 2026-11-14 · **Branch:** `tasks/group-lanes` · **Release:** 6.3.0 (minor: new optional config keys, a new fleet mode)
+**Status:** decisions taken by the owner as recommended (2026-11-14) — building · **Date:** 2026-11-14 · **Branch:** `tasks/group-lanes` · **Release:** 6.3.0 (minor: new optional config keys, a new fleet mode)
 
 ## Why
 
@@ -206,12 +206,10 @@ that could loop takes a spawn timeout, so a spin fails the test instead of hangi
 10. F3 trimmed decisions (plan format, `dispatch.mjs`, re-review effort) and F4 the walk-lane guard
 11. Docs, preview, CHANGELOG 6.3.0, the full suite on Node 24
 
-## Open for the owner
+## Rulings (owner, 2026-11-14 — "go with your recommendation")
 
-1. **`group_max` default of 3** — larger groups serialise more work; smaller ones fall back to
-   conflict-and-resolve sooner.
-2. **D14's forced `parallel: 1`** is the one behaviour change for existing configs. The alternative
-   is a warning only, which keeps today's (racy) behaviour.
-3. **D8's human sign-off rule** — a member a human signed off that later receives chained code parks
-   the whole group's landing until they decide. The alternative is landing the rest and leaving that
-   member behind, which D9 forbids (no member lands alone).
+1. **`group_max` defaults to 3.**
+2. **D14 forces `parallel: 1`** for a `verify.db` with no per-worktree isolation, with a note naming
+   the keys that restore parallelism.
+3. **D8 stands:** a human-signed member that receives chained code parks the group's landing as a
+   human step; no member lands alone.
