@@ -1469,6 +1469,40 @@ test('group lanes: a group whose first member conflicts with the target, but who
   for (const x of ['a', 'b']) assert.equal(r.fleet.features[x].reason, 'walked', JSON.stringify(r.fleet.features[x]))
 })
 
+test('group lanes: one walk at a time with a walk env (batch: 1), fixes on the first member keep the second off the walk until they are built in', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'], { extra: ['batch: 1'] })
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const r = runFleet(root, ['a', 'b'], {
+    a: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'FIXES', 'COMMIT:app/fix.txt:FIXED', 'SIGNOFF', 'verified', 'SHIP'],
+    b: ['COMMIT:app/b.txt:building', 'READY-PENDING', 'built', 'SIGNOFF', 'verified', 'SHIP'],
+  }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const fixed = r.calls.findIndex((l) => /^start a build .* COMMIT:app\/fix\.txt:FIXED /.test(l))
+  const bWalks = r.calls.findIndex((l) => l.startsWith('start b walk '))
+  assert.ok(fixed >= 0 && bWalks > fixed, `b walked only once a's fix was in:\n${r.calls.join('\n')}`)
+  assert.ok(!(r.fleet.notes ?? []).some((n) => /^b changed since its agent sign-off/.test(n)), 'b was never signed off on code without the fix: ' + JSON.stringify(r.fleet.notes))
+})
+
+test('group lanes: a member still walking when the one before it leaves the batch with fixes stops walking, and signs off only on the fix', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const r = runFleet(root, ['a', 'b'], {
+    a: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'FIXES', 'COMMIT:app/fix.txt:FIXED', 'SIGNOFF', 'verified', 'SHIP'],
+    b: ['COMMIT:app/b.txt:building', 'READY-PENDING', 'built', 'NOOP', 'SIGNOFF', 'verified', 'SHIP'],
+  }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const fixed = r.calls.findIndex((l) => /^start a build .* COMMIT:app\/fix\.txt:FIXED /.test(l))
+  const bSigns = r.calls.findIndex((l) => /^start b walk .* SIGNOFF /.test(l))
+  assert.ok(fixed >= 0 && bSigns > fixed, `b signed off only after a's fix:\n${r.calls.join('\n')}`)
+  assert.ok(!(r.fleet.notes ?? []).some((n) => /^b changed since its agent sign-off/.test(n)), JSON.stringify(r.fleet.notes))
+})
+
 test('group lanes: with no walk env of its own, members walk one at a time, in group order, once both are built', () => {
   const root = makeRepo(['a', 'b'])
   plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })

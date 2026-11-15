@@ -2022,15 +2022,22 @@ function shipHold(feature, lane) {
 
 /**
  * Before a member walks, in a batch or alone: merge the member before it, if it has moved (D7).
- * → null to walk it, or the outcome that routes it instead: 'ship' (it is signed off and the
- * sign-off still holds, or is a human's, never replaced) or 'parked' (the merge did not take, or
- * walkAgain's bound was reached).
+ * → null to walk it, or the outcome that routes it instead: 'walk' (back to the barrier: a member
+ * before it is building again), 'ship' (it is signed off and the sign-off still holds, or is a
+ * human's, never replaced) or 'parked' (the merge did not take, or walkAgain's bound was reached).
  */
 async function chainForWalk(feature) {
   const g = groupOf(feature)
   const i = g ? g.members.indexOf(feature) : -1
   if (i < 1) return null
   const f = fleet.features[feature]
+  // A member before it went back to building (walk fixes, one walk at a time): walking this one now
+  // would sign off code about to change. It waits at the barrier for the group again.
+  if (g.members.slice(0, i).some((m) => !isBuilt(m))) {
+    delete f.groupWait
+    Object.assign(f, { status: 'awaiting-walk', reason: null })
+    return 'walk'
+  }
   const before = tryGit(['rev-parse', 'HEAD'], f.worktree)
   const why = await stackOn(feature, g.members[i - 1], g.id)
   if (why) return park(f, why)
@@ -2052,7 +2059,9 @@ function afterChain(feature, before, prev) {
     if (m?.agents) {
       if (walkAgain(feature, f, m) !== 'walk') return 'parked'
     } else {
+      // A human sign-off that holds again (they walked it again and signed off) clears the record.
       if (m) f.humanSignoffMoved = { sha: m.sha, files: m.files }
+      else delete f.humanSignoffMoved
       Object.assign(f, { status: 'awaiting-ship', reason: null })
       save()
       return 'ship'
@@ -2069,12 +2078,13 @@ function afterChain(feature, before, prev) {
  * The held merge tier of a walk (D8): a group's one run is on its tip, which holds every member's
  * code, and every member's row records it. A group of one requests its own, as before.
  */
-function requestWalkMerge(feature) {
+function requestWalkMerge(feature, walking = [feature]) {
   const g = groupOf(feature)
   if (!g || g.members.length < 2) return requestMergeAtWalk(feature, fleet.features[feature])
   const tip = tipOf(g)
   const ft = fleet.features[tip]
-  if (!ft?.worktree || !existsSync(ft.worktree)) return
+  // Only a tip that walks now: a parked one, or one not in this walk, tests code this walk is not of.
+  if (!ft?.worktree || !existsSync(ft.worktree) || STOPPED.has(ft.status) || !walking.includes(tip)) return
   requestMergeAtWalk(tip, ft)
   for (const m of g.members) if (fleet.features[m] && ft.mergeReq) fleet.features[m].mergeReq = ft.mergeReq
   save()
@@ -2825,6 +2835,7 @@ async function poolWorker() {
       else {
         const why = await syncTarget(fleet.features[feature].worktree, 'what other features merged', feature)
         const moved = why || lane !== 'ship' ? null : signoffMoved(feature, fleet.features[feature])
+        if (!why && lane === 'ship' && !moved) delete fleet.features[feature].humanSignoffMoved
         if (why) outcome = park(fleet.features[feature], why)
         else if (moved) outcome = walkAgain(feature, fleet.features[feature], moved)
         else {
@@ -2983,6 +2994,11 @@ async function prepareUnit(unit) {
     const out = i > 0 ? afterChain(x, heads[x], g.members[i - 1]) : null
     if (out) route(x, out)
     else walk.push(x)
+    // A member that parked here holds the members after it (they stack on it): back to the barrier.
+    if (out === 'parked') {
+      for (const y of unit.slice(unit.indexOf(x) + 1)) route(y, 'walk')
+      break
+    }
   }
   const last = walk.at(-1)
   const fl = last && fleet.features[last]
@@ -3138,7 +3154,7 @@ async function walkBatch(batch) {
   if (tree.merged.length < 2) return one(tree.merged)
   // Requested only now, for what merged: a stale feature's HEAD is about to be replaced by its sync,
   // and one walked alone (walkOne) requests its own.
-  for (const unit of unitsOf(tree.merged)) requestWalkMerge(unit[0])
+  for (const unit of unitsOf(tree.merged)) requestWalkMerge(unit[0], unit)
   const rec = walkRec()
   let active = [...tree.merged]
   const failures = {}
@@ -3346,7 +3362,8 @@ for (const [feature, f] of Object.entries(fleet.features))
     const { until, on, group } = f.groupWait
     // At the barrier, what it waits on is every member not ready for the group's walk, as of now.
     const not = until === 'walk' ? (fleet.groups?.[group]?.members ?? on).filter((d) => d !== feature && !walkReady(d, feature)) : on.filter((d) => !reached(until, d))
-    const what = { built: 'to build first', walk: 'to build first', 'signed-off': 'to sign off first', landed: 'to land first' }[until]
+    // At the barrier, members already built are not ready for another reason (parked, in a run).
+    const what = until === 'walk' && not.length && not.every(isBuilt) ? "to be ready for the group's walk" : { built: 'to build first', walk: 'to build first', 'signed-off': 'to sign off first', landed: 'to land first' }[until]
     Object.assign(f, { status: 'parked', reason: `waits on ${not.map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')} ${what} (group ${group}), which ${not.length > 1 ? 'they' : 'it'} never did — next: settle ${not.join(', ')}, then pick both in /builder:agent` })
     delete f.groupWait
     tellStop(feature, f)
