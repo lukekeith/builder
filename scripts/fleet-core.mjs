@@ -1185,7 +1185,7 @@ const PAST_BUILD = new Set(['awaiting-walk', 'awaiting-ship', 'done'])
 export function groupLine(id, group, features) {
   const mark = (m) => {
     const f = features?.[m]
-    if (!f || PAST_BUILD.has(f.status) || f.groupWait?.lane === 'walk') return '✓'
+    if (!f || PAST_BUILD.has(f.status) || (f.groupWait && f.groupWait.lane !== 'build')) return '✓'
     return IN_A_RUN.has(f.status) ? '▶' : '·'
   }
   return `group ${id}: ${group.members.map((m) => `${m} ${mark(m)}`).join(' → ')}`

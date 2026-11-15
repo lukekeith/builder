@@ -655,7 +655,7 @@ if (flag('--dry-run')) {
   for (const f of fresh) {
     const mf = parseManifest(readManifest(ROOT, f))
     const unparks = isSet(mf.blocked) ? ` — unparks it — it was parked: ${parkParts(mf.blocked).why}` : ''
-    const joined = joins[f] ? ` — ${f} joins ${joins[f].join(' and ')}'s group (declared: Depends on ${joins[f].join(', ')})` : ''
+    const joined = joins[f] ? ` — ${joins[f].map((d) => `${f} joins ${d}'s group (declared: Depends on ${d})`).join('; ')}` : ''
     console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, mf)}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}${joined}${unparks}`)
   }
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
@@ -685,7 +685,9 @@ function addToRunning(pid) {
   mkdirSync(INBOX, { recursive: true })
   const drop = (f, verb) => {
     try {
-      writeFileSync(join(INBOX, f), JSON.stringify({ waitsOn: after[f] ?? [], dependsOn: joins[f] ?? [] }) + '\n', { flag: 'wx' })
+      // waitsOn still lists the joined dependencies too: a running fleet from before group lanes reads
+      // only it, and waits for them to merge. This release's fleet takes dependsOn out of it.
+      writeFileSync(join(INBOX, f), JSON.stringify({ waitsOn: [...(after[f] ?? []), ...(joins[f] ?? [])], dependsOn: joins[f] ?? [] }) + '\n', { flag: 'wx' })
       console.log(`  ↳ ${f} — ${verb} for the running fleet (pid ${pid})`)
     } catch (e) {
       if (e.code !== 'EEXIST') throw e
@@ -1742,9 +1744,14 @@ function regroup() {
   if (kept.length) fleet.groups = Object.fromEntries(kept.map((g) => [g.id, { members: g.members, waitsOn: g.waitsOn }]))
   else delete fleet.groups
   for (const n of names) {
+    const f = fleet.features[n]
     const g = kept.find((x) => x.members.includes(n) && x.members.length > 1)
-    if (g) fleet.features[n].group = g.id
-    else delete fleet.features[n].group
+    if (g) f.group = g.id
+    else delete f.group
+    // The member before it, kept once it lands (and its group is gone): stackGate merges the target for it.
+    const i = g ? g.members.indexOf(n) : -1
+    if (i > 0) f.groupPrev = g.members[i - 1]
+    else if (f.groupPrev && !landedOn(f.groupPrev)) delete f.groupPrev
   }
   save()
 }
@@ -1782,6 +1789,20 @@ const waitOver = (w) => w.on.every((n) => (w.until === 'built' ? isBuilt(n) : la
  * land instead. → null to go on, 'waiting', or 'parked'. A group of one returns null at once.
  */
 async function stackGate(feature, f) {
+  const mf = manifestOf(f.worktree, feature)
+  const builds = (mf.state === 'building' && !/^pending/.test(mf.ready ?? '')) || (mf.state === 'planned' && isSet(mf['go-ahead']))
+  // A dependency or predecessor that landed while this one planned is the target's code now, and
+  // its group may be gone with it: the pool's sync ran before this lane's first run, not since, so
+  // the target is merged in here — once per landed one — before this feature builds on it.
+  if (builds) {
+    const done = [...new Set([...(f.dependsOn ?? []), ...(f.groupPrev ? [f.groupPrev] : [])])].filter((d) => landedOn(d) && !(f.depsSynced ?? []).includes(d))
+    if (done.length) {
+      const why = await syncTarget(f.worktree, `${done.join(', ')}'s code`, feature)
+      if (why) return park(f, why)
+      f.depsSynced = [...(f.depsSynced ?? []), ...done]
+      save()
+    }
+  }
   const g = groupOf(feature)
   if (!g) return null
   const i = g.members.indexOf(feature)
@@ -1789,8 +1810,6 @@ async function stackGate(feature, f) {
     const earlier = g.waitsOn ? (fleet.groups?.[g.waitsOn]?.members ?? []).filter((m) => !landedOn(m)) : []
     return earlier.length ? groupHold(f, { until: 'landed', on: earlier, group: g.id, lane: 'build' }) : null
   }
-  const mf = manifestOf(f.worktree, feature)
-  const builds = (mf.state === 'building' && !/^pending/.test(mf.ready ?? '')) || (mf.state === 'planned' && isSet(mf['go-ahead']))
   if (!builds) return null
   const prev = g.members[i - 1]
   if (!isBuilt(prev)) return groupHold(f, { until: 'built', on: [prev], group: g.id, lane: 'build' })
@@ -1807,7 +1826,7 @@ async function stackGate(feature, f) {
 async function stackOn(feature, prev, id) {
   const f = fleet.features[feature]
   const p = fleet.features[prev]
-  if (!p || landedOn(prev)) return null
+  if (!p || landedOn(prev)) return null // the target's code now: stackGate merged the target in
   const wt = f.worktree
   const ref = `refs/heads/${p.branch}`
   if (tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) !== null) return null
@@ -1844,6 +1863,8 @@ async function chainGroup(id, from = 0) {
     const m = g.members[i]
     const f = fleet.features[m]
     if (!f?.worktree || !existsSync(f.worktree) || !startedBuilding(m)) continue
+    // A run in progress owns its worktree: that member chains at its next boundary instead.
+    if (['building', 'walking', 'shipping'].includes(f.status)) continue
     const why = await stackOn(m, g.members[i - 1], id)
     out.push({ feature: m, why })
     if (why) {
@@ -1855,32 +1876,53 @@ async function chainGroup(id, from = 0) {
 }
 
 /**
- * Until Task 4's barrier: a member past building, in a group of more than one, walks only once every
- * member before it has landed — so it can never land first, carrying their code onto the target
- * ahead of them. → true when it was held.
+ * Until Task 4's barrier: a member past building, in a group of more than one, walks, ships or lands
+ * only once every member before it has landed — so it can never land first, carrying their code onto
+ * the target ahead of them. `lane` is where it was going: walk, ship or land. → true when it was held.
  */
-function holdForWalk(feature) {
+function holdForLanding(feature, lane) {
   const g = groupOf(feature)
   const i = g ? g.members.indexOf(feature) : -1
   if (i < 1) return false
   const on = g.members.slice(0, i).filter((m) => !landedOn(m))
   if (!on.length) return false
-  groupHold(fleet.features[feature], { until: 'landed', on, group: g.id, lane: 'walk' })
+  groupHold(fleet.features[feature], { until: 'landed', on, group: g.id, lane })
   return true
 }
 
-/** Members whose wait is over go back on their lane's queue. Run after every run and every routing. */
+/** What a member's wait should be on now, from its current group — a regroup may have moved it. */
+function expectedWait(feature, w) {
+  const g = groupOf(feature)
+  const i = g ? g.members.indexOf(feature) : -1
+  if (w.lane === 'build' && w.until === 'built') return i > 0 ? [g.members[i - 1]] : []
+  if (w.lane === 'build') return i === 0 && g.waitsOn ? (fleet.groups?.[g.waitsOn]?.members ?? []) : []
+  return i > 0 ? g.members.slice(0, i) : []
+}
+/** A wait no longer on the member's current predecessor (or group): dropped, and checked again where it goes. */
+function staleWait(feature, w) {
+  const open = (list) => new Set(list.filter((n) => !(w.until === 'built' ? isBuilt(n) : landedOn(n))))
+  const now = open(expectedWait(feature, w))
+  const was = open(w.on)
+  return now.size !== was.size || [...now].some((n) => !was.has(n))
+}
+
+/** Members whose wait is over (or stale) go back on their lane's queue. Run after every run and every routing. */
 function releaseGroups() {
   let any = false
   for (const [feature, f] of Object.entries(fleet.features)) {
-    if (f.status !== 'waiting' || !f.groupWait || !waitOver(f.groupWait)) continue
+    if (f.status !== 'waiting' || !f.groupWait) continue
+    if (!waitOver(f.groupWait) && !staleWait(feature, f.groupWait)) continue
     const lane = f.groupWait.lane
     delete f.groupWait
     any = true
     if (lane === 'walk') {
-      if (holdForWalk(feature)) continue
+      if (holdForLanding(feature, lane)) continue
       Object.assign(f, { status: 'awaiting-walk', reason: null })
       walkQueue.push(feature)
+    } else if (lane === 'ship' || lane === 'land') {
+      if (holdForLanding(feature, lane)) continue
+      Object.assign(f, { status: 'awaiting-ship', reason: null })
+      pool.push({ feature, lane })
     } else {
       Object.assign(f, { status: 'queued', reason: null })
       pool.push({ feature, lane: 'build' })
@@ -1922,13 +1964,14 @@ function enqueue(feature) {
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf, { batched: SPLIT, specText: readSpec(f.worktree, feature) })
   if (lane === 'blocked') Object.assign(f, { status: 'parked', reason: unquote(mf.blocked) })
-  else if (text == null && shippedPr(readSpec(f.worktree, feature))) Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' }) // shipped, the merge still owed
+  else if (text == null && shippedPr(readSpec(f.worktree, feature))) holdForLanding(feature, 'land') || (Object.assign(f, { status: 'awaiting-ship', reason: null }) && pool.push({ feature, lane: 'land' })) // shipped, the merge still owed
   else if (lane === 'done') {
     f.pr = mf.pr ?? null
     archiveRow(feature)
   }
-  else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
-  else if (lane === 'walk') holdForWalk(feature) || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
+  else if (lane === 'ship') holdForLanding(feature, 'ship') || (Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane }))
+  else if (lane === 'build') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
+  else if (lane === 'walk') holdForLanding(feature, 'walk') || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
   else Object.assign(f, { status: 'parked', reason: `MANIFEST.md is missing or its state is not one the fleet knows — next: /builder:resume --path ${specOf(feature)} to set it right` })
 }
 
@@ -2450,8 +2493,8 @@ function drainInbox() {
       addNote(`${name} was added while the fleet ran but can't join: ${why}`)
       continue
     }
-    const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => !landedOn(d))
     const deps = (Array.isArray(meta.dependsOn) ? meta.dependsOn : []).filter((d) => !landedOn(d))
+    const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => !landedOn(d) && !(meta.dependsOn ?? []).includes(d))
     fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, unpark: true, ...(waits.length && { waitsOn: waits }), ...(deps.length && { dependsOn: deps }) }
     joining.push(name)
   }
@@ -2506,8 +2549,9 @@ function route(feature, outcome) {
     if (retried) return
   }
   if (outcome === 'failed') tellStop(feature, fleet.features[feature])
-  if (outcome === 'walk') holdForWalk(feature) || walkQueue.push(feature)
-  else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
+  if (outcome === 'walk') holdForLanding(feature, 'walk') || walkQueue.push(feature)
+  else if (outcome === 'ship') holdForLanding(feature, 'ship') || pool.push({ feature, lane: outcome })
+  else if (outcome === 'build') pool.push({ feature, lane: outcome })
   else if (outcome === 'done') release()
   releaseGroups()
 }

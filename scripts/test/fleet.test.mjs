@@ -1328,6 +1328,44 @@ test("a predecessor's branch that can't be merged into the next member's worktre
   assert.ok(!r.calls.some((l) => l.startsWith('start b ')), 'b never built')
 })
 
+test("a dependent whose dependency lands while it plans builds on the landed code", () => {
+  const root = makeRepo(['api', 'ui'])
+  program(root, ['api', 'ui'], { ui: 'api' })
+  writeFileSync(join(root, 'docs/features/api/MANIFEST.md'), 'size: md\nstate: built\nnext: x\n')
+  git(root, 'commit', '-qam', 'api built')
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['api', 'ui'], {
+    api: ['COMMIT:app/api.txt:signed-off', 'verified', 'SHIP'],
+    ui: ['SLOW:audited', 'SLOW:PLAN:app/ui.txt:planned', 'COMMIT:app/ui.txt:building', ...tail],
+  }, { STUB_SLOW_MS: '3000' }, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'api')
+  assertLanded(r, 'ui')
+  assert.ok(r.calls.findIndex((l) => l.startsWith('start api ') && stepOf(l) === 'SHIP') < r.calls.findIndex((l) => l.startsWith('start ui ') && stepOf(l) === 'COMMIT:app/ui.txt:building'), `api lands while ui plans:\n${r.calls.join('\n')}`)
+  execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: api commits app/api.txt'), shaOf(root, 'stub: ui commits app/ui.txt')], { cwd: root })
+})
+
+test('a member already signed off does not ship before the member ahead of it lands', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: built\nnext: x\n')
+  writeFileSync(join(root, 'docs/features/b/MANIFEST.md'), 'size: md\nstate: verified\nnext: x\n')
+  git(root, 'commit', '-qam', 'a built, b verified')
+  const r = runFleet(root, ['a', 'b'], { a: ['SLOW:signed-off', 'verified', 'SHIP'], b: ['SHIP'] }, { STUB_SLOW_MS: '1000' }, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  const merges = git(root, 'log', '--format=%s', '--first-parent', 'main').split('\n').filter((l) => /^merge\(/.test(l))
+  assert.ok(merges.findIndex((l) => l.startsWith('merge(b)')) < merges.findIndex((l) => l.startsWith('merge(a)')), `a lands first: ${merges.join(' | ')}`)
+})
+
+test('--dry-run says one join per declared dependency', () => {
+  const root = makeRepo(['api', 'x', 'ui'])
+  program(root, ['api', 'x', 'ui'], { ui: 'api, x' })
+  const r = runFleet(root, ['api', 'x', 'ui', '--dry-run'], {})
+  assert.match(r.stdout, /✓ ui → builder\/ui — ui joins api's group \(declared: Depends on api\); ui joins x's group \(declared: Depends on x\)/)
+})
+
 test('--status shows a group line above the table; a group of one shows none', () => {
   const root = makeRepo(['a', 'b', 'c', 'd'])
   const row = (status, extra = {}) => ({ status, runs: 1, branch: 'x', worktree: null, pr: null, reason: null, ...extra })
