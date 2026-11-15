@@ -1218,30 +1218,127 @@ function program(root, children, deps) {
   git(root, 'commit', '-qm', 'program')
 }
 
-test('a program chain runs to the end in one fleet run: the child starts after its dependency merges', () => {
+// Group lanes (D4): a child whose dependency is in the same run joins its group — it plans beside it,
+// stacks on its built branch, and lands after it — instead of waiting for it to merge.
+test('a program chain runs to the end in one fleet run: the child joins its dependency\'s group and lands after it', () => {
   const root = makeRepo(['api', 'ui'])
   program(root, ['api', 'ui'], { ui: 'api' })
   const dry = runFleet(root, ['api', 'ui', '--dry-run'], {})
   assert.match(dry.stdout, /✓ api → builder\/api/)
-  assert.match(dry.stdout, /⏳ ui → builder\/ui, once api merges/)
-  const r = runFleet(root, ['api', 'ui'], { api: HAPPY, ui: HAPPY })
+  assert.match(dry.stdout, /✓ ui → builder\/ui — ui joins api's group \(declared: Depends on api\)/)
+  const r = runFleet(root, ['api', 'ui'], { api: HAPPY, ui: HAPPY }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null)
   assert.equal(r.status, 0, r.stderr)
   assertLanded(r, 'api')
   assertLanded(r, 'ui')
-  const lastApi = r.calls.findLastIndex((l) => l.startsWith('end api '))
-  const firstUi = r.calls.findIndex((l) => l.startsWith('start ui '))
-  assert.ok(firstUi > lastApi, r.calls.join('\n'))
+  const merges = git(root, 'log', '--format=%s', '--first-parent', 'main').split('\n').filter((l) => /^merge\(/.test(l))
+  assert.ok(merges.findIndex((l) => l.startsWith('merge(ui)')) < merges.findIndex((l) => l.startsWith('merge(api)')), `api lands first: ${merges.join(' | ')}`)
 })
 
 test('a child whose dependency parks is parked too, saying why', () => {
   const root = makeRepo(['api', 'ui'])
   program(root, ['api', 'ui'], { ui: '#1' })
-  const r = runFleet(root, ['api', 'ui'], { api: ['audited', 'BLOCK:needs a human'] })
+  const r = runFleet(root, ['api', 'ui'], { api: ['audited', 'BLOCK:needs a human'], ui: ['audited', 'PLAN:app/ui.txt:planned', 'building'] }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null)
   assert.equal(r.fleet.features.api.status, 'parked')
   assert.equal(r.fleet.features.ui.status, 'parked')
-  assert.equal(r.fleet.features.ui.reason, 'waits on api (parked), which never merged — next: settle api, then pick both in /builder:agent')
-  assert.ok(!r.calls.some((l) => l.startsWith('start ui ')), 'ui never ran')
-  assert.equal(r.fleet.features.ui.worktree, null, 'no worktree before its dependency ships')
+  assert.equal(r.fleet.features.ui.reason, 'waits on api (parked) to build first (group g-api), which it never did — next: settle api, then pick both in /builder:agent')
+  assert.ok(!r.calls.some((l) => l.startsWith('start ui ') && l.split(' ')[4] === 'building'), 'ui never built')
+})
+
+// ---- group lanes (docs/specs/2026-11-14-group-lanes-design.md, D3–D7, D16) ----------------------
+const planOf = (feature, paths) => `# ${feature} — plan\n\n### Task 1: ${feature}\n\n**Files:**\n${paths.map((p) => `- Modify: \`${p}\``).join('\n')}\n\n- [ ] Step 1: build it\n`
+/** Features already planned in the repo, with a go-ahead and a PLAN.md naming `paths[feature]`. */
+function plannedWith(root, paths) {
+  for (const [feature, list] of Object.entries(paths)) {
+    writeFileSync(join(root, `docs/features/${feature}/MANIFEST.md`), 'size: md\nstate: planned\ngo-ahead: auto (recommended) 2026-11-14\nnext: x\n')
+    writeFileSync(join(root, `docs/features/${feature}/PLAN.md`), planOf(feature, list))
+  }
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'planned')
+}
+const stepOf = (l) => l.split(' ')[4]
+/** The index of the `end` line of a feature's run that applied `step`. */
+const endOfStep = (calls, feature, step) => {
+  const at = calls.findIndex((l) => l.startsWith(`start ${feature} `) && stepOf(l) === step)
+  return at < 0 ? -1 : calls.findIndex((l, i) => i > at && l.startsWith(`end ${feature} `))
+}
+const shaOf = (root, subject) => git(root, 'log', 'main', '--format=%H', '-F', `--grep=${subject}`).split('\n')[0]
+
+test('two planned features whose plans share a path stack in one lane: the second builds only once the first is built, on top of its commits', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const aBuilt = endOfStep(r.calls, 'a', 'built')
+  const bBuilds = r.calls.findIndex((l) => l.startsWith('start b build '))
+  assert.ok(aBuilt >= 0 && bBuilds > aBuilt, `b's build starts after a is built:\n${r.calls.join('\n')}`)
+  // b's worktree held a's commits when it built: a's code commit is an ancestor of b's.
+  execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: a commits app/shared.txt'), shaOf(root, 'stub: b commits app/b.txt')], { cwd: root })
+  assert.equal(r.fleet.groups, undefined, 'a group that landed leaves no record')
+})
+
+test('two planned features that share nothing build side by side, as before group lanes', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/a.txt'], b: ['app/b.txt'] })
+  const r = runFleet(root, ['a', 'b'], { a: ['SLOW:building', 'READY-PENDING', 'verified', 'SHIP'], b: ['SLOW:building', 'READY-PENDING', 'verified', 'SHIP'] }, { STUB_SLOW_MS: '600' }, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assert.equal(r.status, 0, r.stderr)
+  const aEnds = r.calls.findIndex((l) => l.startsWith('end a '))
+  const bStarts = r.calls.findIndex((l) => l.startsWith('start b '))
+  assert.ok(bStarts < aEnds, `both build at once:\n${r.calls.join('\n')}`)
+  assert.equal(r.fleet.groups, undefined)
+})
+
+test('a declared dependent in the same run plans beside its dependency and starts building before it lands', () => {
+  const root = makeRepo(['api', 'ui'])
+  program(root, ['api', 'ui'], { ui: 'api' })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['api', 'ui'], {
+    api: ['audited', 'PLAN:app/api.txt:planned', 'COMMIT:app/api.txt:building', ...tail],
+    ui: ['audited', 'PLAN:app/ui.txt:planned', 'COMMIT:app/ui.txt:building', ...tail],
+  }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'api')
+  assertLanded(r, 'ui')
+  const at = (feature, step) => r.calls.findIndex((l) => l.startsWith(`start ${feature} `) && stepOf(l) === step)
+  assert.ok(at('ui', 'audited') < r.calls.findIndex((l) => l.startsWith('end api ')), `planning stays parallel:\n${r.calls.join('\n')}`)
+  const uiBuilds = at('ui', 'COMMIT:app/ui.txt:building')
+  assert.ok(uiBuilds > endOfStep(r.calls, 'api', 'built'), `ui stacks on api's built branch:\n${r.calls.join('\n')}`)
+  assert.ok(uiBuilds < at('api', 'SHIP'), `ui builds before api lands:\n${r.calls.join('\n')}`)
+  execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: api commits app/api.txt'), shaOf(root, 'stub: ui commits app/ui.txt')], { cwd: root })
+})
+
+test("a predecessor's branch that can't be merged into the next member's worktree parks that member, saying why", () => {
+  const root = makeRepo(['a', 'b'], { lines: ['setup: if [ {feature} = b ]; then echo mine > app/shared.txt; fi'] })
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/shared.txt'), 'base\n')
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP'], b: ['building'] }, {}, { timeout: 90000 })
+  assert.equal(r.signal, null)
+  assertLanded(r, 'a')
+  const b = r.fleet.features.b
+  assert.equal(b.status, 'parked', JSON.stringify(b))
+  assert.equal(b.reason, `a's branch is not in b's worktree (uncommitted changes there) — next: commit or set aside the changes in ${b.worktree}, then /builder:agent b`)
+  assert.ok(!r.calls.some((l) => l.startsWith('start b ')), 'b never built')
+})
+
+test('--status shows a group line above the table; a group of one shows none', () => {
+  const root = makeRepo(['a', 'b', 'c', 'd'])
+  const row = (status, extra = {}) => ({ status, runs: 1, branch: 'x', worktree: null, pr: null, reason: null, ...extra })
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(
+    join(root, '.builder/fleet/fleet.json'),
+    JSON.stringify({ target: 'main', groups: { 'g-a': { members: ['a', 'b', 'c'], waitsOn: null } }, features: { a: row('awaiting-walk', { group: 'g-a' }), b: row('building', { group: 'g-a' }), c: row('waiting', { group: 'g-a', reason: 'after b builds (group g-a)' }), d: row('building') } })
+  )
+  const r = runFleet(root, ['--status'], {})
+  assert.match(r.stdout, /^group g-a: a ✓ → b ▶ → c ·$/m)
+  assert.equal((r.stdout.match(/^group /gm) ?? []).length, 1, r.stdout)
 })
 
 test('a child whose dependency is not in the run is refused', () => {

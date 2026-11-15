@@ -36,6 +36,7 @@ import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, 
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
+import { footprintOf, groupsOf } from './groups-core.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
@@ -601,7 +602,11 @@ if (!asked.length && !Object.keys(fleet.features).length) {
 const fresh = []
 const requeue = [] // parked or failed rows named again while a fleet runs — it retries them
 const refused = {}
-const after = {} // feature → the dependencies in this run it waits for
+const after = {} // feature → the dependencies it waits for to merge
+// Group lanes (D4): a program child whose dependency is in this run joins that dependency's group —
+// it plans beside it, stacks on its built branch and lands after it — instead of waiting for it to
+// merge. Only a dependency nothing here will build is still waited for (and that is refused below).
+const joins = {} // feature → the dependencies in this run whose group it joins
 const branchOwner = new Map(Object.entries(fleet.features).map(([f, row]) => [row.branch, f]))
 const inRun = new Set([...asked, ...Object.keys(fleet.features)])
 for (const feature of asked) {
@@ -623,14 +628,18 @@ for (const feature of asked) {
   else {
     fresh.push(feature)
     branchOwner.set(branch, feature)
-    if (waits.length) after[feature] = waits.map((d) => d.name)
+    const inside = waits.filter((d) => inRun.has(d.name)).map((d) => d.name)
+    const rest = waits.filter((d) => !inRun.has(d.name)).map((d) => d.name)
+    if (inside.length) joins[feature] = inside
+    if (rest.length) after[feature] = rest
   }
 }
-// A dependency refused above can't ship either — its waiters go with it.
+// A dependency refused above can't ship either — its waiters, and the dependents joining it, go with it.
+const depsOf = (x) => [...(after[x] ?? []), ...(joins[x] ?? [])]
 for (let changed = true; changed; ) {
   changed = false
-  for (const f of fresh.filter((x) => after[x]?.some((d) => refused[d]))) {
-    refused[f] = `waits on ${after[f].filter((d) => refused[d]).join(', ')}, which can't run`
+  for (const f of fresh.filter((x) => depsOf(x).some((d) => refused[d]))) {
+    refused[f] = `waits on ${depsOf(f).filter((d) => refused[d]).join(', ')}, which can't run`
     fresh.splice(fresh.indexOf(f), 1)
     changed = true
   }
@@ -646,7 +655,8 @@ if (flag('--dry-run')) {
   for (const f of fresh) {
     const mf = parseManifest(readManifest(ROOT, f))
     const unparks = isSet(mf.blocked) ? ` — unparks it — it was parked: ${parkParts(mf.blocked).why}` : ''
-    console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, mf)}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}${unparks}`)
+    const joined = joins[f] ? ` — ${f} joins ${joins[f].join(' and ')}'s group (declared: Depends on ${joins[f].join(', ')})` : ''
+    console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, mf)}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}${joined}${unparks}`)
   }
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
   const retried = (f, row) => asked.includes(f) && ['parked', 'failed'].includes(row.status)
@@ -675,7 +685,7 @@ function addToRunning(pid) {
   mkdirSync(INBOX, { recursive: true })
   const drop = (f, verb) => {
     try {
-      writeFileSync(join(INBOX, f), JSON.stringify({ waitsOn: after[f] ?? [] }) + '\n', { flag: 'wx' })
+      writeFileSync(join(INBOX, f), JSON.stringify({ waitsOn: after[f] ?? [], dependsOn: joins[f] ?? [] }) + '\n', { flag: 'wx' })
       console.log(`  ↳ ${f} — ${verb} for the running fleet (pid ${pid})`)
     } catch (e) {
       if (e.code !== 'EEXIST') throw e
@@ -793,7 +803,7 @@ pruneArchivedLogs(ROOT, AW.keepLogs)
 fleet.target = TARGET
 for (const [f, why] of Object.entries(refused)) console.error(`✗ ${f} — ${why}`)
 for (const f of fresh)
-  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, unpark: true, ...(after[f] && { waitsOn: after[f] }) }
+  fleet.features[f] = { status: 'queued', runs: 0, branch: branchOf(f, parseManifest(readManifest(ROOT, f))), worktree: null, pr: null, reason: null, unpark: true, ...(after[f] && { waitsOn: after[f] }), ...(joins[f] && { dependsOn: joins[f] }) }
 // Naming a parked or failed feature is asking for a retry, whatever stopped it: enqueue unparks it.
 for (const f of asked)
   if (['parked', 'failed'].includes(fleet.features[f]?.status)) {
@@ -1355,6 +1365,11 @@ async function drive(feature, lane) {
   for (;;) {
     // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
     if (parkIfPaused(f, feature)) return 'parked'
+    // A group member builds only on the member before it, built and merged in (D6).
+    if (lane === 'build') {
+      const held = await stackGate(feature, f)
+      if (held) return held
+    }
     const before = snapshot(f.worktree, feature)
     const headBefore = tryGit(['rev-parse', 'HEAD'], f.worktree)
     f.runs = (f.runs ?? 0) + 1 // lifetime, for the table and the log names
@@ -1363,6 +1378,9 @@ async function drive(feature, lane) {
     save()
     const { exit, log } = await runClaude(f.worktree, feature, lane, f.runs)
     f.log = log
+    // A plan that just appeared may put this feature in a group; a member just built frees the one after it.
+    if (!footprinted.has(feature) && readDoc(f.worktree, feature, 'PLAN.md') != null) regroup()
+    releaseGroups()
     if (exit !== 0) kills.push(exit === null ? f.killedBy ?? null : null)
     // A walk judged against a dead env says nothing about the feature: restart it and walk again.
     if (lane === 'walk' && !envRestarted) {
@@ -1651,12 +1669,236 @@ const pool = [] // { feature, lane: 'build' | 'ship' | 'land' } — the parallel
 const walkQueue = []
 const pendingDeps = (f) => (f.waitsOn ?? []).filter((d) => !landedOn(d))
 
+// ---- group lanes (docs/specs/2026-11-14-group-lanes-design.md, D3–D7) ------------------------
+// Features whose plans overlap — a shared path, an interface one makes and the other uses, or a
+// declared "Depends on" — form a group. A group owns one lane: its members plan in parallel as any
+// feature does, but build one after another, each on top of the member before it, so the second
+// builds on the first's code instead of meeting it as a conflict at landing. A feature that overlaps
+// nothing is a group of one, which is the lane every feature had before: no record, no wait.
+const PAST_BUILDING = new Set(['built', 'signed-off', 'verified', 'shipped'])
+const STARTED = new Set(['building', ...PAST_BUILDING])
+/** A footprint that overlaps nothing: a declared dependency still joins it, before either plans. */
+const NO_FOOTPRINT = { paths: [], produces: [], consumes: [] }
+const baseOf = (f) => (f?.worktree && existsSync(f.worktree) ? f.worktree : ROOT)
+/** The features whose PLAN.md the last regroup read — a plan appearing after that regroups again. */
+const footprinted = new Set()
+
+/** A row's manifest state, from its worktree (the main tree before it has one); `shipped` once the ship removed the manifest. */
+function stateOf(feature) {
+  const base = baseOf(fleet.features[feature])
+  const text = readManifest(base, feature)
+  if (text != null) return parseManifest(text).state ?? null
+  return shippedPr(readSpec(base, feature)) ? 'shipped' : null
+}
+/** Built or further — the point a member after it may stack on its branch — or landed. */
+const isBuilt = (feature) => landedOn(feature) || PAST_BUILDING.has(stateOf(feature))
+const startedBuilding = (feature) => STARTED.has(stateOf(feature))
+/** The group a feature is in, as `{ id, members, waitsOn }`, or null for a group of one. */
+function groupOf(feature) {
+  for (const [id, g] of Object.entries(fleet.groups ?? {})) if (g.members.includes(feature)) return { id, ...g }
+  return null
+}
+
+/**
+ * Form the groups again from what is on disk: each row's PLAN.md footprint and its declared
+ * dependencies (D1–D5). Run at the fleet's start, when specs join, and when a feature's PLAN.md
+ * first appears. A feature that has started building is never moved out of its group: it keeps the
+ * member before it (as a declared dependency, so the two stay connected and in order whatever the
+ * plans now say), and it goes before any member that has not started — a member already building
+ * cannot wait to stack on one that hasn't. A feature with no PLAN.md and no declared dependency has
+ * no footprint and is a group of one until it plans.
+ */
+function regroup() {
+  const names = Object.keys(fleet.features).filter((n) => fleet.features[n].status !== 'done')
+  const live = new Set(names)
+  const deps = new Map(names.map((n) => [n, (fleet.features[n].dependsOn ?? []).filter((d) => live.has(d))]))
+  const started = new Set(names.filter(startedBuilding))
+  for (const n of started) {
+    const g = groupOf(n)
+    const i = g ? g.members.indexOf(n) : -1
+    if (i > 0 && live.has(g.members[i - 1]) && !deps.get(n).includes(g.members[i - 1])) deps.get(n).push(g.members[i - 1])
+  }
+  const declared = new Set([...deps].flatMap(([n, ds]) => (ds.length ? [n, ...ds] : [])))
+  footprinted.clear()
+  const footprints = new Map(
+    names.map((n) => {
+      const plan = readDoc(baseOf(fleet.features[n]), n, 'PLAN.md')
+      if (plan != null) footprinted.add(n)
+      return [n, plan != null ? footprintOf(plan, { generated: CFG.generated?.paths ?? [] }) : declared.has(n) ? NO_FOOTPRINT : null]
+    })
+  )
+  const form = () => groupsOf(names.map((n) => ({ name: n, footprint: footprints.get(n), dependsOn: deps.get(n) })), { max: AW.groupMax, fleetOrder: names })
+  let groups = form()
+  // A started member goes before an unstarted one in its group: the unstarted one depends on it.
+  let reordered = false
+  for (const g of groups) {
+    const first = g.members.filter((m) => started.has(m))
+    for (const m of g.members.filter((x) => !started.has(x)))
+      for (const s of first) if (!deps.get(m).includes(s) && !deps.get(s).includes(m)) (deps.get(m).push(s), (reordered = true))
+  }
+  if (reordered) groups = form()
+  // A group of one is no record — unless the cap cut it from a component: then it waits, or is waited on.
+  const kept = groups.filter((g) => g.members.length > 1 || g.waitsOn || groups.some((x) => x.waitsOn === g.id))
+  if (kept.length) fleet.groups = Object.fromEntries(kept.map((g) => [g.id, { members: g.members, waitsOn: g.waitsOn }]))
+  else delete fleet.groups
+  for (const n of names) {
+    const g = kept.find((x) => x.members.includes(n) && x.members.length > 1)
+    if (g) fleet.features[n].group = g.id
+    else delete fleet.features[n].group
+  }
+  save()
+}
+
+/**
+ * A landed member leaves its group's record, as its row leaves fleet.json; a group left with one
+ * member is no group, and a group nothing is left of no longer holds back the one cut after it.
+ */
+function pruneGroups() {
+  if (!fleet.groups) return
+  for (const g of Object.values(fleet.groups)) g.members = g.members.filter((m) => fleet.features[m] && fleet.features[m].status !== 'done')
+  for (const [id, g] of Object.entries(fleet.groups)) if (!g.members.length) delete fleet.groups[id]
+  for (const g of Object.values(fleet.groups)) if (g.waitsOn && !fleet.groups[g.waitsOn]) g.waitsOn = null
+  for (const [id, g] of Object.entries(fleet.groups))
+    if (g.members.length < 2 && !g.waitsOn && !Object.values(fleet.groups).some((x) => x.waitsOn === id)) {
+      for (const m of g.members) delete fleet.features[m].group
+      delete fleet.groups[id]
+    }
+  if (!Object.keys(fleet.groups).length) delete fleet.groups
+}
+
+/** Wait, as a group member: off every queue until releaseGroups finds what it waits for. → 'waiting'. */
+function groupHold(f, wait) {
+  Object.assign(f, { status: 'waiting', groupWait: wait, reason: waitText(wait) })
+  save()
+  return 'waiting'
+}
+const waitText = (w) =>
+  w.until === 'built' ? `after ${w.on.join(', ')} build${w.on.length > 1 ? '' : 's'} (group ${w.group})` : `after ${w.on.join(', ')} land${w.on.length > 1 ? '' : 's'} (group ${w.group})`
+const waitOver = (w) => w.on.every((n) => (w.until === 'built' ? isBuilt(n) : landedOn(n)))
+
+/**
+ * Before a member builds (D6): the member before it must be built, and its branch merged into this
+ * worktree. The first member of a group cut off by the cap (D3) waits for the group before it to
+ * land instead. → null to go on, 'waiting', or 'parked'. A group of one returns null at once.
+ */
+async function stackGate(feature, f) {
+  const g = groupOf(feature)
+  if (!g) return null
+  const i = g.members.indexOf(feature)
+  if (i === 0) {
+    const earlier = g.waitsOn ? (fleet.groups?.[g.waitsOn]?.members ?? []).filter((m) => !landedOn(m)) : []
+    return earlier.length ? groupHold(f, { until: 'landed', on: earlier, group: g.id, lane: 'build' }) : null
+  }
+  const mf = manifestOf(f.worktree, feature)
+  const builds = (mf.state === 'building' && !/^pending/.test(mf.ready ?? '')) || (mf.state === 'planned' && isSet(mf['go-ahead']))
+  if (!builds) return null
+  const prev = g.members[i - 1]
+  if (!isBuilt(prev)) return groupHold(f, { until: 'built', on: [prev], group: g.id, lane: 'build' })
+  const why = await stackOn(feature, prev, g.id)
+  return why ? park(f, why) : null
+}
+
+/**
+ * Merge the member before this one into its worktree, and prove it went in (D6): its branch must be
+ * an ancestor of HEAD, or this member would build on code it does not have. A conflict goes to the
+ * agent merge-resolution run, as a conflict with the target does. → null, or the park reason. A
+ * predecessor that has landed is the target's now; the lane's own sync brought it in.
+ */
+async function stackOn(feature, prev, id) {
+  const f = fleet.features[feature]
+  const p = fleet.features[prev]
+  if (!p || landedOn(prev)) return null
+  const wt = f.worktree
+  const ref = `refs/heads/${p.branch}`
+  if (tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) !== null) return null
+  let why = null
+  try {
+    git(['merge', '--no-edit', '--quiet', ref], wt)
+  } catch (e) {
+    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) !== null) {
+      const log = await resolveMerge(feature, wt, `${prev}'s code (group ${id})`, { feature: prev, branch: p.branch })
+      if (log !== true) {
+        tryGit(['merge', '--abort'], wt)
+        return `${prev}'s branch is not in ${feature}'s worktree (merging it conflicted and two agent runs could not resolve it${log ? ` — see ${log}` : ''}) — next: merge ${p.branch} in ${wt} and commit it, then /builder:agent ${feature}`
+      }
+    } else why = tryGit(['status', '--porcelain', '--untracked-files=no'], wt) ? 'uncommitted changes there' : gitWords(e)
+  }
+  if (tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) === null) {
+    const next = why === 'uncommitted changes there' ? `commit or set aside the changes in ${wt}` : `run git merge ${p.branch} in ${wt} and clear what stops it`
+    return `${prev}'s branch is not in ${feature}'s worktree (${why ?? 'the merge did not take'}) — next: ${next}, then /builder:agent ${feature}`
+  }
+  return runSync(wt, feature, p.branch)
+}
+
+/**
+ * Re-chain a group after a member changed (D7): each member after index `from` merges its
+ * predecessor's current branch, in order. A member that has not started building is skipped — it
+ * stacks when it builds. The first that cannot take its predecessor parks, and the chain stops
+ * there: the members after it would chain onto a branch that is missing code. → [{ feature, why }].
+ */
+async function chainGroup(id, from = 0) {
+  const g = fleet.groups?.[id]
+  const out = []
+  if (!g) return out
+  for (let i = from + 1; i < g.members.length; i++) {
+    const m = g.members[i]
+    const f = fleet.features[m]
+    if (!f?.worktree || !existsSync(f.worktree) || !startedBuilding(m)) continue
+    const why = await stackOn(m, g.members[i - 1], id)
+    out.push({ feature: m, why })
+    if (why) {
+      park(f, why)
+      break
+    }
+  }
+  return out
+}
+
+/**
+ * Until Task 4's barrier: a member past building, in a group of more than one, walks only once every
+ * member before it has landed — so it can never land first, carrying their code onto the target
+ * ahead of them. → true when it was held.
+ */
+function holdForWalk(feature) {
+  const g = groupOf(feature)
+  const i = g ? g.members.indexOf(feature) : -1
+  if (i < 1) return false
+  const on = g.members.slice(0, i).filter((m) => !landedOn(m))
+  if (!on.length) return false
+  groupHold(fleet.features[feature], { until: 'landed', on, group: g.id, lane: 'walk' })
+  return true
+}
+
+/** Members whose wait is over go back on their lane's queue. Run after every run and every routing. */
+function releaseGroups() {
+  let any = false
+  for (const [feature, f] of Object.entries(fleet.features)) {
+    if (f.status !== 'waiting' || !f.groupWait || !waitOver(f.groupWait)) continue
+    const lane = f.groupWait.lane
+    delete f.groupWait
+    any = true
+    if (lane === 'walk') {
+      if (holdForWalk(feature)) continue
+      Object.assign(f, { status: 'awaiting-walk', reason: null })
+      walkQueue.push(feature)
+    } else {
+      Object.assign(f, { status: 'queued', reason: null })
+      pool.push({ feature, lane: 'build' })
+    }
+  }
+  if (any) {
+    save()
+    wakeAll()
+  }
+}
+
 /**
  * Put a feature in the queue its manifest says. A program child still waiting on a dependency
  * gets no worktree yet: it is branched once they have merged, so it starts from their code.
  */
 function enqueue(feature) {
   const f = fleet.features[feature]
+  delete f.groupWait // a member's wait is checked again where it builds or walks
   const pending = pendingDeps(f)
   if (pending.length) {
     Object.assign(f, { status: 'waiting', waitsOn: pending, reason: `after ${pending.join(', ')}` })
@@ -1686,7 +1928,7 @@ function enqueue(feature) {
     archiveRow(feature)
   }
   else if (lane === 'build' || lane === 'ship') Object.assign(f, { status: QUEUED[lane], reason: null }) && pool.push({ feature, lane })
-  else if (lane === 'walk') Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature)
+  else if (lane === 'walk') holdForWalk(feature) || (Object.assign(f, { status: 'awaiting-walk', reason: null }) && walkQueue.push(feature))
   else Object.assign(f, { status: 'parked', reason: `MANIFEST.md is missing or its state is not one the fleet knows — next: /builder:resume --path ${specOf(feature)} to set it right` })
 }
 
@@ -1879,19 +2121,25 @@ async function syncTarget(wt, why = "its dependencies' code", feature = null) {
       return `merging ${TARGET} (${why}) conflicted and two agent runs could not resolve it${log ? ` (see ${log})` : ''} — next: finish the merge in ${wt} and commit it, then /builder:agent`
     }
   }
-  // New commits came in: a package or a migration may have come with them, and the worktree's
-  // install and test database were made before it. agent_walk.sync brings them up to date.
-  if (AW.sync && feature) {
-    const log = join(DIR, 'logs', `${feature}-sync.log`)
-    mkdirSync(dirname(log), { recursive: true })
-    const fd = openSync(log, 'a')
-    try {
-      execSync(fill(AW.sync, feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
-    } catch {
-      return `agent_walk.sync failed after merging ${TARGET} (see ${log}) — next: make agent_walk.sync pass in ${wt}, then /builder:agent`
-    } finally {
-      closeSync(fd)
-    }
+  return runSync(wt, feature, TARGET)
+}
+
+/**
+ * New commits came in (the target, or the member before this one in its group): a package or a
+ * migration may have come with them, and the worktree's install and test database were made before
+ * it. agent_walk.sync brings them up to date. → null, or the park reason.
+ */
+function runSync(wt, feature, merged) {
+  if (!AW.sync || !feature) return null
+  const log = join(DIR, 'logs', `${feature}-sync.log`)
+  mkdirSync(dirname(log), { recursive: true })
+  const fd = openSync(log, 'a')
+  try {
+    execSync(fill(AW.sync, feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+  } catch {
+    return `agent_walk.sync failed after merging ${merged} (see ${log}) — next: make agent_walk.sync pass in ${wt}, then /builder:agent`
+  } finally {
+    closeSync(fd)
   }
   return null
 }
@@ -1904,9 +2152,9 @@ function mergeTargetQuietly(wt) {
 }
 
 const RESOLVE_ATTEMPTS = 2
-const mergeDone = (wt) =>
+const mergeDone = (wt, ref = `refs/heads/${TARGET}`) =>
   tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null &&
-  tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null &&
+  tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) !== null &&
   tryGit(['diff', '--name-only', '--diff-filter=U'], wt) === ''
 
 /**
@@ -1916,19 +2164,26 @@ const mergeDone = (wt) =>
  * together is work, not a question for the human. True when the merge is committed; else the last
  * run's log. A run that backed the merge out gets it started again for the next.
  */
-async function resolveMerge(feature, wt, why) {
+async function resolveMerge(feature, wt, why, from = null) {
   const f = fleet.features[feature]
   const scripts = dirname(fileURLToPath(import.meta.url))
+  // `from`: a group predecessor's branch (group lanes, D6/D7) instead of the target — the member
+  // before this one, whose code this feature builds on.
+  const name = from?.branch ?? TARGET
+  const ref = `refs/heads/${name}`
+  const carries = from
+    ? `${name} is ${from.feature}'s branch — the feature before this one in its group lane, which this feature builds on; it carries ${why}, built and reviewed.`
+    : `${TARGET} is the branch the builder fleet lands on; it carries ${why}, already merged and verified.`
   let log = null
   for (let attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++) {
-    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null && tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) !== null) return true
+    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null && tryGit(['merge', '--no-edit', '--quiet', ref], wt) !== null) return true
     const files = (tryGit(['diff', '--name-only', '--diff-filter=U'], wt) ?? '').split('\n').filter(Boolean)
     f.runs = (f.runs ?? 0) + 1
-    f.reason = `resolving a conflict with ${TARGET} in ${files.length} file(s)`
+    f.reason = `resolving a conflict with ${name} in ${files.length} file(s)`
     save()
     const prompt =
-      `A merge of ${TARGET} into this branch (${f.branch}) stopped on conflicts in: ${files.join(', ')}. ` +
-      `${TARGET} is the branch the builder fleet lands on; it carries ${why}, already merged and verified. This branch carries the feature at --path ${specOf(feature)} — being built unattended to a spec the human approved. ` +
+      `A merge of ${name} into this branch (${f.branch}) stopped on conflicts in: ${files.join(', ')}. ` +
+      `${carries} This branch carries the feature at --path ${specOf(feature)} — being built unattended to a spec the human approved. ` +
       `Resolve every conflict so BOTH sides keep working: read this feature's SPEC.md (and PLAN.md if it is there) and \`git log -p MERGE_HEAD --not HEAD -- <file>\` for what the other side changed and why; keep both behaviours, and never drop one side to make a conflict go away. ` +
       `Where the two sides really do disagree, choose what keeps the other feature's shipped behaviour and still meets this spec, and write that ruling into the merge commit message. ` +
       `Then commit the merge FIRST — \`git add\` the resolved files and \`git commit\`, so the merge commit keeps both parents: the verifier tests a commit, never the working tree, so before the commit it would test the pre-merge HEAD. ` +
@@ -1938,14 +2193,16 @@ async function resolveMerge(feature, wt, why) {
     f.log = log
     f.reason = null
     save()
-    if (mergeDone(wt)) return true
+    if (mergeDone(wt, ref)) return true
   }
   return log
 }
 
 /** A dependency shipped: queue every child that was waiting only on what has now merged. */
 function release() {
-  for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'waiting' && !pendingDeps(f).length) enqueue(feature)
+  for (const [feature, f] of Object.entries(fleet.features)) if (f.status === 'waiting' && !f.groupWait && !pendingDeps(f).length) enqueue(feature)
+  pruneGroups()
+  releaseGroups()
   save()
 }
 
@@ -2131,6 +2388,9 @@ async function landChoice({ feature, mode, message }) {
 }
 if (LAND) await landChoice(LAND)
 
+// Groups are formed from what is on disk now — each row's PLAN.md and declared dependencies — before
+// anything is queued, so a member that has planned already waits for the one before it.
+regroup()
 for (const [feature, f] of Object.entries(fleet.features)) {
   if (f.status === 'done') continue
   f.runsThisTime = 0 // a parked or failed feature re-queued here gets a fresh cap
@@ -2191,7 +2451,8 @@ function drainInbox() {
       continue
     }
     const waits = (Array.isArray(meta.waitsOn) ? meta.waitsOn : []).filter((d) => !landedOn(d))
-    fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, unpark: true, ...(waits.length && { waitsOn: waits }) }
+    const deps = (Array.isArray(meta.dependsOn) ? meta.dependsOn : []).filter((d) => !landedOn(d))
+    fleet.features[name] = { status: 'queued', runs: 0, branch, worktree: null, pr: null, reason: null, unpark: true, ...(waits.length && { waitsOn: waits }), ...(deps.length && { dependsOn: deps }) }
     joining.push(name)
   }
   // Rows saved before their worktrees are made, and the drops removed only once the rows are
@@ -2203,6 +2464,7 @@ function drainInbox() {
       unlinkSync(join(INBOX, name))
     } catch {}
   }
+  if (joining.length) regroup()
   for (const name of joining) enqueue(name)
   if (joining.length) save()
   return joining.length > 0
@@ -2244,9 +2506,10 @@ function route(feature, outcome) {
     if (retried) return
   }
   if (outcome === 'failed') tellStop(feature, fleet.features[feature])
-  if (outcome === 'walk') walkQueue.push(feature)
+  if (outcome === 'walk') holdForWalk(feature) || walkQueue.push(feature)
   else if (outcome === 'build' || outcome === 'ship') pool.push({ feature, lane: outcome })
   else if (outcome === 'done') release()
+  releaseGroups()
 }
 
 /**
@@ -2705,7 +2968,14 @@ clearInterval(poll)
 
 // Whatever still waits, waits on something that parked or failed: say which, so the table explains it.
 for (const [feature, f] of Object.entries(fleet.features))
-  if (f.status === 'waiting') {
+  if (f.status === 'waiting' && f.groupWait) {
+    const { until, on, group } = f.groupWait
+    const not = on.filter((d) => !(until === 'built' ? isBuilt(d) : landedOn(d)))
+    const what = until === 'built' ? 'to build first' : 'to land first'
+    Object.assign(f, { status: 'parked', reason: `waits on ${not.map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')} ${what} (group ${group}), which ${not.length > 1 ? 'they' : 'it'} never did — next: settle ${not.join(', ')}, then pick both in /builder:agent` })
+    delete f.groupWait
+    tellStop(feature, f)
+  } else if (f.status === 'waiting') {
     Object.assign(f, { status: 'parked', reason: `waits on ${pendingDeps(f).map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')}, which never merged — next: settle ${pendingDeps(f).join(', ')}, then pick both in /builder:agent` })
     tellStop(feature, f)
   }
@@ -2713,6 +2983,7 @@ for (const [feature, f] of Object.entries(fleet.features))
 // worktree; picking it again recreates the worktree from the branch. FLEET_KEEP_STOPPED_WORKTREES=1
 // keeps them, for looking inside one while debugging the fleet itself.
 for (const [feature, f] of Object.entries(fleet.features)) settleStopped(feature, f)
+pruneGroups()
 // The walk worktree and its branch are the batches' scratch, never merged: gone when the fleet is.
 if (existsSync(WALK_WT)) {
   tryGit(['worktree', 'remove', '--force', WALK_WT])

@@ -1175,6 +1175,22 @@ export function progressBar(pct) {
  * cell for a row the fleet has noted no facts for yet (the caller reads the manifest). A `done` row is archive material — counted in the archived line, never listed.
  * `folderOf(name)` → the feature's registry folder, for each stop's choices and park record.
  */
+const IN_A_RUN = new Set(['building', 'walking', 'shipping'])
+const PAST_BUILD = new Set(['awaiting-walk', 'awaiting-ship', 'done'])
+/**
+ * One group's line (group lanes, D16): its members in build order, each ✓ built or landed (a row gone
+ * from fleet.json has landed; one held at the walk for the members before it has built), ▶ in a
+ * run, · waiting or stopped. `features` is fleet.json's rows.
+ */
+export function groupLine(id, group, features) {
+  const mark = (m) => {
+    const f = features?.[m]
+    if (!f || PAST_BUILD.has(f.status) || f.groupWait?.lane === 'walk') return '✓'
+    return IN_A_RUN.has(f.status) ? '▶' : '·'
+  }
+  return `group ${id}: ${group.members.map((m) => `${m} ${mark(m)}`).join(' → ')}`
+}
+
 export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null, folderOf = null) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
@@ -1203,6 +1219,8 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
     for (const r of timed) for (const [lane, ms] of Object.entries(r.lanes)) sums[lane] = (sums[lane] ?? 0) + ms
     lines.push(`last ${timed.length} landed, mean agent time per lane: ${Object.entries(sums).map(([lane, ms]) => `${lane} ${duration(ms / timed.length)}`).join(' · ')}`)
   }
+  const groupLines = Object.entries(fleet.groups ?? {}).filter(([, g]) => g.members?.length > 1).map(([id, g]) => groupLine(id, g, fleet.features))
+  if (groupLines.length) lines.push('', ...groupLines)
   if (!rows.length) lines.push('', 'Nothing in flight.')
   else {
     const col = prog ? ' Progress |' : ''

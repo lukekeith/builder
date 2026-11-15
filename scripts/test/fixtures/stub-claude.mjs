@@ -18,6 +18,8 @@
 //   COMMIT:<path>:<step>  write <path> (relative to the worktree, outside the spec folder too) and commit it, then <step>
 //   APPEND:<path>:<step>  add one line to <path> and commit it (a change other edits merge around), then <step>
 //   FIXES / FIXED   a walk's open ## Fixes row (state untouched) / every row ticked + ready: pending
+//   PLAN:<path,path>:<step>  write the spec folder's PLAN.md — one task whose **Files:** are those paths —
+//                   and set go-ahead: (what /builder:plan --auto leaves), then <step>; committed with the folder
 // The fleet's conflict and walk-env prompts are handled first — see below.
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync, realpathSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
@@ -128,6 +130,14 @@ if (step.startsWith('SLOW:')) {
 if (step === 'HANG-CHILD') {
   spawn('sleep', ['60'], { stdio: ['ignore', 'inherit', 'inherit'] })
   await new Promise(() => setInterval(() => {}, 1e6))
+}
+// PLAN:<paths>:<step> — a plan whose footprint is those paths (group lanes read it), with its go-ahead.
+if (step.startsWith('PLAN:')) {
+  const [, paths, ...rest] = step.split(':')
+  const files = paths.split(',').map((p) => `- Modify: \`${p}\``).join('\n')
+  writeFileSync(join(process.cwd(), spec, 'PLAN.md'), `# ${feature} — plan\n\n### Task 1: ${feature}\n\n**Files:**\n${files}\n\n- [ ] Step 1: build it\n`)
+  set('go-ahead', 'auto (recommended) 2026-11-14')
+  step = rest.join(':')
 }
 if (step.startsWith('COMMIT:')) {
   const [, path, ...rest] = step.split(':')
