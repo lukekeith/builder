@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join, relative, resolve } from 'node:path'
 import { leanRepo, run as runScript, git, readText, SCRIPTS } from './fixtures/lean-repo.mjs'
-import { promptOf, fill, taskBlock, modelFor } from '../dispatch.mjs'
+import { promptOf, fill, taskBlock, modelFor, citedDecisions } from '../dispatch.mjs'
 
 const BUILDER = join(SCRIPTS, '..')
 const WS = (r) => join(r.root, '.builder', r.feature)
@@ -136,6 +136,14 @@ test('dispatch implementer: a task\'s Decisions: line trims §Decisions to the r
   writeFileSync(plan, orig)
   const all = brief()
   assert.match(all, /\n## Decisions\n[\s\S]*\| D1 \|[\s\S]*\| D17 \|/, 'a plan written before 6.3.0 carries every row')
+})
+
+test('citedDecisions: the line needs its colon — prose that starts with the word is not it; bold and bullet forms are', () => {
+  assert.equal(citedDecisions('### Task 1: x\nDecisions are recorded in the ledger.\n'), null)
+  assert.deepEqual(citedDecisions('### Task 1: x\n**Decisions:** D1, D3\n'), ['D1', 'D3'])
+  assert.deepEqual(citedDecisions('### Task 1: x\n**Decisions**: D2–D4\n'), ['D2', 'D3', 'D4'])
+  assert.deepEqual(citedDecisions('### Task 1: x\n- Decisions: none\n'), [])
+  assert.equal(citedDecisions('### Task 1: x\n```\nDecisions: D1\n```\n'), null, 'a fenced example is not the line')
 })
 
 test('dispatch implementer: frozen contract, and commit: manual each change the prompt the way build says', () => {

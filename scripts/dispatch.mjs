@@ -336,7 +336,7 @@ export function citedDecisions(block) {
   for (const line of String(block ?? '').split('\n')) {
     if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
     if (fenced) continue
-    const m = /^\s*[-*]*\s*\**Decisions:?\**:?\s*(.*)$/.exec(line)
+    const m = /^\s*[-*]?\s*\**Decisions(?::\**|\**:)\s*(.*)$/.exec(line) // the colon is required: prose that starts with the word is not the line
     if (!m) continue
     const v = m[1].replace(/[`*]/g, '').trim()
     if (/^(none|—|-)?$/i.test(v)) return []
