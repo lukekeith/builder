@@ -1627,7 +1627,9 @@ test('group lanes: a pause filed while the green prefix runs lands none of it �
   assert.deepEqual([stopBlocks(root, 'a'), stopBlocks(root, 'b')], [1, 1], readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8'))
 })
 
-test('group lanes: code committed after a member’s human sign-off parks it as your walk again; the group waits for it and lands nothing', () => {
+// a parks in its own ship run (drive's signoffMoved check), before it ships: b then finds it not ready
+// to land. landGroup's own human-sign-off path — a sign-off moved by chained code after a ships — is not this.
+test('group lanes: code committed after a member’s human sign-off parks it in its ship run as your walk again; the group waits for it and lands nothing', () => {
   const root = makeRepo(['a', 'b'])
   withVerify(root, RED_CHECK)
   plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
