@@ -4,6 +4,7 @@
  * the PLAN.md files, git and manifests, and hands the text and lists in. That keeps the rules — what a
  * footprint is, when two features overlap, how a group is cut and ordered — testable without a repo.
  */
+import { isSet } from './manifest.mjs'
 
 const HEADING = /^### Task \d+\b/
 const FENCE = /^\s*(`{3,}|~{3,})/
@@ -39,6 +40,13 @@ function asPath(token) {
 
 /** The paths one Files line names: its backticked paths, else the bare path after `Create:`/`Modify:`, else any bare path-like word. */
 function pathsOfLine(line) {
+  // On a bullet, the description after ` — ` or `(` is prose: `exports \`res.status\`` names no file.
+  // Backticked text is masked while looking, so `app/(group)/page.tsx` keeps its parenthesis.
+  if (/^\s*[-*]\s/.test(line)) {
+    const masked = line.replace(/`[^`]*`/g, (m) => 'x'.repeat(m.length))
+    const cut = masked.search(/\s[—–]\s|\(/)
+    if (cut >= 0) line = line.slice(0, cut)
+  }
   const ticks = [...line.matchAll(/`([^`]+)`/g)].map((m) => asPath(m[1])).filter(Boolean)
   if (ticks.length || line.includes('`')) return ticks
   const body = line.replace(/^\s*[-*]\s+/, '').replace(/^(?:Create|Modify|Test|Delete|Remove|Read)\s*:\s*/i, '')
@@ -107,7 +115,9 @@ export function footprintOf(planText, { generated = [] } = {}) {
     if (inside) { produces.push(...declaredIn(line)); continue }
     const bullet = /^(\s*)[-*]\s+(?:(Produces|Consumes)\b[^:]*:)?/i.exec(text)
     if (bullet && bullet[2]) io = bullet[2].toLowerCase() === 'produces' ? bullet[1].length : null
-    else if (io != null && !(bullet && bullet[1].length > io) && text.trim()) io = null
+    // A Produces bullet owns everything indented under it — its sub-bullets and its wrapped lines; a
+    // blank line, a bullet or line back at its indent, or a label ends it.
+    else if (io != null && (!text.trim() || /^\s*/.exec(text)[0].length <= io)) io = null
     // A double-backtick span (`` `${id}` ``) is a literal, not a name; dropping it keeps the single-backtick pairs aligned.
     const names = [...text.replace(/``.*?``/g, '').matchAll(/`([^`]+)`/g)].map((m) => nameOf(m[1])).filter(Boolean)
     ;(io != null ? produces : consumes).push(...names)
@@ -161,6 +171,9 @@ function sharedPath(x, y) {
   if (x === y) return x
   if (matchesGlob(x, y)) return x
   if (matchesGlob(y, x)) return y
+  // A bare directory (`src/lib`, no trailing slash) holds what is under it.
+  if (y.startsWith(`${x}/`)) return y
+  if (x.startsWith(`${y}/`)) return x
   if (isGlob(x) && isGlob(y)) {
     const px = literalPrefix(x)
     const py = literalPrefix(y)
@@ -243,7 +256,24 @@ export function orderMembers(names, { edges = [], programOrder = [], fleetOrder 
     const ready = [...left].filter((n) => [...before.get(n)].every((p) => !left.has(p)))
     let next
     if (ready.length) next = ready.sort(byPriority)[0]
-    else { next = [...left].sort(byFleet)[0]; cycle.push(next) }
+    else {
+      // Only a member on a cycle may go first out of turn; one that merely waits on a cycle still
+      // waits for its dependency. `onCycle`: the member reaches itself through remaining members.
+      const onCycle = (n) => {
+        const seen = new Set()
+        const stack = [...before.get(n)].filter((p) => left.has(p))
+        while (stack.length) {
+          const p = stack.pop()
+          if (p === n) return true
+          if (seen.has(p)) continue
+          seen.add(p)
+          stack.push(...[...before.get(p)].filter((q) => left.has(q)))
+        }
+        return false
+      }
+      next = [...left].filter(onCycle).sort(byFleet)[0]
+      cycle.push(next)
+    }
     out.push(next)
     left.delete(next)
   }
@@ -344,14 +374,14 @@ const LANDABLE = new Set(['signed-off', 'verified'])
 
 /**
  * The landing gate (D9), checked right before a group's tip releases its held merge: every member
- * signed off or verified and none blocked. The reason names the first member that fails, because
+ * signed off or verified and none blocked (`blocked: none` is not). The reason names the first member that fails, because
  * that is the one someone has to act on.
  */
 export function landingGate(members, manifests) {
   for (const m of members) {
     const man = manifests instanceof Map ? manifests.get(m) : manifests?.[m]
     if (!man) return { ok: false, why: `${m} has no manifest` }
-    if (man.blocked) return { ok: false, why: `${m} is blocked: ${man.blocked}` }
+    if (isSet(man.blocked)) return { ok: false, why: `${m} is blocked: ${man.blocked}` }
     if (!LANDABLE.has(man.state)) return { ok: false, why: `${m} is ${man.state ?? 'in no state'}, not signed off` }
   }
   return { ok: true }

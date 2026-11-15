@@ -204,3 +204,35 @@ test('generatedOnly: every path under a generated glob; an empty list is not', (
   assert.equal(generatedOnly([], gen), false)
   assert.equal(generatedOnly(['src/generated/a.ts'], []), false)
 })
+
+// Review round 1.
+
+test('footprintOf keeps a wrapped Produces bullet produced until a blank line, a new bullet or a label', () => {
+  const plan = '### Task 1: x\n\n**Interfaces:**\n- Produces: `parseTags` — x; `saveTags`\n  — takes a list, `loadTags` returns all\n- Consumes: `other`\n'
+  const f = footprintOf(plan)
+  assert.deepEqual(f.produces, ['loadTags', 'parseTags', 'saveTags'])
+  assert.deepEqual(f.consumes, ['other'])
+})
+
+test('footprintOf takes a Files bullet\'s paths only before its description', () => {
+  assert.deepEqual(footprintOf('### Task 1: x\n\n**Files:**\n- Create: `src/tags.ts` — exports `res.status`\n- Modify: `a/b.ts` (uses `req.body`)\n').paths, ['a/b.ts', 'src/tags.ts'])
+})
+
+test('orderMembers breaks a cycle only among its members, never ahead of a dependency', () => {
+  const edges = [{ a: 'A', b: 'B', directed: true }, { a: 'B', b: 'A', directed: true }, { a: 'A', b: 'C', directed: true }]
+  const o = orderMembers(['A', 'B', 'C'], { edges, fleetOrder: ['C', 'A', 'B'] })
+  // C waits on A, which is on the cycle: A breaks it; then C and B are both ready, and fleet order puts C first.
+  assert.deepEqual(o, ['A', 'C', 'B'])
+  assert.deepEqual(o.cycle, ['A'])
+})
+
+test('landingGate reads blocked: none as not blocked', () => {
+  assert.deepEqual(landingGate(['a'], { a: { state: 'signed-off', blocked: 'none' } }), { ok: true })
+  assert.deepEqual(landingGate(['a'], { a: { state: 'verified', blocked: '' } }), { ok: true })
+})
+
+test('a bare directory overlaps the paths under it, both ways', () => {
+  assert.deepEqual(overlapOf(fp(['src/lib']), fp(['src/lib/a.ts'])), { paths: ['src/lib/a.ts'], interfaces: [], declared: false })
+  assert.deepEqual(overlapOf(fp(['src/lib/a.ts']), fp(['src/lib'])), { paths: ['src/lib/a.ts'], interfaces: [], declared: false })
+  assert.equal(overlapOf(fp(['src/lib']), fp(['src/library.ts'])), null)
+})
