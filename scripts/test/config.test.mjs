@@ -37,6 +37,10 @@ test('agent_walk parsed, with defaults for what is left out', () => {
     keepLogs: 30,
     autoUnpark: 2,
     batch: 8,
+    groupMax: 3,
+    splitMaxPaths: 10,
+    testDbEnv: null,
+    afterLand: null,
   })
 })
 
@@ -229,4 +233,35 @@ test('agent_types: builder\'s lean agents by default; one type for all, or per k
   assert.deepEqual(cfgWith('agent_types:\n  implementer: my-impl\n  reviewer: general-purpose').agentTypes, { implementer: 'my-impl', 'implementer-skills': 'my-impl', reviewer: 'general-purpose' }, 'the YAML map form')
   assert.deepEqual(cfgWith('agent_types: not a type').agentTypes.implementer, 'builder:implementer', 'an unparseable value keeps the default rather than naming a nonexistent agent')
   assert.deepEqual(cfgWith('agent_types: reviewer=general-purpose').agentTypes, { implementer: 'builder:implementer', 'implementer-skills': 'builder:implementer-skills', reviewer: 'general-purpose' })
+})
+
+const AW = 'agent_walk:\n  driver: x\n  claude_args: --a\n'
+test('group lanes keys: values when present', () => {
+  const a = cfgWith(AW + '  group_max: 5\n  split_max_paths: 0\n  test_db_env: TEST_DATABASE_URL\n  after_land: make regen').agentWalk
+  assert.deepEqual([a.groupMax, a.splitMaxPaths, a.testDbEnv, a.afterLand], [5, 0, 'TEST_DATABASE_URL', 'make regen'])
+})
+
+test('group lanes keys: invalid values fall back to defaults', () => {
+  const a = cfgWith(AW + '  group_max: 0\n  split_max_paths: -1\n  test_db_env: 7').agentWalk
+  assert.deepEqual([a.groupMax, a.splitMaxPaths, a.testDbEnv, a.afterLand], [3, 10, null, null])
+  assert.equal(cfgWith(AW + '  group_max: lots\n  split_max_paths: 2.5').agentWalk.groupMax, 3)
+  assert.equal(cfgWith(AW + '  split_max_paths: 2.5').agentWalk.splitMaxPaths, 10)
+})
+
+test('generated: absent → no paths, no command', () => {
+  assert.deepEqual(cfgWith('').generated, { paths: [], command: null })
+})
+
+test('generated: paths as a comma list', () => {
+  assert.deepEqual(cfgWith('generated:\n  paths: a.lock, b/*.snap ,\n  command: make regen').generated, { paths: ['a.lock', 'b/*.snap'], command: 'make regen' })
+})
+
+test('generated: paths as a YAML list, and it does not disturb later keys', () => {
+  const cfg = cfgWith('generated:\n  paths:\n    - a.lock\n    - b.snap\n  command: make regen\n' + AW.trimEnd())
+  assert.deepEqual(cfg.generated, { paths: ['a.lock', 'b.snap'], command: 'make regen' })
+  assert.equal(cfg.agentWalk.driver, 'x')
+})
+
+test('generated: malformed (a scalar) → defaults', () => {
+  assert.deepEqual(cfgWith('generated: yes').generated, { paths: [], command: null })
 })

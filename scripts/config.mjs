@@ -45,6 +45,7 @@ const parseFrontmatter = (text) => {
   let listKey = null // the key whose list we are filling
   let item = null // the map currently being filled inside that list
   let mapKey = null // the key whose nested map we are filling
+  let subKey = null // an empty key inside that nested map — a "- " line next belongs to its list
 
   for (const raw of m[1].split('\n')) {
     const line = raw.replace(/\s+#.*$/, '').trimEnd()
@@ -54,6 +55,13 @@ const parseFrontmatter = (text) => {
 
     // "- name: x" opens a new map in the current list; "- x" is a scalar entry
     if (body.startsWith('- ')) {
+      // A list nested one level down (`generated:` then `  paths:` then `    - x`).
+      if (subKey && mapKey && out[mapKey] && typeof out[mapKey] === 'object' && !Array.isArray(out[mapKey])) {
+        if (!Array.isArray(out[mapKey][subKey])) out[mapKey][subKey] = []
+        const c = coerce(body.slice(2).trim())
+        if (c !== null && c !== '') out[mapKey][subKey].push(c)
+        continue
+      }
       if (!listKey) continue
       // The first "- " is what proves the key opened a LIST rather than a nested map.
       if (!Array.isArray(out[listKey])) out[listKey] = []
@@ -79,6 +87,7 @@ const parseFrontmatter = (text) => {
       listKey = null
       item = null
       mapKey = null
+      subKey = null
       if (val === '') {
         // Either a list or a nested map — decided by the first child line.
         out[key] = undefined
@@ -94,6 +103,7 @@ const parseFrontmatter = (text) => {
     if (item) {
       item[key] = coerce(val)
     } else if (mapKey) {
+      subKey = val === '' ? key : null
       if (out[mapKey] === undefined) out[mapKey] = {}
       if (typeof out[mapKey] === 'object' && !Array.isArray(out[mapKey])) out[mapKey][key] = coerce(val)
     }
@@ -178,6 +188,7 @@ export function loadConfig(root = process.env.CLAUDE_PROJECT_DIR || process.cwd(
     ticket: unfilled(fm.ticket) ? null : (fm.ticket ?? null),
     design: unfilled(fm.design) ? null : (fm.design ?? null),
     agentWalk,
+    generated: generatedOf(fm.generated),
     body: text.slice(text.indexOf('\n---', 3) + 4),
   }
 }
@@ -282,7 +293,29 @@ const agentWalkOf = (block) => {
     autoUnpark: Number.isInteger(block.auto_unpark) && block.auto_unpark >= 0 ? block.auto_unpark : 2,
     // How many features one walk takes at once (one env, one walker); 1 is one walk per feature.
     batch: Number.isInteger(block.batch) && block.batch > 0 ? block.batch : 8,
+    // Group lanes: how many features one group may hold before the fleet splits it, and the
+    // overlap size (shared paths) above which a pair is split rather than stacked; 0 never splits.
+    groupMax: Number.isInteger(block.group_max) && block.group_max > 0 ? block.group_max : 3,
+    splitMaxPaths: Number.isInteger(block.split_max_paths) && block.split_max_paths >= 0 ? block.split_max_paths : 10,
+    // The env var a worktree's test database URL is passed in, and the command run after a feature lands.
+    testDbEnv: nonEmpty(block.test_db_env),
+    afterLand: nonEmpty(block.after_land),
   }
+}
+
+const nonEmpty = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+
+/**
+ * The optional top-level `generated:` block — files a build regenerates (lockfiles, snapshots,
+ * indexes) that two features may both touch without really conflicting. `paths` is a comma list or
+ * a YAML list; `command` regenerates them. Absent or malformed → no paths, no command.
+ */
+const generatedOf = (block) => {
+  const none = { paths: [], command: null }
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return none
+  const raw = Array.isArray(block.paths) ? block.paths : typeof block.paths === 'string' ? block.paths.split(',') : []
+  const paths = raw.map((p) => (typeof p === 'string' ? p.trim().replace(/^['"]|['"]$/g, '') : '')).filter(Boolean)
+  return { paths, command: nonEmpty(block.command) }
 }
 
 /**
