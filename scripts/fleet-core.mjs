@@ -24,7 +24,10 @@ const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
 export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (isSet(mf.blocked)) return 'blocked'
   if (mf.state === 'shipped') return 'done'
-  if (mf.state === 'building' && /^pending/.test(mf.ready ?? '')) return 'walk'
+  // A feature whose readiness is still pending has not had its walk, whatever its state says: a
+  // sign-off reached that way (an agent sign-off written before readiness settled) goes back to the
+  // walk lane, never on to ship — shipping it would merge a feature nobody walked.
+  if ((mf.state === 'building' || mf.state === 'signed-off') && /^pending/.test(mf.ready ?? '')) return 'walk'
   if (BUILD_STATES.has(mf.state)) return 'build'
   // Batched walks (agent_walk.start with batch > 1): the walk lane holds only what needs the running
   // env — readiness and the agent walk. A walk's fixes are worked in the parallel pool (no env).

@@ -133,7 +133,11 @@ task-number range.
 App: <app>
 Phase: <n>
 Recipe: <the companion skill to read FIRST, or the REFERENCE section that governs this work; append ` · tiny` for a one-file edit with its test, so the build reviews it at the cheapest tier>
-<!-- Recipe values dispatch resolves: a builder skill name (`test-driven-development`), `REFERENCE §<section>`,
+Decisions: <the SPEC §Decisions rows that bind this task — `D2, D4` (a range `D2–D5` too) — or `none`>
+<!-- Decisions: the implementer's brief copies only the rows named here (`none` → no rows), so name every
+     row this task's Behaviour and Tests cite and any other that binds it. A block with no Decisions: line
+     (a plan written before 6.3.0) gets every row.
+     Recipe values dispatch resolves: a builder skill name (`test-driven-development`), `REFERENCE §<section>`,
      or a project skill under .claude/skills/<name>/ — any other text reaches the implementer verbatim as a
      §Companion skills name, and the task then runs on the implementer that carries the Skill tool. -->
 

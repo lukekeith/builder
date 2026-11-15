@@ -107,6 +107,37 @@ test('dispatch implementer: a build-time risk row naming the task rides into its
   assert.doesNotMatch(readText(join(WS(r), 'task-1-brief.md')), /F2 \| build-time risk/)
 })
 
+test('dispatch implementer: a task\'s Decisions: line trims §Decisions to the rows it cites; none carries none; no line carries every row (F3)', () => {
+  const r = leanRepo('note-tags')
+  const plan = join(r.folder, 'PLAN.md')
+  const orig = readText(plan)
+  const withLine = (line) => writeFileSync(plan, orig.replace('### Task 1: Tag parsing, `add --tag`, and the tagged `list` line\nApp: notes\n', `### Task 1: Tag parsing, \`add --tag\`, and the tagged \`list\` line\nApp: notes\n${line}\n`))
+  const brief = () => {
+    const out = run('dispatch.mjs', ['implementer', r.rel, '--task', '1'], { cwd: r.root })
+    assert.equal(out.status, 0, out.stderr)
+    return readText(join(WS(r), 'task-1-brief.md'))
+  }
+  withLine('Decisions: D2, D4')
+  const cited = brief()
+  assert.match(cited, /\n## Decisions — the rows this task cites \(D2, D4\)\n\n\| # \| Decision \| Ruling \| Who \/ date \|\n\|---\|---\|---\|---\|\n\| D2 \| Storage shape \|/)
+  assert.match(cited, /\| D4 \| Tag validity \|/)
+  assert.doesNotMatch(cited, /\| D1 \||\| D17 \||\| D3 \|/)
+  assert.doesNotMatch(cited, /The one place rulings live/, 'the template comment is not copied with the cited rows')
+  assert.match(cited, /\n## Testing\n/, 'the other sections are unchanged')
+
+  withLine('Decisions: D2, D99')
+  assert.match(brief(), /Cited but not in §Decisions: D99/)
+
+  withLine('Decisions: none')
+  const none = brief()
+  assert.doesNotMatch(none, /\n## Decisions\b/)
+  assert.doesNotMatch(none, /\| D\d+ \|/)
+
+  writeFileSync(plan, orig)
+  const all = brief()
+  assert.match(all, /\n## Decisions\n[\s\S]*\| D1 \|[\s\S]*\| D17 \|/, 'a plan written before 6.3.0 carries every row')
+})
+
 test('dispatch implementer: frozen contract, and commit: manual each change the prompt the way build says', () => {
   const r = leanRepo('note-tags')
   const mf = join(r.folder, 'MANIFEST.md')
@@ -690,9 +721,9 @@ const agentCall = (res) => {
   const lines = res.stdout.split('\n').filter((l) => /^Agent call\b/.test(l))
   assert.equal(lines.length, 1, `exactly one Agent-call line:\n${res.stdout}`)
   assert.doesNotMatch(res.stdout, /^ {2}(subagent_type|model|prompt):/m, 'no continuation lines')
-  const m = /^Agent call — subagent_type: (\S+) · model: (\S+) \(([^)]+)\) · description: (.+) · prompt: (Read \S+ and do what it says\.)$/.exec(lines[0])
+  const m = /^Agent call — subagent_type: (\S+) · model: (\S+) \(([^)]+)\)(?: · effort: (\S+))? · description: (.+) · prompt: (Read \S+ and do what it says\.)$/.exec(lines[0])
   assert.ok(m, `the Agent-call line's shape: ${lines[0]}`)
-  return { subagent_type: m[1], model: m[2], why: m[3], description: m[4], prompt: m[5] }
+  return { subagent_type: m[1], model: m[2], why: m[3], effort: m[4], description: m[5], prompt: m[6] }
 }
 
 /** Every path a dispatch prints is relative to the repo root — except the Agent call's prompt, absolute for Read — and no `brief:` line. */
@@ -765,13 +796,14 @@ test('dispatch: every kind prints paths relative to the repo root, no brief: lin
   call(['implementer', r.rel, '--task', '1', '--round', '4', '--findings-file', join(ws, 'task-1-review.md')], { model: 'opus' })
   call(['implementer', r.rel, '--task', '2', '--round', '4', '--findings', '- y'], { model: 'sonnet' })
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): round 1')
-  call(['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', join(ws, 'task-1-review.md')], { subagent_type: 'builder:reviewer', model: 'sonnet' })
-  call(['task-review', r.rel, '--phase', '1'], { subagent_type: 'builder:reviewer', model: 'sonnet' })
+  // F3: a scoped re-review reads one fix diff against its findings — medium effort; no other dispatch names one.
+  call(['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', join(ws, 'task-1-review.md')], { subagent_type: 'builder:reviewer', model: 'sonnet', effort: 'medium' })
+  call(['task-review', r.rel, '--phase', '1'], { subagent_type: 'builder:reviewer', model: 'sonnet', effort: undefined })
   call(['final-review', r.rel], { subagent_type: 'builder:reviewer', model: 'opus' })
   writeFileSync(join(ws, 'final-review.md'), '#### Important\n- src/cli.mjs:3 — z\n')
   call(['implementer', r.rel, '--final'], { subagent_type: 'builder:implementer', model: 'sonnet' })
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): final')
-  call(['re-review', r.rel, '--final', '--round', '1', '--findings-file', join(ws, 'final-review.md')], { model: 'sonnet' })
+  call(['re-review', r.rel, '--final', '--round', '1', '--findings-file', join(ws, 'final-review.md')], { model: 'sonnet', effort: 'medium' })
   writeFileSync(join(ws, 'walk.md'), '# w\n')
   call(['agent-walk', r.rel], { subagent_type: 'general-purpose', model: 'opus' })
 

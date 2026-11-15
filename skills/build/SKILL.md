@@ -135,8 +135,10 @@ you know what not to repeat in `--context`:
 3. **Then four blocks**, in this order:
    - **The SPEC section(s) this task implements**, copied: the ones the block's **Files**, its `App:`
      and `Phase:` lines and its **Interfaces** point at — a schema task → §Schema & API changes + the
-     Data plan; work in an app → that app's §<App> section; the tests → §Testing — plus every
-     §Decisions row binding the task and any §Findings row marked `build-time risk` naming it.
+     Data plan; work in an app → that app's §<App> section; the tests → §Testing — plus the
+     §Decisions rows binding the task and any §Findings row marked `build-time risk` naming it. The
+     rows are the ones its `Decisions:` line cites (`Decisions: none` → none); a block with no such
+     line (a plan from before 6.3.0) gets every row.
    - 🔴 **§Contract, always, on every task in every app.** The producer implements exactly it; each
      consumer codes against exactly it. An implementer who never saw the contract is how consumers
      diverge. **Say whether it is frozen** — once the producer's phase has closed, the brief states
@@ -164,7 +166,8 @@ EXECUTION.md §1–5 unchanged, with these bindings:
   `builder:implementer-skills` or `builder:reviewer` unless the config's `agent_types:` says
   otherwise — general-purpose only when this session has no agent of that type), its **`model`**
   (send the model it names: EXECUTION.md §Model selection as a table, the fix-loop escalation
-  included — the reason is printed beside it, e.g. `model: haiku (default — tiny)`), its `description`
+  included — the reason is printed beside it, e.g. `model: haiku (default — tiny)`), its **`effort`**
+  when it names one (a scoped re-review prints `effort: medium`: send it as the Agent call's `effort`), its `description`
   and its prompt. Every path it prints is relative to the repo root but the prompt's, which is absolute. The Agent call's prompt is **`Read <file> and do what it says.`** plus, at most,
   one paragraph of context the template cannot know — better passed as `--context`, so it lands in
   the file and survives a crash. **The printed model is the default; raise a `tiny` task to sonnet when it spans files, touches a permission path, or holds state with its mutations; architecture or design work → opus; under `models=economy`, a block that leaves an algorithm or a multi-file choice open → sonnet. Never lower it** — `dispatch.mjs` refuses a `--model` below the printed one.

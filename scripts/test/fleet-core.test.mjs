@@ -18,6 +18,9 @@ test('laneOf routes each state', () => {
   assert.equal(laneOf({ state: 'verified' }), 'ship')
   assert.equal(laneOf({ state: 'verified', pr: '#3' }), 'ship')
   assert.equal(laneOf({ state: 'signed-off', pr: '#3' }), 'ship')
+  // F4: a sign-off whose readiness is still pending has not had its walk — the walk lane, never the ship lane.
+  assert.equal(laneOf({ state: 'signed-off', ready: 'pending "dev env (fleet walk lane)"' }), 'walk')
+  assert.equal(laneOf({ state: 'signed-off', ready: 'ok 2026-11-14' }), 'ship')
   assert.equal(laneOf({ state: 'shipped' }), 'done')
   assert.equal(laneOf({ state: 'audited', blocked: '"x"' }), 'blocked')
   assert.equal(laneOf({ state: 'audited', blocked: 'none' }), 'build')
