@@ -2166,7 +2166,12 @@ const gateOf = (members) => () => {
 /** A reason for a member whose group did not land because of `culprit` — `why` without its own next step. */
 const didNotLand = (g, live, culprit, why) => `group ${g.id} did not land: ${String(why).replace(/ — next: .*$/, '')} — next: settle ${culprit}, then pick ${live.join(', ')} in /builder:agent`
 
-/** Another member's outcome from a landing this feature ran: told and routed as route does for its own. */
+/**
+ * Another member's outcome from a landing this feature ran: told and routed as route does for its own
+ * — except for autoRetry, which only the member that ran the landing gets (route). A member parked by
+ * another's landing stopped for its group: retrying it alone reruns the same landing on the same
+ * culprit, so it spends a retry on nothing; it starts again when the group lands, or a person picks it.
+ */
 function routeOther(m, outcome) {
   if (outcome === 'parked') {
     ensureParkRecord(m)
@@ -2220,17 +2225,20 @@ async function landGroup(feature, g, live) {
     waitFor(m)
     return outcome()
   }
-  const gateFailed = (why, members = live) => {
+  // The gate shut: nothing lands, and each member says why — told, routed by outcome() once, by the caller.
+  const parkGate = (why, members = live) => {
     const culprit = members.find((m) => gateOf([m])()) ?? members[0]
     const fc = fleet.features[culprit]
     // A pause is the person's own request: it parks as revising, as a feature alone would.
     if (parkIfPaused(fc, culprit)) told.set(culprit, 'parked')
     else if (!STOPPED.has(fc.status)) told.set(culprit, park(fc, didNotLand(g, members, culprit, why)))
     for (const m of members) if (m !== culprit) told.set(m, park(fleet.features[m], didNotLand(g, members, culprit, why)))
-    return outcome()
   }
   const shut = gateOf(live)()
-  if (shut) return gateFailed(shut)
+  if (shut) {
+    parkGate(shut)
+    return outcome()
+  }
   const tip = live.at(-1)
   const ft = fleet.features[tip]
   const stuck = (culprit, why, members = live) => {
@@ -2254,8 +2262,8 @@ async function landGroup(feature, g, live) {
   const facts = new Map(live.map((m) => [m, landingPrep(m, fleet.features[m])]))
   const why = await mergeThroughVerifier(tip, ft, { message: mergeMessage(live), gate: gateOf(live) })
   if (!why) for (const m of live) told.set(m, finishLanding(m, facts.get(m)))
-  else if (why.gate) return gateFailed(why.gate)
-  else if (why.red) await bisectGroup(g, live, facts, why.red, { told, stuck, waitFor, gateFailed })
+  else if (why.gate) parkGate(why.gate)
+  else if (why.red) await bisectGroup(g, live, facts, why.red, { told, stuck, parkGate })
   else stuck(tip, why)
   return outcome()
 }
@@ -2265,10 +2273,10 @@ async function landGroup(feature, g, live) {
  * is tested on its last member's branch, which holds exactly that prefix (bisectPlan) — member 1, then
  * 1–2, … — stopping at the first that is red (firstFailing); the whole group is the tip's red run. The
  * members before it land, through the last green prefix's held run; it parks, naming the verdict; the
- * members after it wait for it to land. A prefix the verifier gives no verdict on counts as red: what
+ * members after it wait for it to be ready to land again. A prefix the verifier gives no verdict on counts as red: what
  * it holds is not known to be green, so it does not land.
  */
-async function bisectGroup(g, live, facts, red, { told, stuck, waitFor, gateFailed }) {
+async function bisectGroup(g, live, facts, red, { told, stuck, parkGate }) {
   const results = []
   for (const prefix of bisectPlan(live).slice(0, -1)) {
     const m = prefix.at(-1)
@@ -2297,13 +2305,16 @@ async function bisectGroup(g, live, facts, red, { told, stuck, waitFor, gateFail
   const { verdict: v, why } = results[k]
   const summary = v?.status === 'red' ? v.regressions.map((x) => x.id).join(', ') : `${g.id}'s tip went red (${red.regressions.map((x) => x.id).join(', ')}), and ${live.slice(0, k + 1).join(', ')} alone could not be tested (${why ?? v?.status})`
   told.set(culprit, park(fleet.features[culprit], `merge tier went red: ${summary} — next: /builder:agent ${culprit}`))
-  for (const m of live.slice(k + 1)) told.set(m, groupHold(fleet.features[m], { until: 'landed', on: [culprit], group: g.id, lane: 'land' }))
+  for (const m of live.slice(k + 1)) told.set(m, groupHold(fleet.features[m], { until: 'ready', on: [culprit], group: g.id, lane: 'land' }))
   if (k === 0) return
   const landing = live.slice(0, k)
   const head = landing.at(-1)
+  // The tip's config diff is not the prefix's: a member can change the config and a later one revert it.
+  const cfg = configChanged(fleet.features[head])
+  if (cfg) return stuck(head, cfg, landing)
   const done = await mergeThroughVerifier(head, fleet.features[head], { message: mergeMessage(landing), gate: gateOf(landing) })
   if (!done) for (const m of landing) told.set(m, finishLanding(m, facts.get(m)))
-  else if (done.gate) gateFailed(done.gate, landing)
+  else if (done.gate) parkGate(done.gate, landing)
   else stuck(head, done, landing)
 }
 

@@ -20,7 +20,7 @@ is **shipped** (resume's AGENT-MODE.md) — or, only when its spec leaves a
 product decision open or the config reserves a step to the human, **parked** with that decision named. Then the verifier's **merge
 queue** lands it on the branch checked out here — the whole suite on the feature merged onto it, then
 a fast-forward to exactly that tested merge commit (`merge(<feature>): agent-verified, not
-human-tested`). That merge-tier run is requested, held, when the walk starts and runs beside it.
+human-tested`; a group lands as one, `merge(<a>, <b>, …)`, through its last member). That merge-tier run is requested, held, when the walk starts and runs beside it.
 Verify is optional after sign-off, so the fleet never runs the full `/builder:verify`: before the
 ship run it makes the one-call quick check (`verify-quick.mjs`, no model), which reads that held
 run and the spec's mechanical items — its gaps are noted in the report, never a block. What ships

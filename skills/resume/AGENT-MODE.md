@@ -156,7 +156,8 @@ target merged with this branch.
 2. **Ship** — `/builder:ship --path <folder> --into <into>` (its §At ship, agent form) condenses the
    folder as it does after any sign-off.
 3. **End the run.** The fleet releases the held merge: the target fast-forwards to the merge
-   commit the verifier tested (`merge(<feature>): agent-verified, not human-tested`), and the
+   commit the verifier tested (`merge(<feature>): agent-verified, not human-tested`; a group's
+   one merge names every member, `merge(<a>, <b>, …)`), and the
    worktree goes. A target that moved since the run is merged and tested again by the fleet; a
    conflict comes back to an agent in the worktree. Hand off with every ruling the run made, and:
    `📍 <feature>: shipped — merging into <into> (agent-verified, not human-tested)`.
