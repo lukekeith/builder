@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { rmSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, realpathSync, chmodSync, unlinkSync, utimesSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
@@ -1220,7 +1220,7 @@ function program(root, children, deps) {
 
 // Group lanes (D4): a child whose dependency is in the same run joins its group — it plans beside it,
 // stacks on its built branch, and lands after it — instead of waiting for it to merge.
-test('a program chain runs to the end in one fleet run: the child joins its dependency\'s group and lands after it', () => {
+test('a program chain runs to the end in one fleet run: the child joins its dependency\'s group and the two land together', () => {
   const root = makeRepo(['api', 'ui'])
   program(root, ['api', 'ui'], { ui: 'api' })
   const dry = runFleet(root, ['api', 'ui', '--dry-run'], {})
@@ -1231,8 +1231,9 @@ test('a program chain runs to the end in one fleet run: the child joins its depe
   assert.equal(r.status, 0, r.stderr)
   assertLanded(r, 'api')
   assertLanded(r, 'ui')
+  // No member lands alone (D9): the group lands as one merge, through its tip.
   const merges = git(root, 'log', '--format=%s', '--first-parent', 'main').split('\n').filter((l) => /^merge\(/.test(l))
-  assert.ok(merges.findIndex((l) => l.startsWith('merge(ui)')) < merges.findIndex((l) => l.startsWith('merge(api)')), `api lands first: ${merges.join(' | ')}`)
+  assert.deepEqual(merges, ['merge(api, ui): agent-verified, not human-tested'])
 })
 
 test('a child whose dependency parks is parked too, saying why', () => {
@@ -1352,7 +1353,7 @@ test("a dependent whose dependency lands while it plans builds on the landed cod
   execFileSync('git', ['merge-base', '--is-ancestor', shaOf(root, 'stub: api commits app/api.txt'), shaOf(root, 'stub: ui commits app/ui.txt')], { cwd: root })
 })
 
-test('a member already signed off does not ship before the member ahead of it lands', () => {
+test('a member already signed off waits for the member ahead of it, and the two land together', () => {
   const root = makeRepo(['a', 'b'])
   plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
   writeFileSync(join(root, 'docs/features/a/MANIFEST.md'), 'size: md\nstate: built\nnext: x\n')
@@ -1361,8 +1362,9 @@ test('a member already signed off does not ship before the member ahead of it la
   const r = runFleet(root, ['a', 'b'], { a: ['SLOW:signed-off', 'verified', 'SHIP'], b: ['SHIP'] }, { STUB_SLOW_MS: '1000' }, { timeout: 90000 })
   assert.equal(r.signal, null)
   assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assert.ok(r.calls.findIndex((l) => l.startsWith('start b ') && stepOf(l) === 'SHIP') > endOfStep(r.calls, 'a', 'SLOW:signed-off'), `b ships only once a is signed off:\n${r.calls.join('\n')}`)
   const merges = git(root, 'log', '--format=%s', '--first-parent', 'main').split('\n').filter((l) => /^merge\(/.test(l))
-  assert.ok(merges.findIndex((l) => l.startsWith('merge(b)')) < merges.findIndex((l) => l.startsWith('merge(a)')), `a lands first: ${merges.join(' | ')}`)
+  assert.deepEqual(merges, ['merge(a, b): agent-verified, not human-tested'])
 })
 
 test('--dry-run says one join per declared dependency', () => {
@@ -1517,6 +1519,64 @@ test('group lanes: with no walk env of its own, members walk one at a time, in g
   assert.ok(walks('a').length && walks('b').length, r.calls.join('\n'))
   assert.ok(walks('a')[0] > endOfStep(r.calls, 'b', 'READY-PENDING'), `a walks only once b is built:\n${r.calls.join('\n')}`)
   assert.ok(walks('b')[0] > walks('a').at(-1), `a walks first, then b:\n${r.calls.join('\n')}`)
+})
+
+// ---- group lanes: landing (D9) -------------------------------------------------------------------
+const firstParentMerges = (root) => git(root, 'log', '--format=%s', '--first-parent', 'main').split('\n').filter((l) => /^merge\(/.test(l))
+const onMain = (root, sha) => spawnSync('git', ['merge-base', '--is-ancestor', sha, 'main'], { cwd: root }).status === 0
+
+test('group lanes: a group of two lands as one — one merge into the target, through the tip, an archive row each', () => {
+  const root = makeRepo(['a', 'b'])
+  withVerify(root, RED_CHECK)
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  const [a, b] = [assertLanded(r, 'a'), assertLanded(r, 'b')]
+  assert.deepEqual(firstParentMerges(root), ['merge(a, b): agent-verified, not human-tested'])
+  assert.equal(a.merged, b.merged, 'both rows name the one merge')
+  assert.ok(onMain(root, shaOf(root, 'stub: a commits app/shared.txt')) && onMain(root, shaOf(root, 'stub: b commits app/b.txt')))
+  // Both ship commits came with it: the tip took the first member's ship before it landed.
+  for (const x of ['a', 'b']) assert.match(git(root, 'show', `main:docs/features/_archive/${x}/SPEC.md`), /SHIPPED/)
+  // Only the tip's merge tier ran: the first member's quick check asked for none of its own.
+  assert.deepEqual([...new Set(mergeRequests(root).map((q) => q.branch))], ['builder/b'], JSON.stringify(mergeRequests(root)))
+  for (const x of ['a', 'b']) assert.equal(git(root, 'branch', '--list', `builder/${x}`), '')
+})
+
+test('group lanes: a red tip is bisected by prefix — the first member, green alone, lands; the second parks as merge tier went red', () => {
+  const root = makeRepo(['a', 'b'])
+  withVerify(root, RED_CHECK)
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/RED:building', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 1, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assert.equal(r.fleet.features.b.status, 'parked', JSON.stringify(r.fleet.features.b))
+  assert.equal(r.fleet.features.b.reason, 'merge tier went red: check::no-red — next: /builder:agent b')
+  assert.deepEqual(firstParentMerges(root), ['merge(a): agent-verified, not human-tested'])
+  assert.ok(onMain(root, shaOf(root, 'stub: a commits app/shared.txt')))
+  assert.equal(git(root, 'log', 'main', '--format=%s', '-F', '--grep=stub: b commits app/RED'), '', 'none of b is on main')
+  // The prefix [a] was tested on a's own branch.
+  assert.ok(mergeRequests(root).some((q) => q.branch === 'builder/a' && q.verdict?.status === 'green'), JSON.stringify(mergeRequests(root)))
+})
+
+test('group lanes: a member paused when the group would land fails the landing gate — nothing lands, every member says why', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified']
+  // a's ship run files a pause for it (from its worktree, ${root}-wt/a): the person asks to revise it.
+  const pause = `../../${basename(root)}/.builder/fleet/requests/a.pause`
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/shared.txt:building', ...tail, `TOUCH:${pause}:SHIP`], b: ['COMMIT:app/b.txt:building', ...tail, 'SHIP'] }, {}, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 1, `${r.stderr}\n${r.calls.join('\n')}`)
+  assert.deepEqual(firstParentMerges(root), [], 'nothing landed')
+  assert.deepEqual(r.archived, {})
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.match(r.fleet.features.a.reason, /^revising — next: \/builder:revise --path docs\/features\/a$/)
+  assert.equal(r.fleet.features.b.status, 'parked')
+  assert.equal(r.fleet.features.b.reason, 'group g-a did not land: a is blocked: paused for a revision — next: settle a, then pick a, b in /builder:agent')
 })
 
 test('a child whose dependency is not in the run is refused', () => {

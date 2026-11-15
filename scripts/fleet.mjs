@@ -36,7 +36,7 @@ import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, 
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { footprintOf, groupsOf, takeWalkBatch } from './groups-core.mjs'
+import { footprintOf, groupsOf, takeWalkBatch, landingGate, bisectPlan, firstFailing } from './groups-core.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
@@ -1105,8 +1105,36 @@ function land(feature) {
 
 async function landNow(feature) {
   const f = fleet.features[feature]
+  // Landed already, with its group (landGroup), while this landing waited its turn.
+  if (!f || f.status === 'done') return 'done'
+  // No member lands alone (D9): a group lands as one, through its tip. A group of one lands as before.
+  const g = groupOf(feature)
+  const live = g ? liveMembers(g) : []
+  if (live.length > 1) return landGroup(feature, g, live)
   // A revision asked for before the merge parks it here: once merged, revise has nothing to change.
   if (parkIfPaused(f, feature)) return 'parked'
+  const facts = landingPrep(feature, f)
+  if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
+    // The config is the human's: a branch that changes it never lands it unseen.
+    const why = configChanged(f) ?? (await mergeThroughVerifier(feature, f))
+    if (why?.files) return walkAgain(feature, f, why)
+    if (why?.red) return park(f, why.reason)
+    if (why) return park(f, why)
+  }
+  return finishLanding(feature, facts)
+}
+
+/** The config is the human's: a branch that changes it never lands it unseen. → the park reason, or null. */
+function configChanged(f) {
+  const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
+  return cfgDiff ? PARK_REASONS.config(TARGET, f.branch, CONFIG_PATH) : null
+}
+
+/**
+ * What the landing records, read before the merge: once the branch is in the target and deleted, its
+ * own commits (the stage timeline) and its manifest are out of reach. → the facts for its archive row.
+ */
+function landingPrep(feature, f) {
   noteFacts(f, feature)
   const facts = landingFacts(f, feature)
   // No manifest reading carried the check (an older fleet.json): the SHIPPED header names it.
@@ -1114,14 +1142,12 @@ async function landNow(feature) {
   noteStages(f, feature)
   f.pr = shippedPr(readSpec(f.worktree, feature))
   if (f.pr && !/^#/.test(f.pr)) f.pr = null
-  if (tryGit(['merge-base', '--is-ancestor', f.branch, TARGET]) === null) {
-    // The config is the human's: a branch that changes it never lands it unseen.
-    const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
-    if (cfgDiff) return park(f, PARK_REASONS.config(TARGET, f.branch, CONFIG_PATH))
-    const why = await mergeThroughVerifier(feature, f)
-    if (why?.files) return walkAgain(feature, f, why)
-    if (why) return park(f, why)
-  }
+  return facts
+}
+
+/** The feature is in the target: its row is done, its worktree and branch go, and it gets its archive row. */
+function finishLanding(feature, facts) {
+  const f = fleet.features[feature]
   Object.assign(f, { status: 'done', reason: null, merged: tryGit(['rev-parse', '--short', TARGET]) })
   // Nothing is left behind: test output in the worktree is restored, any other uncommitted change
   // is stashed by name, the worktree goes, and so does the branch — whoever made it — once it is in
@@ -1152,10 +1178,11 @@ async function landNow(feature) {
  * moved since the run → run again. Red → park, naming the tests: verify read a green merge tier
  * before the ship, so red here means the code went red on a target that moved after it — the
  * folder is already archived, and the human decides. Null when landed; signoffMoved's record when
- * code changed since the sign-off (walkAgain); else a park reason.
+ * code changed since the sign-off (walkAgain); `{ red, reason }` when the merge tier went red (a
+ * group bisects it); `{ gate }` when `gate` — asked right before anything lands, as a group's
+ * landingGate is (D9) — names a reason not to; else a park reason.
  */
-async function mergeThroughVerifier(feature, f) {
-  const message = `merge(${feature}): agent-verified, not human-tested`
+async function mergeThroughVerifier(feature, f, { message = mergeMessage([feature]), gate = null } = {}) {
   const here = tryGit(['branch', '--show-current'])
   if (here !== TARGET) {
     const elsewhere = (tryGit(['worktree', 'list', '--porcelain']) ?? '').split('\n\n').find((b) => b.includes(`\nbranch refs/heads/${TARGET}`))
@@ -1186,6 +1213,8 @@ async function mergeThroughVerifier(feature, f) {
     const done = mergeVerdict(ROOT, f.branch, head, TARGET)
     const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch, TARGET)
     if (held) {
+      const shut = gate?.()
+      if (shut) return { gate: shut }
       const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
       const c = carryMerge(ROOT, held.request)
       if (c.ok) {
@@ -1217,7 +1246,9 @@ async function mergeThroughVerifier(feature, f) {
       continue
     }
     if (v.status === 'env-broken') return `the verifier could not run the merge tier: ${v.broken.map((b) => `${b.suite}: ${b.reason}`).join('; ')} — next: fix the environment, then /builder:agent`
-    if (v.status === 'red') return `the merge tier went red on ${TARGET} as it is now: ${v.regressions.map((g) => g.id).join(', ')} — next: /builder:agent to work the fixes and land it`
+    if (v.status === 'red') return { red: v, reason: `the merge tier went red on ${TARGET} as it is now: ${v.regressions.map((g) => g.id).join(', ')} — next: /builder:agent to work the fixes and land it` }
+    const shut = gate?.()
+    if (shut) return { gate: shut }
     const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
     const r = releaseMerge(ROOT, id)
     if (r.ok) {
@@ -1619,9 +1650,14 @@ const SYNC_BEFORE_WALK = new Set(['building', 'signed-off'])
  * the ship releases it. Requested after the walk's own sync with the target, so it tests the HEAD
  * the walk walks; a failure here only costs time — landing requests it again.
  */
-function requestMergeAtWalk(feature, f) {
+/** The landing merge's subject: the feature, or every member a group's merge lands, in order. */
+function mergeMessage(names) {
+  return `merge(${names.join(', ')}): agent-verified, not human-tested`
+}
+
+function requestMergeAtWalk(feature, f, message = mergeMessage([feature])) {
   try {
-    f.mergeReq = requestMerge(ROOT, f.worktree, { target: TARGET, message: `merge(${feature}): agent-verified, not human-tested` })
+    f.mergeReq = requestMerge(ROOT, f.worktree, { target: TARGET, message })
   } catch (e) {
     addNote(`${feature}: could not request the merge tier at walk start (${String(e.message).split('\n')[0]}) — it is requested at landing instead`)
   }
@@ -1800,10 +1836,10 @@ function groupHold(f, wait) {
   save()
   return 'waiting'
 }
-const VERB = { built: ['build', 'builds'], 'signed-off': ['sign off', 'signs off'], landed: ['land', 'lands'] }
+const VERB = { built: ['build', 'builds'], 'signed-off': ['sign off', 'signs off'], ready: ['are ready to land', 'is ready to land'], landed: ['land', 'lands'] }
 const waitText = (w) => (w.until === 'walk' ? `waiting for ${w.group} to be built` : `after ${w.on.join(', ')} ${VERB[w.until][w.on.length > 1 ? 0 : 1]} (group ${w.group})`)
 /** Whether member `n` is where a `until` wait needs it. */
-const reached = (until, n) => (until === 'built' ? isBuilt(n) : until === 'signed-off' ? pastWalk(n) : landedOn(n))
+const reached = (until, n) => (until === 'built' ? isBuilt(n) : until === 'signed-off' ? pastWalk(n) : until === 'ready' ? wouldLand(n) : landedOn(n))
 const waitOver = (w) => w.on.every((n) => reached(w.until, n))
 
 /**
@@ -2002,8 +2038,8 @@ function openBarrier(g, feature) {
 /**
  * A member on its way to the ship or the landing (`lane`). No member ships or lands alone (D9):
  * it waits until every member of its group is signed off. A stack that no longer chains goes back
- * through the walk first (openBarrier). Then, until group landing, members land in order: it waits
- * for each member before it to land (holdForLanding). A group of one → false at once.
+ * through the walk first (openBarrier). Past that the members ship side by side, and the group
+ * lands as one (landGroup). A group of one → false at once.
  */
 function shipHold(feature, lane) {
   const g = groupOf(feature)
@@ -2017,7 +2053,7 @@ function shipHold(feature, lane) {
     groupHold(fleet.features[feature], { until: 'signed-off', on, group: g.id, lane })
     return true
   }
-  return holdForLanding(feature, lane)
+  return false
 }
 
 /**
@@ -2085,24 +2121,190 @@ function requestWalkMerge(feature, walking = [feature]) {
   const ft = fleet.features[tip]
   // Only a tip that walks now: a parked one, or one not in this walk, tests code this walk is not of.
   if (!ft?.worktree || !existsSync(ft.worktree) || STOPPED.has(ft.status) || !walking.includes(tip)) return
-  requestMergeAtWalk(tip, ft)
+  // The merge the group lands as (D9) is the tip's: it names every member it lands.
+  requestMergeAtWalk(tip, ft, mergeMessage(liveMembers(g)))
   for (const m of g.members) if (fleet.features[m] && ft.mergeReq) fleet.features[m].mergeReq = ft.mergeReq
   save()
 }
 
+// ---- group landing (D9) ---------------------------------------------------------------------------
+// A group lands as one batch, through its tip: the tip's branch holds every member's code, so its
+// held merge tier tested the group as it will land. No member lands alone — a member that would land
+// waits for the rest, and the last to get there lands them all.
+
+/** The members still to land, in order; the last is the tip. */
+function liveMembers(g) {
+  return g.members.filter((m) => fleet.features[m] && !landedOn(m))
+}
 /**
- * Before Task 5's group landing: a member past the walk, in a group of more than one, ships or lands
- * only once every member before it has landed — so it can never land first, carrying their code onto
- * the target ahead of them. `lane` is where it was going: ship or land. → true when it was held.
+ * Shipped and at rest, so its group may land it: not stopped, and not in a run of its own (a member
+ * still in its ship run lands the group itself when that run ends). Or landed.
  */
-function holdForLanding(feature, lane) {
-  const g = groupOf(feature)
-  const i = g ? g.members.indexOf(feature) : -1
-  if (i < 1) return false
-  const on = g.members.slice(0, i).filter((m) => !landedOn(m))
-  if (!on.length) return false
-  groupHold(fleet.features[feature], { until: 'landed', on, group: g.id, lane })
-  return true
+function wouldLand(m) {
+  if (landedOn(m)) return true
+  const f = fleet.features[m]
+  return Boolean(f) && !STOPPED.has(f.status) && !IN_A_RUN.has(f.status) && stateOf(m) === 'shipped'
+}
+
+/**
+ * A member as landingGate reads it. A shipped one has no manifest left — the ship refused it unless
+ * it was signed off, so it reads as signed off. A pause request, or a row the fleet parked or
+ * failed, blocks it as a `blocked:` line would.
+ */
+function gateView(m) {
+  const f = fleet.features[m]
+  const text = readManifest(baseOf(f), m)
+  const man = text != null ? parseManifest(text) : stateOf(m) === 'shipped' ? { state: 'signed-off' } : null
+  if (!man) return null
+  const blocked = existsSync(pauseFile(m)) ? 'paused for a revision' : STOPPED.has(f.status) ? (f.reason ?? f.status) : man.blocked
+  return { ...man, blocked: blocked ?? null }
+}
+const gateOf = (members) => () => {
+  const r = landingGate(members, new Map(members.map((m) => [m, gateView(m)])))
+  return r.ok ? null : r.why
+}
+/** A reason for a member whose group did not land because of `culprit` — `why` without its own next step. */
+const didNotLand = (g, live, culprit, why) => `group ${g.id} did not land: ${String(why).replace(/ — next: .*$/, '')} — next: settle ${culprit}, then pick ${live.join(', ')} in /builder:agent`
+
+/** Another member's outcome from a landing this feature ran: told and routed as route does for its own. */
+function routeOther(m, outcome) {
+  if (outcome === 'parked') {
+    ensureParkRecord(m)
+    tellStop(m, { ...fleet.features[m] })
+  } else if (outcome === 'walk') walkGate(m) || walkQueue.push(m)
+  else if (outcome === 'done') release()
+  wakeAll()
+}
+
+/**
+ * Land `feature`'s group (D9). Every other member must be shipped and at rest first — else this one
+ * waits for them (`until: 'ready'`), and the last to get there lands the group. Then, in order:
+ *   - a member whose sign-off chained code moved is walked again — by agents for an agent's
+ *     sign-off; a human's parks as a human step (walkAgain) — and the group waits for it;
+ *   - landingGate on every member (D9): a failure lands nothing, and each member says why;
+ *   - every member's branch is merged into the tip (their ship commits — registry only, so the
+ *     tip's held run still carries), and the group lands through the tip (mergeThroughVerifier),
+ *     the gate asked once more right before the release;
+ *   - a red tip is bisected by prefix (bisectGroup).
+ * Each landed member gets its own archive row. → this feature's outcome; every other member's is told here.
+ */
+async function landGroup(feature, g, live) {
+  const f = fleet.features[feature]
+  const not = live.filter((m) => m !== feature && !wouldLand(m))
+  if (not.length) return groupHold(f, { until: 'ready', on: not, group: g.id, lane: 'land' })
+  // From here this landing speaks for every member: none is queued to land on its own.
+  for (const m of live) {
+    delete fleet.features[m].groupWait
+    for (let j = pool.length - 1; j >= 0; j--) if (pool[j].feature === m) pool.splice(j, 1)
+  }
+  const told = new Map()
+  const outcome = () => {
+    for (const [m, o] of told) if (m !== feature) routeOther(m, o)
+    save()
+    return told.get(feature) ?? (fleet.features[feature] ? fleet.features[feature].status : 'done')
+  }
+  // `culprit` stops the group: every other member waits for it to be ready to land again.
+  const waitFor = (culprit, members = live) => {
+    for (const m of members) if (m !== culprit) told.set(m, groupHold(fleet.features[m], { until: 'ready', on: [culprit], group: g.id, lane: 'land' }))
+  }
+  // Code nobody walked since a sign-off never lands (signoffMoved). A human's is never replaced: the
+  // member parks as a human step — walk it again, or hand it to agents — and the group waits (D8).
+  for (const m of live) {
+    const fm = fleet.features[m]
+    const moved = signoffMoved(m, fm)
+    if (!moved) {
+      delete fm.humanSignoffMoved
+      continue
+    }
+    told.set(m, walkAgain(m, fm, moved))
+    waitFor(m)
+    return outcome()
+  }
+  const gateFailed = (why, members = live) => {
+    const culprit = members.find((m) => gateOf([m])()) ?? members[0]
+    const fc = fleet.features[culprit]
+    // A pause is the person's own request: it parks as revising, as a feature alone would.
+    if (parkIfPaused(fc, culprit)) told.set(culprit, 'parked')
+    else if (!STOPPED.has(fc.status)) told.set(culprit, park(fc, didNotLand(g, members, culprit, why)))
+    for (const m of members) if (m !== culprit) told.set(m, park(fleet.features[m], didNotLand(g, members, culprit, why)))
+    return outcome()
+  }
+  const shut = gateOf(live)()
+  if (shut) return gateFailed(shut)
+  const tip = live.at(-1)
+  const ft = fleet.features[tip]
+  const stuck = (culprit, why, members = live) => {
+    const fc = fleet.features[culprit]
+    told.set(culprit, why?.files ? walkAgain(culprit, fc, why) : park(fc, why?.red ? why.reason : why))
+    waitFor(culprit, members)
+  }
+  // The tip takes every member's ship commit, so the one merge lands each folder's archive move too.
+  for (const m of live.slice(0, -1)) {
+    const why = await stackOn(tip, m, g.id)
+    if (why) {
+      stuck(tip, why)
+      return outcome()
+    }
+  }
+  const cfg = configChanged(ft)
+  if (cfg) {
+    stuck(tip, cfg)
+    return outcome()
+  }
+  const facts = new Map(live.map((m) => [m, landingPrep(m, fleet.features[m])]))
+  const why = await mergeThroughVerifier(tip, ft, { message: mergeMessage(live), gate: gateOf(live) })
+  if (!why) for (const m of live) told.set(m, finishLanding(m, facts.get(m)))
+  else if (why.gate) return gateFailed(why.gate)
+  else if (why.red) await bisectGroup(g, live, facts, why.red, { told, stuck, waitFor, gateFailed })
+  else stuck(tip, why)
+  return outcome()
+}
+
+/**
+ * The tip's merge tier went red (`red`, its verdict): which member broke it? Each prefix of the stack
+ * is tested on its last member's branch, which holds exactly that prefix (bisectPlan) — member 1, then
+ * 1–2, … — stopping at the first that is red (firstFailing); the whole group is the tip's red run. The
+ * members before it land, through the last green prefix's held run; it parks, naming the verdict; the
+ * members after it wait for it to land. A prefix the verifier gives no verdict on counts as red: what
+ * it holds is not known to be green, so it does not land.
+ */
+async function bisectGroup(g, live, facts, red, { told, stuck, waitFor, gateFailed }) {
+  const results = []
+  for (const prefix of bisectPlan(live).slice(0, -1)) {
+    const m = prefix.at(-1)
+    const fm = fleet.features[m]
+    let v = null
+    let why = null
+    // The prefix's last member takes the ship commits before it, as the tip did: what lands is what ran.
+    for (const e of prefix.slice(0, -1)) if (!why) why = await stackOn(m, e, g.id)
+    if (!why && fm.worktree && existsSync(fm.worktree)) {
+      try {
+        const id = requestMerge(ROOT, fm.worktree, { target: TARGET, message: mergeMessage(prefix) })
+        fm.reason = `merge tier: ${prefix.join(', ')} on ${TARGET}, to find what turned ${g.id} red`
+        save()
+        v = await awaitVerdict(ROOT, id)
+      } catch (e) {
+        why = String(e.message).split('\n')[0]
+      }
+      fm.reason = null
+    }
+    results.push({ green: v?.status === 'green', verdict: v, why: why ?? (v ? null : 'no verdict') })
+    if (v?.status !== 'green') break
+  }
+  if (results.every((r) => r.green)) results.push({ green: false, verdict: red })
+  const k = firstFailing(results)
+  const culprit = live[k]
+  const { verdict: v, why } = results[k]
+  const summary = v?.status === 'red' ? v.regressions.map((x) => x.id).join(', ') : `${g.id}'s tip went red (${red.regressions.map((x) => x.id).join(', ')}), and ${live.slice(0, k + 1).join(', ')} alone could not be tested (${why ?? v?.status})`
+  told.set(culprit, park(fleet.features[culprit], `merge tier went red: ${summary} — next: /builder:agent ${culprit}`))
+  for (const m of live.slice(k + 1)) told.set(m, groupHold(fleet.features[m], { until: 'landed', on: [culprit], group: g.id, lane: 'land' }))
+  if (k === 0) return
+  const landing = live.slice(0, k)
+  const head = landing.at(-1)
+  const done = await mergeThroughVerifier(head, fleet.features[head], { message: mergeMessage(landing), gate: gateOf(landing) })
+  if (!done) for (const m of landing) told.set(m, finishLanding(m, facts.get(m)))
+  else if (done.gate) gateFailed(done.gate, landing)
+  else stuck(head, done, landing)
 }
 
 /** What a member's wait should be on now, from its current group — a regroup may have moved it. */
@@ -2112,6 +2314,9 @@ function expectedWait(feature, w) {
   if (w.lane === 'build' && w.until === 'built') return i > 0 ? [g.members[i - 1]] : []
   if (w.lane === 'build') return i === 0 && g.waitsOn ? (fleet.groups?.[g.waitsOn]?.members ?? []) : []
   if (w.until === 'signed-off') return g ? g.members.filter((m) => m !== feature) : []
+  // Ready to land: the members the landing found not ready, or the one that stopped it — a wait on
+  // members of its group is current; one on a member a regroup took out of it is not.
+  if (w.until === 'ready') return g ? w.on.filter((m) => g.members.includes(m)) : []
   return i > 0 ? g.members.slice(0, i) : []
 }
 /** A wait no longer on the member's current predecessor (or group): dropped, and checked again where it goes. */
@@ -2819,6 +3024,8 @@ async function poolWorker() {
     if (closing) return
     if (pool.length) {
       const { feature, lane } = pool.shift()
+      // Landed with its group while it waited in the queue.
+      if (!fleet.features[feature]) continue
       // A member queued to ship when its group was all signed off: one may have gone back since.
       if (lane !== 'build' && shipHold(feature, lane)) {
         wakeAll()
@@ -3062,10 +3269,15 @@ async function quickCheck(feature) {
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
   if (mf.state !== 'signed-off' || /^(READY|QUICK|SKIPPED)\b/.test(mf.verify ?? '')) return
+  // A group's one merge tier is its tip's (D8): a member before the tip would ask for one of its own
+  // on code the tip's run already tests, so only the tip is quick-checked, under the group's merge.
+  const g = groupOf(feature)
+  const live = g ? liveMembers(g) : [feature]
+  if (live.length > 1 && live.at(-1) !== feature) return
   f.reason = 'quick check: the merge tier and the spec, by script'
   save()
   const script = join(dirname(fileURLToPath(import.meta.url)), 'verify-quick.mjs')
-  const message = `merge(${feature}): agent-verified, not human-tested`
+  const message = mergeMessage(live.length > 1 ? live : [feature])
   const r = await execAsync(process.execPath, [script, join(f.worktree, specOf(feature)), '--max-wait', String(QUICK_WAIT_S), '--message', message], { cwd: f.worktree, env: envFor(feature, 'build') })
   f.reason = null
   const verdict = /^QUICK CHECK: .*$/m.exec(r.output)?.[0]
@@ -3363,7 +3575,7 @@ for (const [feature, f] of Object.entries(fleet.features))
     // At the barrier, what it waits on is every member not ready for the group's walk, as of now.
     const not = until === 'walk' ? (fleet.groups?.[group]?.members ?? on).filter((d) => d !== feature && !walkReady(d, feature)) : on.filter((d) => !reached(until, d))
     // At the barrier, members already built are not ready for another reason (parked, in a run).
-    const what = until === 'walk' && not.length && not.every(isBuilt) ? "to be ready for the group's walk" : { built: 'to build first', walk: 'to build first', 'signed-off': 'to sign off first', landed: 'to land first' }[until]
+    const what = until === 'walk' && not.length && not.every(isBuilt) ? "to be ready for the group's walk" : { built: 'to build first', walk: 'to build first', 'signed-off': 'to sign off first', ready: 'to be ready to land', landed: 'to land first' }[until]
     Object.assign(f, { status: 'parked', reason: `waits on ${not.map((d) => `${d} (${fleet.features[d]?.status ?? 'not in the fleet'})`).join(', ')} ${what} (group ${group}), which ${not.length > 1 ? 'they' : 'it'} never did — next: settle ${not.join(', ')}, then pick both in /builder:agent` })
     delete f.groupWait
     tellStop(feature, f)
