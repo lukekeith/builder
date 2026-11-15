@@ -2348,8 +2348,14 @@ function chargeBatch(rec, features) {
 
 /**
  * The walk worktree: the target with each batched feature's branch merged in, in order. A feature
- * that conflicts with the ones merged before it waits for the next batch (first in line). Untracked
- * files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
+ * that won't merge is sorted by what it conflicts with, so a batch is never requeued unchanged:
+ *   stale     — it conflicts with the target itself; walkBatch syncs it (an agent resolves the
+ *               conflict) and puts it back first in line. Deferring it would hand the walk lane the
+ *               same batch again, and the lane spun every few seconds with no agent running.
+ *   deferred  — it conflicts only with a feature merged before it in this batch: it waits for the
+ *               next batch (first in line). The others walk, so that is progress.
+ *   stuck     — it conflicts with neither, and nothing merged before it: it parks.
+ * Untracked files — agent_walk.copy's `.env` — survive the reset. Throws when setup or sync fails.
  */
 function prepareWalkTree(features) {
   if (!existsSync(WALK_WT)) {
@@ -2361,10 +2367,15 @@ function prepareWalkTree(features) {
   } else git(['reset', '--hard', '--quiet', `refs/heads/${TARGET}`], WALK_WT)
   const merged = []
   const deferred = []
+  const stale = []
+  const stuck = []
   for (const feature of features) {
-    if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${feature}`, `refs/heads/${fleet.features[feature].branch}`], WALK_WT) === null) {
+    const branch = `refs/heads/${fleet.features[feature].branch}`
+    if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${feature}`, branch], WALK_WT) === null) {
       tryGit(['merge', '--abort'], WALK_WT)
-      deferred.push(feature)
+      if (conflictsWithTarget(branch)) stale.push(feature)
+      else if (merged.length) deferred.push(feature)
+      else stuck.push(feature)
     } else merged.push(feature)
   }
   if (AW.sync && merged.length) {
@@ -2379,8 +2390,30 @@ function prepareWalkTree(features) {
       closeSync(fd)
     }
   }
-  return { merged, deferred }
+  return { merged, deferred, stale, stuck }
 }
+
+/**
+ * A `built` feature's `ready: yes <sha>` is void once the target merged into it (a code commit since
+ * that sha), and the batch walk would refuse it as not walkable. Back to `building` with ready
+ * pending: the batch's own readiness (agent-walk §Batched walks, steps 1–2) re-earns it on the merged
+ * code. → null, or why it could not be set.
+ */
+function rearmReadiness(feature, f) {
+  const folder = specOf(feature)
+  const text = readManifest(f.worktree, feature)
+  if (!text || parseManifest(text).state !== 'built') return null
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
+  try {
+    execFileSync(process.execPath, [script, folder, '--set', 'state=building', '--set', `ready=pending "${TARGET} merged in for the walk batch"`, '--commit', `chore({key}): {feature} — ${TARGET} merged in, walk readiness again`], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
+    return null
+  } catch (e) {
+    return `${TARGET} was merged into it for the walk batch, but its walk readiness could not be reset: ${String(e.stderr || e.message).trim().split('\n').pop()} — next: /builder:agent ${feature}`
+  }
+}
+
+/** Whether `branch` conflicts with the target itself — a merge of the two, in memory, that stops. */
+const conflictsWithTarget = (branch) => tryGit(['merge-tree', '--write-tree', `refs/heads/${TARGET}`, branch]) === null
 
 /** A command without holding the fleet's event loop (an e2e suite takes minutes; the lanes keep moving). */
 const execAsync = (cmd, args, opts) =>
@@ -2448,7 +2481,6 @@ async function walkBatch(batch) {
         continue
       }
     }
-    requestMergeAtWalk(feature, f)
     live.push(feature)
   }
   if (!live.length) return
@@ -2463,11 +2495,30 @@ async function walkBatch(batch) {
   } catch (e) {
     return one(live, `the walk worktree could not be prepared (${e.message})`)
   }
-  for (const feature of tree.deferred.reverse()) {
+  for (const feature of tree.stuck)
+    route(feature, park(fleet.features[feature], `it would not merge into the walk worktree, though it conflicts with neither ${TARGET} nor another feature in the batch — next: run git merge ${fleet.features[feature].branch} on ${TARGET} in a scratch worktree to see what stops it, then /builder:agent`))
+  // A stale feature is synced with the target now — an agent resolves the conflict — and goes back
+  // first in line, so the next batch merges it. A sync that does not bring the target in parks it.
+  const synced = []
+  for (const feature of tree.stale) {
+    const f = fleet.features[feature]
+    let why =
+      (await syncTarget(f.worktree, `the walk batch could not merge it: it conflicts with ${TARGET}`, feature)) ??
+      (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, `refs/heads/${f.branch}`]) === null
+        ? `it conflicts with ${TARGET}, and merging ${TARGET} into it did not go in (uncommitted changes in ${f.worktree}?) — next: merge ${TARGET} into ${f.branch} and commit it, then /builder:agent`
+        : null)
+    if (why) route(feature, park(f, why))
+    else if ((why = rearmReadiness(feature, f))) route(feature, park(f, why))
+    else synced.push(feature)
+  }
+  for (const feature of [...synced, ...tree.deferred].reverse()) {
     Object.assign(fleet.features[feature], { status: 'awaiting-walk', reason: null })
     walkQueue.unshift(feature)
   }
   if (tree.merged.length < 2) return one(tree.merged)
+  // Requested only now, for what merged: a stale feature's HEAD is about to be replaced by its sync,
+  // and one walked alone (walkOne) requests its own.
+  for (const feature of tree.merged) requestMergeAtWalk(feature, fleet.features[feature])
   const rec = walkRec()
   let active = [...tree.merged]
   const failures = {}

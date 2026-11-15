@@ -4,6 +4,24 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.2.3
+
+A batched walk no longer spins when a built feature's branch conflicts with the target. Nothing to
+change in `.claude/builder.md`.
+
+**Fixed:**
+- A feature in a walk batch that would not merge because it conflicts with the target itself was
+  deferred to "the next batch" — the same batch, so the walk lane requeued it every few seconds,
+  with no agent running, until someone merged the target in by hand. Now a conflict with the target
+  is synced (an agent resolves it), the feature's walk readiness is reset so the batch re-earns it on
+  the merged code, and it goes back first in line; a conflict no agent resolves parks it with the
+  reason. Only a conflict with a feature merged earlier in the same batch waits for the next one,
+  and a feature that conflicts with neither parks instead of being requeued.
+
+**Changed:**
+- CI runs on Node 24, and the repo carries an `.nvmrc` of `24`. No minimum Node version is declared
+  for consumers.
+
 ## 6.2.2
 
 A fleet build no longer stops for the night because it ran long, and an iPhone build no longer

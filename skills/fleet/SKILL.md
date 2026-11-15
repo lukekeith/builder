@@ -274,7 +274,9 @@ branches onto the target in a walk worktree of its own (`<worktrees>/_walk`, bra
 never merged, removed when the fleet ends), brings the env up **once** (`reset` once), and runs one
 session there: readiness for the batch, one walker going screen by screen across every feature
 (agent-walk §Batched walks), each verdict written in that feature's own worktree. A feature that
-conflicts with the others waits for the next batch. The walk lane does nothing else: a walk's fixes,
+conflicts with the target itself is synced first — an agent resolves the conflict, its walk
+readiness is reset for the batch to re-earn, and it goes back first in line (a conflict no agent
+resolves parks it). One that conflicts only with a feature merged before it waits for the next batch. The walk lane does nothing else: a walk's fixes,
 the quick check and ship run in the parallel lanes with no env, and a fixed feature rejoins a later batch,
 which re-walks only what its fix changed. A batch whose env won't come up falls back to one walk
 per feature, with the env-repair run.

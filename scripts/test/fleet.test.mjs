@@ -43,11 +43,14 @@ function makeRepo(features, { reset, stop, lines = [], manifest = [] } = {}) {
   return root
 }
 
-function runFleet(root, args, scenario, env = {}) {
+/** `timeout` (ms) ends a fleet that never finishes, so a spinning lane fails the test instead of hanging it. */
+function runFleet(root, args, scenario, env = {}, { timeout } = {}) {
   writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify(scenario))
   const r = spawnSync('node', [FLEET, ...args], {
     cwd: root,
     encoding: 'utf8',
+    timeout,
+    killSignal: 'SIGKILL',
     env: { ...process.env, CLAUDE_PROJECT_DIR: root, FLEET_CLAUDE: STUB, FLEET_KEEP_STOPPED_WORKTREES: '1', STUB_SCENARIO: join(root, '.stub/scenario.json'), STUB_STATE: join(root, '.stub'), ...env },
   })
   const fj = join(root, '.builder/fleet/fleet.json')
@@ -2195,6 +2198,55 @@ test('batched walks: a walk that finds problems sends the fixes to the pool, and
   assertLanded(r, 'a')
   assertLanded(r, 'b')
   assert.ok(r.calls.some((l) => /^start a build .* FIXED /.test(l)), 'the fix ran in the pool: ' + r.calls.join('\n'))
+})
+
+/**
+ * Built features whose branches (the `stale` ones) each conflict with the target itself: `feat/<x>` rewrites
+ * `<x>.txt`, and the target rewrote the same line after the branches were cut. Neither merges into
+ * the walk worktree (the target) until it is synced.
+ */
+async function staleRepo(features, { stale = features } = {}) {
+  const env = await walkEnvRepo(features, { manifest: ['state: built', 'tests: slice=own end=risk review=end'] })
+  const { root } = env
+  features = stale
+  for (const x of features) writeFileSync(join(root, `${x}.txt`), 'base\n')
+  for (const x of features) writeFileSync(join(root, 'docs/features', x, 'MANIFEST.md'), `size: md\nstate: built\nbranch: feat/${x}\ntests: slice=own end=risk review=end\nnext: x\n`)
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'built features')
+  for (const x of features) {
+    git(root, 'switch', '-q', '-c', `feat/${x}`)
+    writeFileSync(join(root, `${x}.txt`), `${x}'s change\n`)
+    git(root, 'commit', '-qam', `${x} changes ${x}.txt`)
+    git(root, 'switch', '-q', 'main')
+  }
+  for (const x of features) writeFileSync(join(root, `${x}.txt`), 'the target moved on\n')
+  git(root, 'commit', '-qam', 'the target changes every feature file')
+  return env
+}
+
+test('batched walks: two built features that each conflict with the target are synced by an agent, then walk together', async () => {
+  const { root } = await staleRepo(['a', 'b'])
+  const r = runFleet(root, ['a', 'b'], { a: ['signed-off', 'verified', 'SHIP'], b: ['signed-off', 'verified', 'SHIP'] }, FAST, { timeout: 90_000 })
+  assert.equal(r.signal, null, 'the fleet never finished — the walk lane spun:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, r.stderr + r.calls.join('\n'))
+  assert.ok(r.calls.includes('resolve a RESOLVE') && r.calls.includes('resolve b RESOLVE'), 'an agent resolved each conflict with the target: ' + r.calls.join('\n'))
+  assert.ok(r.calls.some((l) => /^batch (a,b|b,a) /.test(l)), 'both walked in one batch once synced: ' + r.calls.join('\n'))
+  // The merge voided each one's `ready: yes <sha>`: back to building, ready pending, for the batch's readiness.
+  for (const x of ['a', 'b']) assert.match(git(root, 'log', '--format=%s', 'main'), new RegExp(`chore\\(${x}\\): ${x} — main merged in, walk readiness again`))
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+})
+
+test('batched walks: a built feature whose conflict with the target no agent resolves parks, and is never walked; the other walks', async () => {
+  const { root } = await staleRepo(['a', 'b'], { stale: ['a'] })
+  const r = runFleet(root, ['a', 'b'], { 'a:resolve': ['NOOP', 'NOOP'], b: ['signed-off', 'verified', 'SHIP'] }, FAST, { timeout: 90_000 })
+  assert.equal(r.signal, null, 'the fleet never finished — the walk lane spun:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 1, 'a parked: ' + r.stderr + r.calls.join('\n'))
+  assert.equal(r.fleet.features.a.status, 'parked', JSON.stringify(r.fleet.features.a))
+  assert.match(r.fleet.features.a.reason, /conflicted and two agent runs could not resolve it/)
+  assert.ok(!r.calls.some((l) => /^start a walk /.test(l) || /^batch .*\ba\b/.test(l)), 'a was never walked: ' + r.calls.join('\n'))
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'feat/a'), /walk readiness again/, 'no readiness reset after a failed sync')
+  assertLanded(r, 'b')
 })
 
 test('--wait with no fleet running prints exactly what --status prints, but leaves it unseen', () => {
