@@ -907,6 +907,67 @@ test('worktree_env reaches every lane with {feature} filled in; env still only t
   assert.ok(starts.filter((l) => l.startsWith('start a walk ')).every((l) => l.includes(' walk_mark=x-a ')), starts.join('\n'))
 })
 
+// ---- D14: a test database per worktree ----------------------------------------------------------
+const DB_VERIFY = 'verify:\n  workers: 1\n  db: { kind: postgres, url: "postgres://u@localhost:5432/app" }\n  checks:\n    no-red: { run: "true", tiers: [merge] }'
+const SHARED_NOTE = "parallel 1: the verifier's test database is shared — set agent_walk.test_db_env (or a {feature} database in worktree_env) to build in parallel"
+
+test('a verify.db with no per-worktree database builds one at a time, and says why', () => {
+  const root = makeRepo(['a', 'b'])
+  withVerify(root, DB_VERIFY)
+  const dry = runFleet(root, ['a', 'b', '--dry-run'], {})
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.ok(dry.stdout.includes(SHARED_NOTE), dry.stdout)
+  assert.match(dry.stdout, /build lane: {2}1 at a time/)
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok((r.fleet.notes ?? []).includes(SHARED_NOTE), JSON.stringify(r.fleet.notes))
+})
+
+test('test_db_env, or a {feature} database in worktree_env, keeps builds in parallel with a verify.db — no note', () => {
+  for (const lines of [['test_db_env: DATABASE_URL'], ['worktree_env: DATABASE_URL=postgres://u@localhost:5432/app_{feature}']]) {
+    const root = makeRepo(['a', 'b'], { lines })
+    withVerify(root, DB_VERIFY)
+    const dry = runFleet(root, ['a', 'b', '--dry-run'], {})
+    assert.equal(dry.status, 0, dry.stderr)
+    assert.ok(!dry.stdout.includes('parallel 1:'), dry.stdout)
+    assert.match(dry.stdout, /build lane: {2}3 at a time/)
+  }
+})
+
+test('test_db_env points every lane of a worktree at its own database, named for the repo and the feature', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: WT_MARK'] })
+  const r = runFleet(root, ['a'], { a: HAPPY }, { WT_MARK: 'sqlite:///var/db/app.db' })
+  assert.equal(r.status, 0, r.stderr)
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.ok(starts.length && starts.every((l) => / wt_mark=sqlite:\/\/\/var\/db\/app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}\.db /.test(l)), starts.join('\n'))
+})
+
+test('test_db_env with a postgres verify.db: the lane database is created and migrated with the worktree, and dropped when it lands', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: DATABASE_URL'] })
+  const log = join(root, '..', `${basename(root)}-psql.log`)
+  withVerify(root, DB_VERIFY.replace('url: "postgres://u@localhost:5432/app" }', `url: "postgres://u@localhost:5432/app", prepare: "echo migrate $DATABASE_URL >> ${log}" }`))
+  // A psql that only says what it was asked: the fleet's create and drop, and the verifier's own.
+  const bin = join(root, '..', `${basename(root)}-bin`)
+  mkdirSync(bin, { recursive: true })
+  writeFileSync(join(bin, 'psql'), `#!/bin/sh\necho "psql $*" >> ${log}\n`, { mode: 0o755 })
+  const r = runFleet(root, ['a'], { a: HAPPY }, { PATH: `${bin}:${process.env.PATH}` })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  const lines = readFileSync(log, 'utf8').split('\n').filter((l) => /app_ln_[0-9a-f]{6}_a_/.test(l))
+  const at = (re) => lines.findIndex((l) => re.test(l))
+  const create = at(/^psql postgres:\/\/u@localhost:5432\/app .*CREATE DATABASE "app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}"$/)
+  const migrate = at(/^migrate postgres:\/\/u@localhost:5432\/app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}$/)
+  const drop = lines.findLastIndex((l) => /DROP DATABASE IF EXISTS "app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}" WITH \(FORCE\)$/.test(l))
+  assert.ok(create >= 0 && migrate > create && drop > migrate, lines.join('\n'))
+})
+
+test('test_db_env with no URL to read refuses to start, naming the variable', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: NO_SUCH_DB_URL'] })
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 2)
+  assert.match(r.stderr, /agent_walk\.test_db_env: NO_SUCH_DB_URL is not set here, and verify\.db names no url — set it, or remove test_db_env\./)
+})
+
 test('setup sees worktree_env and gets {feature} filled in', () => {
   const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'setup: echo "${WT_MARK:-unset} {feature}" > setup-wt-env'] })
   const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })
