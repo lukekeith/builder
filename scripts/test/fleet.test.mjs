@@ -959,7 +959,8 @@ test('a verify.db with no per-worktree database builds one at a time, and says w
   assert.match(dry.stdout, /build lane: {2}1 at a time/)
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
-  assert.ok((r.fleet.notes ?? []).includes(SHARED_NOTE), JSON.stringify(r.fleet.notes))  // --parallel on the command line is held to one too, and the note says what was asked.
+  assert.ok((r.fleet.notes ?? []).includes(SHARED_NOTE), JSON.stringify(r.fleet.notes))
+  // --parallel on the command line is held to one too, and the note says what was asked.
   const asked = runFleet(root, ['a', 'b', '--dry-run', '--parallel', '4'], {})
   assert.ok(asked.stdout.includes(SHARED_NOTE.replace('parallel 1:', 'parallel 1 (asked 4):')), asked.stdout)
 })
@@ -977,8 +978,9 @@ test('test_db_env, or a {feature} database in worktree_env, keeps builds in para
 
 /**
  * A psql that only says what it was asked, in `<root>-psql.log`: the fleet's create, drop and list,
- * and the verifier's own. A list query answers with a stale lane database of this checkout (its root
- * tag read back from the query); `failDrop` makes the DROP of that stale one fail.
+ * and the verifier's own. It remembers what it created and dropped: a list query answers with those
+ * still there, and a stale lane database of this checkout (its root tag read back from the query);
+ * `failDrop` makes the DROP of that stale one fail.
  */
 function fakePsql(root, { failDrop = false } = {}) {
   const log = join(root, '..', `${basename(root)}-psql.log`)
@@ -986,11 +988,17 @@ function fakePsql(root, { failDrop = false } = {}) {
   mkdirSync(bin, { recursive: true })
   const body = [
     '#!/usr/bin/env node',
-    "const { appendFileSync } = require('node:fs')",
+    "const { appendFileSync, readFileSync, writeFileSync, existsSync } = require('node:fs')",
     "const a = process.argv.slice(2).join(' ')",
     `appendFileSync(${JSON.stringify(log)}, 'psql ' + a + '\\n')`,
+    `const db = ${JSON.stringify(log + '.dbs')}`,
+    "const have = new Set(existsSync(db) ? readFileSync(db, 'utf8').split('\\n').filter(Boolean) : [])",
+    "const name = /DATABASE (?:IF EXISTS )?\"([^\"]+)\"/.exec(a)?.[1]",
+    "if (name && /CREATE DATABASE/.test(a)) have.add(name)",
+    "if (name && /DROP DATABASE/.test(a) && !/_gone_/.test(name)) have.delete(name)",
+    "writeFileSync(db, [...have].join('\\n'))",
     "const tag = /_ln\\\\_([0-9a-f]{6})\\\\_/.exec(a)",
-    "if (/SELECT datname/.test(a) && tag) console.log('app_ln_' + tag[1] + '_gone_deadbeef')",
+    "if (/SELECT datname/.test(a) && tag) console.log([...have].filter((n) => n.includes('_ln_' + tag[1] + '_')).concat('app_ln_' + tag[1] + '_gone_deadbeef').join('\\n'))",
     `if (${failDrop} && /DROP DATABASE .*_gone_deadbeef/.test(a)) process.exit(1)`,
   ]
   writeFileSync(join(bin, 'psql'), body.join('\n') + '\n', { mode: 0o755 })
@@ -1043,19 +1051,38 @@ test('test_db_env: a reused worktree whose row names no database gets one — an
   writeFileSync(fj, JSON.stringify(j))
   const creates = () => psql.lines().filter((l) => new RegExp(`CREATE DATABASE "${LANE('a')}"`).test(l)).length
   const before = creates()
+  const mark = psql.lines().length
   const again = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop again'] }, psql.env)
   assert.equal(creates(), before + 1, psql.lines().join('\n'))
+  // The reaper listed a's database — its worktree is there — and kept it: a's only drop is the prepare's own.
+  const run2 = psql.lines().slice(mark)
+  assert.ok(run2.some((l) => /SELECT datname/.test(l)), run2.join('\n'))
+  assert.equal(run2.filter((l) => new RegExp(`DROP DATABASE IF EXISTS "${LANE('a')}"`).test(l)).length, 1, run2.join('\n'))
   // The reaper's drop failed: the note names the database and the command, the password hidden.
   const notes = (again.fleet.notes ?? []).join('\n')
   assert.match(notes, /the stale test database app_ln_[0-9a-f]{6}_gone_deadbeef could not be dropped — drop it by hand: psql 'postgres:\/\/u:\*\*\*@localhost/)
   assert.doesNotMatch(notes + again.stderr + again.stdout, /s3cret/)
 })
 
+test('test_db_env: a migration that reaches the worktree after its database was made makes it again at the next run', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: LANE_DB'] })
+  withVerify(root, DB_VERIFY.replace('url: "postgres://u@localhost:5432/app" }', 'url: "postgres://u@localhost:5432/app", inputs: [db/migrations] }'))
+  const psql = fakePsql(root)
+  const r = runFleet(root, ['a'], { a: ['audited', 'COMMIT:db/migrations/001.sql:planned', 'NOOP', 'BLOCK:stop here'] }, psql.env)
+  assert.equal(r.fleet.features.a.status, 'parked', JSON.stringify(r.fleet.features.a))
+  const creates = psql.lines().filter((l) => new RegExp(`CREATE DATABASE "${LANE('a')}"`).test(l)).length
+  assert.equal(creates, 2, `made with the worktree, and again once 001.sql was in it:\n${psql.lines().join('\n')}`)
+})
+
 test('test_db_env with no verify.db refuses to start, naming the variable', () => {
   const root = makeRepo(['a'], { lines: ['test_db_env: DATABASE_URL'] })
   const r = runFleet(root, ['a'], { a: HAPPY }, { DATABASE_URL: 'postgres://h/app' })
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /agent_walk\.test_db_env: DATABASE_URL needs a verify\.db \(kind postgres, with a url\) — the fleet makes each worktree's database on that server\. Add verify\.db, or remove test_db_env\./)
+  assert.match(r.stderr, /agent_walk\.test_db_env: DATABASE_URL needs a verify\.db \(kind postgres, with a url\) — the fleet makes each worktree's database on that server\. Add verify\.db, or remove test_db_env\./)  // A verify: block that does not load is named, not taken for a missing one.
+  withVerify(root, 'verify:\n  db: { kind: mysql, url: "mysql://h/app" }\n  checks:\n    ok: { run: "true", tiers: [merge] }')
+  const broken = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(broken.status, 2)
+  assert.match(broken.stderr, /needs a verify\.db .* The verify: block does not load: verify\.db: kind postgres with a url/)
 })
 
 test('setup sees worktree_env and gets {feature} filled in', () => {

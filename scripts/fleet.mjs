@@ -43,6 +43,8 @@ import { landOverlap } from './verify/checkouts.mjs'
 import { loadVerify } from './verify/config.mjs'
 import { laneDbName, laneDbUrl, laneDbPlan, baseOf as dbBaseOf, isolated } from './lane-db.mjs'
 import { redact } from './verify/envpool.mjs'
+import { hostname } from 'node:os'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { signedOff, signoffHolds } from './feature-core.mjs'
 
@@ -219,14 +221,15 @@ if (!AW.claudeArgs) {
 // points at — created and migrated when the worktree is made and dropped when it goes; the reaper
 // drops any of this checkout's that outlived its worktree (tidy, a killed fleet). With a verify.db
 // and no isolation, builds in parallel would share the verifier's test database: one at a time.
-const VERIFY_DB = (() => {
-  const v = loadVerify(ROOT)
-  return v.ok ? v.verify.db : null
-})()
+const VERIFY = loadVerify(ROOT)
+const VERIFY_DB = VERIFY.ok ? VERIFY.verify.db : null
 if (AW.testDbEnv && !VERIFY_DB) {
-  console.error(`agent_walk.test_db_env: ${AW.testDbEnv} needs a verify.db (kind postgres, with a url) — the fleet makes each worktree's database on that server. Add verify.db, or remove test_db_env.`)
+  console.error(`agent_walk.test_db_env: ${AW.testDbEnv} needs a verify.db (kind postgres, with a url) — the fleet makes each worktree's database on that server. ${VERIFY.ok || /has no verify: block/.test(VERIFY.reason) ? 'Add verify.db, or remove test_db_env.' : `The verify: block does not load: ${VERIFY.reason}`}`)
   process.exit(2)
 }
+// The checkout's identity in its lane database names: the machine and the path — two machines with
+// the checkout at one path (devcontainers, CI runners) on one server never share, or reap, a name.
+const DB_ROOT = `${hostname()}:${ROOT}`
 const DB_URL = AW.testDbEnv ? VERIFY_DB.url : null
 /** Text that may hold the server URL, its password replaced (envpool's redact). */
 const quiet = (text) => (DB_URL ? redact(DB_URL, String(text)) : String(text))
@@ -429,8 +432,26 @@ function runSetup(feature, wt) {
 }
 
 /** The lane database's name for a worktree (D14): `<base>_ln_<root hash6>_<feature>_<hash8>`. */
-const laneDb = (feature) => laneDbName({ base: dbBaseOf(DB_URL), root: ROOT, feature })
-const lanePlan = (feature) => laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name: feature ? laneDb(feature) : null, testDbEnv: AW.testDbEnv, root: ROOT })
+const laneDb = (feature) => laneDbName({ base: dbBaseOf(DB_URL), root: DB_ROOT, feature })
+const lanePlan = (feature) => laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name: feature ? laneDb(feature) : null, testDbEnv: AW.testDbEnv, root: DB_ROOT })
+/**
+ * What a worktree's lane database was made from: its name, the server (no password), and the tree of
+ * verify.db.inputs (the migrations) at the worktree's HEAD. The row keeps it (f.laneDb); a key that
+ * differs at a run's start — a merge brought migrations, the server moved — makes the database again.
+ */
+function laneDbKey(feature, wt) {
+  const inputs = VERIFY_DB?.inputs?.length ? tryGit(['ls-tree', '-r', 'HEAD', '--', ...VERIFY_DB.inputs], wt) ?? '' : ''
+  return createHash('sha1').update(`${laneDb(feature)}\0${quiet(DB_URL)}\0${inputs}`).digest('hex').slice(0, 12)
+}
+/** The feature's lane database in `wt`, made again when its key moved (laneDbKey). Throws a setup-style error. */
+function ensureLaneDb(feature, f, wt = f.worktree) {
+  if (!DB_URL || !wt || !existsSync(wt)) return
+  const key = laneDbKey(feature, wt)
+  if (f.laneDb === key) return
+  prepareLaneDb(feature, wt)
+  f.laneDb = key
+  save()
+}
 /**
  * Drop, create and migrate the lane database for a worktree (D14) — dropped first, so one a killed
  * fleet left behind starts clean, and a worktree whose branch moved (the walk tree's next batch) is
@@ -457,7 +478,7 @@ const shRun = (cmd, opts) => {
     return { status: e.status ?? 1, output: `${e.stdout ?? ''}${e.stderr ?? e.message}` }
   }
 }
-/** A feature's or the walk tree's: its lane waits for the worktree anyway. */
+/** A feature's or the walk tree's. Blocking, as setup and sync are: the other lanes wait on the event loop meanwhile. */
 function prepareLaneDb(feature, wt) {
   const steps = laneDbSteps(feature, wt)
   if (!steps.length) return
@@ -569,13 +590,9 @@ function ensureWorktree(feature, branch) {
     runSetup(feature, wt)
     delete f.setupOwed
   }
-  // After setup: migrating needs what setup installs. The row names the database it made, so a
-  // reused worktree with none (one from before test_db_env, kept from a park) gets it here too.
-  if (DB_URL && f.laneDb !== laneDb(feature)) {
-    prepareLaneDb(feature, wt)
-    f.laneDb = laneDb(feature)
-    save()
-  }
+  // After setup: migrating needs what setup installs. The row keeps what its database was made from,
+  // so a reused worktree with none (from before test_db_env, kept from a park) gets one here too.
+  ensureLaneDb(feature, f, wt)
   return wt
 }
 
@@ -1543,6 +1560,12 @@ async function drive(feature, lane) {
     if (parkIfPaused(f, feature)) return 'parked'
     // F4: a sign-off nobody walked is set back to building before the walk lane's run, or parks.
     if (lane === 'walk' && unwalkedSignoff(feature, f) === 'parked') return 'parked'
+    // D14: a merge since the last run may have brought migrations — the lane database follows.
+    try {
+      ensureLaneDb(feature, f)
+    } catch (e) {
+      return park(f, `${e.message} — next: /builder:agent ${feature}`)
+    }
     // A group member builds only on the member before it, built and merged in (D6).
     if (lane === 'build') {
       const held = await stackGate(feature, f)
@@ -3327,7 +3350,8 @@ function prepareWalkTree(features) {
     }
   }
   // Each batch's database from nothing, on the batch's merged branches: their migrations are in it.
-  if (merged.length) prepareLaneDb('_walk', WALK_WT)
+  // One feature walks in its own worktree (walkBatch's one()), so only a real batch needs _walk's.
+  if (merged.length >= 2) prepareLaneDb('_walk', WALK_WT)
   return { merged, deferred, stale, stuck }
 }
 
