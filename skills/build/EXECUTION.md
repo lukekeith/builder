@@ -148,7 +148,8 @@ guaranteeing a stuck or lost child is noticed within minutes, not at the end of 
 `<plugin>/scripts/dispatch.mjs implementer <folder> --task N [--context "<one paragraph>"]` records
 **BASE** (HEAD now) the first time — the review package and fix-round diffs need it — writes the
 brief and the whole prompt to the workspace, and prints the Agent call: send
-`Read <file> and do what it says.`, naming the model and the `subagent_type` it printed.
+`Read <file> and do what it says.`, naming the model and the `subagent_type` it printed, and the
+`effort` when it prints one and the Agent tool takes an `effort`.
 
 **Why a lean agent:** a general-purpose subagent starts with every tool schema, the skills list and
 every MCP server's tool names — about 20k tokens it re-reads on every turn before it reads a line of
@@ -271,7 +272,8 @@ per task.**
   fix report to the same report file, and returns the short contract. Confirm the fix report names the
   covering tests, the command and the output before re-dispatching the reviewer.
 - **The re-review is scoped:** `<plugin>/scripts/dispatch.mjs re-review <folder> --task N --round R
-  --findings-file <the same file>` packages `FIX_BASE..HEAD`, where FIX_BASE is the head the previous
+  --findings-file <the same file>` packages `FIX_BASE..HEAD` and prints `effort: medium` (send it when
+  the Agent tool takes an `effort`), where FIX_BASE is the head the previous
   review saw (the script recorded it). Its report goes to `<WS>/task-N-re-review-R.md` — the next
   round's `--findings-file`. The re-reviewer verdicts each finding ADDRESSED or NOT ADDRESSED and flags new
   breakage **in the fix diff only**. New Critical/Important breakage joins the open list;

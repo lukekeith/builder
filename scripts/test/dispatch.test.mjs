@@ -125,8 +125,23 @@ test('dispatch implementer: a task\'s Decisions: line trims §Decisions to the r
   assert.doesNotMatch(cited, /The one place rulings live/, 'the template comment is not copied with the cited rows')
   assert.match(cited, /\n## Testing\n/, 'the other sections are unchanged')
 
+  withLine('Decisions: D1')
+  const one = brief()
+  assert.match(one, /\| D1 \|/)
+  assert.doesNotMatch(one, /\| D1\d \|/, 'D1 is not D10–D17')
+
   withLine('Decisions: D2, D99')
   assert.match(brief(), /Cited but not in §Decisions: D99/)
+
+  // A D the block cites in its Behaviour is briefed too, though the line misses it (a revise added it).
+  withLine('Decisions: D2\n**Behaviour:** per D4, a tag is lowercase.')
+  const plus = brief()
+  assert.match(plus, /## Decisions — the rows this task cites \(D2, D4\)/)
+  assert.match(plus, /\| D4 \| Tag validity \|/)
+
+  // A line that names no D and is not none is not read as none: every row.
+  withLine('Decisions: TBD')
+  assert.match(brief(), /\n## Decisions\n[\s\S]*\| D1 \|[\s\S]*\| D17 \|/)
 
   withLine('Decisions: none')
   const none = brief()
@@ -143,6 +158,9 @@ test('citedDecisions: the line needs its colon — prose that starts with the wo
   assert.deepEqual(citedDecisions('### Task 1: x\n**Decisions:** D1, D3\n'), ['D1', 'D3'])
   assert.deepEqual(citedDecisions('### Task 1: x\n**Decisions**: D2–D4\n'), ['D2', 'D3', 'D4'])
   assert.deepEqual(citedDecisions('### Task 1: x\n- Decisions: none\n'), [])
+  assert.deepEqual(citedDecisions('### Task 1: x\nDecisions: D5–D3\n'), ['D3', 'D4', 'D5'], 'a reversed range')
+  assert.deepEqual(citedDecisions('### Task 1: x\nDecisions: D1-D100000\n'), ['D1', 'D100000'], 'a typo range: its ends only')
+  for (const v of ['TBD', 'all', 'see Behaviour']) assert.equal(citedDecisions(`### Task 1: x\nDecisions: ${v}\n`), null, v)
   assert.equal(citedDecisions('### Task 1: x\n```\nDecisions: D1\n```\n'), null, 'a fenced example is not the line')
 })
 
@@ -807,13 +825,13 @@ test('dispatch: every kind prints paths relative to the repo root, no brief: lin
   // F3: a scoped re-review reads one fix diff against its findings — medium effort; no other dispatch names one.
   call(['re-review', r.rel, '--task', '1', '--round', '1', '--findings-file', join(ws, 'task-1-review.md')], { subagent_type: 'builder:reviewer', model: 'sonnet', effort: 'medium' })
   call(['task-review', r.rel, '--phase', '1'], { subagent_type: 'builder:reviewer', model: 'sonnet', effort: undefined })
-  call(['final-review', r.rel], { subagent_type: 'builder:reviewer', model: 'opus' })
+  call(['final-review', r.rel], { subagent_type: 'builder:reviewer', model: 'opus', effort: undefined })
   writeFileSync(join(ws, 'final-review.md'), '#### Important\n- src/cli.mjs:3 — z\n')
   call(['implementer', r.rel, '--final'], { subagent_type: 'builder:implementer', model: 'sonnet' })
   commitTask(r, 'src/cli.mjs', 'fix(note-tags): final')
   call(['re-review', r.rel, '--final', '--round', '1', '--findings-file', join(ws, 'final-review.md')], { model: 'sonnet', effort: 'medium' })
   writeFileSync(join(ws, 'walk.md'), '# w\n')
-  call(['agent-walk', r.rel], { subagent_type: 'general-purpose', model: 'opus' })
+  call(['agent-walk', r.rel], { subagent_type: 'general-purpose', model: 'opus', effort: undefined })
 
   // the models lever moves the tier exactly as §Model selection's economy / strong lines say
   const mf = join(r.folder, 'MANIFEST.md')

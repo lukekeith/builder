@@ -246,6 +246,28 @@ test('code that keeps changing after each agent re-walk parks once it has been w
   assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)/)
 })
 
+test('F4: an agent sign-off written with readiness pending goes back to building in the walk lane — readiness, the walk again, then it ships', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a'], { a: ['audited', 'planned', 'building', 'READY-PENDING', 'SIGNOFF-UNREADY', 'built', 'SIGNOFF', 'verified', 'SHIP'] })
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  const starts = r.calls.filter((l) => l.startsWith('start a '))
+  // The run after the early sign-off is the walk lane's, on a folder set back to building.
+  assert.match(starts[5], /^start a walk \d+ built /, starts.join('\n'))
+  assert.ok((r.fleet.notes ?? []).includes('a was signed off before its walk readiness settled — back to the walk lane: readiness, then the agent walk again'), JSON.stringify(r.fleet.notes))
+  assert.match(git(root, 'log', '--format=%s', 'main'), /— signed off before its walk readiness settled, back to the walk lane/)
+})
+
+test('F4: a human sign-off written with readiness pending is never shipped or replaced — it parks as your walk again', () => {
+  const root = makeRepo(['a'])
+  const r = runFleet(root, ['a'], { a: ['audited', 'planned', 'building', 'READY-PENDING', 'HUMAN-SIGNOFF-UNREADY', 'verified', 'SHIP'] })
+  assert.equal(r.status, 1, `${r.stderr}\n${r.calls.join('\n')}`)
+  assert.equal(r.fleet.features.a.status, 'parked')
+  assert.equal(r.fleet.features.a.reason, 'needs your walk again: a was signed off with its walk readiness still pending (pending "dev env (fleet walk lane)") — next: /builder:resume --path docs/features/a')
+  assert.ok(!r.calls.some((l) => /^start a \S+ \d+ (verified|SHIP) /.test(l)), r.calls.join('\n'))
+  assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)/)
+})
+
 test('code committed after a human sign-off is not walked by agents: it parks as a human step with the choice to walk it or hand it to agents', () => {
   const root = makeRepo(['a'])
   withVerify(root, RED_CHECK)

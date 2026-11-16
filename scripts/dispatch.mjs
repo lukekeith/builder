@@ -329,7 +329,8 @@ function envNotesOf(ledger) {
 /**
  * The task's `Decisions:` line (PLAN-FORMAT, from 6.3.0): the D numbers it cites — `D1, D4`, a range
  * `D2–D5` too — `[]` for `Decisions: none`, and null when the block has no such line (a plan written
- * before the line existed). A line inside a fence is an example, not the task's.
+ * before the line existed) or one that names no D and is not `none` (`TBD`, `all`): every row then,
+ * never none. A line inside a fence is an example, not the task's.
  */
 export function citedDecisions(block) {
   let fenced = false
@@ -340,25 +341,51 @@ export function citedDecisions(block) {
     if (!m) continue
     const v = m[1].replace(/[`*]/g, '').trim()
     if (/^(none|—|-)?$/i.test(v)) return []
-    const ids = []
-    for (const [, a, b] of v.matchAll(/\bD(\d+)(?:\s*[–-]\s*D?(\d+))?/g)) {
-      for (let k = +a; k <= +(b ?? a); k++) if (!ids.includes(`D${k}`)) ids.push(`D${k}`)
-    }
-    return ids
+    const ids = idsIn(v)
+    return ids.length ? ids : null
   }
   return null
+}
+
+const RANGE_MAX = 100 // a range wider than this is a typo (D1-D100000): its two ends only
+/** Every D id in `text`: `D3`, and a range `D2–D5` (either way round) as each id in it. */
+function idsIn(text) {
+  const ids = []
+  const add = (k) => ids.includes(`D${k}`) || ids.push(`D${k}`)
+  for (const [, a, b] of String(text).matchAll(/\bD(\d+)(?:\s*[–-]\s*D?(\d+))?\b/g)) {
+    const [lo, hi] = [Math.min(+a, +(b ?? a)), Math.max(+a, +(b ?? a))]
+    if (hi - lo > RANGE_MAX) [lo, hi].forEach(add)
+    else for (let k = lo; k <= hi; k++) add(k)
+  }
+  return ids
+}
+
+/** The D ids a task block cites anywhere outside a fence — its Behaviour, Tests, heading too. */
+function citedInBlock(block) {
+  let fenced = false
+  const prose = []
+  for (const line of String(block ?? '').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    else if (!fenced) prose.push(line)
+  }
+  return idsIn(prose.join('\n'))
 }
 
 /**
  * §Decisions for one task's brief. A task that cites its rows gets only those — the header and the
  * cited rows, in the spec's order — and one that cites none gets nothing: on a long spec every row in
- * every brief was most of the brief, read by an implementer bound by two of them. No line → the whole
- * section, as before the line existed. A cited row the table lacks is named, so a plan typo shows.
+ * every brief was most of the brief, read by an implementer bound by two of them. Cited means the
+ * `Decisions:` line AND every D the block names elsewhere (plan's "at least every D its Behaviour and
+ * Tests cite", kept mechanically — a revise that cites a new row in Behaviour and misses the line
+ * still briefs it). No line → the whole section, as before the line existed. A cited row the table
+ * lacks is named, so a plan typo shows.
  */
 function decisionsFor(block, section) {
   if (!section) return ''
-  const cited = citedDecisions(block)
-  if (cited == null) return section.text
+  const line = citedDecisions(block)
+  if (line == null) return section.text
+  const cited = [...line]
+  for (const d of citedInBlock(block)) if (!cited.includes(d)) cited.push(d)
   if (!cited.length) return ''
   const lines = section.body.split('\n').filter((l) => l.trim().startsWith('|'))
   const head = lines.slice(0, 2)

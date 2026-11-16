@@ -7,6 +7,8 @@
 //   SHIP            what /builder:ship leaves: MANIFEST.md gone, SPEC.md header SHIPPED, the folder in <registry>/_archive/
 //   SIGNOFF         what the agent sign-off leaves: state: signed-off and a `> 🤖 AGENT SIGNED OFF … — <HEAD> · …` header line
 //   HUMAN-SIGNOFF   the same for a human's sign-off: `> ✅ SIGNED OFF … — <HEAD> · by Luke: "works"`
+//                   Both settle a pending readiness, as a walk-lane run does before it walks.
+//   SIGNOFF-UNREADY / HUMAN-SIGNOFF-UNREADY  the same, readiness left pending (what F4 guards against)
 // Each step's changes to the spec folder are committed, as a real run's are.
 //   NOOP            change nothing    FAIL           exit 3        HANG   never exit
 //   SLOW:<step>     wait STUB_SLOW_MS (default 150) ms, then <step>
@@ -203,19 +205,25 @@ else if (step === 'SHIP') {
   execFileSync('git', ['add', '-A', '--', spec], { stdio: 'ignore' })
   execFileSync('git', ['mv', spec, join(dirname(spec), '_archive', feature)], { stdio: 'ignore' })
 }
-else if (step === 'SIGNOFF' || step === 'HUMAN-SIGNOFF') {
+else if (/^(HUMAN-)?SIGNOFF(-UNREADY)?$/.test(step)) {
+  const human = step.startsWith('HUMAN-')
   const sp = join(process.cwd(), spec, 'SPEC.md')
   // As condense's sign-off does: the new line replaces an earlier one.
   const lines = (existsSync(sp) ? readFileSync(sp, 'utf8') : '').split('\n').filter((l) => !/^> (✅ SIGNED OFF|🤖 AGENT SIGNED OFF)/.test(l))
   let t = lines.findIndex((l) => /^# /.test(l))
   if (t < 0) lines.splice((t = 0), 0, `# ${feature} — spec`)
   const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
-  lines.splice(t + 1, 0, step === 'SIGNOFF' ? `> 🤖 AGENT SIGNED OFF 2026-09-26 — ${head} · agent walk round 1 · not human-tested` : `> ✅ SIGNED OFF 2026-09-26 — ${head} · by Luke: "works"`)
+  lines.splice(t + 1, 0, !human ? `> 🤖 AGENT SIGNED OFF 2026-09-26 — ${head} · agent walk round 1 · not human-tested` : `> ✅ SIGNED OFF 2026-09-26 — ${head} · by Luke: "works"`)
   writeFileSync(sp, lines.join('\n'))
   set('state', 'signed-off')
+  if (!step.endsWith('-UNREADY') && /^ready: pending/m.test(readFileSync(mfPath, 'utf8'))) set('ready', 'yes 2026-09-26')
 }
 else if (step === 'READY-PENDING') {
   set('state', 'building')
   set('ready', 'pending "dev env (fleet walk lane)"')
-} else set('state', step)
+} else {
+  set('state', step)
+  // As the walk lane's readiness does (build §When the last phase signs): `built` settles a pending readiness.
+  if (step === 'built' && /^ready: pending/m.test(readFileSync(mfPath, 'utf8'))) set('ready', 'yes 2026-09-26')
+}
 finish(0)

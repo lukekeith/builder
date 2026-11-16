@@ -1379,6 +1379,33 @@ function walkAgain(feature, f, m) {
   return 'walk'
 }
 
+/**
+ * F4: a sign-off written while walk readiness was still pending is not a walked feature — laneOf sends
+ * it to the walk lane, never on to ship. The walk lane acts on `building` + `ready: pending` (resume
+ * runs §Walk readiness, then the agent walk), so an agent's sign-off goes: the folder back to
+ * building, readiness kept pending. A human's is never replaced unasked: it parks as your walk again,
+ * with the choice of handing it to agents (--rewalk-by-agents). → null when it does not apply, else
+ * the outcome to route ('walk' or 'parked').
+ */
+function unwalkedSignoff(feature, f) {
+  if (!f.worktree || !existsSync(f.worktree)) return null
+  const text = readManifest(f.worktree, feature)
+  const mf = text != null ? parseManifest(text) : null
+  if (mf?.state !== 'signed-off' || !/^pending/.test(mf.ready ?? '')) return null
+  const folder = specOf(feature)
+  if (signedOff(f.worktree, folder).human && !REWALK_BY_AGENTS.has(feature)) return park(f, `needs your walk again: ${feature} was signed off with its walk readiness still pending (${mf.ready}) — next: /builder:resume --path ${folder}`)
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
+  try {
+    execFileSync(process.execPath, [script, folder, '--set', 'state=building', '--set', 'walk=none', '--set', 'verify=none', '--commit', 'chore({key}): {feature} — signed off before its walk readiness settled, back to the walk lane'], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    const why = String(e.stderr || e.message).trim().split('\n').pop()
+    return park(f, `${feature} was signed off with its walk readiness still pending, and it could not be set back to building: ${why} — next: /builder:agent ${feature}`)
+  }
+  addNote(`${feature} was signed off before its walk readiness settled — back to the walk lane: readiness, then the agent walk again`)
+  save()
+  return 'walk'
+}
+
 /** The migration files `from..to` added under the config's §Walk readiness `migrations:` dir, with their text. */
 function newMigrations(from, to) {
   const dir = parseWalkReadiness(CFG.body).migrations
@@ -1463,6 +1490,8 @@ async function drive(feature, lane) {
   for (;;) {
     // The one place both lanes pass before a run starts: a pause request parks it, uncounted.
     if (parkIfPaused(f, feature)) return 'parked'
+    // F4: a sign-off nobody walked is set back to building before the walk lane's run, or parks.
+    if (lane === 'walk' && unwalkedSignoff(feature, f) === 'parked') return 'parked'
     // A group member builds only on the member before it, built and merged in (D6).
     if (lane === 'build') {
       const held = await stackGate(feature, f)
@@ -2155,6 +2184,9 @@ async function chainForWalk(feature) {
  */
 function afterChain(feature, before, prev) {
   const f = fleet.features[feature]
+  // F4 first: a sign-off with readiness pending was never walked — it does not wait to ship.
+  const u = unwalkedSignoff(feature, f)
+  if (u) return u === 'walk' ? null : 'parked'
   if (SIGNED.has(stateOf(feature))) {
     const m = signoffMoved(feature, f)
     if (m?.agents) {

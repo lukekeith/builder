@@ -18,8 +18,10 @@ const unquote = (s) => String(s ?? '').replace(/^"(.*)"$/, '$1')
  * walk readiness left — that needs the dev env, so it is walk-lane work. `signed-off` and `verified`
  * are the ship lane: verify is optional after sign-off, so the fleet runs the one-call quick check
  * (verify-quick.mjs, no model) and ships; the PR, CI, the ship commit and the merge need no dev env,
- * so they run in the parallel pool and never hold the one-at-a-time walk lane while CI runs. An open
- * PR is not done — merged is.
+ * so they run in the parallel pool and never hold the one-at-a-time walk lane while CI runs — except
+ * `signed-off` with `ready: pending` (F4): signed off before its readiness settled, so nobody walked
+ * it — the walk lane, where the fleet sends it back to building (unwalkedSignoff). An open PR is not
+ * done — merged is.
  */
 export function laneOf(mf, { batched = false, specText = null } = {}) {
   if (isSet(mf.blocked)) return 'blocked'
@@ -526,7 +528,7 @@ export function streamMeter() {
         if (parent == null && (b.name === 'Agent' || b.name === 'Task') && !dispatches.has(b.id)) {
           const i = b.input ?? {}
           const task = /\bTask\s+(\d+)\b/i.exec(i.description ?? '')?.[1]
-          dispatches.set(b.id, { kind: dispatchKind(i.description), task: task ? +task : null, description: String(i.description ?? '').slice(0, 120), model: i.model ?? null, agentType: i.subagent_type ?? null })
+          dispatches.set(b.id, { kind: dispatchKind(i.description), task: task ? +task : null, description: String(i.description ?? '').slice(0, 120), model: i.model ?? null, effort: i.effort ?? null, agentType: i.subagent_type ?? null })
         }
         if (parent != null && b.name === 'Bash' && TEST_RUN.test(String(b.input?.command ?? ''))) tests.set(parent, (tests.get(parent) ?? 0) + 1)
       }
