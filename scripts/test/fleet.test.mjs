@@ -959,7 +959,9 @@ test('a verify.db with no per-worktree database builds one at a time, and says w
   assert.match(dry.stdout, /build lane: {2}1 at a time/)
   const r = runFleet(root, ['a'], { a: HAPPY })
   assert.equal(r.status, 0, r.stderr)
-  assert.ok((r.fleet.notes ?? []).includes(SHARED_NOTE), JSON.stringify(r.fleet.notes))
+  assert.ok((r.fleet.notes ?? []).includes(SHARED_NOTE), JSON.stringify(r.fleet.notes))  // --parallel on the command line is held to one too, and the note says what was asked.
+  const asked = runFleet(root, ['a', 'b', '--dry-run', '--parallel', '4'], {})
+  assert.ok(asked.stdout.includes(SHARED_NOTE.replace('parallel 1:', 'parallel 1 (asked 4):')), asked.stdout)
 })
 
 test('test_db_env, or a {feature} database in worktree_env, keeps builds in parallel with a verify.db — no note', () => {
@@ -973,38 +975,87 @@ test('test_db_env, or a {feature} database in worktree_env, keeps builds in para
   }
 })
 
-test('test_db_env points every lane of a worktree at its own database, named for the repo and the feature', () => {
-  const root = makeRepo(['a'], { lines: ['test_db_env: WT_MARK'] })
-  const r = runFleet(root, ['a'], { a: HAPPY }, { WT_MARK: 'sqlite:///var/db/app.db' })
-  assert.equal(r.status, 0, r.stderr)
-  const starts = r.calls.filter((l) => l.startsWith('start'))
-  assert.ok(starts.length && starts.every((l) => / wt_mark=sqlite:\/\/\/var\/db\/app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}\.db /.test(l)), starts.join('\n'))
-})
-
-test('test_db_env with a postgres verify.db: the lane database is created and migrated with the worktree, and dropped when it lands', () => {
-  const root = makeRepo(['a'], { lines: ['test_db_env: DATABASE_URL'] })
+/**
+ * A psql that only says what it was asked, in `<root>-psql.log`: the fleet's create, drop and list,
+ * and the verifier's own. A list query answers with a stale lane database of this checkout (its root
+ * tag read back from the query); `failDrop` makes the DROP of that stale one fail.
+ */
+function fakePsql(root, { failDrop = false } = {}) {
   const log = join(root, '..', `${basename(root)}-psql.log`)
-  withVerify(root, DB_VERIFY.replace('url: "postgres://u@localhost:5432/app" }', `url: "postgres://u@localhost:5432/app", prepare: "echo migrate $DATABASE_URL >> ${log}" }`))
-  // A psql that only says what it was asked: the fleet's create and drop, and the verifier's own.
   const bin = join(root, '..', `${basename(root)}-bin`)
   mkdirSync(bin, { recursive: true })
-  writeFileSync(join(bin, 'psql'), `#!/bin/sh\necho "psql $*" >> ${log}\n`, { mode: 0o755 })
-  const r = runFleet(root, ['a'], { a: HAPPY }, { PATH: `${bin}:${process.env.PATH}` })
+  const body = [
+    '#!/usr/bin/env node',
+    "const { appendFileSync } = require('node:fs')",
+    "const a = process.argv.slice(2).join(' ')",
+    `appendFileSync(${JSON.stringify(log)}, 'psql ' + a + '\\n')`,
+    "const tag = /_ln\\\\_([0-9a-f]{6})\\\\_/.exec(a)",
+    "if (/SELECT datname/.test(a) && tag) console.log('app_ln_' + tag[1] + '_gone_deadbeef')",
+    `if (${failDrop} && /DROP DATABASE .*_gone_deadbeef/.test(a)) process.exit(1)`,
+  ]
+  writeFileSync(join(bin, 'psql'), body.join('\n') + '\n', { mode: 0o755 })
+  return { env: { PATH: `${bin}:${process.env.PATH}` }, lines: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []) }
+}
+const LANE = (x) => `app_ln_[0-9a-f]{6}_${x}_[0-9a-f]{8}`
+
+test('test_db_env points every lane of a worktree at its own database on verify.db’s server — never the launching shell’s', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: WT_MARK'] })
+  withVerify(root, DB_VERIFY)
+  const psql = fakePsql(root)
+  const r = runFleet(root, ['a'], { a: HAPPY }, { ...psql.env, WT_MARK: 'postgres://elsewhere:5432/staging' })
   assert.equal(r.status, 0, r.stderr)
-  assertLanded(r, 'a')
-  const lines = readFileSync(log, 'utf8').split('\n').filter((l) => /app_ln_[0-9a-f]{6}_a_/.test(l))
-  const at = (re) => lines.findIndex((l) => re.test(l))
-  const create = at(/^psql postgres:\/\/u@localhost:5432\/app .*CREATE DATABASE "app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}"$/)
-  const migrate = at(/^migrate postgres:\/\/u@localhost:5432\/app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}$/)
-  const drop = lines.findLastIndex((l) => /DROP DATABASE IF EXISTS "app_ln_[0-9a-f]{6}_a_[0-9a-f]{8}" WITH \(FORCE\)$/.test(l))
-  assert.ok(create >= 0 && migrate > create && drop > migrate, lines.join('\n'))
+  const starts = r.calls.filter((l) => l.startsWith('start'))
+  assert.ok(starts.some((l) => l.startsWith('start a build ')) && starts.some((l) => l.startsWith('start a walk ')), starts.join('\n'))
+  assert.ok(starts.every((l) => new RegExp(` wt_mark=postgres://u@localhost:5432/${LANE('a')} `).test(l)), starts.join('\n'))
+  assert.ok(!psql.lines().some((l) => /elsewhere|staging/.test(l)), psql.lines().join('\n'))
 })
 
-test('test_db_env with no URL to read refuses to start, naming the variable', () => {
-  const root = makeRepo(['a'], { lines: ['test_db_env: NO_SUCH_DB_URL'] })
-  const r = runFleet(root, ['a'], { a: HAPPY })
+test('test_db_env with a postgres verify.db: the lane database is dropped, created and migrated with the worktree — the lane URL in the migrate’s env — and dropped when it lands; a stale one is reaped', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: LANE_DB'] })
+  const psql = fakePsql(root)
+  const out = join(root, '..', `${basename(root)}-migrate.log`)
+  // A compound prepare: a shell prefix would reach only its first part.
+  withVerify(root, DB_VERIFY.replace('url: "postgres://u@localhost:5432/app" }', `url: "postgres://u@localhost:5432/app", prepare: "true && echo migrate $DATABASE_URL $LANE_DB >> ${out}" }`))
+  const r = runFleet(root, ['a'], { a: HAPPY }, psql.env)
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  const lines = psql.lines()
+  const at = (re) => lines.findIndex((l) => re.test(l))
+  const first = at(new RegExp(`DROP DATABASE IF EXISTS "${LANE('a')}"`))
+  const create = at(new RegExp(`^psql postgres://u@localhost:5432/app .*CREATE DATABASE "${LANE('a')}"$`))
+  const last = lines.findLastIndex((l) => new RegExp(`DROP DATABASE IF EXISTS "${LANE('a')}" WITH \\(FORCE\\)$`).test(l))
+  assert.ok(first >= 0 && create > first && last > create, lines.join('\n'))
+  assert.match(readFileSync(out, 'utf8'), new RegExp(`^migrate postgres://u@localhost:5432/${LANE('a')} postgres://u@localhost:5432/${LANE('a')}$`, 'm'))
+  // The reaper: a lane database of this checkout with no worktree is dropped, at the start and the end.
+  assert.ok(lines.filter((l) => /DROP DATABASE IF EXISTS "app_ln_[0-9a-f]{6}_gone_deadbeef"/.test(l)).length >= 2, lines.join('\n'))
+})
+
+test('test_db_env: a reused worktree whose row names no database gets one — and a drop that fails says so without the password', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: LANE_DB'] })
+  withVerify(root, DB_VERIFY.replace('postgres://u@localhost', 'postgres://u:s3cret@localhost'))
+  const psql = fakePsql(root, { failDrop: true })
+  const first = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] }, psql.env)
+  assert.ok(first.fleet.features.a.worktree && first.fleet.features.a.laneDb, JSON.stringify(first.fleet.features.a))
+  // As a row from before test_db_env: the worktree is there, the database is not recorded.
+  const fj = join(root, '.builder/fleet/fleet.json')
+  const j = JSON.parse(readFileSync(fj, 'utf8'))
+  delete j.features.a.laneDb
+  writeFileSync(fj, JSON.stringify(j))
+  const creates = () => psql.lines().filter((l) => new RegExp(`CREATE DATABASE "${LANE('a')}"`).test(l)).length
+  const before = creates()
+  const again = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop again'] }, psql.env)
+  assert.equal(creates(), before + 1, psql.lines().join('\n'))
+  // The reaper's drop failed: the note names the database and the command, the password hidden.
+  const notes = (again.fleet.notes ?? []).join('\n')
+  assert.match(notes, /the stale test database app_ln_[0-9a-f]{6}_gone_deadbeef could not be dropped — drop it by hand: psql 'postgres:\/\/u:\*\*\*@localhost/)
+  assert.doesNotMatch(notes + again.stderr + again.stdout, /s3cret/)
+})
+
+test('test_db_env with no verify.db refuses to start, naming the variable', () => {
+  const root = makeRepo(['a'], { lines: ['test_db_env: DATABASE_URL'] })
+  const r = runFleet(root, ['a'], { a: HAPPY }, { DATABASE_URL: 'postgres://h/app' })
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /agent_walk\.test_db_env: NO_SUCH_DB_URL is not set here, and verify\.db names no url — set it, or remove test_db_env\./)
+  assert.match(r.stderr, /agent_walk\.test_db_env: DATABASE_URL needs a verify\.db \(kind postgres, with a url\) — the fleet makes each worktree's database on that server\. Add verify\.db, or remove test_db_env\./)
 })
 
 test('setup sees worktree_env and gets {feature} filled in', () => {

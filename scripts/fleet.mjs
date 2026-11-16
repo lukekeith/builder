@@ -42,6 +42,7 @@ import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.
 import { landOverlap } from './verify/checkouts.mjs'
 import { loadVerify } from './verify/config.mjs'
 import { laneDbName, laneDbUrl, laneDbPlan, baseOf as dbBaseOf, isolated } from './lane-db.mjs'
+import { redact } from './verify/envpool.mjs'
 import { fileURLToPath } from 'node:url'
 import { signedOff, signoffHolds } from './feature-core.mjs'
 
@@ -213,22 +214,27 @@ if (!AW.claudeArgs) {
   process.exit(2)
 }
 // D14: a test database per worktree. agent_walk.test_db_env names the variable that holds the
-// database URL; each worktree (and the walk and env-check ones) gets its own database on that
-// server, created and migrated when the worktree is made and dropped when it goes. With a verify.db
+// database URL; each worktree (and the walk and env-check ones) gets its own database on
+// verify.db's server — the configured test server, never whatever the launching shell's variable
+// points at — created and migrated when the worktree is made and dropped when it goes; the reaper
+// drops any of this checkout's that outlived its worktree (tidy, a killed fleet). With a verify.db
 // and no isolation, builds in parallel would share the verifier's test database: one at a time.
 const VERIFY_DB = (() => {
   const v = loadVerify(ROOT)
   return v.ok ? v.verify.db : null
 })()
-const DB_URL = AW.testDbEnv ? process.env[AW.testDbEnv] || VERIFY_DB?.url || null : null
-if (AW.testDbEnv && !laneDbUrl(DB_URL, 'x')) {
-  console.error(`agent_walk.test_db_env: ${AW.testDbEnv} ${DB_URL ? `holds ${DB_URL}, which is not a postgres, mysql or sqlite URL` : 'is not set here, and verify.db names no url'} — set it, or remove test_db_env.`)
+if (AW.testDbEnv && !VERIFY_DB) {
+  console.error(`agent_walk.test_db_env: ${AW.testDbEnv} needs a verify.db (kind postgres, with a url) — the fleet makes each worktree's database on that server. Add verify.db, or remove test_db_env.`)
   process.exit(2)
 }
-const WANT_PARALLEL = Number(opt('--parallel')) || AW.parallel
+const DB_URL = AW.testDbEnv ? VERIFY_DB.url : null
+/** Text that may hold the server URL, its password replaced (envpool's redact). */
+const quiet = (text) => (DB_URL ? redact(DB_URL, String(text)) : String(text))
+const ASKED_PARALLEL = Number(opt('--parallel')) || null
+const WANT_PARALLEL = ASKED_PARALLEL || AW.parallel
 const SHARED_DB = Boolean(VERIFY_DB) && !isolated(AW) && WANT_PARALLEL > 1
 const PARALLEL = SHARED_DB ? 1 : WANT_PARALLEL
-const SHARED_DB_NOTE = "parallel 1: the verifier's test database is shared — set agent_walk.test_db_env (or a {feature} database in worktree_env) to build in parallel"
+const SHARED_DB_NOTE = `parallel 1${ASKED_PARALLEL ? ` (asked ${ASKED_PARALLEL})` : ''}: the verifier's test database is shared — set agent_walk.test_db_env (or a {feature} database in worktree_env) to build in parallel`
 const WORKTREES = AW.worktrees ? resolve(ROOT, AW.worktrees) : join(dirname(ROOT), `${basename(ROOT)}.fleet`)
 // Batched walks: with a walk env of its own (agent_walk.start), the walk lane takes every feature
 // waiting to walk — up to agent_walk.batch — into one combined walk branch, one env, one walker.
@@ -424,35 +430,77 @@ function runSetup(feature, wt) {
 
 /** The lane database's name for a worktree (D14): `<base>_ln_<root hash6>_<feature>_<hash8>`. */
 const laneDb = (feature) => laneDbName({ base: dbBaseOf(DB_URL), root: ROOT, feature })
+const lanePlan = (feature) => laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name: feature ? laneDb(feature) : null, testDbEnv: AW.testDbEnv, root: ROOT })
 /**
- * Create and migrate the lane database for a new worktree (D14) — dropped first, so one a killed
- * fleet left behind starts clean. A server URL verify.db does not cover (a sqlite file, or no
- * verify.db) has nothing to create: the URL alone is the database. Throws a setup-style error.
+ * Drop, create and migrate the lane database for a worktree (D14) — dropped first, so one a killed
+ * fleet left behind starts clean, and a worktree whose branch moved (the walk tree's next batch) is
+ * migrated from nothing. The migrate gets the lane URL through its env (migrateEnv). → the steps, each
+ * [command, opts]; prepareLaneDb runs them blocking, prepareLaneDbAsync off the event loop. Both log
+ * to logs/<feature>-db.log and throw a setup-style error.
  */
-function prepareLaneDb(feature, wt) {
-  if (!DB_URL) return
-  const plan = laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name: laneDb(feature) })
-  const steps = [plan.drop, plan.create, plan.migrate].filter(Boolean)
-  if (!steps.length) return
+function laneDbSteps(feature, wt) {
+  if (!DB_URL) return []
+  const plan = lanePlan(feature)
+  return [[plan.drop, {}], [plan.create, {}], [plan.migrate, plan.migrateEnv]].filter(([c]) => c).map(([cmd, extra]) => [cmd, { cwd: wt, env: { ...envFor(feature, 'build'), ...extra } }])
+}
+const laneDbLog = (feature) => {
   const log = join(DIR, 'logs', `${feature}-db.log`)
   mkdirSync(dirname(log), { recursive: true })
-  const fd = openSync(log, 'w')
+  writeFileSync(log, '')
+  return log
+}
+const laneDbFailed = (feature, log) => Object.assign(new Error(`the test database ${laneDb(feature)} could not be made — see ${log}`), { setup: true })
+const shRun = (cmd, opts) => {
   try {
-    for (const cmd of steps) execSync(cmd, { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
-  } catch {
-    throw Object.assign(new Error(`the test database ${laneDb(feature)} could not be made — see ${log}`), { setup: true })
-  } finally {
-    closeSync(fd)
+    return { status: 0, output: execSync(cmd, { ...opts, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30 * 60 * 1000 }) }
+  } catch (e) {
+    return { status: e.status ?? 1, output: `${e.stdout ?? ''}${e.stderr ?? e.message}` }
+  }
+}
+/** A feature's or the walk tree's: its lane waits for the worktree anyway. */
+function prepareLaneDb(feature, wt) {
+  const steps = laneDbSteps(feature, wt)
+  if (!steps.length) return
+  const log = laneDbLog(feature)
+  for (const [cmd, opts] of steps) {
+    const r = shRun(cmd, opts)
+    appendFileSync(log, quiet(r.output))
+    if (r.status !== 0) throw laneDbFailed(feature, log)
+  }
+}
+/** The env check's: the lanes run while it does. */
+async function prepareLaneDbAsync(feature, wt) {
+  const steps = laneDbSteps(feature, wt)
+  if (!steps.length) return
+  const log = laneDbLog(feature)
+  for (const [cmd, opts] of steps) {
+    const r = await execAsync('sh', ['-c', cmd], opts)
+    appendFileSync(log, quiet(r.output))
+    if (r.status !== 0) throw laneDbFailed(feature, log)
   }
 }
 /** Drop a worktree's lane database (D14), once its worktree is gone. Best effort: a note when it fails. */
 function dropLaneDb(feature) {
-  const { drop } = DB_URL ? laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name: laneDb(feature) }) : {}
+  const { drop } = DB_URL ? lanePlan(feature) : {}
   if (!drop) return
-  try {
-    execSync(drop, { cwd: ROOT, stdio: 'ignore', timeout: 2 * 60 * 1000 })
-  } catch {
-    addNote(`the test database ${laneDb(feature)} could not be dropped — drop it by hand: ${drop}`)
+  const r = shRun(drop, { cwd: ROOT })
+  if (r.status !== 0) addNote(`the test database ${laneDb(feature)} could not be dropped — drop it by hand: ${quiet(drop)}`)
+}
+/**
+ * Drop every lane database this checkout made whose worktree is gone — one tidy removed, a killed
+ * fleet left, a kept worktree someone deleted. Run when the fleet starts and when it ends; a name
+ * belongs to a worktree when a folder of WORKTREES has it (feature worktrees, _walk, _envcheck).
+ */
+function reapLaneDbs() {
+  const { list } = DB_URL ? lanePlan(null) : {}
+  if (!list) return
+  const r = shRun(list, { cwd: ROOT })
+  if (r.status !== 0) return addNote(`the fleet could not list its test databases to drop the stale ones: ${quiet(r.output.trim().split('\n').pop())}`)
+  const live = new Set((existsSync(WORKTREES) ? readdirSync(WORKTREES) : []).map(laneDb))
+  for (const name of r.output.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    if (live.has(name)) continue
+    const { drop } = laneDbPlan({ verifyDb: VERIFY_DB, url: DB_URL, name })
+    if (shRun(drop, { cwd: ROOT }).status !== 0) addNote(`the stale test database ${name} could not be dropped — drop it by hand: ${quiet(drop)}`)
   }
 }
 
@@ -499,9 +547,10 @@ function ensureWorktree(feature, branch) {
     // Owed BEFORE the copy, and SAVED at once: a copy that throws leaves a worktree that exists,
     // and a fleet killed before its next save would otherwise take it as fully prepared on the
     // re-run and never run setup (seen: a setup that failed, then a kill during the baseline).
-    if (AW.setup || DB_URL) {
-      if (AW.setup) f.setupOwed = true
-      if (DB_URL) f.laneDbOwed = true
+    // A new worktree's database is made new too, whatever the row recorded (laneDb below).
+    delete f.laneDb
+    if (AW.setup) {
+      f.setupOwed = true
       save()
     }
     // A spec written on another branch is not on the target (or is an older copy there), so a
@@ -520,10 +569,11 @@ function ensureWorktree(feature, branch) {
     runSetup(feature, wt)
     delete f.setupOwed
   }
-  // After setup: migrating needs what setup installs.
-  if (f.laneDbOwed) {
+  // After setup: migrating needs what setup installs. The row names the database it made, so a
+  // reused worktree with none (one from before test_db_env, kept from a park) gets it here too.
+  if (DB_URL && f.laneDb !== laneDb(feature)) {
     prepareLaneDb(feature, wt)
-    delete f.laneDbOwed
+    f.laneDb = laneDb(feature)
     save()
   }
   return wt
@@ -712,7 +762,7 @@ if (flag('--dry-run')) {
   console.log(`  merges into: ${TARGET} (${TARGET_FROM}) — one merge commit per finished feature; nothing is pushed`)
   console.log(`  worktrees:   ${WORKTREES}`)
   console.log(`  permissions: claude ${AW.claudeArgs}`)
-  if (SHARED_DB) console.log(`  ${SHARED_DB_NOTE}`)
+  if (SHARED_DB && !runningPid) console.log(`  ${SHARED_DB_NOTE}`)
   console.log(`  build lane:  ${PARALLEL} at a time · walk lane: ${BATCHED ? `up to ${BATCH} features per walk — one env, one walker` : 'one at a time'}${SPLIT ? ' · the quick check and walk fixes in the build lane, away from the walk env' : ''}`)
   if (runningPid) console.log(`  adds to the running fleet (pid ${runningPid}) — each is picked up when a lane frees; its --parallel stands`)
   for (const f of fresh) {
@@ -1223,6 +1273,7 @@ function finishLanding(feature, facts) {
     if (r.removed || !existsSync(f.worktree)) {
       f.worktree = null
       dropLaneDb(feature)
+      delete f.laneDb
     } else addNote(`${feature} merged; its worktree ${f.worktree} stays: ${r.why} — /builder:tidy removes it once that's settled`)
   }
   // `branch -d` judges "merged" against what is checked out here, which need not be the target:
@@ -2799,6 +2850,7 @@ function settleStopped(feature, f) {
   if (r.removed || !existsSync(f.worktree)) {
     f.worktree = null
     dropLaneDb(feature)
+    delete f.laneDb
   } else addNote(`${feature} ${f.status}; its worktree ${f.worktree} stays: ${r.why}`)
 }
 
@@ -3239,7 +3291,6 @@ function prepareWalkTree(features) {
     git(['worktree', 'add', '-f', '-B', WALK_BRANCH, WALK_WT, `refs/heads/${TARGET}`])
     copyInto(WALK_WT)
     if (AW.setup) runSetup('_walk', WALK_WT)
-    prepareLaneDb('_walk', WALK_WT)
   } else git(['reset', '--hard', '--quiet', `refs/heads/${TARGET}`], WALK_WT)
   const merged = []
   const deferred = []
@@ -3275,6 +3326,8 @@ function prepareWalkTree(features) {
       closeSync(fd)
     }
   }
+  // Each batch's database from nothing, on the batch's merged branches: their migrations are in it.
+  if (merged.length) prepareLaneDb('_walk', WALK_WT)
   return { merged, deferred, stale, stuck }
 }
 
@@ -3613,7 +3666,8 @@ async function envPreflight() {
       writeFileSync(log, r.output)
       if (r.status !== 0) throw new Error(`setup failed — see ${log}`)
     }
-    prepareLaneDb('_envcheck', ENVCHECK_WT)
+    // Off the event loop, as setup is: a migration can take minutes, and the lanes run meanwhile.
+    await prepareLaneDbAsync('_envcheck', ENVCHECK_WT)
     const empty = Object.entries(AW.env ?? {}).filter(([, v]) => !fill(String(v), '_envcheck').trim()).map(([k]) => k)
     if (empty.length) why = `agent_walk.env leaves ${empty.join(', ')} empty`
     else if (!(await startWalkEnv('_envcheck', rec))) why = `start/smoke failed — see ${rec.startLog}`
@@ -3678,6 +3732,7 @@ const poll = setInterval(() => {
   if (!closing && drainInbox()) wakeAll()
 }, INBOX_POLL_MS)
 if (SHARED_DB) addNote(SHARED_DB_NOTE)
+reapLaneDbs()
 envCheck = envPreflight().catch((e) => addNote(`walk env launch check: ${e.message}`))
 // A member queued before the rest of its group had worktrees waits at the barrier: the group is
 // all queued now, so whatever waits on it is checked once more before the lanes start.
@@ -3714,6 +3769,7 @@ if (existsSync(WALK_WT)) {
   tryGit(['branch', '-D', WALK_BRANCH])
   dropLaneDb('_walk')
 }
+reapLaneDbs()
 delete fleet.walkBatch
 // The whole repo, not just this fleet's rows: anything else left lying around is named here too.
 fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))

@@ -67,20 +67,29 @@ export function isolated(agentWalk) {
 
 const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
 
+/** The root's hash in every lane database name of this checkout: `_ln_<hash6>_` (laneDbName). */
+export const laneRootTag = (root) => `_ln_${sha1(String(root)).slice(0, 6)}_`
+
 /**
- * Shell commands to create, migrate and drop the lane database `name` on the server `url` names.
- * verify.db is postgres-only, so any other URL, or no verify.db, gives nulls; no `prepare` gives no migrate.
- * The migrate command runs in the worktree, with every verify.db.env variable set to the lane URL.
+ * What it takes to create, migrate, drop and list the lane databases on the server `url` names.
+ * verify.db is postgres-only, so any other URL, or no verify.db, gives nulls. `migrate` is
+ * verify.db.prepare, run in the worktree with `migrateEnv` — every verify.db.env variable, and
+ * `testDbEnv` when given, set to the lane URL — merged into its env, never as a shell prefix (that
+ * reaches only a compound command's first part). `list` prints every lane database this checkout
+ * (`root`) made, one name a line, for the reaper.
  */
-export function laneDbPlan({ verifyDb, url, name }) {
-  const none = { create: null, migrate: null, drop: null }
+export function laneDbPlan({ verifyDb, url, name, testDbEnv = null, root = null }) {
+  const none = { create: null, migrate: null, migrateEnv: {}, drop: null, list: null }
   if (!verifyDb || !/^postgres(ql)?:\/\//i.test(String(url ?? ''))) return none
-  const lane = laneDbUrl(url, name)
+  const lane = name ? laneDbUrl(url, name) : null
   const sql = (s) => `psql ${q(url)} -v ON_ERROR_STOP=1 -c ${q(s)}`
-  const vars = (verifyDb.env?.length ? verifyDb.env : ['DATABASE_URL']).map((v) => `${v}=${q(lane)}`).join(' ')
+  const vars = [...new Set([...(verifyDb.env?.length ? verifyDb.env : ['DATABASE_URL']), ...(testDbEnv ? [testDbEnv] : [])])]
+  const like = root ? laneRootTag(root).replace(/_/g, '\\_') : null
   return {
-    create: sql(`CREATE DATABASE "${name}"`),
-    migrate: verifyDb.prepare ? `${vars} ${verifyDb.prepare}` : null,
-    drop: sql(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`),
+    create: name ? sql(`CREATE DATABASE "${name}"`) : null,
+    migrate: name && verifyDb.prepare ? verifyDb.prepare : null,
+    migrateEnv: lane ? Object.fromEntries(vars.map((v) => [v, lane])) : {},
+    drop: name ? sql(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`) : null,
+    list: like ? `psql ${q(url)} -v ON_ERROR_STOP=1 -Atc ${q(`SELECT datname FROM pg_database WHERE datname LIKE '%${like}%'`)}` : null,
   }
 }

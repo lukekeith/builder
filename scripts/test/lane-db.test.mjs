@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { laneDbName, laneDbUrl, baseOf, isolated, laneDbPlan } from '../lane-db.mjs'
+import { laneDbName, laneDbUrl, baseOf, isolated, laneDbPlan, laneRootTag } from '../lane-db.mjs'
 
 test('laneDbName: base, root hash, feature, feature hash', () => {
   const n = laneDbName({ base: 'app_test', root: '/r/one', feature: 'user-tags' })
@@ -66,16 +66,28 @@ test('isolated: test_db_env, or a database worktree_env value with {feature}', (
   assert.equal(isolated(undefined), false)
 })
 
-test('laneDbPlan: create and drop through psql, migrate is verify.db.prepare with the lane URL in every env var', () => {
-  const p = laneDbPlan({ verifyDb: { url: 'postgres://u:p@h/app', env: ['DATABASE_URL', 'TEST_DATABASE_URL'], prepare: 'npm run migrate' }, url: 'postgres://u:p@h/app', name: 'app_ln_x' })
+test('laneDbPlan: create and drop through psql; migrate is verify.db.prepare, the lane URL in every env var through its env — never a shell prefix', () => {
+  const p = laneDbPlan({ verifyDb: { url: 'postgres://u:p@h/app', env: ['DATABASE_URL', 'TEST_DATABASE_URL'], prepare: 'cd api && npm run migrate' }, url: 'postgres://u:p@h/app', name: 'app_ln_x', testDbEnv: 'LANE_DB' })
   assert.match(p.create, /^psql 'postgres:\/\/u:p@h\/app' -v ON_ERROR_STOP=1 -c 'CREATE DATABASE "app_ln_x"'$/)
   assert.match(p.drop, /DROP DATABASE IF EXISTS "app_ln_x" WITH \(FORCE\)/)
-  assert.equal(p.migrate, "DATABASE_URL='postgres://u:p@h/app_ln_x' TEST_DATABASE_URL='postgres://u:p@h/app_ln_x' npm run migrate")
+  assert.equal(p.migrate, 'cd api && npm run migrate')
+  assert.deepEqual(p.migrateEnv, { DATABASE_URL: 'postgres://u:p@h/app_ln_x', TEST_DATABASE_URL: 'postgres://u:p@h/app_ln_x', LANE_DB: 'postgres://u:p@h/app_ln_x' })
+})
+
+test('laneDbPlan: list finds this checkout\'s lane databases by their root tag, the underscores escaped for LIKE', () => {
+  const url = 'postgres://h/app'
+  const p = laneDbPlan({ verifyDb: { url, env: ['DATABASE_URL'] }, url, root: '/r/one' })
+  const tag = laneRootTag('/r/one')
+  assert.ok(laneDbName({ base: 'app', root: '/r/one', feature: 'f' }).includes(tag))
+  // Shell-quoted, so the LIKE's own quotes read '\\'' — the pattern is what matters.
+  assert.ok(p.list.includes(`LIKE '\\''%${tag.replace(/_/g, '\\_')}%'\\''`), p.list)
+  assert.equal(p.create, null, 'no name: nothing to create')
 })
 
 test('laneDbPlan: no prepare gives no migrate; no verify.db or a non-postgres URL gives nulls', () => {
   const url = 'postgres://h/app'
   assert.equal(laneDbPlan({ verifyDb: { url, env: ['DATABASE_URL'], prepare: null }, url, name: 'n' }).migrate, null)
-  assert.deepEqual(laneDbPlan({ verifyDb: null, url, name: 'n' }), { create: null, migrate: null, drop: null })
-  assert.deepEqual(laneDbPlan({ verifyDb: { url: 'mysql://h/a', env: ['D'], prepare: 'x' }, url: 'mysql://h/a', name: 'n' }), { create: null, migrate: null, drop: null })
+  const none = { create: null, migrate: null, migrateEnv: {}, drop: null, list: null }
+  assert.deepEqual(laneDbPlan({ verifyDb: null, url, name: 'n' }), none)
+  assert.deepEqual(laneDbPlan({ verifyDb: { url: 'mysql://h/a', env: ['D'], prepare: 'x' }, url: 'mysql://h/a', name: 'n' }), none)
 })
