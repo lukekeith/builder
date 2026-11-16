@@ -258,12 +258,29 @@ test('F4: an agent sign-off written with readiness pending goes back to building
   assert.match(git(root, 'log', '--format=%s', 'main'), /— signed off before its walk readiness settled, back to the walk lane/)
 })
 
+test('F4 in a batched walk: two features signed off with readiness pending go back to building in the batch — readiness, the walk again, then they ship', async () => {
+  const { root } = await walkEnvRepo(['a', 'b'], { manifest: ['state: signed-off', 'walk: agent-pass 2026-09-26', 'ready: pending "dev env (fleet walk lane)"', 'tests: slice=own end=risk review=end'] })
+  const steps = ['built', 'SIGNOFF', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: steps, b: steps }, FAST, { timeout: 90000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  const first = r.calls.find((l) => l.startsWith('batch '))
+  assert.match(first, /^batch (a,b|b,a) /, r.calls.join('\n'))
+  // Each one's first walk-lane run is on a folder set back to building: the batch's readiness step.
+  for (const x of ['a', 'b']) {
+    assert.match(r.calls.find((l) => l.startsWith(`start ${x} walk `)), new RegExp(`^start ${x} walk \\d+ built `), r.calls.join('\n'))
+    assert.ok((r.fleet.notes ?? []).includes(`${x} was signed off before its walk readiness settled — back to the walk lane: readiness, then the agent walk again`), JSON.stringify(r.fleet.notes))
+  }
+})
+
 test('F4: a human sign-off written with readiness pending is never shipped or replaced — it parks as your walk again', () => {
   const root = makeRepo(['a'])
   const r = runFleet(root, ['a'], { a: ['audited', 'planned', 'building', 'READY-PENDING', 'HUMAN-SIGNOFF-UNREADY', 'verified', 'SHIP'] })
   assert.equal(r.status, 1, `${r.stderr}\n${r.calls.join('\n')}`)
   assert.equal(r.fleet.features.a.status, 'parked')
-  assert.equal(r.fleet.features.a.reason, 'needs your walk again: a was signed off with its walk readiness still pending (pending "dev env (fleet walk lane)") — next: /builder:resume --path docs/features/a')
+  assert.equal(r.fleet.features.a.reason, 'needs your walk again: a was signed off with its walk readiness still pending (pending "dev env (fleet walk lane)") — next: /builder:resume --path docs/features/a (it runs walk readiness, then your walk)')
   assert.ok(!r.calls.some((l) => /^start a \S+ \d+ (verified|SHIP) /.test(l)), r.calls.join('\n'))
   assert.doesNotMatch(git(root, 'log', '--format=%s', 'main'), /merge\(a\)/)
 })

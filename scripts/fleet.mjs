@@ -1393,7 +1393,7 @@ function unwalkedSignoff(feature, f) {
   const mf = text != null ? parseManifest(text) : null
   if (mf?.state !== 'signed-off' || !/^pending/.test(mf.ready ?? '')) return null
   const folder = specOf(feature)
-  if (signedOff(f.worktree, folder).human && !REWALK_BY_AGENTS.has(feature)) return park(f, `needs your walk again: ${feature} was signed off with its walk readiness still pending (${mf.ready}) — next: /builder:resume --path ${folder}`)
+  if (signedOff(f.worktree, folder).human && !REWALK_BY_AGENTS.has(feature)) return park(f, `needs your walk again: ${feature} was signed off with its walk readiness still pending (${mf.ready}) — next: /builder:resume --path ${folder} (it runs walk readiness, then your walk)`)
   const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
   try {
     execFileSync(process.execPath, [script, folder, '--set', 'state=building', '--set', 'walk=none', '--set', 'verify=none', '--commit', 'chore({key}): {feature} — signed off before its walk readiness settled, back to the walk lane'], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -3309,7 +3309,8 @@ async function prepareUnit(unit) {
   const walk = []
   for (const x of unit) {
     const i = g.members.indexOf(x)
-    const out = i > 0 ? afterChain(x, heads[x], g.members[i - 1]) : null
+    // The first member takes no chain, but F4's guard still applies to it (afterChain runs it for the rest).
+    const out = i > 0 ? afterChain(x, heads[x], g.members[i - 1]) : unwalkedSignoff(x, fleet.features[x]) === 'parked' ? 'parked' : null
     if (out) route(x, out)
     else walk.push(x)
     // A member that parked here holds the members after it (they stack on it): back to the barrier.
@@ -3421,6 +3422,11 @@ async function walkBatch(batch) {
     const [feature] = unit
     const f = fleet.features[feature]
     if (parkIfPaused(f, feature)) {
+      route(feature, 'parked')
+      continue
+    }
+    // F4: a sign-off nobody walked goes back to building + pending — what the batch's readiness step takes.
+    if (unwalkedSignoff(feature, f) === 'parked') {
       route(feature, 'parked')
       continue
     }
