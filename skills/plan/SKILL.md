@@ -75,7 +75,7 @@ reads it at the go-ahead, a reviewer sees it in the PR, and the sign-off condens
 **Its shape is [`PLAN-FORMAT.md`](PLAN-FORMAT.md)** — write what that file specifies, reading it
 there. In short: the header (Goal · Architecture · Tech Stack · Spec) · `## Global Constraints`
 copied verbatim from the config · the `## Phases` table (`Phase · App · Tasks · Goal`) ·
-then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, **Files**, **Interfaces**, **Behaviour**, **Tests** (assertions as code), an optional **Pattern**, and the `- [ ]` steps in words with the run command and the commit.
+then flat `### Task N` blocks carrying `App:`, `Phase:`, `Recipe:`, `Decisions:`, **Files**, **Interfaces**, **Behaviour**, **Tests** (assertions as code), an optional **Pattern**, and the `- [ ]` steps in words with the run command and the commit.
 
 - **Task numbering runs across the whole plan** — `task-brief` keys on the literal `Task N` heading.
 - **Every task names the recipe skill to read FIRST** on its `Recipe:` line (the config's §Companion
@@ -193,6 +193,9 @@ what the hand-off's rulings list is for, not a `blocked:` line.
    - every `### Task N` block opens with an `App:` line and a `Phase:` line matching its table row;
    - every block carries a `Recipe:` line from the config's §Companion skills — or, for work with no
      recipe skill, the REFERENCE section that governs it;
+   - every block carries a `Decisions:` line naming the §Decisions rows that bind it — at least every
+     D its Behaviour and Tests lines cite — or `Decisions: none`. The implementer's brief copies only
+     those rows, so a row left off is a ruling the implementer never sees;
    - 🔴 **verify the one-app rule mechanically**: no task block's `Files` list crosses two of the
      config's app paths. A task that does is split in two, one per app, and the phases re-derived;
    - the tests a task owes are in **that** task — its steps, its commit — not a later one;

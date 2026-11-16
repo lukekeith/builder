@@ -13,7 +13,8 @@
  *
  *   implementer --task N   writes <WS>/task-N-brief.md — the task block exactly as scripts/task-brief
  *                          cuts it, then the SPEC sections it implements (its app's section, §Testing,
- *                          §Decisions, §Schema & API changes for a schema task, the §Findings rows
+ *                          §Decisions (only the rows its Decisions: line cites, when it has one),
+ *                          §Schema & API changes for a schema task, the §Findings rows
  *                          marked `build-time risk` that name it), §Contract verbatim with whether it is
  *                          frozen, the Recipe: line resolved to a path, the config's §Global
  *                          constraints verbatim with <TICKET> replaced (the craft skills are the
@@ -33,7 +34,7 @@
  *                          and renders prompts/task-reviewer.md with §Contract verbatim and its status.
  *      --phase N           review=app: one review of the phase's whole diff, every brief and report.
  *   re-review --task N --round R   the scoped re-review: FIX_BASE = the head the previous review saw
- *                          (recorded when it was rendered), the fix diff, the findings verbatim.
+ *                          (recorded when it was rendered), the fix diff, the findings verbatim; at effort: medium.
  *      --final             the one scoped re-review of the final review's fix wave.
  *   final-review           review-package <merge-base with the target> HEAD → review-final.diff;
  *                          the ledger's deferred-minor and parked lines; the SPEC path; the
@@ -325,6 +326,51 @@ function envNotesOf(ledger) {
   return kept.trim()
 }
 
+/**
+ * The task's `Decisions:` line (PLAN-FORMAT, from 6.3.0): the D numbers it cites — `D1, D4`, a range
+ * `D2–D5` too — `[]` for `Decisions: none`, and null when the block has no such line (a plan written
+ * before the line existed). A line inside a fence is an example, not the task's.
+ */
+export function citedDecisions(block) {
+  let fenced = false
+  for (const line of String(block ?? '').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    if (fenced) continue
+    const m = /^\s*[-*]?\s*\**Decisions(?::\**|\**:)\s*(.*)$/.exec(line) // the colon is required: prose that starts with the word is not the line
+    if (!m) continue
+    const v = m[1].replace(/[`*]/g, '').trim()
+    if (/^(none|—|-)?$/i.test(v)) return []
+    const ids = []
+    for (const [, a, b] of v.matchAll(/\bD(\d+)(?:\s*[–-]\s*D?(\d+))?/g)) {
+      for (let k = +a; k <= +(b ?? a); k++) if (!ids.includes(`D${k}`)) ids.push(`D${k}`)
+    }
+    return ids
+  }
+  return null
+}
+
+/**
+ * §Decisions for one task's brief. A task that cites its rows gets only those — the header and the
+ * cited rows, in the spec's order — and one that cites none gets nothing: on a long spec every row in
+ * every brief was most of the brief, read by an implementer bound by two of them. No line → the whole
+ * section, as before the line existed. A cited row the table lacks is named, so a plan typo shows.
+ */
+function decisionsFor(block, section) {
+  if (!section) return ''
+  const cited = citedDecisions(block)
+  if (cited == null) return section.text
+  if (!cited.length) return ''
+  const lines = section.body.split('\n').filter((l) => l.trim().startsWith('|'))
+  const head = lines.slice(0, 2)
+  const rows = lines.slice(2).filter((l) => cited.includes(/^\|\s*(D\d+)\b/.exec(l.trim())?.[1]))
+  const have = new Set(rows.map((l) => /^\|\s*(D\d+)/.exec(l.trim())[1]))
+  const missing = cited.filter((d) => !have.has(d))
+  const out = [`## Decisions — the rows this task cites (${cited.join(', ')})`, '']
+  if (rows.length) out.push(...head, ...rows)
+  if (missing.length) out.push('', `Cited but not in §Decisions: ${missing.join(', ')} — read the spec's §Decisions; the row may have been renumbered or superseded.`)
+  return out.join('\n')
+}
+
 /** The brief: the task block + build §Composing the brief's four blocks, in order. */
 
 function composeBrief(f, n, block, app) {
@@ -337,10 +383,10 @@ function composeBrief(f, n, block, app) {
     const s = sec('Schema & API changes')
     if (s) parts.push(s, '')
   }
-  for (const name of ['Testing', 'Decisions']) {
-    const s = sec(name)
-    if (s) parts.push(s, '')
-  }
+  const testing = sec('Testing')
+  if (testing) parts.push(testing, '')
+  const decisions = decisionsFor(block, mdSection(spec, 'Decisions', { level: 2 }))
+  if (decisions) parts.push(decisions, '')
   const findings = mdSection(spec, 'Findings', { level: 2 })
   const risky = tableRows(findings?.body ?? '').filter((r) => /build-time risk/i.test(r.join(' ')) && new RegExp(`\\b(Task\\s*${n}|T${n})\\b`).test(r.join(' ')))
   if (risky.length) parts.push('## Findings & risks — build-time risks for this task', '', '| # | Finding | Resolution |', '|---|---|---|', ...risky.map((r) => `| ${r.join(' | ')} |`), '')
@@ -608,6 +654,9 @@ function reReview(f, a, ws) {
     body,
     description: a.final ? `Re-review the final review's fix wave` : tpl.description.replace('Task N', label).replace('round R', `round ${round}`),
     model: modelFor({ kind: 're-review', round, models: modelsLever(f) }),
+    // A scoped re-review checks one fix diff against findings already written: medium effort is
+    // enough, and the reviewer's default spent high-effort thinking on a few-line diff.
+    effort: 'medium',
     findings: out,
     agentType: agentTypeOf(f, 'reviewer'),
   }
@@ -928,7 +977,7 @@ function emit(r, root) {
   if (r.findings) console.log(`findings: ${rel(r.findings)}`)
   // The walker stays general-purpose: its driver's tools (a browser MCP, a device bridge) are the project's.
   // The prompt's path stays absolute: the agent's Read wants one, and its cwd may not be the repo root.
-  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} (${r.why ?? 'default'}) · description: ${r.description} · prompt: Read ${r.file} and do what it says.`)
+  console.log(`Agent call — subagent_type: ${r.agentType ?? 'general-purpose'} · model: ${r.model} (${r.why ?? 'default'})${r.effort ? ` · effort: ${r.effort}` : ''} · description: ${r.description} · prompt: Read ${r.file} and do what it says.`)
 }
 
 const RENDER = { implementer, 'task-review': taskReview, 're-review': reReview, 'final-review': finalReview, 'agent-walk': agentWalk }
