@@ -158,6 +158,13 @@ while (step.startsWith('APPEND:')) {
   execFileSync('git', ['commit', '-qm', `stub: ${feature} appends to ${path}`], { stdio: 'ignore' })
   step = rest.join(':')
 }
+// DELETE:<path>:<step> — the run deletes <path> and commits that, then <step>.
+while (step.startsWith('DELETE:')) {
+  const [, path, ...rest] = step.split(':')
+  execFileSync('git', ['rm', '-q', '--', path], { stdio: 'ignore' })
+  execFileSync('git', ['commit', '-qm', `stub: ${feature} deletes ${path}`], { stdio: 'ignore' })
+  step = rest.join(':')
+}
 // PREPEND:<path>:<step> — as APPEND, the line at the start: with an APPEND elsewhere, the two merge cleanly.
 while (step.startsWith('PREPEND:')) {
   const [, path, ...rest] = step.split(':')

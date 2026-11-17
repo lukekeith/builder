@@ -1396,8 +1396,15 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
     const moved = signoffMoved(feature, f)
     if (moved) return moved
     const head = tryGit(['rev-parse', 'HEAD'], f.worktree)
-    const done = mergeVerdict(ROOT, f.branch, head, TARGET)
-    const held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch, TARGET)
+    // D15: the verifier tests the branch merged onto the target tip its run started on. When that tip
+    // is not in the branch, the verifier merged changes in itself — two to one generated file would
+    // land as a text merge nobody regenerated. Such a verdict neither carries nor releases: the branch
+    // takes the target (mergeIn regenerates) and a new run tests what it holds.
+    const merged = (v) => Boolean(GEN.command && v?.targetSha && tryGit(['merge-base', '--is-ancestor', v.targetSha, 'HEAD'], f.worktree) === null)
+    let done = mergeVerdict(ROOT, f.branch, head, TARGET)
+    if (merged(done)) done = null
+    let held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch, TARGET)
+    if (merged(held)) held = null
     if (held) {
       const shut = gate?.()
       if (shut) return { gate: shut }
@@ -1417,6 +1424,8 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
     if (GEN.command && !(done?.status === 'green' && done.held) && tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], f.worktree) === null) {
       const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
       if (why) return why
+      if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], f.worktree) === null)
+        addNote(`${feature}: ${TARGET} could not be merged into its branch before landing (its worktree has uncommitted changes) — the verifier merges it, and generated files it shares with ${TARGET} are not made again`)
     }
     let id
     try {
@@ -1440,6 +1449,8 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
     }
     if (v.status === 'env-broken') return `the verifier could not run the merge tier: ${v.broken.map((b) => `${b.suite}: ${b.reason}`).join('; ')} — next: fix the environment, then /builder:agent`
     if (v.status === 'red') return { red: v, reason: `the merge tier went red on ${TARGET} as it is now: ${v.regressions.map((g) => g.id).join(', ')} — next: /builder:agent to work the fixes and land it` }
+    // The target moved between the request and the run's start: take it into the branch and run again.
+    if (merged(v)) continue
     const shut = gate?.()
     if (shut) return { gate: shut }
     const before = tryGit(['rev-parse', `refs/heads/${TARGET}`])
@@ -2955,7 +2966,7 @@ async function syncTarget(wt, why = "its dependencies' code", feature = null) {
     const log = conflicted && feature ? await resolveMerge(feature, wt, why) : null
     if (log !== true) {
       tryGit(['merge', '--abort'], wt)
-      if (!conflicted) return `merging ${TARGET} (${why}) failed before any conflict — next: run git merge ${TARGET} in ${wt} and clear what stops it, then /builder:agent`
+      if (!conflicted) return `merging ${TARGET} (${why}) failed before any conflict${mergeError ? `: ${mergeError}` : ''} — next: run git merge ${TARGET} in ${wt} and clear what stops it, then /builder:agent`
       return `merging ${TARGET} (${why}) conflicted and two agent runs could not resolve it${log ? ` (see ${log})` : ''} — next: finish the merge in ${wt} and commit it, then /builder:agent`
     }
   }
@@ -2989,7 +3000,7 @@ function statusOf(wt) {
   // Untrimmed: an entry's XY can start with a space (' M path'), which tryGit's trim would eat.
   let raw = ''
   try {
-    raw = execFileSync('git', ['status', '--porcelain', '-z', '--untracked-files=all'], { cwd: wt, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    raw = execFileSync('git', ['status', '--porcelain', '-z', '--untracked-files=all'], { cwd: wt, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 })
   } catch {}
   const parts = raw.split('\0')
   const out = []
@@ -3024,11 +3035,13 @@ function regenerate(wt, feature, label, failed) {
   } finally {
     closeSync(fd)
   }
+  // Put back from HEAD, not the index: a command that `git add`s its own edit would otherwise keep it staged.
+  const putBack = (e) => (e.xy === '??' ? rmSync(join(wt, e.path), { force: true, recursive: true }) : tryGit(['checkout', 'HEAD', '--', e.path], wt))
   const stray = statusOf(wt).filter((e) => !isGenerated(e.path) && !dirty.has(e.path))
-  for (const e of stray) {
-    if (e.xy === '??') rmSync(join(wt, e.path), { force: true, recursive: true })
-    else tryGit(['checkout', '--', e.path], wt)
-  }
+  for (const e of stray) putBack(e)
+  // A command that failed halfway leaves generated outputs half written: they go too, so the
+  // worktree is as clean as before it ran and the next sync is not stopped by them.
+  if (!ok) for (const e of statusOf(wt).filter((x) => isGenerated(x.path) && !dirty.has(x.path))) putBack(e)
   if (stray.length) addNote(`generated.command changed ${stray.map((e) => e.path).slice(0, 3).join(', ')}${stray.length > 3 ? '…' : ''} outside generated.paths in ${label} — put back; only generated paths are committed`)
   if (!ok) addNote(`generated.command failed in ${label} — see ${log}; ${failed}`)
   return ok
@@ -3082,7 +3095,8 @@ function resolveGenerated(wt, ref, feature, label = `${feature}'s worktree`) {
     else tryGit(['checkout', '--ours', '--', e.path], wt)
   }
   if (!regenerate(wt, feature, label, 'the conflict is left to an agent')) return false
-  const paths = [...new Set([...files, ...generatedChanges(wt)])]
+  // A path this side deleted is already staged as gone: `git add` of it would fail the whole add.
+  const paths = [...new Set([...files, ...generatedChanges(wt)])].filter((p) => existsSync(join(wt, p)) || tryGit(['ls-files', '--error-unmatch', '--', p], wt) !== null)
   const marked = markerIn(wt, paths)
   if (marked) {
     addNote(`${label}: ${marked} still holds a conflict marker after generated.command — the conflict is left to an agent`)
@@ -3615,7 +3629,7 @@ function prepareWalkTree(features) {
   } else {
     git(['reset', '--hard', '--quiet', `refs/heads/${TARGET}`], WALK_WT)
     // An earlier batch's untracked generated outputs: never carried into this one's commits (D15).
-    if (GEN.command && GEN.paths.length) tryGit(['clean', '-fdq', '--', ...GEN.paths], WALK_WT)
+    if (GEN.command && GEN.paths.length) for (const e of statusOf(WALK_WT)) if (e.xy === '??' && isGenerated(e.path)) rmSync(join(WALK_WT, e.path), { force: true, recursive: true })
   }
   const merged = []
   const deferred = []

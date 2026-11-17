@@ -1148,6 +1148,22 @@ test('D15: two features whose changes to one generated file merge cleanly land i
   assert.equal(git(root, 'show', 'main:gen/index.txt'), 'a.txt\nb.txt', 'what generated.command makes from both, not the two edits merged')
 })
 
+test('D15: a generated file one feature changes and the other deletes resolves with no agent — what generated.command makes lands', () => {
+  const root = makeRepo(['a', 'b'])
+  withGenerated(root)
+  mkdirSync(join(root, 'gen'))
+  writeFileSync(join(root, 'gen/index.txt'), 'old\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'gen file')
+  const tail = ['built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/a.txt:building', 'COMMIT:gen/index.txt:READY-PENDING', ...tail], b: ['COMMIT:app/b.txt:building', 'DELETE:gen/index.txt:READY-PENDING', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.status, 0, `${r.stderr}\n${JSON.stringify(r.fleet.features)}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.ok(!r.calls.some((l) => /^resolve /.test(l)), `no agent ran to resolve a conflict:\n${r.calls.join('\n')}`)
+  assert.equal(git(root, 'show', 'main:gen/index.txt'), 'a.txt\nb.txt')
+})
+
 test('D15: what generated.command changes outside generated.paths is put back, named in a note — never committed', () => {
   const root = makeRepo(['a', 'b'])
   const cfg = join(root, '.claude/builder.md')
