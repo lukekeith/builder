@@ -1109,6 +1109,55 @@ test('test_db_env with no verify.db refuses to start, naming the variable', () =
   assert.match(broken.stderr, /needs a verify\.db .* The verify: block does not load: verify\.db: kind postgres with a url/)
 })
 
+// ---- D15: generated files and after_land --------------------------------------------------------
+/** A repo whose config names gen/* as generated: generated.command lists app/ into gen/index.txt. */
+function withGenerated(root) {
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('agent_walk:\n', 'generated:\n  paths: gen/*\n  command: mkdir -p gen && ls app | sort > gen/index.txt\nagent_walk:\n'))
+  git(root, 'commit', '-qam', 'generated block')
+}
+
+test('D15: two features that both change a generated file land with no agent resolving it — the file is made again by generated.command', () => {
+  const root = makeRepo(['a', 'b'])
+  withGenerated(root)
+  const tail = ['COMMIT:gen/index.txt:READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/a.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${JSON.stringify(r.fleet.features)}\n${(r.fleet.notes ?? []).join('\n')}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.ok(!r.calls.some((l) => / cmd=A /.test(l)), `no agent ran to resolve a conflict:\n${r.calls.join('\n')}`)
+  assert.equal(git(root, 'show', 'main:gen/index.txt'), 'a.txt\nb.txt', 'regenerated from both features’ code')
+  assert.ok((r.fleet.notes ?? []).some((n) => /regenerated gen\/index\.txt \(generated\.command\) — no agent needed/.test(n)), JSON.stringify(r.fleet.notes))
+})
+
+test('D15: a commit of generated files only after an agent sign-off is not new code — no re-walk', () => {
+  const root = makeRepo(['a'])
+  withGenerated(root)
+  const r = runFleet(root, ['a'], { a: [...BUILT, 'SIGNOFF', 'COMMIT:gen/index.txt:verified', 'SHIP'] })
+  assert.equal(r.status, 0, r.stderr)
+  assertLanded(r, 'a')
+  assert.ok(!(r.fleet.notes ?? []).some((n) => /changed since its agent sign-off/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.equal(r.calls.filter((l) => /^start a walk .* SIGNOFF /.test(l)).length, 1, r.calls.join('\n'))
+})
+
+test('D15: agent_walk.after_land runs in the main checkout once per landing; a failing one is a note', () => {
+  const out = join(tmpdir(), `after-land-${process.pid}-${Date.now()}`)
+  const root = makeRepo(['a', 'b'], { lines: [`after_land: pwd >> ${out}; echo {feature} >> ${out}`] })
+  const r = runFleet(root, ['a', 'b'], { a: HAPPY, b: HAPPY }, {}, { timeout: 120000 })
+  assert.equal(r.status, 0, r.stderr)
+  const lines = readFileSync(out, 'utf8').trim().split('\n')
+  assert.equal(lines.length, 4, lines.join('\n'))
+  assert.deepEqual([lines[0], lines[2]].map((l) => realpathSync(l)), [realpathSync(root), realpathSync(root)])
+  assert.deepEqual([lines[1], lines[3]].sort(), ['a', 'b'])
+
+  const bad = makeRepo(['c'], { lines: ['after_land: exit 3'] })
+  const q = runFleet(bad, ['c'], { c: HAPPY })
+  assert.equal(q.status, 0, q.stderr)
+  assertLanded(q, 'c')
+  assert.ok((q.fleet.notes ?? []).some((n) => /^agent_walk\.after_land failed after c landed — see .*after-land\.log$/.test(n)), JSON.stringify(q.fleet.notes))
+})
+
 test('setup sees worktree_env and gets {feature} filled in', () => {
   const root = makeRepo(['a'], { lines: ['worktree_env: WT_MARK=db-{feature}', 'setup: echo "${WT_MARK:-unset} {feature}" > setup-wt-env'] })
   const r = runFleet(root, ['a'], { a: ['audited', 'BLOCK:stop here so the worktree stays'] })

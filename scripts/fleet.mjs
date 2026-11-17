@@ -36,7 +36,7 @@ import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, 
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
-import { footprintOf, groupsOf, takeWalkBatch, landingGate, bisectPlan, firstFailing } from './groups-core.mjs'
+import { footprintOf, groupsOf, takeWalkBatch, landingGate, bisectPlan, firstFailing, matchesGlob, generatedOnly } from './groups-core.mjs'
 import { requestMerge, mergeVerdict, heldMerge, awaitVerdict, release as releaseMerge, carry as carryMerge } from './verify/fleet-hooks.mjs'
 import { clearWorktree, restoreKept, inventory, summaryLine } from './tidy-core.mjs'
 import { landOverlap } from './verify/checkouts.mjs'
@@ -237,6 +237,8 @@ const ASKED_PARALLEL = Number(opt('--parallel')) || null
 const WANT_PARALLEL = ASKED_PARALLEL || AW.parallel
 const SHARED_DB = Boolean(VERIFY_DB) && !isolated(AW) && WANT_PARALLEL > 1
 const PARALLEL = SHARED_DB ? 1 : WANT_PARALLEL
+// D15: files a build regenerates (lockfiles, snapshots) — regenerated at a merge, never hand-merged.
+const GEN = CFG.generated ?? { paths: [], command: null }
 const SHARED_DB_NOTE = `parallel 1${ASKED_PARALLEL ? ` (asked ${ASKED_PARALLEL})` : ''}: the verifier's test database is shared — set agent_walk.test_db_env (or a {feature} database in worktree_env) to build in parallel`
 const WORKTREES = AW.worktrees ? resolve(ROOT, AW.worktrees) : join(dirname(ROOT), `${basename(ROOT)}.fleet`)
 // Batched walks: with a walk env of its own (agent_walk.start), the walk lane takes every feature
@@ -1279,6 +1281,24 @@ async function landNow(feature) {
   return finishLanding(feature, facts)
 }
 
+/**
+ * D15: agent_walk.after_land in the main checkout, once per merge into the target (a group's one merge
+ * runs it once) — to regenerate or reinstall there. Its output to logs/after-land.log; a failure is a note.
+ */
+function afterLand(feature) {
+  if (!AW.afterLand) return
+  const log = join(DIR, 'logs', 'after-land.log')
+  mkdirSync(dirname(log), { recursive: true })
+  const fd = openSync(log, 'a')
+  try {
+    execSync(fill(AW.afterLand, feature), { cwd: ROOT, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+  } catch {
+    addNote(`agent_walk.after_land failed after ${feature} landed — see ${log}`)
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** The config is the human's: a branch that changes it never lands it unseen. → the park reason, or null. */
 function configChanged(f) {
   const cfgDiff = tryGit(['diff', '--stat', `refs/heads/${TARGET}...${f.branch}`, '--', CONFIG_PATH])
@@ -1351,6 +1371,7 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
   // After the target moved: the migrations note, or the working tree's migrations applied. The
   // branch is read again now — the merge-tier wait takes minutes, and the human may have switched.
   const landed = (before, sha) => {
+    afterLand(feature)
     const now = tryGit(['branch', '--show-current'])
     if (now === TARGET) return migrateAfterLanding(feature, before, 'HEAD')
     addNote(`${feature} merged into ${TARGET} while ${now || 'a detached HEAD'} was checked out here — switch to ${TARGET} to test it`)
@@ -1429,7 +1450,8 @@ function signoffMoved(feature, f) {
   if (!f.worktree || !existsSync(f.worktree)) return null
   const by = signedOff(f.worktree, specOf(feature))
   const s = signoffHolds(f.worktree, by.shas, CFG.registry, `refs/heads/${TARGET}`)
-  if (s.holds) return null
+  // A change of generated files only (a regenerated lockfile) is not new code: the sign-off stands (D15).
+  if (s.holds || generatedOnly(s.changed, GEN.paths)) return null
   const files = [...s.changed.slice(0, 3), ...(s.changed.length > 3 ? ['…'] : [])].join(', ')
   // A human's sign-off is never replaced by agents unasked; the person can hand it to them (--rewalk-by-agents).
   return { sha: s.sha.slice(0, 7), files, agents: !by.human || REWALK_BY_AGENTS.has(feature) }
@@ -2088,16 +2110,14 @@ async function stackOn(feature, prev, id) {
   const ref = `refs/heads/${p.branch}`
   if (tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) !== null) return null
   let why = null
-  try {
-    git(['merge', '--no-edit', '--quiet', ref], wt)
-  } catch (e) {
+  if (mergeIn(wt, ref, feature) !== 'merged') {
     if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) !== null) {
       const log = await resolveMerge(feature, wt, `${prev}'s code (group ${id})`, { feature: prev, branch: p.branch })
       if (log !== true) {
         tryGit(['merge', '--abort'], wt)
         return `${prev}'s branch is not in ${feature}'s worktree (merging it conflicted and two agent runs could not resolve it${log ? ` — see ${log}` : ''}) — next: merge ${p.branch} in ${wt} and commit it, then /builder:agent ${feature}`
       }
-    } else why = tryGit(['status', '--porcelain', '--untracked-files=no'], wt) ? 'uncommitted changes there' : gitWords(e)
+    } else why = tryGit(['status', '--porcelain', '--untracked-files=no'], wt) ? 'uncommitted changes there' : 'the merge failed before any conflict'
   }
   if (tryGit(['merge-base', '--is-ancestor', ref, 'HEAD'], wt) === null) {
     const next = why === 'uncommitted changes there' ? `commit or set aside the changes in ${wt}` : `run git merge ${p.branch} in ${wt} and clear what stops it`
@@ -2788,7 +2808,7 @@ function unpark(feature) {
 async function syncTarget(wt, why = "its dependencies' code", feature = null) {
   if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return null
   if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return null // not ours to merge over
-  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) === null) {
+  if (mergeIn(wt, `refs/heads/${TARGET}`, feature ?? basename(wt)) !== 'merged') {
     const conflicted = tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) !== null
     const log = conflicted && feature ? await resolveMerge(feature, wt, why) : null
     if (log !== true) {
@@ -2820,11 +2840,69 @@ function runSync(wt, feature, merged) {
   return null
 }
 
+// ---- D15: generated files ----------------------------------------------------------------------
+const isGenerated = (path) => GEN.paths.some((g) => matchesGlob(path, g))
+/** Every path `git status` names in `wt` that is generated, tracked or new — never `git add -u`. */
+function generatedChanges(wt) {
+  const out = tryGit(['status', '--porcelain', '--untracked-files=all'], wt) ?? ''
+  return out.split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '')).filter(isGenerated)
+}
+/** generated.command in `wt`, logged to logs/<feature>-generated.log. → true, or false on failure (a note). */
+function regenerate(wt, feature) {
+  const log = join(DIR, 'logs', `${feature}-generated.log`)
+  mkdirSync(dirname(log), { recursive: true })
+  const fd = openSync(log, 'a')
+  try {
+    execSync(fill(GEN.command, feature), { cwd: wt, env: envFor(feature, 'build'), stdio: ['ignore', fd, fd], timeout: 30 * 60 * 1000 })
+    return true
+  } catch {
+    addNote(`generated.command failed in ${feature}'s worktree — see ${log}; the merge is left to an agent`)
+    return false
+  } finally {
+    closeSync(fd)
+  }
+}
+/**
+ * `git merge <ref>` in `wt`, generated files regenerated rather than merged (D15). A conflict whose
+ * every conflicted file is generated takes this side's copy, runs generated.command, stages only the
+ * generated paths and commits the merge — no agent. A clean merge that brought commits runs the
+ * command too, and commits only the generated paths it changed. Without generated.command, a plain
+ * merge. → 'merged' (or nothing to merge), 'conflict' (MERGE_HEAD left for an agent), 'failed'.
+ */
+function mergeIn(wt, ref, feature) {
+  const before = tryGit(['rev-parse', 'HEAD'], wt)
+  if (tryGit(['merge', '--no-edit', '--quiet', ref], wt) === null) {
+    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null) return 'failed'
+    return resolveGenerated(wt, ref, feature) ? 'merged' : 'conflict'
+  }
+  if (GEN.command && tryGit(['rev-parse', 'HEAD'], wt) !== before && regenerate(wt, feature)) {
+    const paths = generatedChanges(wt)
+    if (paths.length && tryGit(['add', '--', ...paths], wt) !== null) tryGit(['commit', '--quiet', '-m', `chore(${feature}): regenerate ${paths.join(', ')} after merging ${ref.replace('refs/heads/', '')}`], wt)
+  }
+  return 'merged'
+}
+
+/**
+ * A merge stopped on conflicts in `wt`: when every conflicted file is generated, take this side's
+ * copies, run generated.command, stage only generated paths and commit the merge. → true when
+ * committed; false leaves the merge as it was (MERGE_HEAD) for whoever handles a conflict.
+ */
+function resolveGenerated(wt, ref, feature) {
+  const files = (tryGit(['diff', '--name-only', '--diff-filter=U'], wt) ?? '').split('\n').filter(Boolean)
+  if (!GEN.command || !generatedOnly(files, GEN.paths)) return false
+  tryGit(['checkout', '--ours', '--', ...files], wt)
+  if (!regenerate(wt, feature)) return false
+  const paths = [...new Set([...files, ...generatedChanges(wt)])]
+  if (tryGit(['add', '--', ...paths], wt) === null || tryGit(['commit', '--no-edit', '--quiet'], wt) === null) return false
+  addNote(`${feature}: merging ${ref.replace('refs/heads/', '')} regenerated ${files.join(', ')} (generated.command) — no agent needed`)
+  return true
+}
+
 /** The target merged in with no agent: on a conflict, back out and leave it to the lane's sync. */
-function mergeTargetQuietly(wt) {
+function mergeTargetQuietly(wt, feature = basename(wt)) {
   if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], wt) !== null) return
   if (tryGit(['status', '--porcelain', '--untracked-files=no'], wt) !== '') return
-  if (tryGit(['merge', '--no-edit', '--quiet', `refs/heads/${TARGET}`], wt) === null) tryGit(['merge', '--abort'], wt)
+  if (mergeIn(wt, `refs/heads/${TARGET}`, feature) !== 'merged') tryGit(['merge', '--abort'], wt)
 }
 
 const RESOLVE_ATTEMPTS = 2
@@ -2852,7 +2930,7 @@ async function resolveMerge(feature, wt, why, from = null) {
     : `${TARGET} is the branch the builder fleet lands on; it carries ${why}, already merged and verified.`
   let log = null
   for (let attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt++) {
-    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null && tryGit(['merge', '--no-edit', '--quiet', ref], wt) !== null) return true
+    if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], wt) === null && mergeIn(wt, ref, feature) === 'merged') return true
     const files = (tryGit(['diff', '--name-only', '--diff-filter=U'], wt) ?? '').split('\n').filter(Boolean)
     f.runs = (f.runs ?? 0) + 1
     f.reason = `resolving a conflict with ${name} in ${files.length} file(s)`
@@ -3349,6 +3427,8 @@ function prepareWalkTree(features) {
     const heads = headsOf(unit)
     const failed = heads.find((x) => {
       if (tryGit(['merge', '--no-ff', '--no-edit', '-m', `walk batch: ${x}`, branchRef(x)], WALK_WT) !== null) return false
+      // Two batch members that both regenerated a lockfile walk together: it is made again here (D15).
+      if (tryGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], WALK_WT) !== null && resolveGenerated(WALK_WT, branchRef(x), '_walk')) return false
       tryGit(['merge', '--abort'], WALK_WT)
       return true
     })
