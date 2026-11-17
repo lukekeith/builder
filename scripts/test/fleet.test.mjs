@@ -3015,3 +3015,68 @@ test('fleet start: a feature whose branch overlaps the uncommitted changes in th
   const again = runFleet(root, ['u', 'v'], { u: ['BLOCK:stop here'], v: ['BLOCK:stop here'] })
   assert.deepEqual(again.fleet.notes.filter((n) => /will need you to land/.test(n)), [], JSON.stringify(again.fleet.notes))
 })
+
+// ---- group lanes: overlaps found while running (D10–D13) ------------------------------------------
+test('D11: a ruling in rulings.md widens the feature’s footprint — two plans that share nothing group once it names the other’s path', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/a.txt'], b: ['app/b.txt'] })
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/rulings.md'), '- 2026-11-16 b: b moves the shared helper into a.txt (paths: app/a.txt)\n')
+  const r = runFleet(root, ['a', 'b'], { a: ['BLOCK:hold here'], b: ['BLOCK:hold here'] })
+  assert.equal(r.fleet.features.a.group, 'g-a', JSON.stringify(r.fleet.features))
+  assert.equal(r.fleet.features.b.group, 'g-a')
+  assert.deepEqual(r.fleet.groups['g-a'].members, ['a', 'b'])
+})
+
+test('D10: a lane that starts changing a path in another feature’s footprint after it started building waits for that one to land, then lands — a note names the path', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/b.txt'] })
+  const r = runFleet(root, ['a', 'b'], {
+    a: ['SLOW:COMMIT:app/a.txt:building', 'SLOW:READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP'],
+    b: ['COMMIT:app/shared.txt:building', 'READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP'],
+  }, { STUB_SLOW_MS: '1500' }, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${JSON.stringify(r.fleet.features)}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.ok((r.fleet.notes ?? []).includes('b now touches app/shared.txt, which a changes too — it has started building, so it waits for it to land'), JSON.stringify(r.fleet.notes))
+  const merges = git(root, 'log', '--format=%s', '--first-parent', '--reverse', 'main').split('\n').filter((l) => /^merge\(/.test(l))
+  assert.deepEqual(merges.map((l) => /^merge\((\w+)\)/.exec(l)[1]), ['a', 'b'], 'b landed after a')
+})
+
+test('D13: split advice when two grouped features share a few paths — once — and none for an interface-only overlap', () => {
+  const root = makeRepo(['a', 'b'])
+  plannedWith(root, { a: ['app/one.txt', 'app/two.txt', 'app/a.txt'], b: ['app/one.txt', 'app/two.txt', 'app/b.txt'] })
+  const r = runFleet(root, ['a', 'b'], { a: ['BLOCK:hold'], b: ['BLOCK:hold'] })
+  const advice = (r.fleet.notes ?? []).filter((n) => /share \d+ paths?/.test(n))
+  assert.deepEqual(advice, ['a and b share 2 paths (app/one.txt, app/two.txt) — a prerequisite feature that takes the shared change would let them build in parallel'])
+
+  const iface = makeRepo(['c', 'd'])
+  writeFileSync(join(iface, 'docs/features/c/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: auto (recommended) 2026-11-14\nnext: x\n')
+  writeFileSync(join(iface, 'docs/features/d/MANIFEST.md'), 'size: md\nstate: planned\ngo-ahead: auto (recommended) 2026-11-14\nnext: x\n')
+  writeFileSync(join(iface, 'docs/features/c/PLAN.md'), '# c\n\n### Task 1: c\n\n**Files:**\n- Modify: `app/c.txt`\n\n**Interfaces:**\n- Produces: `tagsFor(id)`\n\n- [ ] Step 1\n')
+  writeFileSync(join(iface, 'docs/features/d/PLAN.md'), '# d\n\n### Task 1: d\n\n**Files:**\n- Modify: `app/d.txt`\n\n**Interfaces:**\n- Uses `tagsFor(id)`\n\n- [ ] Step 1\n')
+  git(iface, 'add', '-A')
+  git(iface, 'commit', '-qm', 'planned')
+  const q = runFleet(iface, ['c', 'd'], { c: ['BLOCK:hold'], d: ['BLOCK:hold'] })
+  assert.equal(q.fleet.features.d.group, 'g-c', 'an interface overlap groups them')
+  assert.ok(!(q.fleet.notes ?? []).some((n) => /share \d+ path/.test(n)), JSON.stringify(q.fleet.notes))
+})
+
+test('D12: a spec edit that lands on the target while a feature builds pauses it for /builder:revise', async () => {
+  const root = makeRepo(['a'])
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ a: ['audited', 'SLOW:planned', 'building', 'NOOP'] }))
+  const fleet = spawn('node', [FLEET, 'a'], { cwd: root, stdio: 'ignore', env: ENV(root, { STUB_SLOW_MS: '2500', FLEET_KEEP_STOPPED_WORKTREES: '1' }) })
+  const exited = new Promise((res) => fleet.on('exit', res))
+  const calls = () => (existsSync(join(root, '.stub/calls.log')) ? readFileSync(join(root, '.stub/calls.log'), 'utf8') : '')
+  for (let i = 0; i < 200 && !/start a \S+ \d+ SLOW:planned /.test(calls()); i++) await new Promise((res) => setTimeout(res, 50))
+  // The human revises the spec on main while the slow run goes on.
+  writeFileSync(join(root, 'docs/features/a/SPEC.md'), '# a — spec\n\nA changed requirement.\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'docs(a): a changed requirement')
+  await exited
+  const f = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).features.a
+  assert.equal(f.status, 'parked', JSON.stringify(f))
+  assert.equal(f.reason, 'its spec changed on main — next: /builder:revise --path docs/features/a')
+  assert.ok(!/start a \S+ \d+ building /.test(calls()), `it never built on the old spec:\n${calls()}`)
+})

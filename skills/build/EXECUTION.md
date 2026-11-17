@@ -246,6 +246,12 @@ it immediately:
   weigh it against the plan with the SPEC as binding authority, and ledger the ruling before acting.
   Do not dismiss a finding because the plan mandates it, and do not dispatch a fix that contradicts
   the plan without a recorded ruling.
+- **A ruling that reaches outside the feature's footprint** — it changes a path no task's
+  `**Files:**` names (a shared module, another app's contract) — is recorded for the fleet too, under
+  a fleet (`BUILDER_FLEET_DIR` set): `node <builder>/scripts/fleet-ruling.mjs <feature> <path>… --
+  <the ruling, one line>`. At the next run boundary those paths join the feature's footprint, so a
+  feature now touching another's files groups with it or waits for it to land, instead of meeting it
+  as a conflict at landing. Outside a fleet there is nothing to tell; the ledger line is enough.
 
 Everything else enters. A round is one fix dispatch plus one scoped re-review. **Five rounds maximum
 per task.**
