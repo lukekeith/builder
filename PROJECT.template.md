@@ -63,6 +63,15 @@ design:
   contracts: <where the normative design contracts live>
   owned_by: <the commands that WRITE that design — builder only ever reads it>
 
+# ─── generated files (optional) ────────────────────────────────────────────
+# Files a build regenerates — lockfiles, snapshots, indexes. Two features that both change one never
+# conflict over it: at every merge the fleet makes (a sync, a group member stacking, a landing) it runs
+# `command` and commits only `paths`, instead of hand-merging them. A change to them alone is not new
+# code after a sign-off, and they never make two features overlap.
+# generated:
+#   paths: package-lock.json, src/generated/**
+#   command: npm install --package-lock-only && npm run codegen
+
 # ─── unattended runs (optional) ────────────────────────────────────────────
 # /builder:agent and /builder:fleet take specs all the way with no human in the
 # loop: a worktree per spec, an agent walk and agent sign-off instead of yours,
@@ -77,6 +86,10 @@ agent_walk:
   # keep_logs: 30                  # days a merged feature's run logs stay under .builder/fleet/logs/_archive/; 0 keeps them forever
   # auto_unpark: 2                 # times one fleet run unparks a feature on its own and has an agent dig into the park record; a human-step park always waits for you; 0 turns it off
   # batch: 8                      # with start set: how many features one walk takes at once — one walk branch, one env, one walker by screen; 1 walks them one at a time
+  # group_max: 3                   # features whose plans overlap (a shared path, an interface one makes and the other uses, a Depends on) build in ONE lane, stacked, walk once and land as one merge — at most this many per group; a larger overlap is cut into groups that land in order
+  # split_max_paths: 10            # two grouped features sharing at most this many paths get a note suggesting a prerequisite feature that takes the shared change; advice only
+  # test_db_env: TEST_DATABASE_URL # needs verify.db: every run in a worktree gets this variable set to its OWN database on verify.db's server (created and migrated with verify.db.prepare when the worktree is made, dropped when it goes) — what keeps parallel builds' own test runs apart. A verify.db with neither this nor a {feature} database in worktree_env builds one at a time, and says why
+  # after_land: npm ci             # runs in THIS checkout after each merge the fleet lands on merge_into (when it is checked out here) — a reinstall or a regenerate; a failure is a note
   # copy: .env, certs/dev.pem      # untracked files copied into each NEW worktree; never overwrites a tracked file, and a missing one is just noted
   # worktree_env: TEST_DATABASE_URL="postgres://localhost/myrepo_test_{feature}"   # KEY=VALUE pairs reaching EVERY run and setup in a worktree, {feature} filled in — isolates the build lanes' own tool runs (dev servers, codegen) per worktree; the verifier isolates tests itself (`verify.db`)
   # setup: npm ci && createdb myrepo_test_{feature} && npm run db:migrate:test   # runs once per NEW worktree, after copy, with worktree_env and {feature} filled in — for the build lanes' own tools (the verifier prepares test databases itself); a failure parks the feature and is retried on the next fleet run

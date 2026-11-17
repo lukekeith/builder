@@ -793,6 +793,27 @@ if (flag('--dry-run')) {
     console.log(`  ${after[f] ? '⏳' : '✓'} ${f} → ${branchOf(f, mf)}${after[f] ? `, once ${after[f].join(', ')} merge${after[f].length > 1 ? '' : 's'}` : ''}${joined}${unparks}`)
   }
   for (const [f, why] of Object.entries(refused)) console.log(`  ✗ ${f} — ${why}`)
+  // D3/D16: the groups these specs (and the rows already in the fleet) form, each with why its
+  // members overlap — read from their plans here, nothing written.
+  if (!runningPid) {
+    const names = [...new Set([...Object.keys(fleet.features).filter((n) => fleet.features[n].status !== 'done'), ...fresh])]
+    const fp = new Map(names.map((n) => {
+      // baseOf is defined further down (a const): the row's worktree when it has one, inline.
+      const wt = fleet.features[n]?.worktree
+      const plan = readDoc(wt && existsSync(wt) ? wt : ROOT, n, 'PLAN.md')
+      return [n, plan != null ? footprintOf(plan, { generated: GEN.paths }) : null]
+    }))
+    const depsOf = (n) => [...(fleet.features[n]?.dependsOn ?? []), ...(joins[n] ?? [])].filter((d) => names.includes(d))
+    for (const g of groupsOf(names.map((n) => ({ name: n, footprint: fp.get(n), dependsOn: depsOf(n) })), { max: AW.groupMax, fleetOrder: names }).filter((x) => x.members.length > 1 || x.waitsOn)) {
+      const why = g.members.slice(1).map((m, i) => {
+        const prev = g.members[i]
+        const o = overlapOf(fp.get(prev), fp.get(m), { declared: depsOf(m).includes(prev) || depsOf(prev).includes(m) })
+        const parts = o ? [o.declared && 'declared', o.paths.length && `share ${o.paths.slice(0, 2).join(', ')}${o.paths.length > 2 ? '…' : ''}`, o.interfaces.length && `interface ${o.interfaces.slice(0, 2).join(', ')}`].filter(Boolean) : ['overlap through the others']
+        return `${prev} → ${m}: ${parts.join(', ')}`
+      })
+      console.log(`  group ${g.id}: ${g.members.join(' → ')} — one lane, built in this order, landed as one${g.waitsOn ? `, after group ${g.waitsOn} (group_max ${AW.groupMax})` : ''}${why.length ? ` (${why.join('; ')})` : ''}`)
+    }
+  }
   const retried = (f, row) => asked.includes(f) && ['parked', 'failed'].includes(row.status)
   const was = (row) => `it was ${row.status}: ${parkParts(row.reason).why || 'no reason recorded'}`
   for (const [f, row] of Object.entries(fleet.features))

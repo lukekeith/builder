@@ -7,6 +7,13 @@ description: Runs several written specs through the whole pipeline unattended, e
 
 Invocation: **`/builder:fleet [--all | <feature|folder>…] [--parallel N] [--dry-run] [--no-env-check]`** · where it stands: **`/builder:fleet:status`**.
 
+**Specs that touch the same code form a group** (`agent_walk.group_max`, default 3): its members
+plan side by side, then build in one lane, each stacked on the one before, walk once and land as one
+merge. Parallelism is across groups and features — the tasks inside a feature still run one at a
+time. The dry run lists each group with why its members overlap; while it runs, the notes say when a
+feature joins a group, waits for one to land, or could split out a prerequisite, and a spec edit on
+the target pauses a feature still building for `/builder:revise`. Relay those notes as they are.
+
 With `agent_walk.start` set, the launch proves the walk env once — start, smoke, stop in a throwaway
 worktree of the target, beside the build lanes — and says at once when the config can't bring it
 up; `--no-env-check` skips that.

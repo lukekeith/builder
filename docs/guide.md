@@ -238,7 +238,10 @@ never see `env`, so parallel builds stay off the walk env. The verifier runs the
 suites, each run in its own database cloned from a template — but an implementer still runs its own
 task's tests in its worktree, and a fix round re-runs them. **`worktree_env`** reaches every run and
 `setup` in a worktree with `{feature}` filled in — a `TEST_DATABASE_URL=…_{feature}` per worktree is
-what makes `parallel` above 1 safe for those database-backed tests; without it, use `parallel: 1`.
+what makes `parallel` above 1 safe for those database-backed tests. Simpler, with a `verify.db`:
+**`test_db_env: TEST_DATABASE_URL`** gives every worktree its own database on verify.db's server,
+made and migrated with the worktree and dropped with it. A `verify.db` with neither builds one
+feature at a time, and the fleet says why.
 
 Every worktree is merged up to the branch the fleet runs from before each build run and before its
 walk env starts, so features integrate as they land rather than all at ship; `sync` (an install plus
@@ -248,6 +251,40 @@ the phase tier is the build's one wait, and the merge tier runs every suite on t
 onto the target, lists a failure that also fails on the target as known rather than red, and lists
 a flake automatically — the measured reason a typical feature spent 60% of its wall-clock in tests
 was the same suite running about fourteen times.
+
+### Group lanes — features that touch the same code
+
+**Parallelism is across features; the tasks inside one feature still run one at a time.** Features
+whose plans overlap — a shared path, an interface one makes and the other uses, or a declared
+`Depends on` — form a **group** (at most `agent_walk.group_max`, default 3; a larger overlap is cut
+into groups that land in order). Its members plan in parallel like any feature, then **build in one
+lane, one after another, each stacked on the member before it**, so the second builds on the first's
+code instead of meeting it as a conflict when it lands. The group walks once, in one batch, and
+**lands as one merge** — `merge(a, b): …` through its last member, the only merge-tier run it needs.
+A red result is bisected: the members before the one that broke it land, that one parks naming the
+failing check, and the ones after it wait for it. A member signed off by you whose code moved under
+it parks as your walk again, and the group waits. `/builder:fleet:status` shows one line per group
+(`group g-a: a ✓ → b ▶ → c ·`).
+
+**Overlaps found while running.** Before each build run the fleet checks the branch's changes
+against every other group's footprint. A feature that hasn't started building joins the group it now
+touches (when there's room); one that has waits for that group to land. Either way a note names the
+shared paths. An agent whose ruling reaches beyond its feature's planned files records it —
+`node <builder>/scripts/fleet-ruling.mjs <feature> <path>… -- <ruling>` — and those paths join the
+feature's footprint. A spec edit that lands on the target while a feature still plans or builds
+pauses it for `/builder:revise`. When two grouped features share only a few paths
+(`split_max_paths`, default 10), a note suggests a prerequisite feature that takes the shared change,
+so they could build in parallel; it's advice, nothing more.
+
+**Generated files.** A top-level `generated: { paths, command }` names files a build regenerates — a
+lockfile, codegen output. At every merge the fleet makes, a conflict in them alone is settled by
+running the command, not by an agent, and only those paths are committed; a landing takes the target
+first, so a lockfile never lands as a text merge. A commit of generated files alone is not new code
+after a sign-off. `agent_walk.after_land` runs in your checkout after each landing (a reinstall, say).
+
+**While it runs.** On macOS the fleet keeps the Mac awake (`caffeinate`) until it ends —
+`BUILDER_CAFFEINATE=0` turns that off. A row's **Time** in the status is wall-clock since its first
+run started, queueing and parks included.
 
 ## Nothing left behind
 

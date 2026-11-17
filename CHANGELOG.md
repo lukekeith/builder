@@ -4,6 +4,63 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.3.0
+
+**Group lanes: features that touch the same code build in one lane and land as one.** A fleet of
+overlapping specs no longer builds them side by side only to meet at landing as conflicts an agent
+resolves and a re-walk re-checks. Parallelism is across features and groups; the tasks inside a
+feature still run one at a time. Nothing new is required in `.claude/builder.md` — one visible
+change: **a `verify.db` with no per-worktree database now builds one feature at a time**, and says
+so (set `agent_walk.test_db_env`, or a `{feature}` database in `worktree_env`, to get parallel
+builds back).
+
+**Added:**
+- **Groups.** Specs whose plans overlap — a shared path, an interface one makes and the other uses,
+  or a declared `Depends on` — form a group of at most `agent_walk.group_max` (default 3; a larger
+  overlap is cut into groups that land in order). Members plan in parallel, then build one after
+  another in one lane, each stacked on the one before; walk fixes on a member re-chain the ones
+  after it. The dry run lists each group and why its members overlap; the status shows one line per
+  group (`group g-a: a ✓ → b ▶ → c ·`).
+- **One walk, one landing per group.** The group walks once, in one batch, with one held merge-tier
+  run on its last member, and lands as one merge — `merge(a, b): …` — after a gate that every
+  member is shipped and none is paused or parked. A red result is bisected by prefix: the members
+  before the breaking one land, it parks naming the failing check, the ones after wait for it. A
+  member you signed off whose code moved parks as your walk again; the group waits.
+- **Overlaps found while running.** Before each build run the fleet checks the branch's changes
+  against every other group's footprint: a feature that has not started building joins the group it
+  now touches when there is room, else it waits for that group to land — a note names the shared
+  paths either way. `scripts/fleet-ruling.mjs <feature> <path>… -- <ruling>` records a ruling that
+  reaches beyond a feature's planned files, and those paths join its footprint. A spec edit that
+  lands on the target while a feature still plans or builds parks it for `/builder:revise` (a human
+  step, written to its manifest). Two grouped features sharing at most `agent_walk.split_max_paths`
+  (default 10) paths get a note suggesting a prerequisite feature.
+- **A test database per worktree:** `agent_walk.test_db_env: <VAR>` (with a `verify.db`) gives every
+  worktree — and the walk and env-check ones — its own database on verify.db's server, made and
+  migrated (`verify.db.prepare`) with the worktree, made again when a merge brings migrations, and
+  dropped when the worktree goes; the fleet drops any of this checkout's that outlived its worktree.
+- **Generated files:** a top-level `generated: { paths, command }`. At every merge the fleet makes —
+  a sync, a member stacking, a landing — a conflict in generated files alone is settled by running
+  the command, with no agent, and only those paths are committed; a landing takes the target first,
+  so a lockfile never lands as a text merge. A commit of generated files alone is not new code after
+  a sign-off, and generated paths never make two features overlap. `agent_walk.after_land` runs in
+  your checkout after each landing.
+- **The fleet keeps the Mac awake** (`caffeinate`) until it ends; the detached launch line says so.
+  `BUILDER_CAFFEINATE=0` turns it off.
+- **A plan task's `Decisions:` line** (`Decisions: D2, D4` or `none`): its implementer's brief carries
+  only those §Decisions rows (and any its block cites), not every row of a long spec. A plan without
+  the line carries every row, as before.
+
+**Changed:**
+- The status's **Time** is wall-clock since a feature's first run started, queueing and parks
+  included — not the sum of its runs, which counted parallel lanes twice. A stopped fleet's rows no
+  longer grow.
+- Scoped re-reviews run at medium effort.
+
+**Fixed:**
+- A feature signed off while its walk readiness was still pending went to the ship lane unwalked.
+  It now goes back to the walk lane (an agent's sign-off is set back to building; a human's parks as
+  your walk again), in a batched walk too.
+
 ## 6.2.3
 
 A batched walk no longer spins when a built feature's branch conflicts with the target. Nothing to

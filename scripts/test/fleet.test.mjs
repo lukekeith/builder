@@ -3104,6 +3104,20 @@ test('D10: a lane that starts changing a path in another feature’s footprint a
   assert.deepEqual(merges.map((l) => /^merge\((\w+)\)/.exec(l)[1]), ['a', 'b'], 'b landed after a')
 })
 
+test('D3/D16: the dry run lists each group, its members in order and why they overlap — and writes nothing', () => {
+  const root = makeRepo(['a', 'b', 'c'])
+  plannedWith(root, { a: ['app/shared.txt', 'app/a.txt'], b: ['app/shared.txt'], c: ['app/c.txt'] })
+  const dry = runFleet(root, ['a', 'b', 'c', '--dry-run'], {})
+  assert.equal(dry.status, 0, dry.stderr)
+  assert.match(dry.stdout, /^  group g-a: a → b — one lane, built in this order, landed as one \(a → b: share app\/shared\.txt\)$/m)
+  assert.doesNotMatch(dry.stdout, /group g-c/)
+  assert.equal(existsSync(join(root, '.builder/fleet/fleet.json')), false, 'nothing written')  // With rows already in the fleet (a stopped run), the dry run reads them too.
+  runFleet(root, ['a', 'b'], { a: ['BLOCK:hold'], b: ['BLOCK:hold'] })
+  const again = runFleet(root, ['a', 'b', 'c', '--dry-run'], {})
+  assert.equal(again.status, 0, again.stderr)
+  assert.match(again.stdout, /^  group g-a: a → b — /m)
+})
+
 test('D13: split advice when two grouped features share a few paths — once — and none for an interface-only overlap', () => {
   const root = makeRepo(['a', 'b'])
   plannedWith(root, { a: ['app/one.txt', 'app/two.txt', 'app/a.txt'], b: ['app/one.txt', 'app/two.txt', 'app/b.txt'] })

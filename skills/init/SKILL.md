@@ -91,13 +91,20 @@ the answer is a choice:
   own tooling (tests, scripts, the human's dev env) doesn't also use. Check that `reset` and `stop`
   never stop or recreate a service the human's own dev env shares: no `docker compose down`, and no
   `compose up` from a branch whose compose file may differ — start an existing container by name, or
-  pin the compose file to the main checkout's; **`worktree_env`** when the test suites share one
-  database — a `TEST_DATABASE_URL` (or the ORM's equivalent) ending in `_{feature}`, plus a `setup`
-  that creates it (`createdb … {feature}`, or the ORM's create-and-migrate), so `parallel: 3` is
-  safe; only when that is impossible, `parallel: 1`; **`sync`** — the install plus the test-DB migration
+  pin the compose file to the main checkout's; **`test_db_env`** when the config has a `verify.db`
+  and the test suites read one database variable — name it (`test_db_env: TEST_DATABASE_URL`) and the
+  fleet gives every worktree its own database on verify.db's server, made and migrated with the
+  worktree, dropped with it; or **`worktree_env`** with that variable ending in `_{feature}`, plus a
+  `setup` that creates it (`createdb … {feature}`, or the ORM's create-and-migrate). A `verify.db`
+  with neither builds one at a time, and the fleet says why; **`sync`** — the install plus the test-DB migration
   (`npm ci && <migrate against the worktree's test DB>`), run after the fleet merges the target into a
   worktree with new commits, so a package or migration another feature landed is present before the
   next run;
+- **`generated:`** (top level, not under `agent_walk`) when the repo commits files a build
+  regenerates — a lockfile, codegen output, snapshots: `paths` (globs) and the `command` that makes
+  them. Two features that both change one then never conflict over it — every merge the fleet makes
+  runs the command and commits only those paths. Offer it when a lockfile or a generated folder is
+  tracked; leave it out otherwise;
 - **a shared output folder**, only when `start` runs a dev server from the worktree — if a build
   writes where the running dev server serves from (Next.js `.next`, Nuxt `.nuxt`, SvelteKit
   `.svelte-kit`, Rails `public/assets`), the walk lane's env breaks when a build lane builds: say so
