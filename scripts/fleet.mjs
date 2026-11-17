@@ -1621,17 +1621,17 @@ async function drive(feature, lane) {
     if (parkIfPaused(f, feature)) return 'parked'
     // F4: a sign-off nobody walked is set back to building before the walk lane's run, or parks.
     if (lane === 'walk' && unwalkedSignoff(feature, f) === 'parked') return 'parked'
-    // D10–D12: a run boundary — rulings, a spec edit on the target, a collision with another group.
-    const held = atBoundary(feature, f)
-    if (held) return held
     // D14: a merge since the last run may have brought migrations — the lane database follows.
     try {
       ensureLaneDb(feature, f)
     } catch (e) {
       return park(f, `${e.message} — next: /builder:agent ${feature}`)
     }
-    // A group member builds only on the member before it, built and merged in (D6).
     if (lane === 'build') {
+      // D10–D12: a run boundary — a spec edit on the target, a collision with another group, rulings.
+      const at = atBoundary(feature, f)
+      if (at) return at
+      // A group member builds only on the member before it, built and merged in (D6).
       const held = await stackGate(feature, f)
       if (held) return held
     }
@@ -1963,12 +1963,24 @@ let footprints = new Map()
 /** Split advice already given this run, per pair (D13): said once. */
 const advised = new Set()
 const RULINGS = () => join(DIR, 'rulings.md')
+let rulingsCache = { mtime: -1, data: {} }
+/** rulings.md parsed, read again only when it changed. */
+function rulings() {
+  let mtime = 0
+  try {
+    mtime = statSync(RULINGS()).mtimeMs
+  } catch {
+    return {}
+  }
+  if (mtime !== rulingsCache.mtime) rulingsCache = { mtime, data: readRulings(RULINGS()) }
+  return rulingsCache.data
+}
 /**
  * Paths a feature reaches beyond its plan (D10, D11): what its rulings in rulings.md name, and what its
  * lane was seen changing where another group's footprint is (`observed`). Generated paths never count.
  */
 function extraPaths(feature) {
-  const ruled = readRulings(RULINGS())[feature] ?? []
+  const ruled = rulings()[feature] ?? []
   return [...new Set([...ruled, ...(fleet.features[feature]?.observed ?? [])])].filter((p) => !GEN.paths.some((g) => matchesGlob(p, g))).sort()
 }
 
@@ -2028,7 +2040,8 @@ function regroup() {
     names.map((n) => {
       const plan = readDoc(baseOf(fleet.features[n]), n, 'PLAN.md')
       if (plan != null) footprinted.add(n)
-      const extra = extraPaths(n)
+      // A feature that has started building is never regrouped by a ruling: atBoundary weighs it (D10).
+      const extra = startedBuilding(n) ? [] : extraPaths(n)
       const fp = plan != null ? footprintOf(plan, { generated: CFG.generated?.paths ?? [] }) : declared.has(n) || extra.length ? NO_FOOTPRINT : null
       // Rulings and observed changes widen the plan's footprint (D10, D11): the overlap is real either way.
       return [n, fp && extra.length ? { ...fp, paths: [...new Set([...fp.paths, ...extra])].sort() } : fp]
@@ -2036,7 +2049,7 @@ function regroup() {
   )
   // What each row's footprint was widened by, so a boundary sees a ruling recorded since (D11).
   for (const n of names) {
-    const k = extraPaths(n).join('\n')
+    const k = startedBuilding(n) ? '' : extraPaths(n).join('\n')
     if (k) fleet.features[n].widened = k
     else delete fleet.features[n].widened
   }
@@ -2056,14 +2069,15 @@ function regroup() {
   else delete fleet.groups
   // D13: a group joined over a few shared paths could build in parallel with a prerequisite feature
   // that takes the shared change — said once per pair per run, never acted on.
-  for (const g of kept)
-    for (let i = 0; i < g.members.length; i++)
-      for (let j = i + 1; j < g.members.length; j++) {
-        const [a, b] = [g.members[i], g.members[j]]
-        const declaredDep = deps.get(a)?.includes(b) || deps.get(b)?.includes(a)
-        const advice = splitAdvice(a, b, overlapOf(footprints.get(a), footprints.get(b), { declared: declaredDep }), { maxPaths: AW.splitMaxPaths ?? 10 })
-        if (advice && !advised.has(`${a}\0${b}`)) (advised.add(`${a}\0${b}`), addNote(advice))
-      }
+  // Every overlapping pair, a group_max cut included — there a split saves the most.
+  for (let i = 0; i < names.length; i++)
+    for (let j = i + 1; j < names.length; j++) {
+      const [a, b] = [names[i], names[j]]
+      if (!footprints.get(a) || !footprints.get(b)) continue
+      const declaredDep = deps.get(a)?.includes(b) || deps.get(b)?.includes(a)
+      const advice = splitAdvice(a, b, overlapOf(footprints.get(a), footprints.get(b), { declared: declaredDep }), { maxPaths: AW.splitMaxPaths ?? 10 })
+      if (advice && !advised.has(`${a}\0${b}`)) (advised.add(`${a}\0${b}`), addNote(advice))
+    }
   for (const n of names) {
     const f = fleet.features[n]
     const g = kept.find((x) => x.members.includes(n) && x.members.length > 1)
@@ -2095,60 +2109,78 @@ function pruneGroups() {
 }
 
 const PLANNING_OR_BUILDING = new Set(['spec', 'aligned', 'audited', 'planned', 'building'])
+/** D12: the feature's folder on the target as its lane was admitted — what a later spec edit is told from. */
+function recordTargetSpec(feature, f) {
+  if (f.targetSpec === undefined) f.targetSpec = treeOf(`refs/heads/${TARGET}`, feature)
+}
 /**
- * A run boundary (D10–D12), checked before each run of a lane:
- *   - D11: a ruling recorded since the last regroup widens the feature's footprint — form the groups again;
- *   - D12: a spec edit that landed on the target while the feature still plans or builds pauses it
- *     for /builder:revise — the folder it builds from is no longer the one on the target;
- *   - D10: the lane's branch now changes paths in another group's unlanded footprint — the feature
- *     joins that group when it has not started building and there is room (group_max), else it waits
- *     for the group to land, an implied dependency. Either way a note names the shared paths; each
- *     group once per feature.
+ * D12: park as revising — a human step, never retried — and say so in the manifest (`blocked:`,
+ * committed on the branch), so /builder:resume and a later run read it too. The baseline stays until
+ * a person unparks it (unpark clears it), so a re-run never builds on past the edit.
+ */
+function specChanged(feature, f) {
+  const folder = specOf(feature)
+  const reason = `revising: its spec changed on ${TARGET} — next: /builder:revise --path ${folder}`
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
+  try {
+    execFileSync(process.execPath, [script, folder, '--set', `blocked=${JSON.stringify(reason)}`, '--commit', 'chore({key}): {feature} — its spec changed on the target, parked for a revision'], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch {}
+  return park(f, reason)
+}
+/**
+ * A build-lane run boundary (D10–D12), before each run while the feature still plans or builds — a
+ * feature past building never waits on another group (the one behind waits for it):
+ *   - D12: a spec edit landed on the target since the lane was admitted — park for /builder:revise;
+ *   - D10/D11: the branch's own changes (since the member before it, in a group) and its rulings now
+ *     reach paths in another group's unlanded footprint that grouping did not already account for —
+ *     join that group when the feature has not started building, there is room (group_max) and the
+ *     group is still building, else wait for it to land. One collision per boundary; a note each time.
  * → null to run on, or the outcome ('parked', 'waiting').
  */
 function atBoundary(feature, f) {
-  if (extraPaths(feature).join('\n') !== (f.widened ?? '')) regroup()
   const state = stateOf(feature)
-  if (PLANNING_OR_BUILDING.has(state)) {
-    const tree = treeOf(`refs/heads/${TARGET}`, feature)
-    if (f.targetSpec === undefined) (f.targetSpec = tree), save()
-    else if (tree !== f.targetSpec) {
-      f.targetSpec = tree
-      return park(f, `its spec changed on ${TARGET} — next: /builder:revise --path ${specOf(feature)}`)
-    }
-  }
+  if (!PLANNING_OR_BUILDING.has(state)) return null
+  const tree = treeOf(`refs/heads/${TARGET}`, feature)
+  if (f.targetSpec == null) f.targetSpec = tree // admitted before its folder was on the target: from here
+  else if (tree !== f.targetSpec) return specChanged(feature, f)
   if (!f.worktree || !existsSync(f.worktree)) return null
-  const base = tryGit(['merge-base', `refs/heads/${TARGET}`, 'HEAD'], f.worktree)
-  const changed = base ? (tryGit(['diff', '--name-only', `${base}..HEAD`], f.worktree) ?? '').split('\n').filter((p) => p && !p.startsWith(`${CFG.registry}/`) && !GEN.paths.some((g) => matchesGlob(p, g))) : []
+  // A ruling recorded since: an unstarted feature's footprint is widened by regroup; a started one's is weighed below.
+  if (!startedBuilding(feature) && extraPaths(feature).join('\n') !== (f.widened ?? '')) regroup()
+  const prev = f.groupPrev && !landedOn(f.groupPrev) ? fleet.features[f.groupPrev]?.branch : null
+  const base = tryGit(['merge-base', prev ? `refs/heads/${prev}` : `refs/heads/${TARGET}`, 'HEAD'], f.worktree)
+  const own = base ? (tryGit(['diff', '--name-only', `${base}..HEAD`], f.worktree) ?? '').split('\n') : []
+  const changed = [...new Set([...own, ...(startedBuilding(feature) ? extraPaths(feature) : [])])].filter((p) => p && !p.startsWith(`${CFG.registry}/`) && !GEN.paths.some((g) => matchesGlob(p, g)))
   if (!changed.length) return null
   const mine = groupOf(feature)
-  const known = new Set([feature, ...(mine?.members ?? []), ...(f.waitsOn ?? []), ...(f.dependsOn ?? [])])
   const live = (m) => fleet.features[m] && fleet.features[m].status !== 'done' && !landedOn(m)
+  // Already accounted for: its own group, what it waits on or groups by, what waits on it, a group
+  // linked to its own by a group_max cut (either way), and a member grouping already found it overlaps.
+  const linked = new Set([mine?.id, mine?.waitsOn, ...Object.entries(fleet.groups ?? {}).filter(([, g]) => mine && g.waitsOn === mine.id).map(([id]) => id)].filter(Boolean))
+  const known = new Set([feature, ...(mine?.members ?? []), ...(f.waitsOn ?? []), ...(f.dependsOn ?? []), ...Object.keys(fleet.features).filter((m) => (fleet.features[m].waitsOn ?? []).includes(feature))])
   const grouped = new Set(Object.values(fleet.groups ?? {}).flatMap((g) => g.members))
   const others = [
-    ...Object.entries(fleet.groups ?? {}).filter(([id]) => id !== mine?.id).map(([id, g]) => ({ id, members: g.members.filter(live) })),
+    ...Object.entries(fleet.groups ?? {}).filter(([id]) => !linked.has(id)).map(([id, g]) => ({ id, members: g.members.filter(live) })),
     ...Object.keys(fleet.features).filter((m) => !grouped.has(m) && live(m)).map((m) => ({ id: m, members: [m] })),
-  ].filter((g) => g.members.length && !g.members.some((m) => known.has(m)))
-  const hits = laneCollisions({ changed: { [feature]: changed }, groups: others, footprints: Object.fromEntries(footprints) })
-  for (const hit of hits) {
-    if ((f.collided ?? []).includes(hit.group)) continue
-    f.collided = [...(f.collided ?? []), hit.group]
-    const g = others.find((x) => x.id === hit.group)
-    const shared = `${hit.paths.slice(0, 3).join(', ')}${hit.paths.length > 3 ? '…' : ''}`
-    const room = (mine?.members.length ?? 1) + g.members.length <= AW.groupMax
-    if (!startedBuilding(feature) && room) {
-      f.observed = [...new Set([...(f.observed ?? []), ...hit.paths])].sort()
-      addNote(`${feature} now touches ${shared}, which ${g.members.join(', ')} change${g.members.length > 1 ? '' : 's'} too — it joins their group`)
-      regroup()
-      continue
-    }
-    const waits = [...new Set([...(f.waitsOn ?? []), ...g.members])]
-    addNote(`${feature} now touches ${shared}, which ${g.members.join(', ')} change${g.members.length > 1 ? '' : 's'} too — ${startedBuilding(feature) ? 'it has started building' : `their group is full (group_max ${AW.groupMax})`}, so it waits for ${g.members.length > 1 ? 'them' : 'it'} to land`)
-    Object.assign(f, { status: 'waiting', waitsOn: waits, reason: `after ${waits.join(', ')}` })
-    save()
-    return 'waiting'
+  ].filter((g) => g.members.length && !g.members.some((m) => known.has(m) || overlapOf(footprints.get(feature), footprints.get(m))))
+  const hit = laneCollisions({ changed: { [feature]: changed }, groups: others, footprints: Object.fromEntries(footprints) }).find((h) => !(f.collided ?? []).includes(h.group))
+  if (!hit) return null
+  f.collided = [...(f.collided ?? []), hit.group]
+  const g = others.find((x) => x.id === hit.group)
+  const shared = `${hit.paths.slice(0, 3).join(', ')}${hit.paths.length > 3 ? '…' : ''}`
+  const room = (mine?.members.length ?? 1) + g.members.length <= AW.groupMax
+  const building = g.members.every((m) => !PAST_BUILDING.has(stateOf(m)))
+  if (!startedBuilding(feature) && room && building) {
+    f.observed = [...new Set([...(f.observed ?? []), ...hit.paths])].sort()
+    addNote(`${feature} now touches ${shared}, which ${g.members.join(', ')} change${g.members.length > 1 ? '' : 's'} too — it joins their group`)
+    regroup()
+    return null
   }
-  return null
+  const why = startedBuilding(feature) ? 'it has started building' : !room ? `their group is full (group_max ${AW.groupMax})` : 'their group is past building'
+  const waits = [...new Set([...(f.waitsOn ?? []), ...g.members])]
+  addNote(`${feature} now touches ${shared}, which ${g.members.join(', ')} change${g.members.length > 1 ? '' : 's'} too — ${why}, so it waits for ${g.members.length > 1 ? 'them' : 'it'} to land`)
+  Object.assign(f, { status: 'waiting', waitsOn: waits, reason: `after ${waits.join(', ')}` })
+  save()
+  return 'waiting'
 }
 
 /** Wait, as a group member: off every queue until releaseGroups finds what it waits for. → 'waiting'. */
@@ -2715,6 +2747,8 @@ function enqueue(feature) {
     save()
     return
   }
+  // D12's baseline: the folder on the target as the lane is admitted, before anything merges in.
+  recordTargetSpec(feature, f)
   // Its dependencies' code, merged now so the worktree starts from it. A conflict is left to the
   // lane, whose own sync hands it to an agent.
   if (released && !fresh) mergeTargetQuietly(f.worktree)
@@ -2880,6 +2914,8 @@ function unpark(feature) {
   const f = fleet.features[feature]
   const by = f.unpark === true ? BY_PERSON : f.unpark
   delete f.unpark
+  // A person picked it again (after the revise D12 asked for, or not): the folder on the target now is the baseline.
+  if (by === BY_PERSON) delete f.targetSpec
   const rel = join(specOf(feature), 'MANIFEST.md')
   const p = join(f.worktree, rel)
   const text = existsSync(p) ? readFileSync(p, 'utf8') : null

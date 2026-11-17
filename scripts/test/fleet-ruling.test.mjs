@@ -15,6 +15,9 @@ test('rulingLine and parseRulings: one line a ruling, read back as each feature�
   const l2 = rulingLine({ date: '2026-11-16', feature: 'tags', paths: ['app/shared.js', 'app/x.js'], ruling: 'and x (see D3)' })
   const l3 = rulingLine({ date: '2026-11-16', feature: 'share', paths: ['app/y.js'], ruling: 'y' })
   assert.deepEqual(parseRulings(`# rulings\n${l1}${l2}${l3}not a ruling\n`), { tags: ['app/shared.js', 'api/routes.js', 'app/x.js'], share: ['app/y.js'] })
+  // Parentheses in the ruling and in a path (a route group): the last `(paths: …)` holds the paths.
+  const l4 = rulingLine({ date: '2026-11-16', feature: 'auth', paths: ['app/(auth)/login.tsx'], ruling: 'login moves (see D3)' })
+  assert.deepEqual(parseRulings(l4), { auth: ['app/(auth)/login.tsx'] })
 })
 
 test('fleet-ruling.mjs appends to $BUILDER_FLEET_DIR/rulings.md; with no fleet, to the repo’s .builder/fleet from a worktree too', () => {
@@ -37,7 +40,7 @@ test('fleet-ruling.mjs appends to $BUILDER_FLEET_DIR/rulings.md; with no fleet, 
 
 test('fleet-ruling.mjs refuses a call with no paths, no ruling, a bad feature name or a path out of the repo', () => {
   const env = { ...process.env, BUILDER_FLEET_DIR: mkdtempSync(join(tmpdir(), 'ruling-')) }
-  for (const args of [['tags', '--', 'no paths'], ['tags', 'app/a.js'], ['tags', 'app/a.js', '--'], ['ta gs', 'a', '--', 'x'], ['tags', '/etc/x', '--', 'x'], ['tags', '../x', '--', 'x']]) {
+  for (const args of [['tags', '--', 'no paths'], ['tags', 'app/a.js'], ['tags', 'app/a.js', '--'], ['ta gs', 'a', '--', 'x'], ['tags', '/etc/x', '--', 'x'], ['tags', '../x', '--', 'x'], ['tags', 'api\\..\\x', '--', 'x'], ['tags', 'a,b.js', '--', 'x']]) {
     const r = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', env })
     assert.equal(r.status, 2, args.join(' '))
   }

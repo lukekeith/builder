@@ -13,14 +13,19 @@ import { execFileSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const LINE = /^- (\d{4}-\d{2}-\d{2}) ([A-Za-z0-9._-]+): (.*) \(paths: ([^()]*)\)\s*$/
+// The last `(paths: …)` on the line: a ruling's own text, or a path like app/(auth)/x.tsx, may hold parentheses.
+const LINE = /^- (\d{4}-\d{2}-\d{2}) ([A-Za-z0-9._-]+): (.*) \(paths: (.*)\)\s*$/
 
 /** rulings.md as `{ feature: [paths] }` — every path a feature's rulings named, in order, once each. */
 export function parseRulings(text) {
   const out = {}
   for (const line of String(text ?? '').split('\n')) {
-    const m = LINE.exec(line.trim())
+    const t = line.trim()
+    const at = t.lastIndexOf(' (paths: ')
+    const m = at < 0 ? null : LINE.exec(t)
     if (!m) continue
+    // Greedy matching put the split at the last `(paths: `; read the paths from there.
+    m[4] = t.slice(at + ' (paths: '.length).replace(/\)\s*$/, '')
     const paths = m[4].split(',').map((p) => p.trim()).filter(Boolean)
     const have = (out[m[2]] ??= [])
     for (const p of paths) if (!have.includes(p)) have.push(p)
@@ -29,8 +34,10 @@ export function parseRulings(text) {
 }
 
 /** One rulings.md line. A path is repo-relative, forward slashes, no `./`; a ruling is one line. */
+/** A path as rulings.md keeps it: forward slashes, no leading `./`. */
+export const normalPath = (p) => String(p).trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '')
 export function rulingLine({ date, feature, paths, ruling }) {
-  const clean = paths.map((p) => String(p).trim().replace(/\\/g, '/').replace(/^\.\//, '')).filter(Boolean)
+  const clean = paths.map(normalPath).filter(Boolean)
   return `- ${date} ${feature}: ${String(ruling).replace(/\s+/g, ' ').trim()} (paths: ${clean.join(', ')})\n`
 }
 
@@ -64,8 +71,9 @@ if (isMain) {
     console.error('Usage: fleet-ruling.mjs <feature> <path>… -- <ruling>   (a ruling that touches paths outside the feature’s footprint)')
     process.exit(2)
   }
-  if (paths.some((p) => p.startsWith('/') || p.split('/').includes('..'))) {
-    console.error('fleet-ruling: paths are repo-relative — no absolute path, no ..')
+  // Checked as written to the file: `api\..\x` is `api/../x`. A comma would split one path in two.
+  if (paths.map(normalPath).some((p) => p.startsWith('/') || /^[A-Za-z]:/.test(p) || p.split('/').includes('..') || p.includes(','))) {
+    console.error('fleet-ruling: paths are repo-relative — no absolute path, no .., no comma')
     process.exit(2)
   }
   const file = rulingsFile()

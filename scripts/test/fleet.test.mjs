@@ -3107,8 +3107,9 @@ test('D13: split advice when two grouped features share a few paths — once —
   assert.ok(!(q.fleet.notes ?? []).some((n) => /share \d+ path/.test(n)), JSON.stringify(q.fleet.notes))
 })
 
-test('D12: a spec edit that lands on the target while a feature builds pauses it for /builder:revise', async () => {
-  const root = makeRepo(['a'])
+test('D12: a spec edit that lands on the target while a feature builds pauses it for /builder:revise — a human step, never retried, said in its manifest', async () => {
+  // Automatic retries on, as a person's config has them: a revision is not one an agent retries.
+  const root = makeRepo(['a'], { lines: ['auto_unpark: 2'] })
   writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ a: ['audited', 'SLOW:planned', 'building', 'NOOP'] }))
   const fleet = spawn('node', [FLEET, 'a'], { cwd: root, stdio: 'ignore', env: ENV(root, { STUB_SLOW_MS: '2500', FLEET_KEEP_STOPPED_WORKTREES: '1' }) })
   const exited = new Promise((res) => fleet.on('exit', res))
@@ -3121,6 +3122,20 @@ test('D12: a spec edit that lands on the target while a feature builds pauses it
   await exited
   const f = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).features.a
   assert.equal(f.status, 'parked', JSON.stringify(f))
-  assert.equal(f.reason, 'its spec changed on main — next: /builder:revise --path docs/features/a')
+  assert.equal(f.reason, 'revising: its spec changed on main — next: /builder:revise --path docs/features/a')
+  assert.equal(f.autoUnparks ?? 0, 0, 'not retried')
   assert.ok(!/start a \S+ \d+ building /.test(calls()), `it never built on the old spec:\n${calls()}`)
+  assert.match(git(root, 'show', `${f.branch}:docs/features/a/MANIFEST.md`), /^blocked: "revising: its spec changed on main — next: \/builder:revise --path docs\/features\/a"$/m)
 })
+
+test('D10: members of one overlap cut by group_max never wait on each other — the cut groups land in order', () => {
+  const root = makeRepo(['a', 'b', 'c'], { lines: ['group_max: 2'] })
+  plannedWith(root, { a: ['app/shared.txt'], b: ['app/shared.txt'], c: ['app/shared.txt'] })
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b', 'c'], { a: ['COMMIT:app/shared.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail], c: ['COMMIT:app/c.txt:building', ...tail] }, {}, { timeout: 180000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${JSON.stringify(r.fleet.features)}\n${r.calls.join('\n')}`)
+  for (const x of ['a', 'b', 'c']) assertLanded(r, x)
+  assert.ok(!(r.fleet.notes ?? []).some((n) => /now touches/.test(n)), `the cut is no new collision: ${JSON.stringify(r.fleet.notes)}`)
+})
+
