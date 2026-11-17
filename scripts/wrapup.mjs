@@ -208,7 +208,8 @@ function main(argv) {
   }
   if (settled.size) {
     fleet.notes = (fleet.notes ?? []).filter((n) => !settled.has(n))
-    saveFleet(root, fleet)
+    // No fleet runs while wrapup does (it refuses otherwise): STATUS.md is rendered as such — F2/F1.
+    saveFleet(root, fleet, null, null, null, false)
   }
   if (!failed) markWrapped(root)
   return failed ? 1 : 0

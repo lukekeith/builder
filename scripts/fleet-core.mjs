@@ -154,7 +154,7 @@ export function loadFleet(root) {
 }
 
 /** Atomic: a fleet killed mid-write leaves the previous fleet.json, never half of one. */
-export function saveFleet(root, fleet, progress = null, testsOf = null, folderOf = null) {
+export function saveFleet(root, fleet, progress = null, testsOf = null, folderOf = null, alive = true) {
   const dir = fleetDir(root)
   mkdirSync(dir, { recursive: true })
   const ignore = join(root, '.builder', '.gitignore')
@@ -162,7 +162,7 @@ export function saveFleet(root, fleet, progress = null, testsOf = null, folderOf
   const tmp = join(dir, 'fleet.json.tmp')
   writeFileSync(tmp, JSON.stringify(fleet, null, 2) + '\n')
   renameSync(tmp, join(dir, 'fleet.json'))
-  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), testsOf, folderOf))
+  writeFileSync(join(dir, 'STATUS.md'), renderStatus(fleet, progress, tailArchive(root, 1)[0] ?? null, Date.now(), tailArchive(root, 5), testsOf, folderOf, alive))
 }
 
 // ---- the archive -------------------------------------------------------------------------------

@@ -1265,7 +1265,8 @@ test('the status Time cell is wall-clock time (F2)', () => {
   const at = (m) => new Date(Date.UTC(2026, 10, 15, 10, m)).toISOString()
   const fleet = { features: { a: { status: 'parked', runs: 2, timing: [{ start: at(0), end: at(20), ms: 1200000 }, { start: at(10), end: at(30), ms: 1200000 }] } } }
   const md = renderStatus(fleet, null, null, Date.parse(at(60)))
-  assert.match(md, /\| a \| parked \| .* \| 2 \| 30m \|/, md)  // With no fleet alive, a keep-awake note an ended fleet left is not shown.
+  assert.match(md, /\| a \| parked \| .* \| 2 \| 30m \|/, md)
+  // With no fleet alive, a keep-awake note an ended fleet left is not shown.
   const left = renderStatus({ ...fleet, notes: [AWAKE_NOTE, AWAKE_UNAVAILABLE, 'other'] }, null, null, Date.parse(at(60)), [], null, null, false)
   assert.doesNotMatch(left, /caffeinate/)
   assert.match(left, /- other/)
