@@ -158,6 +158,16 @@ while (step.startsWith('APPEND:')) {
   execFileSync('git', ['commit', '-qm', `stub: ${feature} appends to ${path}`], { stdio: 'ignore' })
   step = rest.join(':')
 }
+// PREPEND:<path>:<step> — as APPEND, the line at the start: with an APPEND elsewhere, the two merge cleanly.
+while (step.startsWith('PREPEND:')) {
+  const [, path, ...rest] = step.split(':')
+  const file = join(process.cwd(), path)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${feature} was first\n${existsSync(file) ? readFileSync(file, 'utf8') : ''}`)
+  execFileSync('git', ['add', '--', path], { stdio: 'ignore' })
+  execFileSync('git', ['commit', '-qm', `stub: ${feature} prepends to ${path}`], { stdio: 'ignore' })
+  step = rest.join(':')
+}
 // CONFIG:<step> — the run edits .claude/builder.md in its worktree and commits it, then <step>.
 if (step.startsWith('CONFIG:')) {
   step = step.slice(7)

@@ -1126,9 +1126,44 @@ test('D15: two features that both change a generated file land with no agent res
   assert.equal(r.status, 0, `${JSON.stringify(r.fleet.features)}\n${(r.fleet.notes ?? []).join('\n')}\n${r.calls.join('\n')}`)
   assertLanded(r, 'a')
   assertLanded(r, 'b')
-  assert.ok(!r.calls.some((l) => / cmd=A /.test(l)), `no agent ran to resolve a conflict:\n${r.calls.join('\n')}`)
+  assert.ok(!r.calls.some((l) => /^resolve /.test(l)), `no agent ran to resolve a conflict:\n${r.calls.join('\n')}`)
   assert.equal(git(root, 'show', 'main:gen/index.txt'), 'a.txt\nb.txt', 'regenerated from both features’ code')
   assert.ok((r.fleet.notes ?? []).some((n) => /regenerated gen\/index\.txt \(generated\.command\) — no agent needed/.test(n)), JSON.stringify(r.fleet.notes))
+})
+
+test('D15: two features whose changes to one generated file merge cleanly land it as generated.command makes it — never a text merge', () => {
+  const root = makeRepo(['a', 'b'])
+  withGenerated(root)
+  // A generated file both will change, far apart: a prepends, b appends, and git merges them cleanly.
+  mkdirSync(join(root, 'gen'))
+  writeFileSync(join(root, 'gen/index.txt'), '1\n2\n3\n4\n5\n6\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'gen file')
+  const tail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/a.txt:PREPEND:gen/index.txt:building', ...tail], b: ['COMMIT:app/b.txt:APPEND:gen/index.txt:building', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.signal, null, 'the fleet never finished:\n' + r.calls.join('\n'))
+  assert.equal(r.status, 0, `${r.stderr}\n${JSON.stringify(r.fleet.features)}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.equal(git(root, 'show', 'main:gen/index.txt'), 'a.txt\nb.txt', 'what generated.command makes from both, not the two edits merged')
+})
+
+test('D15: what generated.command changes outside generated.paths is put back, named in a note — never committed', () => {
+  const root = makeRepo(['a', 'b'])
+  const cfg = join(root, '.claude/builder.md')
+  writeFileSync(cfg, readFileSync(cfg, 'utf8').replace('agent_walk:\n', 'generated:\n  paths: gen/*\n  command: mkdir -p gen && ls app | sort > gen/index.txt && echo touched >> app/stray.txt\nagent_walk:\n'))
+  mkdirSync(join(root, 'app'))
+  writeFileSync(join(root, 'app/stray.txt'), 'kept\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'generated block and a tracked file')
+  const tail = ['COMMIT:gen/index.txt:READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const r = runFleet(root, ['a', 'b'], { a: ['COMMIT:app/a.txt:building', ...tail], b: ['COMMIT:app/b.txt:building', ...tail] }, {}, { timeout: 120000 })
+  assert.equal(r.status, 0, `${r.stderr}\n${JSON.stringify(r.fleet.features)}\n${r.calls.join('\n')}`)
+  assertLanded(r, 'a')
+  assertLanded(r, 'b')
+  assert.equal(git(root, 'show', 'main:app/stray.txt'), 'kept', 'the stray edit was never committed')
+  // Whichever lands second merges the first's generated file and regenerates: its worktree is named.
+  assert.ok((r.fleet.notes ?? []).some((n) => /^generated\.command changed app\/stray\.txt outside generated\.paths in [ab]'s worktree — put back; only generated paths are committed$/.test(n)), JSON.stringify(r.fleet.notes))
 })
 
 test('D15: a commit of generated files only after an agent sign-off is not new code — no re-walk', () => {
@@ -1150,6 +1185,15 @@ test('D15: agent_walk.after_land runs in the main checkout once per landing; a f
   assert.equal(lines.length, 4, lines.join('\n'))
   assert.deepEqual([lines[0], lines[2]].map((l) => realpathSync(l)), [realpathSync(root), realpathSync(root)])
   assert.deepEqual([lines[1], lines[3]].sort(), ['a', 'b'])
+
+  // A group lands as one merge: after_land runs once for it.
+  const gout = join(tmpdir(), `after-land-g-${process.pid}-${Date.now()}`)
+  const grp = makeRepo(['g1', 'g2'], { lines: [`after_land: echo {feature} >> ${gout}`] })
+  plannedWith(grp, { g1: ['app/shared.txt'], g2: ['app/shared.txt'] })
+  const gtail = ['READY-PENDING', 'built', 'signed-off', 'verified', 'SHIP']
+  const g = runFleet(grp, ['g1', 'g2'], { g1: ['COMMIT:app/shared.txt:building', ...gtail], g2: ['COMMIT:app/g2.txt:building', ...gtail] }, {}, { timeout: 120000 })
+  assert.equal(g.status, 0, g.stderr)
+  assert.deepEqual(readFileSync(gout, 'utf8').trim().split('\n'), ['g2'], 'once, for the merge through the tip')
 
   const bad = makeRepo(['c'], { lines: ['after_land: exit 3'] })
   const q = runFleet(bad, ['c'], { c: HAPPY })
