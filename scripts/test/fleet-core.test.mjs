@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
 import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
-import { keepAwakeArgs, wallTime } from '../fleet-core.mjs'
+import { keepAwakeArgs, wallTime, AWAKE_NOTE, AWAKE_UNAVAILABLE } from '../fleet-core.mjs'
 import { landingLine, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from '../fleet-core.mjs'
 
 test('laneOf routes each state', () => {
@@ -1247,18 +1247,28 @@ test('wallTime (F2): first start to last end, the run in progress counted to now
   // Two lanes overlapping (10:00–10:20 and 10:10–10:30), then a gap and a run (10:40–10:45): 45 minutes, not 55.
   const f = { timing: [{ start: at(0), end: at(20), ms: 20 * 60000 }, { start: at(10), end: at(30), ms: 20 * 60000 }, { start: at(40), end: at(45), ms: 5 * 60000 }] }
   assert.equal(wallTime(f), 45 * 60000)
-  // A run that started after the last end is in progress: it counts to now.
-  assert.equal(wallTime({ ...f, runStartedAt: at(50) }, Date.parse(at(55))), 55 * 60000)
+  // A run that started after the last end, on a row the live fleet runs, is in progress: it counts to now.
+  assert.equal(wallTime({ ...f, status: 'building', runStartedAt: at(50) }, Date.parse(at(55))), 55 * 60000)
+  // The same row once the fleet is gone (stopped, killed — the run never closed): it does not grow.
+  assert.equal(wallTime({ ...f, status: 'building', runStartedAt: at(50) }, Date.parse(at(55)) + 48 * 3600000, false), 45 * 60000)
+  // A parked row's runStartedAt is no run in progress, fleet alive or not.
+  assert.equal(wallTime({ ...f, status: 'parked', runStartedAt: at(50) }, Date.parse(at(90))), 45 * 60000)
+  // A run that recorded no start (an older fleet.json): no wall time — renderStatus sums the runs.
+  assert.equal(wallTime({ timing: [...f.timing, { ms: 60000 }] }), null)
   // A runStartedAt from a run already recorded is not one in progress.
   assert.equal(wallTime({ ...f, runStartedAt: at(40) }, Date.parse(at(90))), 45 * 60000)
   assert.equal(wallTime({}), null)
-  assert.equal(wallTime({ runStartedAt: at(0) }, Date.parse(at(3))), 3 * 60000, 'the first run, still going')
+  assert.equal(wallTime({ status: 'walking', runStartedAt: at(0) }, Date.parse(at(3))), 3 * 60000, 'the first run, still going')
 })
 
 test('the status Time cell is wall-clock time (F2)', () => {
   const at = (m) => new Date(Date.UTC(2026, 10, 15, 10, m)).toISOString()
   const fleet = { features: { a: { status: 'parked', runs: 2, timing: [{ start: at(0), end: at(20), ms: 1200000 }, { start: at(10), end: at(30), ms: 1200000 }] } } }
   const md = renderStatus(fleet, null, null, Date.parse(at(60)))
-  assert.match(md, /\| a \| parked \| .* \| 2 \| 30m \|/, md)
+  assert.match(md, /\| a \| parked \| .* \| 2 \| 30m \|/, md)  // With no fleet alive, a keep-awake note an ended fleet left is not shown.
+  const left = renderStatus({ ...fleet, notes: [AWAKE_NOTE, AWAKE_UNAVAILABLE, 'other'] }, null, null, Date.parse(at(60)), [], null, null, false)
+  assert.doesNotMatch(left, /caffeinate/)
+  assert.match(left, /- other/)
+  assert.match(renderStatus({ ...fleet, notes: [AWAKE_NOTE] }, null, null, Date.parse(at(60))), /- the fleet keeps the Mac awake/)
 })
 

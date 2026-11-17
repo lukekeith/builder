@@ -751,7 +751,7 @@
         },
         {
           "role": "claude",
-          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · /builder:fleet:status --archived for the latest 20\nlast 4 landed, mean wall-clock 2h58m start → merge (audit 8m · plan 27m · build 44m · final review 16m · last phase close 22m · walk 31m · verify 18m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | none · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | none · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | none · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |"
+          "text": "# builder fleet — 4 feature(s): 1 walking · 2 building · 1 waiting · ▓▓▓▓▓░░░░░ 50%\n\nmerges into **main** · worktrees under /Users/sam/code/acme-certs.fleet\n\n4 archived (last: overdue-filter, 2d ago) · /builder:fleet:status --archived for the latest 20\nlast 4 landed, mean wall-clock 2h58m start → merge (audit 8m · plan 27m · build 44m · final review 16m · last phase close 22m · walk 31m · verify 18m · ship 4m · merge 1m · parked 7m)\n\n| Feature | Status | Tests | Progress | Runs | Time | Reason | Worktree |\n|---|---|---|---|---|---|---|---|\n| cert-history | walking | none · end | ▓▓▓▓▓▓▓▓░░ 75% · built | 3 | 41m | — | yes |\n| cert-tags | building | risk · end | ▓▓▓▓░░░░░░ 35% · build 5/14 | 2 | 1h12m | — | yes |\n| portal-cert-list | building | none · end | ▓▓▓▓▓░░░░░ 52% · build 6/9 | 1 | 34m | — | yes |\n| portal-downloads | waiting | none · end | ▓▓▓▓░░░░░░ 36% · build 3/8 | 0 | — | after portal-cert-list | — |\n\n- the fleet keeps the Mac awake (caffeinate) until it ends"
         },
         {
           "role": "note",
@@ -933,9 +933,9 @@
         }
       ],
       "stamp": {
-        "hash": "d3503b0130dd",
-        "version": "6.1.1",
-        "date": "2026-11-04"
+        "hash": "3a58fd5cbec9",
+        "version": "6.2.3",
+        "date": "2026-11-17"
       }
     },
     {
@@ -1003,9 +1003,9 @@
         }
       ],
       "stamp": {
-        "hash": "fb6ec2c06e01",
-        "version": "6.1.1",
-        "date": "2026-11-04"
+        "hash": "6c8b55a97ede",
+        "version": "6.2.3",
+        "date": "2026-11-17"
       }
     },
     {

@@ -33,7 +33,8 @@ How to read it, when asked:
   floor (planned 15, built 75, verified 92, merged 100); inside the build it climbs per task — a
   share when its brief is written, more at its report, all at its tick (`build 5/9`) — and it moves
   through the plan and the agent walk the same way. Half the bar is not half the wall-clock.
-- **`Time`** is each feature's agent time so far. **The line under the heading** gives, for the last
+- **`Time`** is each feature's **wall-clock** since its first run started — queueing, parks and the
+  gaps between runs included; a run in progress counts to now. **The line under the heading** gives, for the last
   five landed features, the mean **wall-clock** from start to merge — parks, restarts and queueing
   included — and where it went by stage. For "how long is left", that wall-clock mean for the stages
   the feature hasn't finished is the honest estimate; say it is one.

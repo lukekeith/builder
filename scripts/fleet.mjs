@@ -32,7 +32,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes, keepAwakeArgs } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes, keepAwakeArgs, AWAKE_NOTE, AWAKE_UNAVAILABLE, withoutAwake } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -168,7 +168,7 @@ if (flag('--status') || flag('--archived') || flag('--wait')) {
   if (!flag('--wait')) markSeen(ROOT)
   if (flag('--archived')) console.log(renderArchived(tailArchive(ROOT, Number(archivedVal) || 20), fleet?.archived ?? 0))
   else {
-    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf, folderOf) : 'No fleet has run in this repo yet.')
+    console.log(fleet ? renderStatus(fleet, progressOf, tailArchive(ROOT, 1)[0] ?? null, Date.now(), tailArchive(ROOT, 5), testsOf, folderOf, fleetAlive(ROOT)) : 'No fleet has run in this repo yet.')
     // A fleet killed from outside (a session's background-task limit, a closed terminal) leaves its
     // rows mid-run and no live lock: say so, with the command that picks them up again.
     const note = fleet && !fleetAlive(ROOT) ? stoppedNote(fleet, fileURLToPath(import.meta.url)) : ''
@@ -874,16 +874,18 @@ const save = () => saveFleet(ROOT, fleet, progressOf, testsOf, folderOf)
 
 // F1: the fleet holds its lock, so it is the one running — keep the Mac awake until it ends. Not for
 // --land (one landing, then it exits); --dry-run, --status, --wait, --pause and adding to a running
-// fleet have exited by now. caffeinate -w ends with this process, whatever ends it.
-const AWAKE_NOTE = 'the fleet keeps the Mac awake (caffeinate) until it ends'
+// fleet have exited by now. caffeinate -w ends with this process, whatever ends it. A note an earlier
+// fleet left (stopped, killed) goes first: only this run's says whether the Mac is kept awake. By its
+// path, so a PATH without /usr/bin never breaks the launch line's promise.
+fleet.notes = withoutAwake(fleet.notes)
 const awakeArgs = LAND ? null : keepAwakeArgs({ platform: process.platform, env: process.env, pid: process.pid })
 if (awakeArgs) {
   const unavailable = () => {
-    fleet.notes = (fleet.notes ?? []).filter((n) => n !== AWAKE_NOTE)
-    addNote('caffeinate is unavailable — the Mac may sleep while the fleet runs')
+    fleet.notes = withoutAwake(fleet.notes)
+    addNote(AWAKE_UNAVAILABLE)
   }
   try {
-    const c = spawn('caffeinate', awakeArgs, { detached: true, stdio: 'ignore' })
+    const c = spawn('/usr/bin/caffeinate', awakeArgs, { detached: true, stdio: 'ignore' })
     c.on('error', unavailable)
     c.unref()
     addNote(AWAKE_NOTE)
@@ -913,6 +915,8 @@ const stopAll = (code) => {
     killStartSync(fleet.envCheck)
     if (existsSync(fleet.envCheck.worktree)) hook(AW.stop, fleet.envCheck.worktree, '_envcheck')
   }
+  // caffeinate -w ends with this process: nothing keeps the Mac awake once it has exited.
+  fleet.notes = withoutAwake(fleet.notes)
   save()
   unlock()
   process.exit(code)
@@ -3818,7 +3822,7 @@ reapLaneDbs()
 delete fleet.walkBatch
 // The whole repo, not just this fleet's rows: anything else left lying around is named here too.
 // The fleet is ending: it no longer keeps the Mac awake, whichever way that went.
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: ') && n !== AWAKE_NOTE && !n.startsWith('caffeinate is unavailable'))
+fleet.notes = withoutAwake(fleet.notes).filter((n) => !n.startsWith('repo: '))
 addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))
 save()
 unlock()

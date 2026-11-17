@@ -1196,7 +1196,7 @@ export function groupLine(id, group, features) {
   return `group ${id}: ${group.members.map((m) => `${m} ${mark(m)}`).join(' → ')}`
 }
 
-export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null, folderOf = null) {
+export function renderStatus(fleet, progress = null, last = null, now = Date.now(), recent = [], testsOf = null, folderOf = null, alive = true) {
   const all = Object.entries(fleet.features).sort(([a], [b]) => a.localeCompare(b))
   const rows = all.filter(([, f]) => f.status !== 'done')
   const archived = (fleet.archived ?? 0) + (all.length - rows.length)
@@ -1236,8 +1236,8 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
       // Rows whose runs recorded no start or end (an older fleet.json) keep the sum of their runs.
-      const wall = wallTime(f, now) ?? (f.timing?.length ? f.timing.reduce((t, r) => t + (r.ms ?? 0), 0) : null)
-      const spent = wall != null ? duration(wall) : '—'
+      const wall = wallTime(f, now, alive) ?? (f.timing?.length ? f.timing.reduce((t, r) => t + (r.ms ?? 0), 0) : null)
+      const spent = wall ? duration(wall) : '—'
       lines.push(`| ${cell(name)} | ${cell(f.status)} | ${cell(rowLabel(f.facts) ?? testsOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
@@ -1257,7 +1257,9 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
       lines.push('  choices:', ...choices.map((c, i) => `    ${i + 1}. ${c.label}${c.command ? ` — ${c.command}` : ''}`))
     }
   }
-  if (fleet.notes?.length) lines.push('', ...fleet.notes.map((n) => `- ${n}`))
+  // A fleet that ended any way but its own end (stopped, killed) left its keep-awake note behind.
+  const notes = alive ? fleet.notes ?? [] : withoutAwake(fleet.notes)
+  if (notes.length) lines.push('', ...notes.map((n) => `- ${n}`))
   return lines.join('\n') + '\n'
 }
 
@@ -1577,16 +1579,11 @@ export function stagesFromCommits(commits, feature = null) {
   return out
 }
 
-/**
- * Wall-clock facts for the archive row, from the branch's stage timeline (stagesFromCommits) and the
- * fleet's runs (timing[]): start → merge (`wallMs`), the stages plus `merge` (last commit → now), how
- * long the built feature waited for the walk lane (first walk run after endGatesAt), rounds, parks.
- * The wall starts at the branch's first commit, except:
- *  - a branch a person started long before the fleet took it starts with the fleet's first run;
- *  - a branch with no commit before the fleet's first run (the run made its first commit — the
- *    fleet's own spec bring-in comes before it otherwise) starts with that run, and the lead goes to
- *    the opening stage: commits can't say when the run's work began, the run's start can.
- */
+/** F1: what a fleet's notes say while it keeps the Mac awake, or cannot — gone once no fleet runs. */
+export const AWAKE_NOTE = 'the fleet keeps the Mac awake (caffeinate) until it ends'
+export const AWAKE_UNAVAILABLE = 'caffeinate is unavailable — the Mac may sleep while the fleet runs'
+export const withoutAwake = (notes) => (notes ?? []).filter((n) => n !== AWAKE_NOTE && n !== AWAKE_UNAVAILABLE)
+
 /**
  * F1: the args for `caffeinate` that keep the Mac awake while the fleet (`pid`) runs — idle and system
  * sleep held off (-is), ending with the process (-w). Null off macOS, with BUILDER_CAFFEINATE=0, and
@@ -1599,20 +1596,35 @@ export function keepAwakeArgs({ platform, env = {}, pid }) {
 
 /**
  * F2: a row's Time — real elapsed time from its first run's start to its last run's end, plus the run
- * in progress (one started after the last recorded end runs until `now`). Not the sum of the runs:
- * that counts parallel lanes twice and drops the gaps between runs. → ms, or null with no runs.
+ * in progress: one started after the last recorded end, on a row the live fleet (`alive`) is running,
+ * counts to `now`. A stopped or killed fleet never closed its runs, so with no fleet alive nothing
+ * counts as in progress — its Time does not grow while nobody runs it. Not the sum of the runs: that
+ * counts parallel lanes twice and drops the gaps between runs. → ms, or null with no runs, or with a
+ * run that recorded no start (an older fleet.json: renderStatus sums those instead).
  */
-export function wallTime(f, now = Date.now()) {
-  const runs = (f?.timing ?? []).map((t) => [Date.parse(t.start), Date.parse(t.end)]).filter(([a]) => Number.isFinite(a))
+export function wallTime(f, now = Date.now(), alive = true) {
+  const timing = f?.timing ?? []
+  if (timing.some((t) => !Number.isFinite(Date.parse(t?.start)))) return null
+  const runs = timing.map((t) => [Date.parse(t.start), Date.parse(t.end)])
   const live = Date.parse(f?.runStartedAt ?? '')
   const lastEnd = Math.max(...runs.map(([, b]) => (Number.isFinite(b) ? b : -Infinity)), -Infinity)
-  const inProgress = Number.isFinite(live) && live > lastEnd
+  const inProgress = alive && RUNNING.has(f?.status) && Number.isFinite(live) && live > lastEnd
   const first = Math.min(...runs.map(([a]) => a), inProgress ? live : Infinity)
   if (!Number.isFinite(first)) return null
   const end = inProgress ? now : lastEnd
   return Number.isFinite(end) ? Math.max(0, end - first) : null
 }
 
+/**
+ * Wall-clock facts for the archive row, from the branch's stage timeline (stagesFromCommits) and the
+ * fleet's runs (timing[]): start → merge (`wallMs`), the stages plus `merge` (last commit → now), how
+ * long the built feature waited for the walk lane (first walk run after endGatesAt), rounds, parks.
+ * The wall starts at the branch's first commit, except:
+ *  - a branch a person started long before the fleet took it starts with the fleet's first run;
+ *  - a branch with no commit before the fleet's first run (the run made its first commit — the
+ *    fleet's own spec bring-in comes before it otherwise) starts with that run, and the lead goes to
+ *    the opening stage: commits can't say when the run's work began, the run's start can.
+ */
 export function wallFacts(st, timing = [], now = Date.now()) {
   if (!st?.startedAt) return { wallMs: null, stages: null, walkQueueMs: null }
   const runs = (timing ?? []).filter((t) => t?.start)
