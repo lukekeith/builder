@@ -1421,7 +1421,14 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
     // is not in the branch, the verifier merged changes in itself — two to one generated file would
     // land as a text merge nobody regenerated. Such a verdict neither carries nor releases: the branch
     // takes the target (mergeIn regenerates) and a new run tests what it holds.
-    const merged = (v) => Boolean(GEN.command && v?.targetSha && tryGit(['merge-base', '--is-ancestor', v.targetSha, 'HEAD'], f.worktree) === null)
+    // Only when it matters: both the target since the branch forked and the branch changed a generated
+    // path (mergeIn's rule) — any other movement merges there as cleanly as it would here.
+    const genTouched = (a, b) => (tryGit(['diff', '--name-only', a, b], f.worktree) ?? '').split('\n').some((p) => p && isGenerated(p))
+    const merged = (v) => {
+      if (!GEN.command || !v?.targetSha || tryGit(['merge-base', '--is-ancestor', v.targetSha, 'HEAD'], f.worktree) !== null) return false
+      const base = tryGit(['merge-base', 'HEAD', v.targetSha], f.worktree)
+      return !base || (genTouched(base, v.targetSha) && genTouched(base, 'HEAD'))
+    }
     let done = mergeVerdict(ROOT, f.branch, head, TARGET)
     if (merged(done)) done = null
     let held = done?.status === 'green' && done.held ? null : heldMerge(ROOT, f.branch, TARGET)
@@ -1445,8 +1452,11 @@ async function mergeThroughVerifier(feature, f, { message = mergeMessage([featur
     if (GEN.command && !(done?.status === 'green' && done.held) && tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], f.worktree) === null) {
       const why = await syncTarget(f.worktree, 'features that merged while this one shipped', feature)
       if (why) return why
+      // syncTarget leaves a dirty worktree alone: landing it would land a generated file nobody made.
       if (tryGit(['merge-base', '--is-ancestor', `refs/heads/${TARGET}`, 'HEAD'], f.worktree) === null)
-        addNote(`${feature}: ${TARGET} could not be merged into its branch before landing (its worktree has uncommitted changes) — the verifier merges it, and generated files it shares with ${TARGET} are not made again`)
+        return `shipped, but ${TARGET} could not be merged into its branch before landing — ${f.worktree} has uncommitted changes, and its generated files must be made on the merged code — next: commit or set aside the changes there, then /builder:agent ${feature}`
+      // The branch moved (a merge, maybe one an agent resolved): the loop's top checks the sign-off again.
+      if (tryGit(['rev-parse', 'HEAD'], f.worktree) !== head) continue
     }
     let id
     try {
@@ -1994,13 +2004,15 @@ const footprinted = new Set()
 let footprints = new Map()
 /** Split advice already given this run, per pair (D13): said once. */
 const advised = new Set()
+let lastAdviceKey = null
 const RULINGS = () => join(DIR, 'rulings.md')
 let rulingsCache = { mtime: -1, data: {} }
 /** rulings.md parsed, read again only when it changed. */
 function rulings() {
   let mtime = 0
   try {
-    mtime = statSync(RULINGS()).mtimeMs
+    const st = statSync(RULINGS())
+    mtime = `${st.mtimeMs}:${st.size}` // size too: an append within one mtime tick still shows
   } catch {
     return {}
   }
@@ -2101,8 +2113,12 @@ function regroup() {
   else delete fleet.groups
   // D13: a group joined over a few shared paths could build in parallel with a prerequisite feature
   // that takes the shared change — said once per pair per run, never acted on.
-  // Every overlapping pair, a group_max cut included — there a split saves the most.
-  for (let i = 0; i < names.length; i++)
+  // Every overlapping pair, a group_max cut included — there a split saves the most. Only when the
+  // footprints changed since the last regroup: each pair is weighed once per change, not per regroup.
+  const fpKey = JSON.stringify([...footprints].filter(([, v]) => v))
+  const weigh = fpKey !== lastAdviceKey
+  lastAdviceKey = fpKey
+  for (let i = 0; weigh && i < names.length; i++)
     for (let j = i + 1; j < names.length; j++) {
       const [a, b] = [names[i], names[j]]
       if (!footprints.get(a) || !footprints.get(b)) continue
@@ -2156,7 +2172,9 @@ function specChanged(feature, f) {
   const script = join(dirname(fileURLToPath(import.meta.url)), 'advance.mjs')
   try {
     execFileSync(process.execPath, [script, folder, '--set', `blocked=${JSON.stringify(reason)}`, '--commit', 'chore({key}): {feature} — its spec changed on the target, parked for a revision'], { cwd: f.worktree, stdio: ['ignore', 'pipe', 'pipe'] })
-  } catch {}
+  } catch (e) {
+    addNote(`${feature} parked for a revision, but blocked: could not be written to its manifest (${String(e.stderr || e.message).trim().split('\n').pop()}) — the fleet's row still holds it`)
+  }
   return park(f, reason)
 }
 /**
@@ -2173,14 +2191,15 @@ function atBoundary(feature, f) {
   const state = stateOf(feature)
   if (!PLANNING_OR_BUILDING.has(state)) return null
   const tree = treeOf(`refs/heads/${TARGET}`, feature)
-  if (f.targetSpec == null) f.targetSpec = tree // admitted before its folder was on the target: from here
+  if (f.targetSpec == null) (f.targetSpec = tree), save() // admitted before its folder was on the target: from here
   else if (tree !== f.targetSpec) return specChanged(feature, f)
   if (!f.worktree || !existsSync(f.worktree)) return null
   // A ruling recorded since: an unstarted feature's footprint is widened by regroup; a started one's is weighed below.
   if (!startedBuilding(feature) && extraPaths(feature).join('\n') !== (f.widened ?? '')) regroup()
+  // Its own commits only — not the target's, not the member before it's — merges left out: a merge
+  // brings others' paths, and a conflict an agent resolved is the others' paths too.
   const prev = f.groupPrev && !landedOn(f.groupPrev) ? fleet.features[f.groupPrev]?.branch : null
-  const base = tryGit(['merge-base', prev ? `refs/heads/${prev}` : `refs/heads/${TARGET}`, 'HEAD'], f.worktree)
-  const own = base ? (tryGit(['diff', '--name-only', `${base}..HEAD`], f.worktree) ?? '').split('\n') : []
+  const own = (tryGit(['log', '--no-merges', '--format=', '--name-only', 'HEAD', '--not', `refs/heads/${TARGET}`, ...(prev ? [`refs/heads/${prev}`] : [])], f.worktree) ?? '').split('\n')
   const changed = [...new Set([...own, ...(startedBuilding(feature) ? extraPaths(feature) : [])])].filter((p) => p && !p.startsWith(`${CFG.registry}/`) && !GEN.paths.some((g) => matchesGlob(p, g)))
   if (!changed.length) return null
   const mine = groupOf(feature)
@@ -2188,7 +2207,23 @@ function atBoundary(feature, f) {
   // Already accounted for: its own group, what it waits on or groups by, what waits on it, a group
   // linked to its own by a group_max cut (either way), and a member grouping already found it overlaps.
   const linked = new Set([mine?.id, mine?.waitsOn, ...Object.entries(fleet.groups ?? {}).filter(([, g]) => mine && g.waitsOn === mine.id).map(([id]) => id)].filter(Boolean))
-  const known = new Set([feature, ...(mine?.members ?? []), ...(f.waitsOn ?? []), ...(f.dependsOn ?? []), ...Object.keys(fleet.features).filter((m) => (fleet.features[m].waitsOn ?? []).includes(feature))])
+  // Waits followed through — whatever it waits on waits on, and whatever waits on it, and on that —
+  // so a chain of D10 waits never closes into a cycle.
+  const waitsOf = (m) => fleet.features[m]?.waitsOn ?? []
+  const reach = (from, next) => {
+    const seen = new Set()
+    const todo = [...from]
+    while (todo.length) {
+      const m = todo.pop()
+      if (seen.has(m)) continue
+      seen.add(m)
+      todo.push(...next(m))
+    }
+    return seen
+  }
+  const ahead = reach(waitsOf(feature), waitsOf)
+  const behind = reach(Object.keys(fleet.features).filter((m) => waitsOf(m).includes(feature)), (x) => Object.keys(fleet.features).filter((m) => waitsOf(m).includes(x)))
+  const known = new Set([feature, ...(mine?.members ?? []), ...ahead, ...behind, ...(f.dependsOn ?? [])])
   const grouped = new Set(Object.values(fleet.groups ?? {}).flatMap((g) => g.members))
   const others = [
     ...Object.entries(fleet.groups ?? {}).filter(([id]) => !linked.has(id)).map(([id, g]) => ({ id, members: g.members.filter(live) })),
@@ -2209,6 +2244,7 @@ function atBoundary(feature, f) {
   }
   const why = startedBuilding(feature) ? 'it has started building' : !room ? `their group is full (group_max ${AW.groupMax})` : 'their group is past building'
   const waits = [...new Set([...(f.waitsOn ?? []), ...g.members])]
+  f.impliedWaits = [...new Set([...(f.impliedWaits ?? []), ...g.members])]
   addNote(`${feature} now touches ${shared}, which ${g.members.join(', ')} change${g.members.length > 1 ? '' : 's'} too — ${why}, so it waits for ${g.members.length > 1 ? 'them' : 'it'} to land`)
   Object.assign(f, { status: 'waiting', waitsOn: waits, reason: `after ${waits.join(', ')}` })
   save()
@@ -2779,12 +2815,14 @@ function enqueue(feature) {
     save()
     return
   }
-  // D12's baseline: the folder on the target as the lane is admitted, before anything merges in.
+  // A person's unpark clears D12's baseline, so it goes first; then the baseline is the folder on the
+  // target as the lane is admitted, before anything merges in.
+  if (f.unpark) unpark(feature)
   recordTargetSpec(feature, f)
+  save()
   // Its dependencies' code, merged now so the worktree starts from it. A conflict is left to the
   // lane, whose own sync hands it to an agent.
   if (released && !fresh) mergeTargetQuietly(f.worktree)
-  if (f.unpark) unpark(feature)
   const text = readManifest(f.worktree, feature)
   const mf = text == null ? {} : parseManifest(text)
   const lane = text == null ? 'unknown' : laneOf(mf, { batched: SPLIT, specText: readSpec(f.worktree, feature) })
@@ -2946,8 +2984,17 @@ function unpark(feature) {
   const f = fleet.features[feature]
   const by = f.unpark === true ? BY_PERSON : f.unpark
   delete f.unpark
-  // A person picked it again (after the revise D12 asked for, or not): the folder on the target now is the baseline.
-  if (by === BY_PERSON) delete f.targetSpec
+  // A person picked it again (after the revise D12 asked for, or not): the folder on the target now is
+  // the baseline, and a wait D10 implied is dropped — the next boundary weighs the collision afresh.
+  if (by === BY_PERSON) {
+    delete f.targetSpec
+    if (f.impliedWaits?.length) {
+      f.waitsOn = (f.waitsOn ?? []).filter((d) => !f.impliedWaits.includes(d))
+      if (!f.waitsOn.length) delete f.waitsOn
+      delete f.impliedWaits
+      delete f.collided
+    }
+  }
   const rel = join(specOf(feature), 'MANIFEST.md')
   const p = join(f.worktree, rel)
   const text = existsSync(p) ? readFileSync(p, 'utf8') : null
@@ -3111,8 +3158,8 @@ function resolveGenerated(wt, ref, feature, label = `${feature}'s worktree`) {
   const files = unmerged.map((e) => e.path)
   if (!GEN.command || !generatedOnly(files, GEN.paths)) return false
   for (const e of unmerged) {
-    // DU / DD: this side deleted it — it stays deleted. Every other: this side's copy.
-    if (/^(DU|DD)$/.test(e.xy)) tryGit(['rm', '-q', '--cached', '--', e.path], wt) !== null && rmSync(join(wt, e.path), { force: true })
+    // DU / DD / UA: this side has no copy (deleted, or never added) — it stays absent. Every other: this side's copy.
+    if (/^(DU|DD|UA)$/.test(e.xy)) tryGit(['rm', '-q', '--cached', '--', e.path], wt) !== null && rmSync(join(wt, e.path), { force: true })
     else tryGit(['checkout', '--ours', '--', e.path], wt)
   }
   if (!regenerate(wt, feature, label, 'the conflict is left to an agent')) return false
@@ -3123,7 +3170,8 @@ function resolveGenerated(wt, ref, feature, label = `${feature}'s worktree`) {
     addNote(`${label}: ${marked} still holds a conflict marker after generated.command — the conflict is left to an agent`)
     return false
   }
-  if (tryGit(['add', '-A', '--', ...paths], wt) === null || tryGit(['commit', '--no-edit', '--quiet'], wt) === null) return false
+  // `git add -A --` with no path stages the whole tree: only a non-empty list is added.
+  if ((paths.length && tryGit(['add', '-A', '--', ...paths], wt) === null) || tryGit(['commit', '--no-edit', '--quiet'], wt) === null) return false
   addNote(`${label}: merging ${ref.replace('refs/heads/', '')} regenerated ${files.join(', ')} (generated.command) — no agent needed`)
   return true
 }

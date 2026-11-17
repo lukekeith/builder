@@ -3169,3 +3169,20 @@ test('D10: members of one overlap cut by group_max never wait on each other — 
   assert.ok(!(r.fleet.notes ?? []).some((n) => /now touches/.test(n)), `the cut is no new collision: ${JSON.stringify(r.fleet.notes)}`)
 })
 
+
+test('D12: the baseline is taken when the lane is admitted — a spec edit while the feature waits for a slot still pauses it', async () => {
+  const root = makeRepo(['a', 'b'])
+  writeFileSync(join(root, '.stub/scenario.json'), JSON.stringify({ a: ['SLOW:audited', 'BLOCK:hold'], b: ['audited', 'planned'] }))
+  const fleet = spawn('node', [FLEET, 'a', 'b', '--parallel', '1'], { cwd: root, stdio: 'ignore', env: ENV(root, { STUB_SLOW_MS: '2500', FLEET_KEEP_STOPPED_WORKTREES: '1' }) })
+  const exited = new Promise((res) => fleet.on('exit', res))
+  const calls = () => (existsSync(join(root, '.stub/calls.log')) ? readFileSync(join(root, '.stub/calls.log'), 'utf8') : '')
+  for (let i = 0; i < 200 && !/start a \S+ \d+ SLOW:audited /.test(calls()); i++) await new Promise((res) => setTimeout(res, 50))
+  assert.doesNotMatch(calls(), /start b /, 'b is still waiting for a slot')
+  writeFileSync(join(root, 'docs/features/b/SPEC.md'), '# b — spec\n\nChanged while b waited.\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'docs(b): changed while it waited')
+  await exited
+  const f = JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).features.b
+  assert.equal(f.reason, 'revising: its spec changed on main — next: /builder:revise --path docs/features/b', JSON.stringify(f))
+  assert.doesNotMatch(calls(), /start b /, 'b never ran on the old spec')
+})
