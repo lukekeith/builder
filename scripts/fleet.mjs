@@ -32,7 +32,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes, keepAwakeArgs } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -650,7 +650,8 @@ if (flag('--detach') && !flag('--dry-run') && !runningPid) {
     console.log(`fleet exited at once (${exited.signal ?? `code ${exited.code}`}) — output in .builder/fleet/fleet.out:\n${out}`)
     process.exit(exited.code || 1)
   }
-  console.log(`fleet started detached (pid ${child.pid}) — output in .builder/fleet/fleet.out · /builder:fleet:status`)
+  const awake = keepAwakeArgs({ platform: process.platform, env: process.env, pid: child.pid }) ? ' · kept awake by caffeinate until it ends' : ''
+  console.log(`fleet started detached (pid ${child.pid}) — output in .builder/fleet/fleet.out · /builder:fleet:status${awake}`)
   process.exit(0)
 }
 
@@ -870,6 +871,26 @@ const unlock = () => {
 }
 process.on('exit', unlock)
 const save = () => saveFleet(ROOT, fleet, progressOf, testsOf, folderOf)
+
+// F1: the fleet holds its lock, so it is the one running — keep the Mac awake until it ends. Not for
+// --land (one landing, then it exits); --dry-run, --status, --wait, --pause and adding to a running
+// fleet have exited by now. caffeinate -w ends with this process, whatever ends it.
+const AWAKE_NOTE = 'the fleet keeps the Mac awake (caffeinate) until it ends'
+const awakeArgs = LAND ? null : keepAwakeArgs({ platform: process.platform, env: process.env, pid: process.pid })
+if (awakeArgs) {
+  const unavailable = () => {
+    fleet.notes = (fleet.notes ?? []).filter((n) => n !== AWAKE_NOTE)
+    addNote('caffeinate is unavailable — the Mac may sleep while the fleet runs')
+  }
+  try {
+    const c = spawn('caffeinate', awakeArgs, { detached: true, stdio: 'ignore' })
+    c.on('error', unavailable)
+    c.unref()
+    addNote(AWAKE_NOTE)
+  } catch {
+    unavailable()
+  }
+}
 const active = new Set()
 let stopping = false
 const stopAll = (code) => {
@@ -3796,7 +3817,8 @@ if (existsSync(WALK_WT)) {
 reapLaneDbs()
 delete fleet.walkBatch
 // The whole repo, not just this fleet's rows: anything else left lying around is named here too.
-fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: '))
+// The fleet is ending: it no longer keeps the Mac awake, whichever way that went.
+fleet.notes = (fleet.notes ?? []).filter((n) => !n.startsWith('repo: ') && n !== AWAKE_NOTE && !n.startsWith('caffeinate is unavailable'))
 addNote(summaryLine(inventory(ROOT, CFG, TARGET, { fleet, lockAlive: false })))
 save()
 unlock()

@@ -409,7 +409,7 @@
         },
         {
           "role": "claude",
-          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n\n```\n📍 cert-tags: go-ahead (risk · end) — agents are building it in its own worktree, landing on feat/ACME-412-cert-tags — follow it: /builder:status\n```"
+          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status · kept awake by caffeinate until it ends\n\n```\n📍 cert-tags: go-ahead (risk · end) — agents are building it in its own worktree, landing on feat/ACME-412-cert-tags — follow it: /builder:status\n```"
         },
         {
           "role": "note",
@@ -622,7 +622,7 @@
         },
         {
           "role": "claude",
-          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status\n\n```\n📍 cert-tags: go-ahead (full · end) — agents are building it in its own worktree, landing on feat/ACME-412-cert-tags — follow it: /builder:status\n```"
+          "text": "fleet started detached (pid 48213) — output in .builder/fleet/fleet.out · /builder:fleet:status · kept awake by caffeinate until it ends\n\n```\n📍 cert-tags: go-ahead (full · end) — agents are building it in its own worktree, landing on feat/ACME-412-cert-tags — follow it: /builder:status\n```"
         }
       ],
       "stamp": {
@@ -784,7 +784,7 @@
         },
         {
           "role": "claude",
-          "text": "fleet started detached (pid 51877) — output in .builder/fleet/fleet.out · /builder:fleet:status\n\n```\n📍 cert-history: go-ahead (none · end) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
+          "text": "fleet started detached (pid 51877) — output in .builder/fleet/fleet.out · /builder:fleet:status · kept awake by caffeinate until it ends\n\n```\n📍 cert-history: go-ahead (none · end) — agents are building it in its own worktree, landing on main — follow it: /builder:status\n```"
         },
         {
           "role": "note",

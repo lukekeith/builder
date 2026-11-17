@@ -1235,7 +1235,9 @@ export function renderStatus(fleet, progress = null, last = null, now = Date.now
       const why = f.status === 'parked' ? parkParts(f.reason).why : f.reason
       const reason = f.pr && f.pr !== 'shipped' ? `${why ? `${why} · ` : ''}PR ${f.pr}` : why
       const p = prog ? ` ${progressBar(prog[name].pct)} · ${cell(prog[name].label)} |` : ''
-      const spent = f.timing?.length ? duration(f.timing.reduce((s, t) => s + t.ms, 0)) : '—'
+      // Rows whose runs recorded no start or end (an older fleet.json) keep the sum of their runs.
+      const wall = wallTime(f, now) ?? (f.timing?.length ? f.timing.reduce((t, r) => t + (r.ms ?? 0), 0) : null)
+      const spent = wall != null ? duration(wall) : '—'
       lines.push(`| ${cell(name)} | ${cell(f.status)} | ${cell(rowLabel(f.facts) ?? testsOf?.(name, f))} |${p} ${f.runs ?? 0} | ${spent} | ${cell(reason)} | ${f.worktree ? 'yes' : '—'} |`)
     }
   }
@@ -1585,6 +1587,32 @@ export function stagesFromCommits(commits, feature = null) {
  *    fleet's own spec bring-in comes before it otherwise) starts with that run, and the lead goes to
  *    the opening stage: commits can't say when the run's work began, the run's start can.
  */
+/**
+ * F1: the args for `caffeinate` that keep the Mac awake while the fleet (`pid`) runs — idle and system
+ * sleep held off (-is), ending with the process (-w). Null off macOS, with BUILDER_CAFFEINATE=0, and
+ * under node --test (NODE_TEST_CONTEXT): a test's fleet never holds a machine awake.
+ */
+export function keepAwakeArgs({ platform, env = {}, pid }) {
+  if (platform !== 'darwin' || env.BUILDER_CAFFEINATE === '0' || env.NODE_TEST_CONTEXT) return null
+  return ['-is', '-w', String(pid)]
+}
+
+/**
+ * F2: a row's Time — real elapsed time from its first run's start to its last run's end, plus the run
+ * in progress (one started after the last recorded end runs until `now`). Not the sum of the runs:
+ * that counts parallel lanes twice and drops the gaps between runs. → ms, or null with no runs.
+ */
+export function wallTime(f, now = Date.now()) {
+  const runs = (f?.timing ?? []).map((t) => [Date.parse(t.start), Date.parse(t.end)]).filter(([a]) => Number.isFinite(a))
+  const live = Date.parse(f?.runStartedAt ?? '')
+  const lastEnd = Math.max(...runs.map(([, b]) => (Number.isFinite(b) ? b : -Infinity)), -Infinity)
+  const inProgress = Number.isFinite(live) && live > lastEnd
+  const first = Math.min(...runs.map(([a]) => a), inProgress ? live : Infinity)
+  if (!Number.isFinite(first)) return null
+  const end = inProgress ? now : lastEnd
+  return Number.isFinite(end) ? Math.max(0, end - first) : null
+}
+
 export function wallFacts(st, timing = [], now = Date.now()) {
   if (!st?.startedAt) return { wallMs: null, stages: null, walkQueueMs: null }
   const runs = (timing ?? []).filter((t) => t?.start)

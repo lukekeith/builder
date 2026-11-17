@@ -837,6 +837,30 @@ test('--detach starts the fleet in its own session and returns at once; the flee
   assert.ok(archiveOf(root).a, `a did not land: ${readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8').slice(-800)}`)
 })
 
+test('F1: on macOS a detached fleet is kept awake by caffeinate until it ends — and says so; BUILDER_CAFFEINATE=0 does not', { skip: process.platform !== 'darwin' }, async () => {
+  const root = makeRepo(['a'])
+  // Out of node --test's reach (NODE_TEST_CONTEXT), as a person's fleet is; no desktop notices from a test.
+  const env = { NODE_TEST_CONTEXT: '', BUILDER_NOTIFY: '0' }
+  const r = runFleet(root, ['a', '--detach'], { a: HAPPY.map((s) => `SLOW:${s}`) }, env)
+  assert.equal(r.status, 0, r.stderr)
+  assert.match(r.stdout, /^fleet started detached \(pid (\d+)\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet:status · kept awake by caffeinate until it ends$/m)
+  const pid = Number(/pid (\d+)/.exec(r.stdout)[1])
+  const awake = () => execFileSync('ps', ['-Ao', 'args='], { encoding: 'utf8' }).split('\n').some((l) => l.trim() === `caffeinate -is -w ${pid}`)
+  for (let i = 0; i < 50 && !awake(); i++) await new Promise((res) => setTimeout(res, 100))
+  assert.ok(awake(), 'caffeinate -is -w <fleet pid> runs beside the fleet')
+  assert.ok((JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).notes ?? []).includes('the fleet keeps the Mac awake (caffeinate) until it ends'))
+  for (let i = 0; i < 600 && !archiveOf(root).a; i++) await new Promise((res) => setTimeout(res, 100))
+  assert.ok(archiveOf(root).a, `a did not land: ${readFileSync(join(root, '.builder/fleet/fleet.out'), 'utf8').slice(-800)}`)
+  for (let i = 0; i < 50 && awake(); i++) await new Promise((res) => setTimeout(res, 100))
+  assert.ok(!awake(), 'caffeinate ends with the fleet')
+  assert.ok(!(JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).notes ?? []).some((n) => /caffeinate/.test(n)), 'the note goes when the fleet ends')
+
+  const off = makeRepo(['b'])
+  const q = runFleet(off, ['b', '--detach'], { b: HAPPY }, { ...env, BUILDER_CAFFEINATE: '0' })
+  assert.equal(q.status, 0, q.stderr)
+  assert.match(q.stdout, /^fleet started detached \(pid \d+\) — output in \.builder\/fleet\/fleet\.out · \/builder:fleet:status$/m)
+})
+
 test('no agent_walk block refuses with the fix', () => {
   const root = makeRepo(['a'])
   writeFileSync(join(root, '.claude/builder.md'), '---\nproject: t\napps:\n  - name: app\n    path: app/\n    role: app\n---\n')
