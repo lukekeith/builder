@@ -56,7 +56,7 @@ export function readRulings(file) {
 
 const isMain = (() => {
   try {
-    return realpathSync(process.argv[1] ?? '') === realpathSync(fileURLToPath(import.meta.url))
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
   } catch {
     return false
   }

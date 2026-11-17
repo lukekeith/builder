@@ -9,8 +9,7 @@ Invocation: **`/builder:resume [--path <folder|file>] [--ticket <id>] [--auto] [
 [REFERENCE](REFERENCE.md) §Flags — flags first, and **ignore any flag this step does not use rather
 than erroring on it**.
 
-**`--help` first.** If present, render the `builder:help` card (`../help/SKILL.md`) and stop — no
-picker, nothing written.
+**`--help` first.** If present, render the `builder:help` card (`../help/SKILL.md`) and stop — no picker, nothing written.
 
 **Under the fleet (`BUILDER_DIR` is set), `<builder>` is `"$BUILDER_DIR"`** — use it as is; never resolve the path or prefix a command with `B=…;`.
 
