@@ -44,8 +44,13 @@ them.
 
 ## Experiments (`node scripts/test-bench.mjs <exp> --repo <path> [--sha <sha>]`)
 
-Each experiment runs in a scratch clone at a fixed sha, uses the repo's own `verify:` suites, and
-appends a row to `bench/results/test-bench/<repo>.jsonl`.
+E1–E3 are built: `floor`, `contention` and `serial`. Each runs in the bench's own checkouts
+(`<repo>-bench/co/<n>`, registered as worktrees of the repo) at a fixed sha, by default the
+target's tip. It uses the repo's own `verify:` suite, with the verifier's setup, database template,
+leases and runner command. It refuses while the repo's verifier or fleet is busy (`--force` runs
+anyway and marks the row). Each run appends a row to `<repo>/.builder/bench/test-bench.jsonl`, and
+a finished study is copied into `bench/results/`. E3's option (c), one database per process, needs
+the repo's own test harness changed, so the bench measures (a) and (b) only.
 
 | Exp | Question | Method | Output |
 |---|---|---|---|

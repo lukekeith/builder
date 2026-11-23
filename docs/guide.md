@@ -106,6 +106,7 @@ plugins/builder/
     archive.mjs              /builder:archive — finished folders into <registry>/_archive/, each kept as its SPEC under its header
     check-obligations.mjs    the cross-section gate on a SPEC.md
     test-cost.mjs            where the test time went: the verifier's runs and the fleet's, from what they record
+    test-bench.mjs           one verify: suite measured alone, at 1–4 runs at once, and file by file (E1–E3)
     verify/                  the verifier — a background test service: commit, phase and merge tiers,
                              each run in a clean checkout with its own database; the merge queue
     workspace                the git-ignored per-feature scratch directory (--remove at ship)
@@ -262,6 +263,19 @@ gives four numbers, then each verifier run and each feature:
 Each verdict also records each suite's own run and judging time, so the report can show which suite
 the time went to. Measuring before changing anything is the point
 ([docs/specs/2026-11-23-test-efficiency-bench-design.md](specs/2026-11-23-test-efficiency-bench-design.md)).
+
+`node <builder>/scripts/test-bench.mjs floor|contention|serial --suite <name>` measures one suite
+the way the verifier runs it: same setup, database template and runner command, in its own
+checkouts (`<repo>-bench/co/<n>`), at the target's tip, with no agents.
+- `floor` runs it alone N times and reports the spread and any flaky tests.
+- `contention` runs 1, 2, 3 and 4 copies at once and reports the slowdown, the tests starved of
+  database connections, and peak connections. The largest n that stays within 1.2× of one run is
+  what `verify.workers` and `db.max` can safely be.
+- `serial` runs each file alone against the whole suite run normally. A ratio near 1 means the
+  files run one at a time.
+
+It refuses while the repo's verifier or fleet is busy, because their load would be measured too.
+Each run appends a row to `.builder/bench/test-bench.jsonl`.
 
 ## Nothing left behind
 

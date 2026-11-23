@@ -11,6 +11,14 @@ agree — see [RELEASING.md](RELEASING.md).
   no-verdict, duplicate and retry minutes, then each verifier run and each feature. It reads what
   the fleet and the verifier already record. Each verdict now also records each suite's own run and
   judging time (`selection.<suite>.ms`, `.judgeMs`, `.outcome`).
+- `scripts/test-bench.mjs floor|contention|serial --suite <name>` measures one `verify:` suite the
+  way the verifier runs it, with no agents:
+  - `floor`: alone, N times;
+  - `contention`: 1–4 runs at once, with database connections sampled;
+  - `serial`: file by file against the whole run, to show whether the suite really runs in
+    parallel.
+
+  It refuses while the repo's verifier or fleet is busy.
 
 **Fixed:**
 - A commit request at the same sha as a phase request is now folded into the phase run even on a
