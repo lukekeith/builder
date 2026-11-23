@@ -238,6 +238,24 @@ function phaseReuse(req, ctx, suites) {
   }
 }
 
+/**
+ * What a suite cut at its timeout had already said about the database: tests failing on a server
+ * out of connections are why the suite ran long (d2m, 2026-11-23: every run env-broken at 15m, its
+ * partial report 1,900 lines of "Too many database connections"). The partial rows are never
+ * recorded as results; this only names the cause in the reason.
+ */
+const STARVED = /too many (database )?connections|too many clients|remaining connection slots/i
+export function starved(adapter, report, cwd) {
+  if (!existsSync(report)) return ''
+  let n = 0
+  try {
+    n = adapter.parse(readFileSync(report, 'utf8'), { root: cwd }).filter((x) => x.status === 'fail' && STARVED.test(x.msg ?? '')).length
+  } catch {
+    return ''
+  }
+  return n ? ` — ${plural(n, 'test')} had already failed because the database refused connections (too many open): fewer verify.workers, or fewer clients on that server` : ''
+}
+
 export const testId = (suite, r) => `${suite}::${r.file}::${r.name}`
 
 /** Walks the range oldest first; ends with the checkout back at the range's last commit. */
@@ -349,7 +367,7 @@ async function judgeRequest(req, ctx, tmp, slots) {
       // The code did not compile: no report, and no point retrying it — a red, with the compiler's words.
       const build = !results.length && r.code !== 0 && !r.timedOut ? adapter.buildErrors?.(r) : null
       if (build) return { results: null, build, reason: `the build failed: ${build.slice(0, 3).join(' · ')}` }
-      if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
+      if (r.timedOut || !existsSync(report)) return { results: null, timedOut: r.timedOut, reason: r.timedOut ? `timed out after ${Math.round(verify.timeoutMs / 60000)}m${starved(adapter, report, cwd)}` : `no report (exit ${r.code}): ${r.out.slice(-400)}` }
       if (!results.length && r.code !== 0) return { results: null, reason: `exit ${r.code} with an empty report: ${r.out.slice(-400)}` }
       const tracked = trackedFor(suite, where)
       return { results: results.map((x) => ({ ...x, file: repoFile(suite, where, x.file, tracked) })) }
@@ -526,12 +544,17 @@ async function judgeRequest(req, ctx, tmp, slots) {
         files = keep
       }
     }
-    verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null }
+    const entry = (verdict.selection[s.name] = { files: files === 'all' ? 'all' : files.length, why: typeof why === 'string' ? why : null })
     if (files !== 'all' && !files.length) continue
+    // Timed for test-cost (§E0): the suite's own run, lease wait included, and the judging re-runs after it.
+    const ranAt = Date.now()
     let res = await runSuite(s, files)
     // A missing report is retried once in a fresh lease; a timeout is not — it would only double the
     // wait — and neither is a build that failed: the same code fails the same way.
     if (!res.results && !res.timedOut && !res.build && !signal?.aborted) res = await runSuite(s, files)
+    entry.ms = Date.now() - ranAt
+    entry.outcome = res.timedOut ? 'timed-out' : res.build ? 'build-failed' : res.results ? 'ran' : 'broken'
+    const judgedAt = Date.now()
     if (signal?.aborted) break
     if (res.build) {
       const why = await buildBlame(s, files, res.build)
@@ -565,6 +588,7 @@ async function judgeRequest(req, ctx, tmp, slots) {
       if (signal?.aborted) break
       record(f, k, s.name)
     }
+    entry.judgeMs = Date.now() - judgedAt
   }
 
   // A regression judged while the database was failing is the database's as likely as the code's:

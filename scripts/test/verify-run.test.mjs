@@ -44,6 +44,9 @@ test('green: every test passes', async () => {
   assert.equal(v.status, 'green')
   assert.deepEqual(v.regressions, [])
   assert.equal(v.selection.unit.files, 'all')
+  assert.equal(v.selection.unit.outcome, 'ran')
+  assert.ok(Number.isInteger(v.selection.unit.ms) && v.selection.unit.ms > 0, 'each suite records its own run time, for test-cost')
+  assert.ok(Number.isInteger(v.selection.unit.judgeMs))
 })
 
 test('a failure here but not on the target is a regression, introduced by the request commit', async () => {
@@ -417,8 +420,27 @@ test('a file with only some tests recorded is reused only from a complete record
   const v = await runRequest(req(), ctx)
   assert.equal(v.status, 'env-broken')
   assert.match(v.broken[0].reason, /timed out after/)
+  assert.equal(v.selection.e2e.outcome, 'timed-out')
+  assert.ok(v.selection.e2e.ms >= 500, 'the time a suite burned before its cap is on the record')
   assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
   assert.equal(runs, 1, 'a timeout is not retried')
+})
+
+test('a suite cut at its timeout names a database that refused connections, from the partial report, and still records nothing', async () => {
+  const dir = gitRepo(['t/a.spec.ts'])
+  const fail = (n) => `<testcase classname="t/a.spec.ts" name="${n}" time="0.1"><failure message="PrismaClientInitializationError: Too many database connections opened: FATAL: sorry, too many clients already"/></testcase>`
+  const xml = `printf '<testsuites><testsuite name="a">${fail('one')}${fail('two')}<testcase classname="t/a.spec.ts" name="three" time="0.1"/></testsuite></testsuites>' > r.xml; sleep 5`
+  const e2e = { name: 'e2e', runner: 'junit', cwd: '.', files: 't/*.spec.ts', command: xml, report: 'r.xml', needs: [], tiers: ['commit'] }
+  const ctx = ctxFor(dir, dir, { verify: { suites: [e2e], checks: [], timeoutMs: 500, db: null } })
+  const v = await runRequest(req(), ctx)
+  assert.equal(v.status, 'env-broken')
+  assert.match(v.broken[0].reason, /^timed out after 0m — 2 tests had already failed because the database refused connections/)
+  assert.equal(existsSync(join(ctx.ledger.dir, 'results.jsonl')), false)
+
+  const plain = gitRepo(['t/a.spec.ts'])
+  const quiet = { ...e2e, command: `printf '<testsuites><testsuite name="a"><testcase classname="t/a.spec.ts" name="x" time="0.1"><failure message="expected 1"/></testcase></testsuite></testsuites>' > r.xml; sleep 5` }
+  const v2 = await runRequest(req(), ctxFor(plain, plain, { verify: { suites: [quiet], checks: [], timeoutMs: 500, db: null } }))
+  assert.equal(v2.broken[0].reason, 'timed out after 0m', 'any other failure adds nothing')
 })
 
 test('a cancelled request records no results', async () => {

@@ -49,6 +49,18 @@ builds back).
 - **A plan task's `Decisions:` line** (`Decisions: D2, D4` or `none`): its implementer's brief carries
   only those §Decisions rows (and any its block cites), not every row of a long spec. A plan without
   the line carries every row, as before.
+- `scripts/test-cost.mjs` reports where a repo's test time went: the verification share,
+  no-verdict, duplicate and retry minutes, then each verifier run and each feature. It reads what
+  the fleet and the verifier already record. Each verdict now also records each suite's own run and
+  judging time (`selection.<suite>.ms`, `.judgeMs`, `.outcome`).
+- `scripts/test-bench.mjs floor|contention|serial --suite <name>` measures one `verify:` suite the
+  way the verifier runs it, with no agents:
+  - `floor`: alone, N times;
+  - `contention`: 1–4 runs at once, with database connections sampled;
+  - `serial`: file by file against the whole run, to show whether the suite really runs in
+    parallel.
+
+  It refuses while the repo's verifier or fleet is busy.
 
 **Changed:**
 - The status's **Time** is wall-clock since a feature's first run started, queueing and parks
@@ -60,6 +72,16 @@ builds back).
 - A feature signed off while its walk readiness was still pending went to the ship lane unwalked.
   It now goes back to the walk lane (an agent's sign-off is set back to building; a human's parks as
   your walk again), in a batched walk too.
+- A commit request at the same sha as a phase request is now folded into the phase run even on a
+  branch with no green run yet. In one repo the two ran side by side for 22 minutes, because the fold
+  needed a green to measure from and every earlier run had been env-broken.
+- A suite cut at its timeout says when its partial report shows tests failing because the database
+  refused connections (too many open), instead of only "timed out".
+- The verifier now picks up an edited `verify:` block without going idle. It finishes the runs in
+  progress, starts nothing new, then reloads. It used to read the block once at startup and exit
+  only after 10 idle minutes, which a busy fleet never gives it: in one repo, `verify.timeout: 45m` was
+  committed and every run after that was still cut at 15m. An edit that doesn't parse is reported
+  and the block loaded at start stays.
 
 ## 6.2.3
 

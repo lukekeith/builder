@@ -199,6 +199,32 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         return 'idle'
       } else v = r.verify
     }
+    // The verify: block as loaded. A fleet keeps the service busy for hours, so it never idles out
+    // to pick up an edit (d2m raised verify.timeout to 45m and every run after it was still cut at
+    // 15m): an edited block stops new runs, lets the running ones finish, and returns 'reload'.
+    const cfgPath = join(root, '.claude', 'builder.md')
+    const stampOf = () => {
+      try {
+        const st = statSync(cfgPath)
+        return `${st.mtimeMs}:${st.size}`
+      } catch {
+        return null
+      }
+    }
+    let stamp = stampOf()
+    const loaded = JSON.stringify(v)
+    const configChanged = () => {
+      if (verify) return false // handed in by the caller: there is no file to follow
+      const now = stampOf()
+      if (now === stamp) return false
+      stamp = now
+      // Only a block that parses: a half-saved edit must not fail every queued request. The broken
+      // one is reported, and the service keeps the block it has until the file is fixed.
+      const r = loadVerify(root)
+      if (!r.ok && !untested) console.error(`verify: .claude/builder.md changed but does not load (${r.reason}) — keeping the block loaded at start`)
+      return r.ok && JSON.stringify(r.verify) !== loaded
+    }
+    let reloading = false
     const cfg = loadConfig(root)
     const registry = `${String(cfg.ok && cfg.registry ? cfg.registry : 'docs/features').replace(/\/+$/, '')}/`
     /**
@@ -229,8 +255,17 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       for (const c of keep.filter((r) => r.tier === 'commit' && !running.has(r.id))) {
         const p = phases.find((x) => x.branch === c.branch && x.sha === c.sha && x.since)
         if (!p) continue
+        // Where the commit run would start: the branch's newest green below the sha, else (a branch
+        // with no green yet — every run env-broken, say) where it left its target. Covered when the
+        // phase run starts there or earlier, or later with only registry files (the plan, the audit)
+        // between: d2m's commit and phase runs of one sha ran side by side for 22 minutes because
+        // the branch had no green and the fold needed one.
         const below = ledger.greens(c.branch, ['commit', 'phase']).find((g) => g.sha !== c.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, c.sha) !== null)
-        if (!below || (below.sha !== p.since && tryGit(root, 'merge-base', '--is-ancestor', p.since, below.sha) === null)) continue
+        const start = below?.sha ?? tryGit(root, 'merge-base', `refs/heads/${c.target}`, c.sha)
+        if (!start) continue
+        const isAnc = (a, b) => tryGit(root, 'merge-base', '--is-ancestor', a, b) !== null
+        const registryOnly = (a, b) => (tryGit(root, 'diff', '--name-only', '--no-renames', a, b) ?? '\0').split('\n').filter(Boolean).every((f) => f.startsWith(registry))
+        if (!(start === p.since || isAnc(p.since, start) || (isAnc(start, p.since) && registryOnly(start, p.since)))) continue
         const cur = ledger.getRequest(c.id)
         const host = ledger.getRequest(p.id)
         if (cur?.state !== 'queued' || !host || host.state === 'done' || host.state === 'cancelled') continue
@@ -479,6 +514,15 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
         if (cur?.state === 'queued' && !(same(cur.foldedFrom, r.foldedFrom) && same(cur.commits, r.commits))) ledger.saveRequest({ ...cur, foldedFrom: r.foldedFrom, commits: r.commits })
       }
       foldIntoPhase(keep)
+      if (!reloading && configChanged()) {
+        reloading = true
+        console.error(`verify: block changed in .claude/builder.md — ${running.size ? `finishing ${running.size} running request(s), then ` : ''}reloading`)
+      }
+      if (reloading) {
+        if (!running.size) return 'reload'
+        await sleep(tickMs)
+        continue
+      }
       while (slots.length) {
         const next = pickNext(
           keep.filter((r) => !running.has(r.id)),
@@ -506,7 +550,10 @@ export function runService(root, opts = {}) {
   }
   process.once('SIGTERM', stop(143))
   process.once('SIGINT', stop(130))
-  return serve(root, opts)
+  const loop = async () => {
+    for (;;) if ((await serve(root, opts)) !== 'reload') return
+  }
+  return loop()
     .then(() => process.exit(0))
     .catch((e) => {
       console.error(`verifier service crashed: ${e?.stack ?? e}`)

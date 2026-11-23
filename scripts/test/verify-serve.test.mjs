@@ -144,6 +144,55 @@ test('no .claude/builder.md → env-broken; a config with neither gates nor veri
   assert.match(l.getRequest(b.id).verdict.broken[0].reason, /runner "mocha"/)
 })
 
+const withTimeout = (t) => `---\nproject: x\napps:\n  - name: a\n    path: .\nverify:\n  timeout: ${t}\n  workers: 1\n  suites:\n    u: { runner: node-test, files: "t/*.test.mjs" }\n---\n`
+
+test('an edited verify: block is picked up without going idle: running requests finish, nothing new starts, serve returns reload, the next serve runs on the new block', async () => {
+  const { root, feat } = repo()
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const cfg = join(root, '.claude', 'builder.md')
+  writeFileSync(cfg, withTimeout('15m'))
+  const l = openLedger(root)
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  const seen = []
+  const run = async (req, ctx) => {
+    seen.push([req.id, ctx.verify.timeoutMs])
+    if (seen.length === 1) {
+      writeFileSync(cfg, withTimeout('45m')) // edited while the first one runs
+      utimesSync(cfg, new Date(), new Date(Date.now() + 2000))
+    }
+    return { status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  }
+  assert.equal(await serve(root, { idleMs: 60000, tickMs: 20, run }), 'reload', 'it did not wait out idleMs')
+  const [first] = seen[0]
+  const other = first === a.id ? b.id : a.id
+  assert.equal(l.getRequest(first).verdict.status, 'green', 'the running request finished')
+  assert.equal(l.getRequest(other).state, 'queued', 'nothing started after the edit')
+  assert.equal(await serve(root, { idleMs: 200, tickMs: 20, run }), 'idle')
+  assert.deepEqual(seen, [[first, 15 * 60000], [other, 45 * 60000]])
+})
+
+test('an edit that leaves the verify: block broken, or unchanged, keeps the service running on the block it loaded', async () => {
+  const { root, feat } = repo()
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const cfg = join(root, '.claude', 'builder.md')
+  writeFileSync(cfg, withTimeout('15m'))
+  const l = openLedger(root)
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  const c = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'merge', target: 'main', hold: true })
+  const seen = []
+  const run = async (req, ctx) => {
+    seen.push(ctx.verify.timeoutMs)
+    if (seen.length === 1) writeFileSync(cfg, withTimeout('15m').replace('runner: node-test', 'runner: mocha'))
+    if (seen.length === 2) writeFileSync(cfg, withTimeout('15m') + '\nprose after the block\n')
+    return { status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  }
+  assert.equal(await serve(root, { idleMs: 300, tickMs: 20, run }), 'idle')
+  assert.deepEqual(seen, [15 * 60000, 15 * 60000, 15 * 60000])
+  for (const r of [a, b, c]) assert.equal(l.getRequest(r.id).verdict?.status, 'green', r.tier)
+})
+
 test('an un-migrated 5.x config (## Quality gates, no verify:) runs nothing and lands nothing: env-broken, saying how to migrate', async () => {
   const { root, feat } = repo()
   const l = openLedger(root)
@@ -576,6 +625,52 @@ test('a commit request at the sha of a phase request whose --since covers it fol
   assert.equal(c.state, 'done')
   assert.equal(c.foldedInto, phase.id)
   assert.equal(c.verdict.request, phase.id, 'the commit request is answered by the phase run')
+})
+
+/** main → the plan (registry only) → code → more code, on feat; no green anywhere. */
+function plannedRepo() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vsrv-')))
+  git(root, 'init', '-q', '-b', 'main')
+  writeFileSync(join(root, 'readme.txt'), '1\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'init')
+  git(root, 'checkout', '-qb', 'feat')
+  mkdirSync(join(root, 'docs', 'features', 'x'), { recursive: true })
+  writeFileSync(join(root, 'docs', 'features', 'x', 'PLAN.md'), 'plan\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'docs: plan')
+  const plan = git(root, 'rev-parse', 'HEAD')
+  mkdirSync(join(root, 't'))
+  writeFileSync(join(root, 't', 'a.test.mjs'), testFile('a'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test a')
+  const code1 = git(root, 'rev-parse', 'HEAD')
+  writeFileSync(join(root, 't', 'b.test.mjs'), testFile('b'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test b')
+  return { root, plan, code1, code2: git(root, 'rev-parse', 'HEAD') }
+}
+
+test('a branch with no green yet: a commit request folds into a phase run that starts after only registry commits', async () => {
+  const { root, plan, code2 } = plannedRepo()
+  const l = openLedger(root)
+  const phase = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'phase', target: 'main', since: plan })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const c = l.getRequest(commit.id)
+  assert.equal(c.foldedInto, phase.id, JSON.stringify(c))
+  assert.equal(c.verdict.request, phase.id)
+})
+
+test('a branch with no green yet: a phase run that starts after a code commit does not answer the commit request', async () => {
+  const { root, code1, code2 } = plannedRepo()
+  const l = openLedger(root)
+  l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'phase', target: 'main', since: code1 })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const c = l.getRequest(commit.id)
+  assert.equal(c.foldedInto, undefined)
+  assert.equal(c.verdict.request, commit.id)
 })
 
 test('a commit request is not folded into a phase run whose range starts after the commit run would', async () => {
