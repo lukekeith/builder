@@ -105,6 +105,7 @@ plugins/builder/
     registry.mjs             the registry's layout: in-flight folders vs <registry>/_archive/, and how an archived one ended
     archive.mjs              /builder:archive — finished folders into <registry>/_archive/, each kept as its SPEC under its header
     check-obligations.mjs    the cross-section gate on a SPEC.md
+    test-cost.mjs            where the test time went: the verifier's runs and the fleet's, from what they record
     verify/                  the verifier — a background test service: commit, phase and merge tiers,
                              each run in a clean checkout with its own database; the merge queue
     workspace                the git-ignored per-feature scratch directory (--remove at ship)
@@ -248,6 +249,19 @@ the phase tier is the build's one wait, and the merge tier runs every suite on t
 onto the target, lists a failure that also fails on the target as known rather than red, and lists
 a flake automatically — the measured reason a typical feature spent 60% of its wall-clock in tests
 was the same suite running about fourteen times.
+
+**Where the test time went.** `node <builder>/scripts/test-cost.mjs [--since 7d] [--json]`, run in
+the repo or any of its worktrees, reports it from what the fleet and the verifier already record. It
+gives four numbers, then each verifier run and each feature:
+- **verification share**: the time runs spent blocked on the verifier or a gate job, as a share of
+  their wall time;
+- **no-verdict minutes**: runs that ended env-broken or cancelled;
+- **duplicate minutes**: code already running or already green, run again;
+- **retry minutes**: code whose last run was env-broken, run again.
+
+Each verdict also records each suite's own run and judging time, so the report can show which suite
+the time went to. Measuring before changing anything is the point
+([docs/specs/2026-11-23-test-efficiency-bench-design.md](specs/2026-11-23-test-efficiency-bench-design.md)).
 
 ## Nothing left behind
 

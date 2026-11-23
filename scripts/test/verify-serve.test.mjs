@@ -578,6 +578,52 @@ test('a commit request at the sha of a phase request whose --since covers it fol
   assert.equal(c.verdict.request, phase.id, 'the commit request is answered by the phase run')
 })
 
+/** main → the plan (registry only) → code → more code, on feat; no green anywhere. */
+function plannedRepo() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'vsrv-')))
+  git(root, 'init', '-q', '-b', 'main')
+  writeFileSync(join(root, 'readme.txt'), '1\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'init')
+  git(root, 'checkout', '-qb', 'feat')
+  mkdirSync(join(root, 'docs', 'features', 'x'), { recursive: true })
+  writeFileSync(join(root, 'docs', 'features', 'x', 'PLAN.md'), 'plan\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'docs: plan')
+  const plan = git(root, 'rev-parse', 'HEAD')
+  mkdirSync(join(root, 't'))
+  writeFileSync(join(root, 't', 'a.test.mjs'), testFile('a'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test a')
+  const code1 = git(root, 'rev-parse', 'HEAD')
+  writeFileSync(join(root, 't', 'b.test.mjs'), testFile('b'))
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'test b')
+  return { root, plan, code1, code2: git(root, 'rev-parse', 'HEAD') }
+}
+
+test('a branch with no green yet: a commit request folds into a phase run that starts after only registry commits', async () => {
+  const { root, plan, code2 } = plannedRepo()
+  const l = openLedger(root)
+  const phase = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'phase', target: 'main', since: plan })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const c = l.getRequest(commit.id)
+  assert.equal(c.foldedInto, phase.id, JSON.stringify(c))
+  assert.equal(c.verdict.request, phase.id)
+})
+
+test('a branch with no green yet: a phase run that starts after a code commit does not answer the commit request', async () => {
+  const { root, code1, code2 } = plannedRepo()
+  const l = openLedger(root)
+  l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'phase', target: 'main', since: code1 })
+  const commit = l.newRequest({ worktree: root, branch: 'feat', sha: code2, tier: 'commit', target: 'main' })
+  await serve(root, opts({ verify: unit() }))
+  const c = l.getRequest(commit.id)
+  assert.equal(c.foldedInto, undefined)
+  assert.equal(c.verdict.request, commit.id)
+})
+
 test('a commit request is not folded into a phase run whose range starts after the commit run would', async () => {
   const { root, c1, c2 } = docsRepo()
   const l = openLedger(root)

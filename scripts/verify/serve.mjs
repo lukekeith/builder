@@ -229,8 +229,17 @@ export async function serve(root, { idleMs = 10 * 60000, tickMs = 500, heartbeat
       for (const c of keep.filter((r) => r.tier === 'commit' && !running.has(r.id))) {
         const p = phases.find((x) => x.branch === c.branch && x.sha === c.sha && x.since)
         if (!p) continue
+        // Where the commit run would start: the branch's newest green below the sha, else (a branch
+        // with no green yet — every run env-broken, say) where it left its target. Covered when the
+        // phase run starts there or earlier, or later with only registry files (the plan, the audit)
+        // between: d2m's commit and phase runs of one sha ran side by side for 22 minutes because
+        // the branch had no green and the fold needed one.
         const below = ledger.greens(c.branch, ['commit', 'phase']).find((g) => g.sha !== c.sha && tryGit(root, 'merge-base', '--is-ancestor', g.sha, c.sha) !== null)
-        if (!below || (below.sha !== p.since && tryGit(root, 'merge-base', '--is-ancestor', p.since, below.sha) === null)) continue
+        const start = below?.sha ?? tryGit(root, 'merge-base', `refs/heads/${c.target}`, c.sha)
+        if (!start) continue
+        const isAnc = (a, b) => tryGit(root, 'merge-base', '--is-ancestor', a, b) !== null
+        const registryOnly = (a, b) => (tryGit(root, 'diff', '--name-only', '--no-renames', a, b) ?? '\0').split('\n').filter(Boolean).every((f) => f.startsWith(registry))
+        if (!(start === p.since || isAnc(p.since, start) || (isAnc(start, p.since) && registryOnly(start, p.since)))) continue
         const cur = ledger.getRequest(c.id)
         const host = ledger.getRequest(p.id)
         if (cur?.state !== 'queued' || !host || host.state === 'done' || host.state === 'cancelled') continue

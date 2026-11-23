@@ -4,6 +4,21 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## Unreleased
+
+**Added:**
+- `scripts/test-cost.mjs` reports where a repo's test time went: the verification share,
+  no-verdict, duplicate and retry minutes, then each verifier run and each feature. It reads what
+  the fleet and the verifier already record. Each verdict now also records each suite's own run and
+  judging time (`selection.<suite>.ms`, `.judgeMs`, `.outcome`).
+
+**Fixed:**
+- A commit request at the same sha as a phase request is now folded into the phase run even on a
+  branch with no green run yet. On d2m the two ran side by side for 22 minutes, because the fold
+  needed a green to measure from and every earlier run had been env-broken.
+- A suite cut at its timeout says when its partial report shows tests failing because the database
+  refused connections (too many open), instead of only "timed out".
+
 ## 6.2.3
 
 A batched walk no longer spins when a built feature's branch conflicts with the target. Nothing to
