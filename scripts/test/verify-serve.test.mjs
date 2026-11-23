@@ -144,6 +144,55 @@ test('no .claude/builder.md → env-broken; a config with neither gates nor veri
   assert.match(l.getRequest(b.id).verdict.broken[0].reason, /runner "mocha"/)
 })
 
+const withTimeout = (t) => `---\nproject: x\napps:\n  - name: a\n    path: .\nverify:\n  timeout: ${t}\n  workers: 1\n  suites:\n    u: { runner: node-test, files: "t/*.test.mjs" }\n---\n`
+
+test('an edited verify: block is picked up without going idle: running requests finish, nothing new starts, serve returns reload, the next serve runs on the new block', async () => {
+  const { root, feat } = repo()
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const cfg = join(root, '.claude', 'builder.md')
+  writeFileSync(cfg, withTimeout('15m'))
+  const l = openLedger(root)
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  const seen = []
+  const run = async (req, ctx) => {
+    seen.push([req.id, ctx.verify.timeoutMs])
+    if (seen.length === 1) {
+      writeFileSync(cfg, withTimeout('45m')) // edited while the first one runs
+      utimesSync(cfg, new Date(), new Date(Date.now() + 2000))
+    }
+    return { status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  }
+  assert.equal(await serve(root, { idleMs: 60000, tickMs: 20, run }), 'reload', 'it did not wait out idleMs')
+  const [first] = seen[0]
+  const other = first === a.id ? b.id : a.id
+  assert.equal(l.getRequest(first).verdict.status, 'green', 'the running request finished')
+  assert.equal(l.getRequest(other).state, 'queued', 'nothing started after the edit')
+  assert.equal(await serve(root, { idleMs: 200, tickMs: 20, run }), 'idle')
+  assert.deepEqual(seen, [[first, 15 * 60000], [other, 45 * 60000]])
+})
+
+test('an edit that leaves the verify: block broken, or unchanged, keeps the service running on the block it loaded', async () => {
+  const { root, feat } = repo()
+  mkdirSync(join(root, '.claude'), { recursive: true })
+  const cfg = join(root, '.claude', 'builder.md')
+  writeFileSync(cfg, withTimeout('15m'))
+  const l = openLedger(root)
+  const a = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'commit', target: 'main' })
+  const b = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'phase', target: 'main' })
+  const c = l.newRequest({ worktree: root, branch: 'feat', sha: feat, tier: 'merge', target: 'main', hold: true })
+  const seen = []
+  const run = async (req, ctx) => {
+    seen.push(ctx.verify.timeoutMs)
+    if (seen.length === 1) writeFileSync(cfg, withTimeout('15m').replace('runner: node-test', 'runner: mocha'))
+    if (seen.length === 2) writeFileSync(cfg, withTimeout('15m') + '\nprose after the block\n')
+    return { status: 'green', regressions: [], flakes: [], known: [], debt: [], broken: [], selection: {}, reused: 0, ms: 1 }
+  }
+  assert.equal(await serve(root, { idleMs: 300, tickMs: 20, run }), 'idle')
+  assert.deepEqual(seen, [15 * 60000, 15 * 60000, 15 * 60000])
+  for (const r of [a, b, c]) assert.equal(l.getRequest(r.id).verdict?.status, 'green', r.tier)
+})
+
 test('an un-migrated 5.x config (## Quality gates, no verify:) runs nothing and lands nothing: env-broken, saying how to migrate', async () => {
   const { root, feat } = repo()
   const l = openLedger(root)

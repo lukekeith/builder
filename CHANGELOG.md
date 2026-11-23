@@ -18,6 +18,11 @@ agree — see [RELEASING.md](RELEASING.md).
   needed a green to measure from and every earlier run had been env-broken.
 - A suite cut at its timeout says when its partial report shows tests failing because the database
   refused connections (too many open), instead of only "timed out".
+- The verifier now picks up an edited `verify:` block without going idle. It finishes the runs in
+  progress, starts nothing new, then reloads. It used to read the block once at startup and exit
+  only after 10 idle minutes, which a busy fleet never gives it: on d2m, `verify.timeout: 45m` was
+  committed and every run after that was still cut at 15m. An edit that doesn't parse is reported
+  and the block loaded at start stays.
 
 ## 6.2.3
 
