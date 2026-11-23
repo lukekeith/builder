@@ -5,7 +5,7 @@ const rmSyncSafe = (p) => rmSync(p, { force: true })
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { specBringIn, laneOf, decide, loadFleet, saveFleet, renderStatus, fleetDir, shippedPr, featureProgress, readProgress, progressBar, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, ago, renderArchived, parkParts, duration, laneTotals, tokensOf, formatTokens, landedRow, waitForFleet } from '../fleet-core.mjs'
-import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts } from '../fleet-core.mjs'
+import { rowProgress, phaseTaskCount, fleetStops, parkBlock, stallOf, stallLine, headMovedMs, buildLanePrompt, planReady, STALL_MS, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, NEEDS_YOU, needsYouWhy, setAsideConflicts, carryNotes } from '../fleet-core.mjs'
 import { keepAwakeArgs, wallTime, AWAKE_NOTE, AWAKE_UNAVAILABLE } from '../fleet-core.mjs'
 import { landingLine, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from '../fleet-core.mjs'
 
@@ -575,6 +575,21 @@ test('setAsideConflicts: the set-aside conflict notes whose stash is still there
   writeFileSync(join(main, '.git', 'logs', 'refs', 'stash'), `0000000000000000000000000000000000000000 abc1234ffffffffffffffffffffffffffffffffff A <a> 1 +0000\tOn main: builder: before landing kept\n`)
   assert.deepEqual(setAsideConflicts(fleet, main), [note('kept', 'abc1234')])
   assert.deepEqual(setAsideConflicts(fleet, join(main, 'nowhere')), [note('kept', 'abc1234'), note('gone', 'def5678')], 'no .git to read: every one is kept')
+})
+
+test('carryNotes: a new run drops an earlier run\'s notes — a live set-aside stays, what the wrap-up acts on moves to wrapNotes', () => {
+  const main = mkdtempSync(join(tmpdir(), 'carry-'))
+  mkdirSync(join(main, '.git', 'logs', 'refs'), { recursive: true })
+  writeFileSync(join(main, '.git', 'logs', 'refs', 'stash'), `0000000000000000000000000000000000000000 abc1234ffffffffffffffffffffffffffffffffff A <a> 1 +0000\tOn main: x\n`)
+  const aside = (sha) => `⚠ a landed on main, but your changes set aside for it came back with conflicts in 1 file: a.ts — resolve them, then git stash drop the stash "builder: before landing a" (${sha}); it is kept until you do`
+  const migration = '⚠ media-page: 1 new migration landed and m.sql may drop or rewrite data going forward, so nothing was applied — check it'
+  const sw = 'memo merged into feature/memo while main was checked out here — switch to feature/memo to test it'
+  const fleet = {
+    notes: [aside('abc1234'), aside('def5678'), migration, sw, 'text-activity failed; uncommitted changes from its worktree are in stash "builder: text-activity leftovers"', 'repo: 1 merged branch to delete → /builder:tidy', 'walk env launch check failed on main: start/smoke failed'],
+    wrapNotes: [sw, 'older wrap note'],
+  }
+  assert.deepEqual(carryNotes(fleet, main), { notes: [aside('abc1234')], wrapNotes: [sw, 'older wrap note', migration] })
+  assert.deepEqual(carryNotes({}, main), { notes: [], wrapNotes: [] })
 })
 
 test('duration is compact; laneTotals sums ms per lane', () => {

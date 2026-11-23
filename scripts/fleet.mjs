@@ -32,7 +32,7 @@ import { join, dirname, basename, resolve, relative } from 'node:path'
 import { requireConfig, hasAgentWalk, CONFIG_PATH } from './config.mjs'
 import { planSize, parseTestPlan, formatTests } from './profile.mjs'
 import { parseManifest, isSet, verifyCheck } from './manifest.mjs'
-import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes, keepAwakeArgs, AWAKE_NOTE, AWAKE_UNAVAILABLE, withoutAwake } from './fleet-core.mjs'
+import { buildingInSession, sharedBranch, parseWalkReadiness, landedMigrations, specBringIn, landedRow, laneOf, decide, loadFleet, saveFleet, fleetDir, shippedPr, renderStatus, readProgress, appendArchive, tailArchive, archiveLogs, pruneArchivedLogs, renderArchived, parkParts, duration, laneTotals, tokensOf, streamMeter, meterTotals, reviewFacts, fleetAlive, waitForFleet, stoppedNote, waitForCommand, initWithoutBuilder, stagesFromCommits, walkFacts, wallFacts, hasOpenFixes, keepAwakeArgs, AWAKE_NOTE, AWAKE_UNAVAILABLE, withoutAwake, carryNotes } from './fleet-core.mjs'
 import { rowProgress, parkBlock, stallOf, stallLine, markSeen, buildLanePrompt, HUMAN_STEP, PARK_REASONS, parkChoices, choicesSection, overlapRecord, stopChoices, stopNotice, landNotice, endNotice, mayNotify, stoppedNames } from './fleet-core.mjs'
 import { features, specDir, ARCHIVE } from './registry.mjs'
 import { waitsOn, waitsOnText } from './program.mjs'
@@ -896,6 +896,10 @@ const unlock = () => {
 process.on('exit', unlock)
 const save = () => saveFleet(ROOT, fleet, progressOf, testsOf, folderOf)
 
+// A new run's status is about this run: an earlier run's notes go — a live set-aside conflict stays,
+// and what the wrap-up still acts on moves to fleet.wrapNotes (carryNotes). A --land, or a fleet
+// that took over a dead one's lock (the same run, carried on), keeps them.
+if (!tookOverStaleLock && !LAND) Object.assign(fleet, carryNotes(fleet, ROOT))
 // F1: the fleet holds its lock, so it is the one running — keep the Mac awake until it ends. Not for
 // --land (one landing, then it exits); --dry-run, --status, --wait, --pause and adding to a running
 // fleet have exited by now. caffeinate -w ends with this process, whatever ends it. A note an earlier

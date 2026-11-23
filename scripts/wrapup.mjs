@@ -31,19 +31,15 @@ import { join, dirname } from 'node:path'
 import { execSync, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { requireConfig } from './config.mjs'
-import { fleetDir, loadFleet, saveFleet, fleetAlive, parseWalkReadiness, tailArchive } from './fleet-core.mjs'
+import { fleetDir, loadFleet, saveFleet, fleetAlive, parseWalkReadiness, tailArchive, MIGRATION_NOTE, SWITCH_NOTE } from './fleet-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const WRAPPED = 'wrapped'
 const DAY_MS = 86400000
 const ORDER = ['switch', 'migrate', 'restart', 'fixtures', 'smoke', 'tidy']
 
-/** A fleet note about migrations that landed and are not on the dev DB yet: `⚠ <feature>: … landed …`. */
-const MIGRATION_NOTE = /^⚠ ([\w.-]+): \d+ new migrations? landed\b/
 /** One of those whose migrations may drop or rewrite data — never applied by a wrap-up. */
 const DESTRUCTIVE_NOTE = /drops or rewrites data|may drop or rewrite data/
-/** A note that only says the target was not checked out when the feature merged. */
-const SWITCH_NOTE = /^([\w.-]+) (merged into|brought \d+ new migrations? to) (\S+)/
 
 /** When the last wrap-up ran or was dismissed, as epoch ms — null when none has. */
 export function wrappedAt(root) {
@@ -120,7 +116,8 @@ function gather(cfg) {
   try {
     tidyItems = JSON.parse(execFileSync(process.execPath, [join(HERE, 'tidy.mjs'), 'plan', '--json'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, CLAUDE_PROJECT_DIR: root } })).items ?? []
   } catch {}
-  const notes = fleet.notes ?? []
+  // This run's notes, and an earlier run's the wrap-up still acts on (carryNotes moved them).
+  const notes = [...new Set([...(fleet.notes ?? []), ...(fleet.wrapNotes ?? [])])]
   let pending = null
   if (readiness.pending && notes.some((n) => MIGRATION_NOTE.test(n))) {
     try {
@@ -156,6 +153,14 @@ function main(argv) {
   const cfg = requireConfig()
   const root = cfg.root
   if (verb === 'dismiss') {
+    // Not now: an earlier run's wrap-up notes are dropped — the next landing starts a new wrap-up.
+    if (existsSync(join(fleetDir(root), 'fleet.json')) && !fleetAlive(root)) {
+      const fleet = loadFleet(root)
+      if (fleet.wrapNotes?.length) {
+        fleet.wrapNotes = []
+        saveFleet(root, fleet, null, null, null, false)
+      }
+    }
     markWrapped(root)
     console.log('wrap-up dismissed — the next landing starts a new one')
     return 0
@@ -208,6 +213,7 @@ function main(argv) {
   }
   if (settled.size) {
     fleet.notes = (fleet.notes ?? []).filter((n) => !settled.has(n))
+    fleet.wrapNotes = (fleet.wrapNotes ?? []).filter((n) => !settled.has(n))
     // No fleet runs while wrapup does (it refuses otherwise): STATUS.md is rendered as such — F2/F1.
     saveFleet(root, fleet, null, null, null, false)
   }

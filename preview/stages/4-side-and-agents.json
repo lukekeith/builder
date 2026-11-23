@@ -933,9 +933,9 @@
         }
       ],
       "stamp": {
-        "hash": "3a58fd5cbec9",
-        "version": "6.2.3",
-        "date": "2026-11-17"
+        "hash": "cac3ffa64e3c",
+        "version": "6.4.0",
+        "date": "2026-11-23"
       }
     },
     {
@@ -1003,9 +1003,9 @@
         }
       ],
       "stamp": {
-        "hash": "6c8b55a97ede",
-        "version": "6.2.3",
-        "date": "2026-11-17"
+        "hash": "6f9a8f38a6cd",
+        "version": "6.4.0",
+        "date": "2026-11-23"
       }
     },
     {

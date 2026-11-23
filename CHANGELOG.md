@@ -4,6 +4,23 @@
 `claude plugin tag --push`, which refuses to tag unless `plugin.json` and the marketplace entry
 agree — see [RELEASING.md](RELEASING.md).
 
+## 6.4.0
+
+**The fleet status is about the run in progress.** Its notes no longer pile up from every earlier
+run. Nothing to change in `.claude/builder.md`.
+
+**Changed:**
+- A new fleet run starts with an empty list of notes, so the status shows only what this run says.
+  An earlier run's notes are dropped, with two exceptions:
+  - A set-aside whose changes came back with conflicts, and whose stash is still there, stays,
+    because it still waits on you.
+  - Notes the wrap-up acts on (migrations that landed, a target that wasn't checked out) move to
+    `wrapNotes` in `fleet.json`. The wrap-up still plans and settles them, and the status no longer
+    lists them. **Not now** (`wrapup.mjs dismiss`) drops them.
+
+  A `--land`, or a fleet that takes over a dead fleet's lock, keeps the notes it finds, as it keeps
+  that run's merge count.
+
 ## 6.3.0
 
 **Group lanes: features that touch the same code build in one lane and land as one.** A fleet of

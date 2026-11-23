@@ -874,6 +874,24 @@ export function setAsideConflicts(fleet, main) {
   })
 }
 
+/** A fleet note about migrations that landed and are not on the dev DB yet: `⚠ <feature>: … landed …` (the wrap-up's migrate step). */
+export const MIGRATION_NOTE = /^⚠ ([\w.-]+): \d+ new migrations? landed\b/
+/** A note that only says the target was not checked out when the feature merged (the wrap-up's switch step). */
+export const SWITCH_NOTE = /^([\w.-]+) (merged into|brought \d+ new migrations? to) (\S+)/
+
+/**
+ * A new fleet run's notes. The status shows what this run did, so an earlier run's notes go: a
+ * set-aside that came back with conflicts and whose stash is still there stays (it waits on you),
+ * and the ones the wrap-up acts on — migrations that landed, a target not checked out — move to
+ * `wrapNotes`, which wrapup.mjs reads and the status does not list. Everything else is history.
+ */
+export function carryNotes(fleet, main) {
+  const live = new Set(setAsideConflicts(fleet, main))
+  const old = fleet?.notes ?? []
+  const wrap = old.filter((n) => !live.has(n) && (MIGRATION_NOTE.test(n) || SWITCH_NOTE.test(n)))
+  return { notes: old.filter((n) => live.has(n)), wrapNotes: [...new Set([...(fleet?.wrapNotes ?? []), ...wrap])] }
+}
+
 /**
  * A parked or failed row someone has since settled outside the fleet — its feature folder moved to
  * `<registry>/_archive/`, or its branch gone (merged and deleted by /builder:tidy, or by hand). Only a landing removes

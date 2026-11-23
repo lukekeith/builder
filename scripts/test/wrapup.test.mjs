@@ -75,6 +75,17 @@ test('run: the chosen steps in order, the notes they settled cleared, the wrap-u
   assert.equal(wrap(root, 'run', 'bogus').status, 2)
 })
 
+test('an earlier run\'s wrap-up notes (wrapNotes) are planned and settled like the run\'s own; dismiss drops them', () => {
+  const root = repo('apply:      echo applied >> ran.txt')
+  const note = '⚠ a: 1 new migration landed — the dev DB is behind: run `x`'
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ features: {}, notes: [], wrapNotes: [note, 'memo merged into feature/memo while main was checked out here — switch to feature/memo to test it'] }))
+  assert.deepEqual(JSON.parse(wrap(root, 'plan', '--json').stdout).steps.map((s) => s.id), ['migrate'])
+  assert.equal(wrap(root, 'run', 'migrate').status, 0)
+  assert.deepEqual(JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).wrapNotes, ['memo merged into feature/memo while main was checked out here — switch to feature/memo to test it'])
+  assert.equal(wrap(root, 'dismiss').status, 0)
+  assert.deepEqual(JSON.parse(readFileSync(join(root, '.builder/fleet/fleet.json'), 'utf8')).wrapNotes, [], 'Not now: the next landing starts a new wrap-up')
+})
+
 test('dismiss marks the wrap-up done without running anything', () => {
   const root = repo('fixtures:   echo f >> ran.txt')
   writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ features: {}, notes: [] }))

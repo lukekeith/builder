@@ -1508,6 +1508,20 @@ test('SIGHUP mid-walk kills the start group before running stop', async () => {
   assert.equal(fj.features.h.startPgid, undefined)
 })
 
+test('a new fleet run shows only its own notes: an earlier run\'s go, the wrap-up\'s move to wrapNotes', () => {
+  const root = makeRepo(['a'])
+  const sw = 'memo merged into feature/memo while main was checked out here — switch to feature/memo to test it'
+  const old = 'text-activity failed; uncommitted changes from its worktree are in stash "builder: text-activity leftovers 2026-11-08" — git stash list'
+  mkdirSync(join(root, '.builder/fleet'), { recursive: true })
+  writeFileSync(join(root, '.builder/fleet/fleet.json'), JSON.stringify({ features: {}, target: 'main', notes: [old, sw, 'walk env launch check failed on main: start/smoke failed'] }))
+  const r = runFleet(root, ['a'], { a: HAPPY })
+  assert.equal(r.status, 0, r.stderr)
+  assert.ok(!r.fleet.notes.some((n) => n === old || n === sw || /launch check failed on main/.test(n)), JSON.stringify(r.fleet.notes))
+  assert.deepEqual(r.fleet.wrapNotes, [sw])
+  const status = readFileSync(join(root, '.builder/fleet/STATUS.md'), 'utf8')
+  assert.doesNotMatch(status, /text-activity|feature\/memo/)
+})
+
 test('env cannot put CLAUDE_PROJECT_DIR back; the fleet notes it was ignored', () => {
   const root = makeRepo(['a'], { lines: ['env: CLAUDE_PROJECT_DIR=/tmp/nope WALK_MARK=x'] })
   const r = runFleet(root, ['a'], { a: HAPPY })

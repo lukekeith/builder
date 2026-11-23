@@ -38,6 +38,9 @@ How to read it, when asked:
   five landed features, the mean **wall-clock** from start to merge — parks, restarts and queueing
   included — and where it went by stage. For "how long is left", that wall-clock mean for the stages
   the feature hasn't finished is the honest estimate; say it is one.
+- **The notes are this run's.** A new fleet run drops an earlier run's notes. The ones the wrap-up
+  still acts on (migrations, a target not checked out) are kept apart for it and come back as its
+  steps once the fleet has ended. A set-aside conflict whose stash is still there stays listed.
 - **A feature that landed is not a row**: it is counted in the archived line. With `--archived [N]`
   the output lists the latest N landings (20 by default) — relay it the same way.
 - **The fleet has ended** (no row in flight): reply with `.builder/fleet/STATUS.md` as markdown
